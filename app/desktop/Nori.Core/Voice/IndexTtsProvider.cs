@@ -380,9 +380,15 @@ public sealed class IndexTtsProvider(HttpClient httpClient, ConfigStore config, 
 	private const string EmotionTextNeutral = "neutral";
 
 	/// <summary>读取数值配置, 非法或缺失时回退默认值。</summary>
-	private static double ReadDouble(ConfigStore config, string key, double fallback) =>
-		double.TryParse(config.GetStringOr(key, ""), System.Globalization.NumberStyles.Float,
+	private static double ReadDouble(ConfigStore config, string key, double fallback)
+	{
+		string raw = config.GetStringOr(key, "");
+		// 配置值读取时会把 0/1 推断为布尔, 这里还原为数值以保留边界值.
+		if (raw.Equals("true", StringComparison.OrdinalIgnoreCase)) return 1;
+		if (raw.Equals("false", StringComparison.OrdinalIgnoreCase)) return 0;
+		return double.TryParse(raw, System.Globalization.NumberStyles.Float,
 			System.Globalization.CultureInfo.InvariantCulture, out double value) && value is >= 0 and <= 1 ? value : fallback;
+	}
 
 	/// <summary>从配置读取可选扩展字段；配置值存在且非空时才加入 payload。</summary>
 	private static void AppendOptional(JsonObject payload, ConfigStore config, string configKey, string apiField)

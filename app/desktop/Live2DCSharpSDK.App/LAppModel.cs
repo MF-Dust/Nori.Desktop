@@ -67,9 +67,23 @@ public class LAppModel : CubismUserModel
 
     public Action<LAppModel>? ValueUpdate;
 
+    /// <summary>
+    /// 在呼吸、物理、口型同步和姿势更新后、模型最终更新前调用。
+    /// </summary>
+    public Action<LAppModel>? FinalValueUpdate;
+
     public float DragX => _dragX;
     public float DragY => _dragY;
     public bool IsMotionFinished() => _motionManager == null || _motionManager.IsFinished();
+
+    /// <summary>
+    /// 停止所有动作并同步清空当前动作组。
+    /// </summary>
+    public void StopAllMotions()
+    {
+        _motionManager.StopAllMotions();
+        CurrentMotionGroup = null;
+    }
 
     /// <summary>
     /// [Nori] 当前播放中的动作组名 (未播放时为 null)
@@ -268,7 +282,7 @@ public class LAppModel : CubismUserModel
             }
         }
 
-        _motionManager.StopAllMotions();
+        StopAllMotions();
 
         Updating = false;
         Initialized = true;
@@ -445,6 +459,7 @@ public class LAppModel : CubismUserModel
         // ポーズの設定
         _pose?.UpdateParameters(Model, deltaTimeSeconds);
 
+        FinalValueUpdate?.Invoke(this);
         Model.Update();
     }
 

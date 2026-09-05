@@ -41,6 +41,59 @@ public sealed record PreparedModel
 	public required IReadOnlyList<ExpressionGroupDefinition> ExpressionGroups { get; init; }
 }
 
+/// <summary>一次模型准备的后台结果, 不在后台线程提交运行时状态。</summary>
+internal sealed record ModelLoadOutcome
+{
+	private ModelLoadOutcome(PreparedModel? prepared, Exception? error, bool canceled)
+	{
+		Prepared = prepared;
+		Error = error;
+		IsCanceled = canceled;
+	}
+
+	public PreparedModel? Prepared { get; }
+	public Exception? Error { get; }
+	public bool IsCanceled { get; }
+
+	public static ModelLoadOutcome Succeeded(PreparedModel prepared) => new(prepared, null, false);
+	public static ModelLoadOutcome Failed(Exception error) => new(null, error, false);
+	public static ModelLoadOutcome Canceled() => new(null, null, true);
+}
+
+/// <summary>
+/// 模型加载操作的世代归属.
+///
+/// 状态只用于丢弃已失效的后台结果; 真正的提交仍由 PetRuntime 在同一把锁内完成。
+/// </summary>
+internal sealed class ModelLoadOperation
+{
+	private int _state;
+
+	public ModelLoadOperation(
+		long generation,
+		string modelId,
+		string? fallbackModelId,
+		CancellationTokenSource cancellation,
+		Task<ModelLoadOutcome> preparationTask)
+	{
+		Generation = generation;
+		ModelId = modelId;
+		FallbackModelId = fallbackModelId;
+		Cancellation = cancellation;
+		PreparationTask = preparationTask;
+	}
+
+	public long Generation { get; }
+	public string ModelId { get; }
+	public string? FallbackModelId { get; }
+	public CancellationTokenSource Cancellation { get; }
+	public Task<ModelLoadOutcome> PreparationTask { get; }
+
+	public bool IsCurrent(long generation) => generation == Generation && Volatile.Read(ref _state) == 0;
+	public void Invalidate() => Interlocked.CompareExchange(ref _state, 1, 0);
+	public void Complete() => Interlocked.CompareExchange(ref _state, 2, 0);
+}
+
 /// <summary>
 /// 模型元数据后台准备器
 ///
@@ -52,10 +105,10 @@ public static class ModelPreparation
 	/// <summary>
 	/// 在后台准备一个模型的全部宿主可控元数据.
 	///
-	/// 找不到 model3.json 时返回 null; 取消时抛出 OperationCanceledException;
-	/// 其余 IO/JSON 错误向上传播, 由调用方记日志。
+	/// 模型目录不存在或找不到 model3.json 时抛出 ResourceException;
+	/// 取消时抛出 OperationCanceledException, 其余 IO/JSON 错误向上传播给调用方。
 	/// </summary>
-	public static async Task<PreparedModel?> PrepareAsync(
+	public static async Task<PreparedModel> PrepareAsync(
 		string modelId,
 		string modelDir,
 		long generation,
@@ -65,10 +118,17 @@ public static class ModelPreparation
 		{
 			throw new ResourceException($"不支持的 Live2D 模型 ID: {modelId}");
 		}
-		if (!Directory.Exists(modelDir)) return null;
+		cancellationToken.ThrowIfCancellationRequested();
+		if (!Directory.Exists(modelDir))
+		{
+			throw new ResourceException($"模型目录不存在: {modelDir}");
+		}
 
 		string[] model3Files = Directory.GetFiles(modelDir, "*.model3.json", SearchOption.TopDirectoryOnly);
-		if (model3Files.Length == 0) return null;
+		if (model3Files.Length == 0)
+		{
+			throw new ResourceException($"模型目录中缺少 model3.json: {modelDir}");
+		}
 
 		cancellationToken.ThrowIfCancellationRequested();
 		string modelJsonPath = model3Files.OrderBy(path => path, StringComparer.Ordinal).First();

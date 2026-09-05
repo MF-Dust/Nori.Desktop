@@ -11,9 +11,7 @@ public sealed class IdleDisableBehavior : IBehaviorPlugin
 	{
 		if (!ctx.IdleAnimationEnabled && ctx.IsIdleMotion)
 		{
-			ctx.Model.Model.SetParameterValue("ParamEyeLOpen", ctx.ModelParameters.LeftEyeOpen);
-			ctx.Model.Model.SetParameterValue("ParamEyeROpen", ctx.ModelParameters.RightEyeOpen);
-			ctx.MarkHandled();
+			ctx.Model.StopAllMotions();
 		}
 	}
 }

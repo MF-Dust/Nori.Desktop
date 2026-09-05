@@ -75,8 +75,7 @@ public sealed class PetRuntime
 	// 仅当"完成 + 未取消 + 世代仍匹配"时才在 GL 区做最小资源交换。
 	private readonly Lock _prepareGate = new();
 	private long _modelGeneration;
-	private CancellationTokenSource? _prepareCts;
-	private Task<PreparedModel?>? _prepareTask;
+	private ModelLoadOperation? _pendingModelLoad;
 
 	// 配置项
 	public float UserScale { get; set; } = 1.0f;
@@ -262,13 +261,7 @@ public sealed class PetRuntime
 
 	public void OnGlDeinit()
 	{
-		lock (_prepareGate)
-		{
-			_prepareCts?.Cancel();
-			_prepareCts?.Dispose();
-			_prepareCts = null;
-			_prepareTask = null;
-		}
+		lock (_prepareGate) CancelPendingModelLoadLocked();
 		// 同上: 释放交给 manager, PetGlControl 随后的 _lapp.Dispose() 会走到 ReleaseAllModel()
 		_currentModel = null;
 		lock (_interactionGate) _viewportMapping = null;
@@ -400,176 +393,390 @@ public sealed class PetRuntime
 	/// <summary>
 	/// 请求切换模型 (线程安全): 递增世代并在后台开始元数据准备.
 	///
-	/// 上一份准备任务的 CTS 立即取消; 渲染帧只消费完成且世代匹配的结果。
+	/// 上一份准备任务的 CTS 立即取消; 渲染帧只消费当前操作的完成结果。
 	/// </summary>
-	public void RequestModelLoad(string modelId)
+	public void RequestModelLoad(string modelId) => RequestModelLoad(modelId, reloadCurrent: true);
+
+	private void RequestModelLoad(string modelId, bool reloadCurrent)
 	{
-		string? normalized = SupportedModelIds.Normalize(modelId);
-		if (normalized is null)
-		{
-			ReportModelLoadFailure(modelId?.Trim() ?? "", _currentModel is null ? null : _currentModelId);
-			return;
-		}
-		string trimmed = normalized;
+		string requestedModelId = modelId?.Trim() ?? "";
+		string? normalized = SupportedModelIds.Normalize(requestedModelId);
+		bool notifyRequested = false;
 
 		lock (_prepareGate)
 		{
-			_modelGeneration++;
-			long generation = _modelGeneration;
-			string? fallbackModelId = _currentModel is null ? null : _currentModelId;
-			LastModelLoadError = null;
-			_prepareCts?.Cancel();
-			_prepareCts?.Dispose();
-			CancellationTokenSource cts = new();
-			_prepareCts = cts;
-
-			string modelDir = _services.Resources.ResourceDir(ResourceType.Live2D, trimmed);
-			_prepareTask = Task.Run(async () =>
+			bool sameCurrentModel = normalized is not null
+				&& _currentModel is not null
+				&& string.Equals(normalized, _currentModelId, StringComparison.Ordinal);
+			if (sameCurrentModel && _pendingModelLoad is null && !reloadCurrent)
 			{
-				try
+				return;
+			}
+			if (sameCurrentModel && _pendingModelLoad is not null)
+			{
+				// 重新选中当前模型只取消待处理切换, 不把已经显示的模型再加载一遍。
+				_modelGeneration++;
+				CancelPendingModelLoadLocked();
+				LastModelLoadError = null;
+				notifyRequested = true;
+			}
+			else
+			{
+				_modelGeneration++;
+				long generation = _modelGeneration;
+				string? fallbackModelId = _currentModel is null ? null : _currentModelId;
+				CancelPendingModelLoadLocked();
+				LastModelLoadError = null;
+
+				CancellationTokenSource cancellation = new();
+				Task<ModelLoadOutcome> preparationTask;
+				if (normalized is null)
 				{
-					return await ModelPreparation.PrepareAsync(trimmed, modelDir, generation, cts.Token);
+					preparationTask = Task.FromResult(ModelLoadOutcome.Failed(
+						new ResourceException($"不支持的 Live2D 模型 ID: {requestedModelId}")));
 				}
-				catch (OperationCanceledException)
+				else
 				{
-					return null;
+					string modelDir = _services.Resources.ResourceDir(ResourceType.Live2D, normalized);
+					preparationTask = Task.Run(
+						() => PrepareModelOutcomeAsync(normalized, modelDir, generation, cancellation.Token),
+						CancellationToken.None);
 				}
-				catch (Exception exception)
-				{
-					// 准备失败不带入渲染线程, 保留当前工作模型并回滚持久化选择。
-					try
-					{
-						_services.Logger.Write(LogSource.Backend, "error", $"后台准备 Live2D 模型失败 [{trimmed}]: {exception.Message}");
-					}
-					catch
-					{
-						// 日志失败保持静默
-					}
-					ReportModelLoadFailure(trimmed, fallbackModelId);
-					return null;
-				}
-			}, CancellationToken.None);
+
+				_pendingModelLoad = new ModelLoadOperation(
+					generation,
+					normalized ?? requestedModelId,
+					fallbackModelId,
+					cancellation,
+					preparationTask);
+				ObservePreparationTask(preparationTask);
+				notifyRequested = true;
+			}
 		}
+
+		if (notifyRequested) NotifyModelLoadRequested();
+	}
+
+	private static async Task<ModelLoadOutcome> PrepareModelOutcomeAsync(
+		string modelId,
+		string modelDir,
+		long generation,
+		CancellationToken cancellationToken)
+	{
+		try
+		{
+			PreparedModel prepared = await ModelPreparation.PrepareAsync(
+				modelId,
+				modelDir,
+				generation,
+				cancellationToken).ConfigureAwait(false);
+			return ModelLoadOutcome.Succeeded(prepared);
+		}
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			return ModelLoadOutcome.Canceled();
+		}
+		catch (Exception exception)
+		{
+			// 后台只返回结果, 不直接触碰配置、运行时状态或事件。
+			return ModelLoadOutcome.Failed(exception);
+		}
+	}
+
+	private static void ObservePreparationTask(Task<ModelLoadOutcome> task)
+	{
+		_ = task.ContinueWith(
+			completed => _ = completed.Exception,
+			CancellationToken.None,
+			TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+			TaskScheduler.Default);
+	}
+
+	/// <summary>
+	/// 在渲染帧观察准备任务; 只有当前操作完成后才在 GL 区消费结果。
+	/// </summary>
+	private void ConsumePreparedIfReady()
+	{
+		ModelLoadOperation? pending;
+		ModelLoadOutcome outcome;
+		lock (_prepareGate)
+		{
+			pending = _pendingModelLoad;
+			if (pending is null || !pending.PreparationTask.IsCompleted) return;
+			try
+			{
+				// 无论后台实现是否意外 fault, 这里都显式观察任务异常。
+				outcome = pending.PreparationTask.GetAwaiter().GetResult();
+			}
+			catch (Exception exception)
+			{
+				outcome = ModelLoadOutcome.Failed(exception);
+			}
+		}
+
+		ModelLoadOperation operation = pending;
+		if (outcome.IsCanceled)
+		{
+			lock (_prepareGate)
+			{
+				if (ReferenceEquals(_pendingModelLoad, operation)) CompletePendingModelLoadLocked(operation);
+			}
+			return;
+		}
+		if (outcome.Error is { } error)
+		{
+			CommitModelLoadFailure(operation, error);
+			return;
+		}
+		if (outcome.Prepared is not { } prepared)
+		{
+			CommitModelLoadFailure(operation, new InvalidOperationException("Live2D 模型准备未返回结果"));
+			return;
+		}
+		if (prepared.Generation != operation.Generation
+			|| !string.Equals(prepared.ModelId, operation.ModelId, StringComparison.Ordinal))
+		{
+			CommitModelLoadFailure(operation, new InvalidOperationException("Live2D 模型准备世代不匹配"));
+			return;
+		}
+
+		ApplyPreparedOnGlThread(operation, prepared);
+	}
+
+	private void CommitModelLoadFailure(ModelLoadOperation operation, Exception error)
+	{
+		bool committed;
+		lock (_prepareGate) committed = CommitModelLoadFailureLocked(operation, error);
+		if (!committed) return;
+
+		try
+		{
+			_services.Logger.Write(LogSource.Backend, "error", $"加载 Live2D 模型失败 [{operation.ModelId}]: {error.Message}");
+		}
+		catch
+		{
+			// 日志失败保持静默, 不能掩盖模型加载失败。
+		}
+		NotifyModelLoadFailed();
+	}
+
+	private bool CommitModelLoadFailureLocked(ModelLoadOperation operation, Exception error)
+	{
+		if (!IsCurrentOperationLocked(operation)) return false;
+		CompletePendingModelLoadLocked(operation);
+
+		if (!string.IsNullOrWhiteSpace(operation.FallbackModelId)
+			&& !string.Equals(operation.ModelId, operation.FallbackModelId, StringComparison.Ordinal))
+		{
+			try
+			{
+				_services.Config.Set(
+					ConfigStore.KeySelectedModel,
+					new ConfigValue.Text(operation.FallbackModelId));
+			}
+			catch
+			{
+				// 退出期间数据库可能已释放, 不掩盖模型加载失败。
+			}
+		}
+
+		LastModelLoadError = error is ResourceException
+			? $"模型 {operation.ModelId} 加载失败: {error.Message}"
+			: $"模型 {operation.ModelId} 加载失败, 请重新导入";
+		return true;
+	}
+
+	private void NotifyModelLoadRequested()
+	{
 		try { ModelLoadRequested?.Invoke(); }
 		catch (Exception exception) { WriteCubismLog($"模型切换取消互动请求失败: {exception.Message}"); }
 	}
 
-	/// <summary>
-	/// 在渲染帧观察准备任务; 只有已完成且世代仍匹配时才在 GL 区消费结果
-	/// </summary>
-	private void ConsumePreparedIfReady()
+	private void NotifyModelLoadFailed()
 	{
-		Task<PreparedModel?>? task;
-		long generation;
-		lock (_prepareGate)
-		{
-			task = _prepareTask;
-			generation = _modelGeneration;
-			if (task is not { IsCompletedSuccessfully: true }) return;
-			_prepareTask = null;
-		}
-
-		PreparedModel? prepared;
-		try
-		{
-			prepared = task.Result;
-		}
-		catch (Exception exception)
-		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"读取 Live2D 准备结果失败: {exception.Message}");
-			return;
-		}
-
-		if (prepared is null || prepared.Generation != generation
-			|| prepared.Generation != Volatile.Read(ref _modelGeneration)) return;
-		ApplyPreparedOnGlThread(prepared);
-	}
-
-	private void ReportModelLoadFailure(string requestedModelId, string? fallbackModelId)
-	{
-		if (!string.IsNullOrWhiteSpace(fallbackModelId)
-			&& !string.Equals(requestedModelId, fallbackModelId, StringComparison.Ordinal))
-		{
-			try { _services.Config.Set(ConfigStore.KeySelectedModel, new ConfigValue.Text(fallbackModelId)); }
-			catch { /* 退出期间数据库可能已释放, 不掩盖模型加载失败。 */ }
-		}
-		LastModelLoadError = $"模型 {requestedModelId} 加载失败, 请重新导入";
 		try { ModelLoadFailed?.Invoke(); }
 		catch (Exception exception) { WriteCubismLog($"模型失败事件处理异常: {exception.Message}"); }
 	}
 
-	/// <summary>
-	/// GL 线程专属: 先完整创建候选模型, 成功后再释放旧模型, 保证切换失败可回滚。
-	/// </summary>
-	private void ApplyPreparedOnGlThread(PreparedModel prepared)
+	private void CancelPendingModelLoadLocked()
 	{
-		if (_app is null || _gl is null) return;
+		if (_pendingModelLoad is not { } operation) return;
+		_pendingModelLoad = null;
+		operation.Invalidate();
+		try { operation.Cancellation.Cancel(); }
+		catch (ObjectDisposedException) { }
+		operation.Cancellation.Dispose();
+	}
+
+	private void CompletePendingModelLoadLocked(ModelLoadOperation operation)
+	{
+		if (!ReferenceEquals(_pendingModelLoad, operation)) return;
+		operation.Complete();
+		_pendingModelLoad = null;
+		operation.Cancellation.Dispose();
+	}
+
+	private bool IsCurrentOperationLocked(ModelLoadOperation operation) =>
+		ReferenceEquals(_pendingModelLoad, operation) && operation.IsCurrent(_modelGeneration);
+
+	/// <summary>
+	/// GL 线程专属: 候选模型可先创建, 但提交前必须再次校验操作世代;
+	/// 过期候选只移除, 不得改变当前模型或持久化选择。
+	/// </summary>
+	private void ApplyPreparedOnGlThread(ModelLoadOperation operation, PreparedModel prepared)
+	{
+		LAppDelegateOpenGL? app = _app;
+		if (app is null || _gl is null) return;
+		lock (_prepareGate)
+		{
+			if (!IsCurrentOperationLocked(operation)) return;
+		}
+
 		if (!Directory.Exists(prepared.ModelDir))
 		{
-			ReportModelLoadFailure(prepared.ModelId, _currentModel is null ? null : _currentModelId);
+			CommitModelLoadFailure(operation, new ResourceException($"模型目录不存在: {prepared.ModelDir}"));
 			return;
 		}
 
-		LAppModel? previousModel = _currentModel;
-		string previousModelId = _currentModelId;
-		string previousModelDir = _currentModelDir;
-		List<MotionGroupInfo> previousMotionGroups = [.. _motionGroups];
-		bool firstLoadOfModel = previousModel is null
-			|| !string.Equals(prepared.ModelId, previousModelId, StringComparison.Ordinal);
-		LAppModel? candidate = null;
-
+		LAppModel candidate;
 		try
 		{
 			// LoadModel 仅在构造完全成功后才加入 manager; 旧模型在此期间继续存活。
-			candidate = _app.Live2dManager.LoadModel(prepared.ModelDir, prepared.Model3FileName);
-			_currentModel = candidate;
-			_currentModelId = prepared.ModelId;
-			_currentModelDir = prepared.ModelDir;
-
-			candidate.CustomValueUpdate = true;
-			candidate.ValueUpdate = OnModelValueUpdate;
-
-			// UseHighPrecisionMask 必须保持关闭: 打开后 SDK 会对每一个被蒙版裁剪的部件
-			// 单独把整张蒙版缓冲清空并重画一遍, 质量策略只调整缓冲尺寸与过滤等级。
-			_appliedMaskBufferSize = 0;
-			ApplyRenderQualityOnGlThread();
-			_expressionBehavior.ApplyPrepared(prepared, candidate.Model);
-			_motionGroups = [.. prepared.MotionGroups];
-			if (firstLoadOfModel) LoadConfigs();
-
-			// 候选模型已经可用后才释放旧对象; 旧对象清理异常不能反向销毁新模型。
-			if (previousModel is not null)
-			{
-				try { _app.Live2dManager.RemoveModel(previousModel); }
-				catch (Exception exception) { WriteCubismLog($"释放旧模型失败: {exception.Message}"); }
-			}
-			lock (_interactionGate) _viewportMapping = null;
-			LastModelLoadError = null;
+			candidate = app.Live2dManager.LoadModel(prepared.ModelDir, prepared.Model3FileName);
 		}
 		catch (Exception exception)
 		{
-			if (candidate is not null)
+			CommitModelLoadFailure(operation, exception);
+			return;
+		}
+
+		LAppModel? previousModel = null;
+		bool committed = false;
+		bool stale = false;
+		Exception? failure = null;
+		lock (_prepareGate)
+		{
+			if (!IsCurrentOperationLocked(operation))
 			{
-				try { _app.Live2dManager.RemoveModel(candidate); }
-				catch { /* 保留原始加载异常。 */ }
+				stale = true;
 			}
-			_currentModel = previousModel;
-			_currentModelId = previousModelId;
-			_currentModelDir = previousModelDir;
-			_motionGroups = previousMotionGroups;
-			_appliedMaskBufferSize = 0;
-			if (previousModel is not null)
+			else
 			{
-				try { ApplyRenderQualityOnGlThread(); } catch { }
+				previousModel = _currentModel;
+				string previousModelId = _currentModelId;
+				string previousModelDir = _currentModelDir;
+				List<MotionGroupInfo> previousMotionGroups = [.. _motionGroups];
+				bool firstLoadOfModel = previousModel is null
+					|| !string.Equals(prepared.ModelId, previousModelId, StringComparison.Ordinal);
+				float previousUserScale = UserScale;
+				float previousOpacity = Opacity;
+				bool previousAutoBlinkEnabled = AutoBlinkEnabled;
+				bool previousEyeTrackingEnabled = EyeTrackingEnabled;
+				bool previousIdleEyeAnimationEnabled = IdleEyeAnimationEnabled;
+				bool previousIdleAnimationEnabled = IdleAnimationEnabled;
+				bool previousExpressionEnabled = ExpressionEnabled;
+				bool previousShadowEnabled = ShadowEnabled;
+				bool previousLipSyncEnabled = LipSyncEnabled;
+				bool previousBeatSyncEnabled = BeatSyncEnabled;
+				bool previousClickInteraction = ClickInteraction;
+				bool previousClickThroughEnabled = ClickThroughEnabled;
+				float previousRenderScale = RenderScale;
+				string previousQualityMode = QualityMode;
+				int previousMaxFps = MaxFps;
+				Live2DRenderSettings previousRenderSettings = _renderSettings;
+				PetInteractionConfig previousInteraction;
+				lock (_interactionGate) previousInteraction = _interactionConfig;
+				string previousExpressionModelId = _expressionStore.ModelId;
+				ExpressionEntry[] previousExpressions = [.. _expressionStore.Expressions.Values];
+				ExpressionGroupDefinition[] previousExpressionGroups = [.. _expressionStore.ExpressionGroups.Values];
+
+				try
+				{
+					_currentModel = candidate;
+					_currentModelId = prepared.ModelId;
+					_currentModelDir = prepared.ModelDir;
+					candidate.CustomValueUpdate = true;
+					candidate.ValueUpdate = OnModelValueUpdate;
+					candidate.FinalValueUpdate = OnModelFinalValueUpdate;
+
+					// UseHighPrecisionMask 必须保持关闭: 打开后 SDK 会对每一个被蒙版裁剪的部件
+					// 单独把整张蒙版缓冲清空并重画一遍, 质量策略只调整缓冲尺寸与过滤等级。
+					_appliedMaskBufferSize = 0;
+					ApplyRenderQualityOnGlThread();
+					_expressionBehavior.ApplyPrepared(prepared, candidate.Model);
+					_motionGroups = [.. prepared.MotionGroups];
+					if (firstLoadOfModel) LoadConfigs();
+
+					// 候选模型已经可用后才释放旧对象; 旧对象清理异常不能反向销毁新模型。
+					if (previousModel is not null)
+					{
+						try { app.Live2dManager.RemoveModel(previousModel); }
+						catch (Exception exception) { WriteCubismLog($"释放旧模型失败: {exception.Message}"); }
+					}
+					lock (_interactionGate) _viewportMapping = null;
+					LastModelLoadError = null;
+					CompletePendingModelLoadLocked(operation);
+					committed = true;
+				}
+				catch (Exception exception)
+				{
+					failure = exception;
+					_currentModel = previousModel;
+					_currentModelId = previousModelId;
+					_currentModelDir = previousModelDir;
+					_motionGroups = previousMotionGroups;
+					UserScale = previousUserScale;
+					Opacity = previousOpacity;
+					AutoBlinkEnabled = previousAutoBlinkEnabled;
+					EyeTrackingEnabled = previousEyeTrackingEnabled;
+					IdleEyeAnimationEnabled = previousIdleEyeAnimationEnabled;
+					IdleAnimationEnabled = previousIdleAnimationEnabled;
+					ExpressionEnabled = previousExpressionEnabled;
+					ShadowEnabled = previousShadowEnabled;
+					LipSyncEnabled = previousLipSyncEnabled;
+					BeatSyncEnabled = previousBeatSyncEnabled;
+					ClickInteraction = previousClickInteraction;
+					ClickThroughEnabled = previousClickThroughEnabled;
+					RenderScale = previousRenderScale;
+					QualityMode = previousQualityMode;
+					MaxFps = previousMaxFps;
+					_renderSettings = previousRenderSettings;
+					lock (_qualityGate) _qualityPolicy.Update(previousRenderSettings, PowerSourceDetector.Detect());
+					lock (_interactionGate) _interactionConfig = previousInteraction;
+					_expressionStore.RegisterExpressions(
+						previousExpressionModelId,
+						previousExpressionGroups,
+						previousExpressions);
+					_appliedMaskBufferSize = 0;
+					if (previousModel is not null)
+					{
+						try { ApplyRenderQualityOnGlThread(); } catch { }
+					}
+				}
 			}
-			_services.Logger.Write(LogSource.Backend, "error", $"加载 Live2D 模型失败 [{prepared.ModelId}]: {exception.Message}");
-			ReportModelLoadFailure(prepared.ModelId, previousModel is null ? null : previousModelId);
+		}
+
+		if (stale)
+		{
+			RemoveCandidateModel(app, candidate);
+			return;
+		}
+		if (!committed)
+		{
+			RemoveCandidateModel(app, candidate);
+			if (failure is not null) CommitModelLoadFailure(operation, failure);
 			return;
 		}
 
 		try { _services.Logger.Write(LogSource.Backend, "info", $"成功加载 Live2D 模型: {prepared.ModelId}"); } catch { }
 		try { ModelChanged?.Invoke(); }
 		catch (Exception exception) { WriteCubismLog($"模型变更事件处理异常: {exception.Message}"); }
+	}
+
+	private void RemoveCandidateModel(LAppDelegateOpenGL app, LAppModel candidate)
+	{
+		try { app.Live2dManager.RemoveModel(candidate); }
+		catch (Exception exception) { WriteCubismLog($"释放过期 Live2D 候选模型失败: {exception.Message}"); }
 	}
 
 	/// <summary>在 GL 上下文中应用质量策略到 Cubism renderer。</summary>
@@ -641,9 +848,13 @@ public sealed class PetRuntime
 
 		// 运行 post 插件（如 EyeFocus 眼神微动）
 		_pipeline.RunPost(ctx);
+	}
 
-		// 运行 final 插件（如 Expression、AutoBlink、LipSync）
-		_pipeline.RunFinal(ctx);
+	/// <summary>在 SDK 的物理、姿势等最终参数处理之后运行桌宠 Final 行为。</summary>
+	private void OnModelFinalValueUpdate(LAppModel model)
+	{
+		if (!ReferenceEquals(model, _behaviorContext.Model)) return;
+		_pipeline.RunFinal(_behaviorContext);
 	}
 
 	public void RenderFrame(float deltaTime, int viewportWidth, int viewportHeight)
@@ -703,6 +914,7 @@ public sealed class PetRuntime
 			_currentModel.ModelMatrix.GetTranslateY());
 		lock (_interactionGate) _viewportMapping = mapping;
 
+		_currentModel.RandomMotion = IdleAnimationEnabled;
 		_currentModel.Update();
 		_currentModel.Draw(_projectionMatrix);
 		FrameRendered?.Invoke();
@@ -922,7 +1134,7 @@ public sealed class PetRuntime
 	{
 		if (key == "selected_model")
 		{
-			if (ConfigStore.DefaultModel != _currentModelId) RequestModelLoad(ConfigStore.DefaultModel);
+			RequestModelLoad(ConfigStore.DefaultModel, reloadCurrent: false);
 			return;
 		}
 		if (key is "l2d_opacity" or "l2d_quality_mode" or "l2d_render_scale" or "l2d_max_fps" or "l2d_shadow"
@@ -968,7 +1180,7 @@ public sealed class PetRuntime
 	{
 		if (key == "selected_model" && !string.IsNullOrWhiteSpace(value))
 		{
-			if (value.Trim() != _currentModelId) RequestModelLoad(value);
+			RequestModelLoad(value, reloadCurrent: false);
 			return;
 		}
 

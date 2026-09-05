@@ -101,13 +101,36 @@ public class PetModelPreparationTests : IDisposable
 	}
 
 	[Fact]
-	public async Task 目录为空或缺少模型定义时返回null()
+	public async Task 目录为空或缺少模型定义时明确失败()
 	{
 		Directory.CreateDirectory(_modelDir);
-		Assert.Null(await ModelPreparation.PrepareAsync("arg-nori", _modelDir, 1, CancellationToken.None));
+		ResourceException missingDefinition = await Assert.ThrowsAsync<ResourceException>(() =>
+			ModelPreparation.PrepareAsync("arg-nori", _modelDir, 1, CancellationToken.None));
+		Assert.Contains("缺少 model3.json", missingDefinition.Message, StringComparison.Ordinal);
 
 		string missing = Path.Combine(_modelDir, "does-not-exist");
-		Assert.Null(await ModelPreparation.PrepareAsync("nori", missing, 1, CancellationToken.None));
+		ResourceException missingDirectory = await Assert.ThrowsAsync<ResourceException>(() =>
+			ModelPreparation.PrepareAsync("nori", missing, 1, CancellationToken.None));
+		Assert.Contains("模型目录不存在", missingDirectory.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void 过期模型操作不能通过世代校验()
+	{
+		using CancellationTokenSource cancellation = new();
+		ModelLoadOperation operation = new(
+			generation: 4,
+			modelId: "nori",
+			fallbackModelId: "arg-nori",
+			cancellation,
+			Task.FromResult(ModelLoadOutcome.Canceled()));
+
+		Assert.True(operation.IsCurrent(4));
+		Assert.False(operation.IsCurrent(5));
+		operation.Invalidate();
+		Assert.False(operation.IsCurrent(4));
+		operation.Complete();
+		Assert.False(operation.IsCurrent(4));
 	}
 
 	[Fact]

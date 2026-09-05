@@ -54,6 +54,8 @@ public sealed class PetWindow : Window
 	/// <summary>按下时光标的屏幕坐标 (物理像素)</summary>
 	private PixelPoint _dragStartScreenPos;
 	private PixelPoint _dragStartWinPos;
+	private bool _isNativeDragPending;
+	private PixelPoint _nativeDragStartWinPos;
 
 	public bool AllowClose { get; set; }
 
@@ -483,6 +485,8 @@ public sealed class PetWindow : Window
 			// 这条路径也覆盖 Wayland: WebView 的标题栏拖动能力不可用时, 原生窗口仍可拖动。
 			if (!OperatingSystem.IsWindows())
 			{
+				_isNativeDragPending = true;
+				_nativeDragStartWinPos = Position;
 				try
 				{
 					BeginMoveDrag(e);
@@ -491,6 +495,7 @@ public sealed class PetWindow : Window
 				}
 				catch (InvalidOperationException exception)
 				{
+					_isNativeDragPending = false;
 					_services.Logger.Write(LogSource.Backend, "warn", $"原生桌宠拖动不可用, 改用手动拖动: {exception.Message}");
 				}
 			}
@@ -523,10 +528,7 @@ public sealed class PetWindow : Window
 			int dx = screenPos.X - _dragStartScreenPos.X;
 			int dy = screenPos.Y - _dragStartScreenPos.Y;
 
-			double scale = RenderScaling > 0 ? RenderScaling : 1.0;
-			double thresholdPx = DragThreshold * scale;
-
-			if (_isDragging || Math.Sqrt((double)dx * dx + (double)dy * dy) >= thresholdPx)
+			if (_isDragging || HasExceededDragThreshold(_dragStartScreenPos, screenPos, RenderScaling))
 			{
 				_isDragging = true;
 				_hasDragged = true;
@@ -543,17 +545,31 @@ public sealed class PetWindow : Window
 		var clientPos = e.GetPosition(this);
 		bool wasDragging = _isDragging;
 		bool didDrag = _hasDragged;
+		bool didNativeDrag = _isNativeDragPending
+			&& HasExceededDragThreshold(_nativeDragStartWinPos, Position, RenderScaling);
 
+		if (didNativeDrag) SaveWindowPosition();
+		_isNativeDragPending = false;
 		FinishDrag();
 		e.Pointer.Capture(null);
 
-		if (!wasDragging && !didDrag && e.InitialPressMouseButton == MouseButton.Left)
+		if (!wasDragging && !didDrag && !didNativeDrag && e.InitialPressMouseButton == MouseButton.Left)
 		{
 			if (_glControl.IsPointOnModel(clientPos.X, clientPos.Y))
 			{
 				_runtime.HandleTap((float)clientPos.X, (float)clientPos.Y, (float)Bounds.Width, (float)Bounds.Height);
 			}
 		}
+	}
+
+	/// <summary>判断两个物理像素坐标是否达到桌宠拖动阈值。</summary>
+	internal static bool HasExceededDragThreshold(PixelPoint start, PixelPoint end, double renderScaling)
+	{
+		double scale = renderScaling > 0 ? renderScaling : 1.0;
+		double threshold = DragThreshold * scale;
+		double dx = (double)end.X - start.X;
+		double dy = (double)end.Y - start.Y;
+		return dx * dx + dy * dy >= threshold * threshold;
 	}
 
 	/// <summary>

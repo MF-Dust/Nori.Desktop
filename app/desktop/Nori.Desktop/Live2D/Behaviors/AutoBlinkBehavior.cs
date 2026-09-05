@@ -42,7 +42,9 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 	private static double EaseOutQuad(double t) => 1.0 - (1.0 - t) * (1.0 - t);
 	private static double EaseInQuad(double t) => t * t;
 
-	private (float eyeLOpen, float eyeROpen) UpdateBlink(double dt, float baseLeft, float baseRight)
+	internal static float ApplyBlinkFactor(float baseline, float factor) => Clamp01(baseline * factor);
+
+	private (float leftFactor, float rightFactor) UpdateBlink(double dt, float currentLeft, float currentRight)
 	{
 		if (_phase == Phase.Idle)
 		{
@@ -51,18 +53,17 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 			{
 				_phase = Phase.Closing;
 				_progress = 0;
-				_startLeft = baseLeft;
-				_startRight = baseRight;
+				_startLeft = Clamp01(currentLeft);
+				_startRight = Clamp01(currentRight);
 			}
-			return (baseLeft, baseRight);
+			return (1.0f, 1.0f);
 		}
 
 		if (_phase == Phase.Closing)
 		{
 			_progress = Math.Min(1.0, _progress + dt / BlinkCloseDuration);
 			float eased = (float)EaseOutQuad(_progress);
-			float eyeL = Clamp01(_startLeft * (1.0f - eased));
-			float eyeR = Clamp01(_startRight * (1.0f - eased));
+			float factor = Clamp01(1.0f - eased);
 
 			if (_progress >= 1.0)
 			{
@@ -70,14 +71,12 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 				_progress = 0;
 				_openDurationSeconds = RandomRange(MinBlinkOpenDuration, MaxBlinkOpenDuration);
 			}
-			return (eyeL, eyeR);
+			return (factor, factor);
 		}
 
 		// Opening
 		_progress = Math.Min(1.0, _progress + dt / _openDurationSeconds);
-		float openEased = (float)EaseInQuad(_progress);
-		float eyeLOpen = Clamp01(_startLeft * openEased);
-		float eyeROpen = Clamp01(_startRight * openEased);
+		float openEased = Clamp01((float)EaseInQuad(_progress));
 
 		if (_progress >= 1.0)
 		{
@@ -85,51 +84,40 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 			_progress = 0;
 			_delaySeconds = RandomRange(MinDelay, MaxDelay);
 		}
-		return (eyeLOpen, eyeROpen);
+		return (openEased, openEased);
 	}
 
 	public void Execute(BehaviorContext ctx)
 	{
 		if (!ctx.IsIdleMotion || ctx.Handled || !ctx.AutoBlinkEnabled) return;
 
-		float baseLeft = Clamp01(ctx.ModelParameters.LeftEyeOpen);
-		float baseRight = Clamp01(ctx.ModelParameters.RightEyeOpen);
 		double safeDt = ctx.TimeDelta > 0 ? ctx.TimeDelta : 0.016;
-
-		float currentLeft = ctx.Model.Model.GetParameterValue("ParamEyeLOpen");
-		float currentRight = ctx.Model.Model.GetParameterValue("ParamEyeROpen");
+		float currentLeft = Clamp01(ctx.Model.Model.GetParameterValue("ParamEyeLOpen"));
+		float currentRight = Clamp01(ctx.Model.Model.GetParameterValue("ParamEyeROpen"));
 
 		if (_phase == Phase.Idle && currentLeft <= 0.15f && currentRight <= 0.15f)
 		{
-			_phase = Phase.Idle;
 			_progress = 0;
 			_delaySeconds = RandomRange(MinDelay, MaxDelay);
-			ctx.Model.Model.SetParameterValue("ParamEyeLOpen", Clamp01(currentLeft * baseLeft));
-			ctx.Model.Model.SetParameterValue("ParamEyeROpen", Clamp01(currentRight * baseRight));
 			return;
-		}
-
-		if (_phase == Phase.Idle)
-		{
-			_startLeft = currentLeft;
-			_startRight = currentRight;
 		}
 
 		bool wasActive = _phase != Phase.Idle;
-		var (blinkL, blinkR) = UpdateBlink(safeDt, 1.0f, 1.0f);
+		var (blinkL, blinkR) = UpdateBlink(safeDt, currentLeft, currentRight);
 
-		if (wasActive && _phase == Phase.Idle)
+		if (_phase == Phase.Idle)
 		{
-			ctx.Model.Model.SetParameterValue("ParamEyeLOpen", Clamp01(_startLeft * baseLeft));
-			ctx.Model.Model.SetParameterValue("ParamEyeROpen", Clamp01(_startRight * baseRight));
-			ctx.MarkHandled();
+			if (wasActive)
+			{
+				ctx.Model.Model.SetParameterValue("ParamEyeLOpen", ApplyBlinkFactor(_startLeft, 1.0f));
+				ctx.Model.Model.SetParameterValue("ParamEyeROpen", ApplyBlinkFactor(_startRight, 1.0f));
+				ctx.MarkHandled();
+			}
 			return;
 		}
 
-		if (_phase == Phase.Idle) return;
-
-		ctx.Model.Model.SetParameterValue("ParamEyeLOpen", Clamp01(_startLeft * blinkL * baseLeft));
-		ctx.Model.Model.SetParameterValue("ParamEyeROpen", Clamp01(_startRight * blinkR * baseRight));
+		ctx.Model.Model.SetParameterValue("ParamEyeLOpen", ApplyBlinkFactor(_startLeft, blinkL));
+		ctx.Model.Model.SetParameterValue("ParamEyeROpen", ApplyBlinkFactor(_startRight, blinkR));
 		ctx.MarkHandled();
 	}
 }

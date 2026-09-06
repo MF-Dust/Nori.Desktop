@@ -10,7 +10,7 @@ namespace Nori.Core.Configuration;
 ///
 /// 与 Rust 版 config.rs 的 ConfigValue 逐字等价, 包括"读取时重新推断类型"这一行为.
 /// 前端 services/live2d/config.ts 的 parseNumber / parseExpressionList 就是为这个行为存在的,
-/// 改动推断规则会让桌宠的缩放/表情配置静默失效.
+/// 改动推断规则会让伴侣的缩放/表情配置静默失效.
 /// </summary>
 [JsonConverter(typeof(ConfigValueJsonConverter))]
 public abstract record ConfigValue

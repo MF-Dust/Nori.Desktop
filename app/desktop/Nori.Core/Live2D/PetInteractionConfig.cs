@@ -4,14 +4,14 @@ using System.Text.Json.Serialization;
 
 namespace Nori.Core.Live2D;
 
-/// <summary>自定义桌宠互动的反应模式</summary>
+/// <summary>自定义伴侣互动的反应模式</summary>
 public enum PetInteractionReactionMode
 {
 	Local,
 	Ai,
 }
 
-/// <summary>自定义桌宠互动动作的选择模式</summary>
+/// <summary>自定义伴侣互动动作的选择模式</summary>
 public enum PetInteractionActionMode
 {
 	None,
@@ -55,7 +55,7 @@ public sealed record PetInteractionRegion
 	public PetInteractionAction Expression { get; init; } = PetInteractionAction.None;
 }
 
-/// <summary>按模型保存的自定义桌宠互动配置</summary>
+/// <summary>按模型保存的自定义伴侣互动配置</summary>
 public sealed record PetInteractionConfig
 {
 	public const int CurrentVersion = 1;

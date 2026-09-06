@@ -37,7 +37,7 @@ public sealed record PlatformCapabilities
 	/// <summary>能否从 HTML 标题栏发起原生窗口拖动</summary>
 	public required bool SupportsWindowDrag { get; init; }
 
-	/// <summary>能否按桌宠交互区域做点击穿透</summary>
+	/// <summary>能否按模型交互区域做点击穿透</summary>
 	public required bool SupportsHitThrough { get; init; }
 
 	/// <summary>能否置顶窗口</summary>

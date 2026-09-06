@@ -15,15 +15,15 @@ using Nori.Desktop.Live2D;
 namespace Nori.Desktop.Windows;
 
 /// <summary>
-/// 原生桌宠窗口
+/// 原生伴侣窗口
 ///
-/// 承载 PetGlControl 并接管桌宠的全部交互：
+/// 承载 PetGlControl 并接管伴侣视窗的全部交互：
 /// - 模型外接矩形穿透: 约 10Hz 从 alpha 画面更新连续交互范围; Windows 走 WM_NCHITTEST
 ///   逐点判定, 并用 WS_EX_LAYERED|WS_EX_TRANSPARENT 分层样式实现跨进程穿透, 窗口始终置顶;
 ///   macOS/Linux(X11) 设置穿透开关/输入形状; Wayland 无此能力, 降级为整窗可点
 /// - 左键拖拽移动窗口 + 坐标持久化（阈值 4px）
 /// - 左键点击触发动作与表情判定
-/// - 深海微光配色原生右键菜单（打开主界面 / 随机动作 / 重置位置 / 隐藏桌宠 / 退出）
+/// - 深海微光配色原生右键菜单（打开主界面 / 随机动作 / 重置位置 / 隐藏 Nori / 退出）
 /// - 全局光标追踪
 /// </summary>
 public sealed class PetWindow : Window
@@ -143,7 +143,7 @@ public sealed class PetWindow : Window
 		}
 	}
 
-	/// <summary>显示桌宠短句气泡。</summary>
+	/// <summary>显示伴侣短句气泡。</summary>
 	public void ShowSpeech(string text)
 	{
 		if (!Dispatcher.UIThread.CheckAccess())
@@ -154,7 +154,7 @@ public sealed class PetWindow : Window
 		_speechOverlay.ShowText(text);
 	}
 
-	/// <summary>清除桌宠短句气泡。</summary>
+	/// <summary>清除伴侣短句气泡。</summary>
 	public void ClearSpeech() => _speechOverlay.ClearText();
 
 	private void OnRuntimeModelChanged() => Dispatcher.UIThread.Post(ApplyWindowSize);
@@ -190,7 +190,7 @@ public sealed class PetWindow : Window
 			}
 			catch (Exception exception) when (exception is PlatformNotSupportedException or InvalidOperationException or EntryPointNotFoundException)
 			{
-				_services.Logger.Write(LogSource.Backend, "warn", $"设置桌宠置顶层级失败: {exception.Message}");
+				_services.Logger.Write(LogSource.Backend, "warn", $"设置伴侣窗口置顶层级失败: {exception.Message}");
 			}
 		}
 	}
@@ -232,7 +232,7 @@ public sealed class PetWindow : Window
 		{
 			// 穿透是增强项: 失败就停掉同步并保持整窗可点, 绝不打断渲染
 			_hitShapeTimer?.Stop();
-			_services.Logger.Write(LogSource.Backend, "warn", $"桌宠穿透同步失败, 已降级为整窗可点: {exception.Message}");
+			_services.Logger.Write(LogSource.Backend, "warn", $"伴侣窗口穿透同步失败, 已降级为整窗可点: {exception.Message}");
 		}
 	}
 
@@ -252,7 +252,7 @@ public sealed class PetWindow : Window
 		if (OperatingSystem.IsWindows()) Win32Properties.RemoveWndProcHookCallback(this, _wndProcHook);
 	}
 
-	/// <summary>显示桌宠后重新应用点击穿透与 Z 序状态。</summary>
+	/// <summary>显示伴侣视窗后重新应用点击穿透与 Z 序状态。</summary>
 	public void ReapplyInputState()
 	{
 		_lastClickThrough = null;
@@ -324,7 +324,7 @@ public sealed class PetWindow : Window
 	/// 把窗口位置收进某块屏幕的工作区
 	///
 	/// 保存的坐标可能因为换分辨率、拔掉显示器或被拖到边缘而落在屏幕外,
-	/// 不收口的话桌宠会彻底看不见也点不到。至少保留一部分可见以便拖回来。
+	/// 不收口的话伴侣视窗会彻底看不见也点不到。至少保留一部分可见以便拖回来。
 	/// </summary>
 	private PixelPoint ClampToScreens(PixelPoint position)
 	{
@@ -394,7 +394,7 @@ public sealed class PetWindow : Window
 		RefreshInputState();
 	}
 
-	/// <summary>刷新 Windows 桌宠的点击穿透状态 (窗口保持置顶)。</summary>
+	/// <summary>刷新 Windows 伴侣窗口的点击穿透状态 (窗口保持置顶)。</summary>
 	public void RefreshInputState()
 	{
 		if (!OperatingSystem.IsWindows() || PlatformServices.Current is not WindowsPlatformServices windows) return;
@@ -416,7 +416,7 @@ public sealed class PetWindow : Window
 			}
 			catch (Exception exception) when (exception is PlatformNotSupportedException or InvalidOperationException)
 			{
-				_services.Logger.Write(LogSource.Backend, "warn", $"读取桌宠穿透状态失败: {exception.Message}");
+				_services.Logger.Write(LogSource.Backend, "warn", $"读取伴侣窗口穿透状态失败: {exception.Message}");
 				return;
 			}
 		}
@@ -431,7 +431,7 @@ public sealed class PetWindow : Window
 		}
 		catch (Exception exception) when (exception is InvalidOperationException or EntryPointNotFoundException or DllNotFoundException)
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"同步桌宠穿透状态失败: {exception.Message}");
+			_services.Logger.Write(LogSource.Backend, "warn", $"同步伴侣窗口穿透状态失败: {exception.Message}");
 		}
 	}
 
@@ -481,7 +481,7 @@ public sealed class PetWindow : Window
 			var pos = e.GetPosition(this);
 			if (!_glControl.IsPointOnModel(pos.X, pos.Y)) return;
 
-			// 桌宠是原生 Avalonia 窗口, 在 Linux/macOS 上优先让窗口管理器接管移动。
+			// 伴侣视窗是原生 Avalonia 窗口, 在 Linux/macOS 上优先让窗口管理器接管移动。
 			// 这条路径也覆盖 Wayland: WebView 的标题栏拖动能力不可用时, 原生窗口仍可拖动。
 			if (!OperatingSystem.IsWindows())
 			{
@@ -496,7 +496,7 @@ public sealed class PetWindow : Window
 				catch (InvalidOperationException exception)
 				{
 					_isNativeDragPending = false;
-					_services.Logger.Write(LogSource.Backend, "warn", $"原生桌宠拖动不可用, 改用手动拖动: {exception.Message}");
+					_services.Logger.Write(LogSource.Backend, "warn", $"原生伴侣视窗拖动不可用, 改用手动拖动: {exception.Message}");
 				}
 			}
 
@@ -562,7 +562,7 @@ public sealed class PetWindow : Window
 		}
 	}
 
-	/// <summary>判断两个物理像素坐标是否达到桌宠拖动阈值。</summary>
+	/// <summary>判断两个物理像素坐标是否达到伴侣视窗拖动阈值。</summary>
 	internal static bool HasExceededDragThreshold(PixelPoint start, PixelPoint end, double renderScaling)
 	{
 		double scale = renderScaling > 0 ? renderScaling : 1.0;
@@ -617,7 +617,7 @@ public sealed class PetWindow : Window
 			Position = new PixelPoint(120, 120);
 			SaveWindowPosition();
 		});
-		var hidePetItem = CreateMenuItem("隐藏桌宠", () => _services.Windows.Hide(WindowLabels.Pet));
+		var hidePetItem = CreateMenuItem("隐藏 Nori", () => _services.Windows.Hide(WindowLabels.Pet));
 		var exitItem = CreateMenuItem("退出应用", () => _services.Windows.Shutdown(), isDanger: true);
 
 		menu.Items.Add(openMainItem);

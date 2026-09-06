@@ -9,7 +9,7 @@ namespace Nori.Core.Chat;
 /// 动作标记处理
 ///
 /// 对应 Rust 版 chat.rs 的 extract_motion_markers / motion_hint.
-/// AI 在回复末尾用 [nori_motion:动作名] 表达动作, 宿主剥掉标记并广播给桌宠窗口播放.
+/// AI 在回复末尾用 [nori_motion:动作名] 表达动作, 宿主剥掉标记并广播给伴侣窗口播放.
 /// </summary>
 public static class MotionMarkers
 {

@@ -20,10 +20,10 @@ public interface IWindowManager
 	/// <summary>按标签取 WebView2 窗口</summary>
 	NoriWindow? GetNoriWindow(string? label);
 
-	/// <summary>原生桌宠窗口引用</summary>
+	/// <summary>原生伴侣视窗引用</summary>
 	PetWindow? Pet { get; }
 
-	/// <summary>显示窗口；桌宠不抢焦点，其他窗口同时聚焦</summary>
+	/// <summary>显示窗口；伴侣窗口不抢焦点，其他窗口同时聚焦</summary>
 	void Show(string label);
 
 	/// <summary>隐藏窗口</summary>
@@ -32,7 +32,7 @@ public interface IWindowManager
 	/// <summary>关闭窗口 (真正销毁, 不再复用)</summary>
 	void Close(string label);
 
-	/// <summary>切换桌宠显示状态</summary>
+	/// <summary>切换伴侣视窗显示状态</summary>
 	void TogglePet();
 
 	/// <summary>
@@ -43,16 +43,16 @@ public interface IWindowManager
 	/// </summary>
 	bool IsWindowVisible(string label);
 
-	/// <summary>窗口显隐变化 (label, 是否可见); 托盘切换桌宠也会触发</summary>
+	/// <summary>窗口显隐变化 (label, 是否可见); 托盘切换伴侣也会触发</summary>
 	event Action<string, bool>? VisibilityChanged;
 
 	/// <summary>向所有 WebView2 窗口广播事件</summary>
 	void Broadcast(string name, object? payload);
 
-	/// <summary>在原生桌宠窗口显示临时短句</summary>
+	/// <summary>在原生伴侣窗口显示临时短句</summary>
 	void ShowPetSpeech(string text);
 
-	/// <summary>清除原生桌宠窗口短句</summary>
+	/// <summary>清除原生伴侣窗口短句</summary>
 	void ClearPetSpeech();
 
 	/// <summary>退出应用</summary>

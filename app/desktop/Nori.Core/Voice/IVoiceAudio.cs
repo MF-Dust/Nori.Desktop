@@ -37,7 +37,7 @@ public interface ITtsProvider
 /// <summary>
 /// 原生音频播放接口
 ///
-/// 播放期间通过 VolumeSampled 输出 0~1 音量采样驱动桌宠口型,
+/// 播放期间通过 VolumeSampled 输出 0~1 音量采样驱动口型,
 /// PlayingChanged 通知说话状态变化。
 ///
 /// 实现已从 NAudio 换成 WebView 内的 WebAudio (三平台一套代码),

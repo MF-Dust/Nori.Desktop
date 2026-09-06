@@ -95,7 +95,7 @@ public sealed class AppRuntime : IAsyncDisposable
 
 	public AgentEngine Engine { get; }
 
-	/// <summary>桌宠轻量互动 LLM 服务, 不进入聊天历史和工具链。</summary>
+	/// <summary>伴侣轻量互动 LLM 服务, 不进入聊天历史和工具链。</summary>
 	public PetInteractionReactionService PetInteraction => _petInteractionService;
 
 	/// <summary>当前快照版本号 (每次状态变更递增)</summary>
@@ -208,7 +208,7 @@ public sealed class AppRuntime : IAsyncDisposable
 			expressionNames: () => services.PetRuntime?.Expressions ?? [],
 			trace: services.AgentTrace);
 
-		// 窗口显隐变化 (含托盘切换桌宠) 直接作废快照, 主界面的桌宠状态因此不会陈旧
+		// 窗口显隐变化 (含托盘切换伴侣) 直接作废快照, 主界面的伴侣状态因此不会陈旧
 		if (services.Windows is not null)
 		{
 			services.Windows.VisibilityChanged += (label, visible) =>
@@ -287,7 +287,7 @@ public sealed class AppRuntime : IAsyncDisposable
 			TrackBackground(RunMemoryMaintenanceAsync, "memory lifecycle");
 		}
 
-		// 口型同步: 前端回传的播放音量采样直驱原生桌宠嘴型
+		// 口型同步: 前端回传的播放音量采样直驱原生伴侣嘴型
 		_playback.VolumeSampled += level =>
 		{
 			try
@@ -296,7 +296,7 @@ public sealed class AppRuntime : IAsyncDisposable
 			}
 			catch
 			{
-				/* 桌宠未加载时忽略 */
+				/* 伴侣未加载时忽略 */
 			}
 		};
 		_playback.PlayingChanged += playing =>
@@ -307,7 +307,7 @@ public sealed class AppRuntime : IAsyncDisposable
 			}
 			catch
 			{
-				/* 桌宠未加载时忽略 */
+				/* 伴侣未加载时忽略 */
 			}
 		};
 		Voice.SpeakingChanged += _ => InvalidateSnapshot("voice");
@@ -357,7 +357,7 @@ public sealed class AppRuntime : IAsyncDisposable
 		}
 		catch
 		{
-			/* 桌宠未加载时忽略 */
+			/* 伴侣未加载时忽略 */
 		}
 		BroadcastEvent("nori:proactive-message", new {text = message.Text});
 		bool autoTts = ParseBoolFlag(Services.Config.GetStringOr("tts_auto_play", "")) ?? false;
@@ -369,7 +369,7 @@ public sealed class AppRuntime : IAsyncDisposable
 
 	private void CancelPetInteractionRequest() => CancelPetInteractionRequest(false);
 
-	/// <summary>取消当前桌宠 AI 请求；聊天抢占时只补发一次本地兜底。</summary>
+	/// <summary>取消当前伴侣 AI 请求；聊天抢占时只补发一次本地兜底。</summary>
 	private void CancelPetInteractionRequest(bool applyLocalFallback)
 	{
 		CancellationTokenSource? requestCts;
@@ -459,7 +459,7 @@ public sealed class AppRuntime : IAsyncDisposable
 		}
 		catch (Exception exception)
 		{
-			try { Services.Logger.Write(LogSource.Backend, "warn", $"桌宠 AI 互动失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
+			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣 AI 互动失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
 			PostActivePetInteractionFallback(trigger, requestCts);
 		}
 		finally
@@ -557,7 +557,7 @@ public sealed class AppRuntime : IAsyncDisposable
 	{
 		try
 		{
-			// 桌宠互动朗读同样带上全局情绪状态，让 TTS 情感与表情联动一致。
+			// 伴侣互动朗读同样带上全局情绪状态，让 TTS 情感与表情联动一致。
 			TtsSynthesizeOptions speechOptions = new() {EmotionText = Emotion.CurrentType};
 			await Voice.SpeakAsync(text, speechOptions, speechCts.Token);
 		}
@@ -567,7 +567,7 @@ public sealed class AppRuntime : IAsyncDisposable
 		}
 		catch (Exception exception)
 		{
-			try { Services.Logger.Write(LogSource.Backend, "warn", $"桌宠互动朗读失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
+			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣互动朗读失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
 		}
 		finally
 		{
@@ -814,7 +814,7 @@ public sealed class AppRuntime : IAsyncDisposable
 		string sessionId = $"agent-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x}-{Interlocked.Increment(ref _sessionCounter):x}";
 		AgentSessionState session = new(source.Label);
 		_sessions[sessionId] = session;
-		// 聊天请求优先于桌宠轻量请求与其语音；旧 AI 请求改走该区域的本地兜底。
+		// 聊天请求优先于伴侣轻量请求与其语音；旧 AI 请求改走该区域的本地兜底。
 		CancelPetInteractionRequest(true);
 		CancelPetInteractionPresentation();
 
@@ -1101,7 +1101,7 @@ public sealed class AppRuntime : IAsyncDisposable
 	public void ReportPlaybackFinished(string token, string? error) =>
 		_playback.ReportPlaybackFinished(token, error);
 
-	/// <summary>前端回报实时播放音量 (0~1), 驱动桌宠口型</summary>
+	/// <summary>前端回报实时播放音量 (0~1), 驱动伴侣口型</summary>
 	public void ReportAudioLevel(double level) => _playback.ReportLevel(level);
 
 	/// <summary>前端 main WebView 完成监听器安装后的就绪握手。</summary>

@@ -78,7 +78,7 @@ public interface IPluginContribution
 
 /// <summary>
 /// 插件向宿主贡献的可执行动作。
-/// 宿主会把活跃插件的动作注册为 AI 工具 (plugin__&lt;pluginId&gt;__&lt;actionId&gt;)，供桌宠对话调用。
+/// 宿主会把活跃插件的动作注册为 AI 工具 (plugin__&lt;pluginId&gt;__&lt;actionId&gt;)，供伴侣对话调用。
 /// </summary>
 public interface IPluginActionContribution : IPluginContribution
 {

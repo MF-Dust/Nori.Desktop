@@ -340,7 +340,7 @@ public sealed class AgentEngine
 				runToken.ThrowIfCancellationRequested();
 				SetState(AgentRunState.Streaming);
 
-				// 剥离动作标记并触发桌宠播放, 再做完整协议解析
+				// 剥离动作标记并触发伴侣播放, 再做完整协议解析
 				(string stripped, IReadOnlyList<string> markerMotions) = MotionMarkers.Extract(raw.Length > 0 ? raw : rawResponseText.ToString());
 				foreach (string motion in markerMotions)
 				{
@@ -350,7 +350,7 @@ public sealed class AgentEngine
 					}
 					catch
 					{
-						/* 桌宠未加载时忽略 */
+						/* 伴侣未加载时忽略 */
 					}
 				}
 

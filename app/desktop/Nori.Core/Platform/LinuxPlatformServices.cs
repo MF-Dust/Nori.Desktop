@@ -12,7 +12,7 @@ namespace Nori.Core.Platform;
 /// - 点击穿透: XShapeCombineRectangles(ShapeInput) —— 空输入形状即整窗穿透
 ///
 /// Wayland 会话下协议不提供这些能力, 由 Create() 直接返回能力全 false 的实例,
-/// 前端据此把桌宠降级为「整窗可点 + 拖动手柄 + 免打扰开关」。
+/// 前端据此把伴侣视窗降级为「整窗可点 + 拖动手柄 + 免打扰开关」。
 /// </summary>
 [SupportedOSPlatform("linux")]
 public sealed class LinuxPlatformServices : IPlatformServices
@@ -238,7 +238,7 @@ public sealed class LinuxPlatformServices : IPlatformServices
 		}
 		catch (DllNotFoundException)
 		{
-			// 没有 Xext: 忽略, 桌宠保持整窗可点
+			// 没有 Xext: 忽略, 伴侣视窗保持整窗可点
 		}
 	}
 }

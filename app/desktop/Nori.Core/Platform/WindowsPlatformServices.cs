@@ -9,7 +9,7 @@ namespace Nori.Core.Platform;
 /// 跨进程点击穿透配方: WS_EX_TRANSPARENT 必须叠加 WS_EX_LAYERED 并用
 /// SetLayeredWindowAttributes 激活分层, 系统 hit-test 才会无视 Z 序跳过本窗口;
 /// 裸 WS_EX_TRANSPARENT / HTTRANSPARENT 只在同一线程内生效, 点不到其他程序的窗口。
-/// 桌宠是 WS_EX_NOREDIRECTIONBITMAP 的 DirectComposition 窗口, alpha=255 的分层
+/// 伴侣视窗是 WS_EX_NOREDIRECTIONBITMAP 的 DirectComposition 窗口, alpha=255 的分层
 /// 属性不参与合成, 画面不变; 窗口全程保持 Topmost。
 ///
 [SupportedOSPlatform("windows")]
@@ -96,11 +96,11 @@ public sealed class WindowsPlatformServices : IPlatformServices
 		Marshal.SetLastPInvokeError(0);
 		nint style = GetWindowLongPtr(windowHandle, GwlExStyle);
 		int error = Marshal.GetLastPInvokeError();
-		if (style == 0 && error != 0) throw new InvalidOperationException($"读取 Windows 桌宠窗口样式失败: {error}");
+		if (style == 0 && error != 0) throw new InvalidOperationException($"读取 Windows 伴侣窗口样式失败: {error}");
 
 		// WS_EX_TRANSPARENT 只有在 WS_EX_LAYERED + SetLayeredWindowAttributes 激活分层后,
 		// 才能让系统 hit-test 无视 Z 序跨进程跳过本窗口; 裸 WS_EX_TRANSPARENT 与
-		// HTTRANSPARENT 都只在同一线程内生效。桌宠是 WS_EX_NOREDIRECTIONBITMAP 的
+		// HTTRANSPARENT 都只在同一线程内生效。伴侣视窗是 WS_EX_NOREDIRECTIONBITMAP 的
 		// DirectComposition 窗口, alpha=255 的分层属性不参与合成, 画面不受影响。
 		nint next = through ? style | WsExTransparent | WsExLayered : style & ~(WsExTransparent | WsExLayered);
 		if (next != style)
@@ -108,20 +108,20 @@ public sealed class WindowsPlatformServices : IPlatformServices
 			Marshal.SetLastPInvokeError(0);
 			nint previous = SetWindowLongPtr(windowHandle, GwlExStyle, next);
 			error = Marshal.GetLastPInvokeError();
-			if (previous == 0 && error != 0) throw new InvalidOperationException($"设置 Windows 桌宠窗口样式失败: {error}");
+			if (previous == 0 && error != 0) throw new InvalidOperationException($"设置 Windows 伴侣窗口样式失败: {error}");
 		}
 
 		if (through && !SetLayeredWindowAttributes(windowHandle, 0, 255, LwaAlpha))
 		{
-			throw new InvalidOperationException($"激活 Windows 桌宠分层窗口失败: {Marshal.GetLastWin32Error()}");
+			throw new InvalidOperationException($"激活 Windows 伴侣分层窗口失败: {Marshal.GetLastWin32Error()}");
 		}
 
-		// 穿透由分层 hit-test 跳过实现, 与 Z 序无关: 桌宠保持置顶。
+		// 穿透由分层 hit-test 跳过实现, 与 Z 序无关: 伴侣视窗保持置顶。
 		// SetWindowPos 同时让 SetWindowLongPtr 的样式改动立即生效。
 		if (!SetWindowPos(windowHandle, HwndTopmost, 0, 0, 0, 0,
 			SwpNoSize | SwpNoMove | SwpNoActivate | SwpFrameChanged))
 		{
-			throw new InvalidOperationException($"设置 Windows 桌宠窗口层级失败: {Marshal.GetLastWin32Error()}");
+			throw new InvalidOperationException($"设置 Windows 伴侣窗口层级失败: {Marshal.GetLastWin32Error()}");
 		}
 	}
 }

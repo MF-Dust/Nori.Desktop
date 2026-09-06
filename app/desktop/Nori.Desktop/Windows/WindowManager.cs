@@ -13,7 +13,7 @@ namespace Nori.Desktop.Windows;
 /// 窗口调度
 ///
 /// 承接原来 Rust 侧 lib.rs setup / tray.rs 与前端 services/window/index.ts 的窗口调度职责.
-/// 包含三个 WebView2 窗口 (first-run, init, main) 与一个原生 OpenGL 桌宠窗口 (pet)。
+/// 包含三个 WebView2 窗口 (first-run, init, main) 与一个原生 OpenGL 伴侣视窗 (pet)。
 /// </summary>
 public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleApplicationLifetime lifetime, AppStoragePaths storagePaths) : IWindowManager
 {
@@ -96,7 +96,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	public NoriWindow? GetNoriWindow(string? label) => Get(label) as NoriWindow;
 
 	/// <summary>
-	/// 原生桌宠窗口引用
+	/// 原生伴侣视窗引用
 	/// </summary>
 	public PetWindow? Pet => _petWindow;
 
@@ -106,7 +106,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	public IEnumerable<Window> All => _windows.Values;
 
 	/// <summary>
-	/// 显示窗口；桌宠不抢焦点，其他窗口同时聚焦
+	/// 显示窗口；伴侣视窗不抢焦点，其他窗口同时聚焦
 	/// </summary>
 	public void Show(string label)
 	{
@@ -114,7 +114,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 		window.Show();
 		if (window is PetWindow pet)
 		{
-			// 桌宠不抢当前应用焦点；点击穿透由分层样式实现，窗口保持置顶。
+			// 伴侣视窗不抢当前应用焦点；点击穿透由分层样式实现，窗口保持置顶。
 			pet.ApplyWindowSize();
 			pet.ReapplyInputState();
 			return;
@@ -145,7 +145,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	}
 
 	/// <summary>
-	/// 切换桌宠显示状态
+	/// 切换伴侣视窗显示状态
 	/// </summary>
 	public void TogglePet()
 	{

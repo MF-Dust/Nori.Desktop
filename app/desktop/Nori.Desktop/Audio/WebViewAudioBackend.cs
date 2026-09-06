@@ -36,7 +36,7 @@ public interface IAudioHostChannel
 /// WebView 音频播放后端。
 ///
 /// 平台无关：音频字节经 AssetServer 的一次性媒体端点交给前端，由 WebAudio 播放，
-/// 前端每约 60ms 回传一次 RMS 音量驱动桌宠口型，播放结束只回报一次终态。
+/// 前端每约 60ms 回传一次 RMS 音量驱动口型，播放结束只回报一次终态。
 /// </summary>
 public sealed class WebViewAudioPlayback(MediaExchange media, Func<string, string> mediaUrl, IAudioHostChannel channel) : IAudioPlayback
 {
@@ -151,7 +151,7 @@ public sealed class WebViewAudioPlayback(MediaExchange media, Func<string, strin
 		completion.TrySetResult(true);
 	}
 
-	/// <summary>前端回报的实时音量 (0~1)，直接驱动桌宠口型。</summary>
+	/// <summary>前端回报的实时音量 (0~1)，直接驱动口型。</summary>
 	public void ReportLevel(double level) => VolumeSampled?.Invoke(Math.Clamp(level, 0, 1));
 
 	private void ClearCurrent(TaskCompletionSource<bool> completion, string token)

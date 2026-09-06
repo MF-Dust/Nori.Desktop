@@ -121,7 +121,7 @@ public sealed class AppServices : IAsyncDisposable
 	/// <summary>桥接内核, 服务装配完成后回填</summary>
 	public NoriBridge? Bridge { get; set; }
 
-	/// <summary>原生 Live2D 桌宠运行时</summary>
+	/// <summary>原生 Live2D 伴侣运行时</summary>
 	public PetRuntime PetRuntime { get; set; } = null!;
 
 	/// <summary>应用业务运行时 (Agent/技能/情绪/提醒/语音), 窗口建好后回填</summary>

@@ -5,7 +5,7 @@ namespace Nori.Core.Tests;
 
 /// <summary>
 /// ConfigValue 的读时类型推断必须与 Rust 版 config.rs 逐字等价.
-/// 这是整个移植里最容易静默出错的地方: 推断规则一变, 桌宠的缩放/表情配置会悄悄失效.
+/// 这是整个移植里最容易静默出错的地方: 推断规则一变, 伴侣的缩放/表情配置会悄悄失效.
 /// </summary>
 public class ConfigValueTests
 {

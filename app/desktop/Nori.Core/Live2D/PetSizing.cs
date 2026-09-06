@@ -1,7 +1,7 @@
 namespace Nori.Core.Live2D;
 
 /// <summary>
-/// 桌宠尺寸与布局计算（纯函数）
+/// 伴侣尺寸与布局计算（纯函数）
 ///
 /// 将原 fit-model.ts 的安全基准计算下沉至 Core，并在宿主中统一窗口尺寸与投影矩阵映射。
 /// </summary>

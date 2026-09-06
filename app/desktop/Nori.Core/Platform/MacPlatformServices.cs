@@ -116,7 +116,7 @@ public sealed class MacPlatformServices : IPlatformServices
 		SendVoidBool(window, GetSelector("setIgnoresMouseEvents:"), through);
 	}
 
-	/// <summary>把窗口提到浮动层级 (桌宠置顶)</summary>
+	/// <summary>把窗口提到浮动层级 (伴侣窗口置顶)</summary>
 	public void SetFloatingLevel(nint windowHandle)
 	{
 		if (windowHandle == 0) return;

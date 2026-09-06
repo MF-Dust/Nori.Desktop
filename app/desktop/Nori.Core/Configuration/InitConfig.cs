@@ -29,7 +29,7 @@ public sealed record InitConfig
 	[JsonPropertyName("language")]
 	public required string Language { get; init; }
 
-	/// <summary>桌宠模型</summary>
+	/// <summary>伴侣模型</summary>
 	[JsonPropertyName("selectedModel")]
 	public required string SelectedModel { get; init; }
 }

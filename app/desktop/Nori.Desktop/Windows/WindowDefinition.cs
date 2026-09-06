@@ -98,6 +98,6 @@ public static class WindowLabels
 	/// <summary>主界面</summary>
 	public const string Main = "main";
 
-	/// <summary>桌宠</summary>
+	/// <summary>伴侣视窗</summary>
 	public const string Pet = "pet";
 }

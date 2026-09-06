@@ -5,7 +5,7 @@ namespace Nori.Desktop.Live2D;
 /// <summary>
 /// GLES2 纹理合成四边形。
 ///
-/// 原生桌宠先渲染到纹理，再由这里合成到 Avalonia 的默认帧缓冲；同一条路径也用于生成低分辨率命中掩码。
+/// 原生伴侣视窗先渲染到纹理，再由这里合成到 Avalonia 的默认帧缓冲；同一条路径也用于生成低分辨率命中掩码。
 /// </summary>
 internal sealed class OpenGLTextureQuad : IDisposable
 {
@@ -211,7 +211,7 @@ internal sealed class OpenGLTextureQuad : IDisposable
 		return true;
 	}
 
-	/// <summary>绘制桌宠阴影；只读模型纹理 alpha，不会污染命中掩码。</summary>
+	/// <summary>绘制模型阴影；只读模型纹理 alpha，不会污染命中掩码。</summary>
 	public bool DrawShadow(int texture)
 	{
 		if (!IsAvailable || texture == 0) return false;

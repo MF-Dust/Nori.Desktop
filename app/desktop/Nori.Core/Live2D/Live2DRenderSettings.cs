@@ -1,6 +1,6 @@
 namespace Nori.Core.Live2D;
 
-/// <summary>原生桌宠渲染质量模式。</summary>
+/// <summary>原生伴侣视窗渲染质量模式。</summary>
 public enum Live2DQualityMode
 {
 	Adaptive,

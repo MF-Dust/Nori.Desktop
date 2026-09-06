@@ -32,6 +32,6 @@ public sealed class UnsupportedPlatformServices : IPlatformServices
 	/// <inheritdoc />
 	public void SetClickThrough(nint windowHandle, bool through)
 	{
-		// 不支持时静默忽略: 桌宠已按能力标志降级为整窗可点
+		// 不支持时静默忽略: 伴侣视窗已按能力标志降级为整窗可点
 	}
 }

@@ -5,7 +5,7 @@ using Nori.Core.Live2D;
 
 namespace Nori.Core.Agent;
 
-/// <summary>发送给桌宠互动 AI 的最小上下文。</summary>
+/// <summary>发送给伴侣互动 AI 的最小上下文。</summary>
 public sealed record PetInteractionReactionRequest
 {
 	public required string ModelId { get; init; }
@@ -21,7 +21,7 @@ public sealed record PetInteractionReactionRequest
 }
 
 /// <summary>
-/// 桌宠互动的独立 LLM 请求。
+/// 伴侣互动的独立 LLM 请求。
 /// 不加载聊天历史、工具、技能或长期记忆，也不会写入数据库。
 /// </summary>
 public sealed class PetInteractionReactionService
@@ -29,8 +29,8 @@ public sealed class PetInteractionReactionService
 	public const int TimeoutSeconds = 6;
 
 	private const string SystemPrompt = """
-		你是 Nori 桌宠的轻量互动反应器。用户刚刚点击了桌宠的一个自定义部位。
-		只根据本次点击上下文决定一个简短、可爱的动作反应。
+		你是 Nori 桌面伴侣的轻量互动反应器。用户刚刚触碰了 Nori 的一个自定义交互区域。
+		只根据本次交互上下文决定一个简短、符合 Nori 性格的动作反应。
 		严格只输出一个 JSON 对象，不要 Markdown、解释、代码块或工具调用。
 		JSON 字段只能使用 text、emotion、expression、action。
 		text 是可选的中文短句，最多 120 个字符；不需要说话时返回空字符串。
@@ -54,7 +54,7 @@ public sealed class PetInteractionReactionService
 		_adapterFactory = adapterFactory ?? LlmClient.CreateAdapter;
 	}
 
-	/// <summary>发起一次不写聊天历史的桌宠互动请求。</summary>
+	/// <summary>发起一次不写聊天历史的伴侣互动请求。</summary>
 	public async Task<PetInteractionReaction> ReactAsync(
 		PetInteractionReactionRequest request,
 		CancellationToken cancellationToken = default)
@@ -67,7 +67,7 @@ public sealed class PetInteractionReactionService
 		string model = chatSettings.Model;
 		if (baseUrl.Length == 0 || apiKey.Length == 0 || model.Length == 0)
 		{
-			throw new InvalidOperationException("桌宠互动缺少完整的 LLM 配置");
+			throw new InvalidOperationException("伴侣互动缺少完整的 LLM 配置");
 		}
 
 		LlmProvider provider = LlmProviderExtensions.ParseProvider(providerText);

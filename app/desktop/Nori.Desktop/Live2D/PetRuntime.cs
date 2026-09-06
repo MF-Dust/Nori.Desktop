@@ -19,7 +19,7 @@ using Nori.Desktop.Live2D.Behaviors;
 namespace Nori.Desktop.Live2D;
 
 /// <summary>
-/// 原生 Live2D 桌宠运行时
+/// 原生 Live2D 伴侣运行时
 ///
 /// 负责模型生命周期、OpenGL 渲染调度、行为管线协调以及外部命令响应。
 /// </summary>
@@ -130,7 +130,7 @@ public sealed class PetRuntime
 		}
 	}
 
-	/// <summary>缩放变化: 桌宠窗口据此重算窗口尺寸</summary>
+	/// <summary>缩放变化: 伴侣视窗据此重算窗口尺寸</summary>
 	public event Action? LayoutChanged;
 
 	public PetRuntime(AppServices services)
@@ -253,7 +253,7 @@ public sealed class PetRuntime
 		LoadConfigs();
 		if (_services.SafeMode)
 		{
-			LastModelLoadError = "安全模式已禁用桌宠模型自动加载";
+			LastModelLoadError = "安全模式已禁用伴侣模型自动加载";
 			return;
 		}
 		RequestModelLoad(_currentModelId);
@@ -850,7 +850,7 @@ public sealed class PetRuntime
 		_pipeline.RunPost(ctx);
 	}
 
-	/// <summary>在 SDK 的物理、姿势等最终参数处理之后运行桌宠 Final 行为。</summary>
+	/// <summary>在 SDK 的物理、姿势等最终参数处理之后运行伴侣 Final 行为。</summary>
 	private void OnModelFinalValueUpdate(LAppModel model)
 	{
 		if (!ReferenceEquals(model, _behaviorContext.Model)) return;
@@ -1128,7 +1128,7 @@ public sealed class PetRuntime
 	}
 
 	/// <summary>
-	/// 配置删除后的运行时复位: 让桌宠回到该 key 的内置默认值, 与 set/delete 的状态转换对称
+	/// 配置删除后的运行时复位: 让伴侣视窗回到该 key 的内置默认值, 与 set/delete 的状态转换对称
 	/// </summary>
 	public void ApplyConfigDelete(string key)
 	{

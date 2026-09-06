@@ -80,7 +80,7 @@ public class PlatformCapabilitiesTests
 		Assert.False(capabilities.SupportsTray);
 		Assert.Equal(SessionType.Unknown, services.Session);
 
-		// 桌宠每 ~10Hz 会调一次穿透切换: 不支持时必须静默忽略, 不能打断渲染循环
+		// 伴侣视窗每 ~10Hz 会调一次穿透切换: 不支持时必须静默忽略, 不能打断渲染循环
 		services.SetClickThrough(0, true);
 		services.SetClickThrough(1234, false);
 

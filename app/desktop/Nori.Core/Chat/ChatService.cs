@@ -258,7 +258,7 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 
 		string raw = await adapter.CompleteAsync(baseUrl, apiKey, model, systemContent, messages, timeout.Token);
 
-		// 解析动作标记: 剥离标记并广播给桌宠窗口播放
+		// 解析动作标记: 剥离标记并广播给伴侣窗口播放
 		(string content, IReadOnlyList<string> motions) = MotionMarkers.Extract(raw);
 		foreach (string motion in motions) onMotion(motion);
 

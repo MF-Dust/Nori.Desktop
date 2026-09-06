@@ -66,7 +66,7 @@ public sealed class DesktopSystemInfo(Nori.Core.Configuration.ConfigStore config
 	}
 }
 
-/// <summary>桌宠动作/表情控制适配器</summary>
+/// <summary>伴侣动作/表情控制适配器</summary>
 public sealed class PetActionsAdapter(Func<Nori.Desktop.Live2D.PetRuntime?> runtime) : IPetActions
 {
 	public IReadOnlyList<string> MotionNames => runtime()?.MotionGroups.SelectMany(group => group.Names).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() ?? [];

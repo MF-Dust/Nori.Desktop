@@ -1,6 +1,6 @@
 namespace Nori.Desktop.Live2D;
 
-/// <summary>原生桌宠渲染性能快照。</summary>
+/// <summary>原生伴侣视窗渲染性能快照。</summary>
 public sealed record PetRenderMetrics
 {
 	public string EffectiveQuality { get; init; } = "quality";

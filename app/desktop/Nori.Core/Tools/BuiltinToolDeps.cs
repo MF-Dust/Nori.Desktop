@@ -43,7 +43,7 @@ public sealed class BuiltinToolDeps
 	/// <summary>主动提醒调度</summary>
 	public required Nori.Core.Proactive.ProactiveScheduler Proactive { get; init; }
 
-	/// <summary>桌宠动作/表情控制 (桌宠未加载时可为 null)</summary>
+	/// <summary>伴侣动作/表情控制 (伴侣未加载时可为 null)</summary>
 	public IPetActions? Pet { get; init; }
 
 	/// <summary>剪贴板读写</summary>
@@ -65,7 +65,7 @@ public sealed class BuiltinToolDeps
 	public Action<string>? OpenUrl { get; init; }
 }
 
-/// <summary>桌宠动作/表情控制</summary>
+/// <summary>伴侣动作/表情控制</summary>
 public interface IPetActions
 {
 	IReadOnlyList<string> MotionNames { get; }

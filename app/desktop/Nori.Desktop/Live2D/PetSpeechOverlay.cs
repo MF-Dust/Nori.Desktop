@@ -5,7 +5,7 @@ using Avalonia.Threading;
 
 namespace Nori.Desktop.Live2D;
 
-/// <summary>桌宠原生短句气泡，不参与窗口命中测试。</summary>
+/// <summary>伴侣视窗原生短句气泡，不参与窗口命中测试。</summary>
 public sealed class PetSpeechOverlay : Border
 {
 	private readonly TextBlock _text;

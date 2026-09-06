@@ -57,24 +57,24 @@ public static class BuiltinTools
 
 		// 4. 控制 Live2D 播放指定动作
 		Register(registry, "playMotion",
-			"让桌宠 Nori 做出指定的 Live2D 动作 (如打招呼、开心、思考等)", "safe",
+			"让 Nori 做出指定的 Live2D 动作 (如打招呼、开心、思考等)", "safe",
 			Schema([("name", "动作名称 (motion3.json 文件名，如 smile, wave, think)")], ["name"]),
 			(args, _) =>
 			{
 				string name = RequireString(args, "name");
-				IPetActions pet = Require(deps.Pet, "桌宠尚未加载");
+				IPetActions pet = Require(deps.Pet, "Nori 尚未就绪");
 				bool played = pet.PlayMotionByName(name);
 				return Task.FromResult<object?>(new {success = played, played = played ? name : null, available = played ? null : pet.MotionNames});
 			});
 
 		// 5. 控制 Live2D 切换表情
 		Register(registry, "setExpression",
-			"改变桌宠 Nori 的脸部表情", "safe",
+			"改变 Nori 的脸部表情", "safe",
 			Schema([("name", "表情名称 (如 Smile, Shy, Angry, Surprised)")], ["name"]),
 			(args, _) =>
 			{
 				string name = RequireString(args, "name");
-				IPetActions pet = Require(deps.Pet, "桌宠尚未加载");
+				IPetActions pet = Require(deps.Pet, "Nori 尚未就绪");
 				bool played = pet.PlayExpression(name);
 				return Task.FromResult<object?>(new {success = played, expression = played ? name : null, available = played ? null : pet.ExpressionNames});
 			});
@@ -114,7 +114,7 @@ public static class BuiltinTools
 
 		// 9. 设置定时提醒
 		Register(registry, "setReminder",
-			"设置一个定时提醒倒计时任务，到时间后 Nori 会主动提醒主人", "safe",
+			"设置一个定时提醒倒计时任务，到时间后 Nori 会主动发起提醒", "safe",
 			Schema(
 			[
 				("content", "提醒内容事项 (如: 喝水、站起来活动一下)"),
@@ -259,10 +259,10 @@ public static class BuiltinTools
 	private static void RegisterRemember(ToolRegistry registry, BuiltinToolDeps deps)
 	{
 		Register(registry, "remember",
-			"在对话中获知主人的个人信息、喜好、称呼、习惯或重要约定后，主动记录到长期记忆库中", "safe",
+			"在对话中获知用户的个人信息、喜好、称呼、习惯或重要约定后，主动记录到长期记忆库中", "safe",
 			Schema(
 			[
-				("content", "记忆内容事实描述 (如: 主人最喜欢的咖啡是冰美式 / 主人的生日是 8月20日)"),
+				("content", "记忆内容事实描述 (如: 最喜欢的咖啡是冰美式 / 生日是 8月20日)"),
 				("importance", "重要程度 (0.1 ~ 1.0, 默认为 0.8)"),
 				("tags", "标签分类 (可选, 如: 偏好, 姓名, 习惯, 约定)"),
 				("kind", "记忆类型 (可选: identity, preference, factual, relational, episodic, planned)"),

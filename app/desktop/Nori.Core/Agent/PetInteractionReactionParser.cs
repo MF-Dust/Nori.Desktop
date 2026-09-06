@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Nori.Core.Agent;
 
-/// <summary>桌宠互动 AI 响应。</summary>
+/// <summary>伴侣互动 AI 响应。</summary>
 public sealed record PetInteractionReaction
 {
 	public string? Text { get; init; }
@@ -12,7 +12,7 @@ public sealed record PetInteractionReaction
 }
 
 /// <summary>
-/// 解析桌宠互动的严格 JSON 响应。
+/// 解析伴侣互动的严格 JSON 响应。
 /// 互动响应不允许携带工具调用或协议外的执行指令。
 /// </summary>
 public static class PetInteractionReactionParser

@@ -15,7 +15,7 @@ namespace Nori.Core.Proactive;
 /// - 日常时段问候 (早安 / 午餐 / 晚安, 可配置开关)
 /// - 挂机检测触发主动关怀 (依赖平台空闲时长, 不可用时静默跳过)
 ///
-/// 触发的台词通过 ProactiveMessage 事件交给宿主: 由桌宠播放动作/表情,
+/// 触发的台词通过 ProactiveMessage 事件交给宿主: 由伴侣视窗播放动作/表情,
 /// 开启自动朗读时由语音服务朗读。
 /// </summary>
 public sealed class ProactiveScheduler : IDisposable
@@ -33,9 +33,9 @@ public sealed class ProactiveScheduler : IDisposable
 
 	private readonly GreetingSlot[] _greetingSlots =
 	[
-		new("proactive-greeting-morning", "30 8 * * *", "早安主人！新的一天也要元气满满哦~", "Good morning! Let’s have an energetic day~", "wave", "Smile"),
+		new("proactive-greeting-morning", "30 8 * * *", "早安！新的一天也要元气满满哦~", "Good morning! Let’s have an energetic day~", "wave", "Smile"),
 		new("proactive-greeting-lunch", "0 12 * * *", "到午饭时间啦！不要饿肚子，去吃点好吃的吧~", "It’s lunchtime! Please grab something tasty~", "smile", "Smile"),
-		new("proactive-greeting-night", "0 23 * * *", "夜深了，工作再忙也要注意身体，早点休息吧主人~", "It’s late. Even when work is busy, please get some rest~", "think", "Sleepy"),
+		new("proactive-greeting-night", "0 23 * * *", "夜深了，工作再忙也要注意身体，早点休息吧~", "It’s late. Even when work is busy, please get some rest~", "think", "Sleepy"),
 	];
 	/// <summary>当前挂机 session 是否已经触发过关怀。</summary>
 	private int _idleSessionFired;
@@ -332,7 +332,7 @@ public sealed class ProactiveScheduler : IDisposable
 		{
 			string text = IsEnglish()
 				? $"Reminder time: {reminder.Content}"
-				: $"主人！提醒时间到了：{reminder.Content}";
+				: $"提醒时间到了：{reminder.Content}";
 			try
 			{
 				Message?.Invoke(new ProactiveMessage(text, "wave", "Surprised"));
@@ -394,9 +394,9 @@ public sealed class ProactiveScheduler : IDisposable
 				"Yawn... I wonder what you’re busy with?",
 			]
 			: [
-				"主人已经好久没有理 Nori 啦...",
+				"已经好久没有一起聊天啦...",
 				"伸个懒腰~ 工作辛苦啦，记得休息一下眼睛哦！",
-				"呼啊... 好困呀，主人在忙什么呢？",
+				"呼啊... 好困呀，你在忙什么呢？",
 			];
 		string[] motions = ["think", "smile", "wave"];
 		string[] expressions = ["Sad", "Smile", "Sleepy"];

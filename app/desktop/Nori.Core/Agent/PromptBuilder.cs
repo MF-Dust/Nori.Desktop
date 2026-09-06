@@ -20,7 +20,7 @@ public static class PromptBuilder
 	/// <summary>协议输出规范说明</summary>
 	private const string ProtocolInstruction = """"
 		【核心通信协议要求】
-		你与桌宠宿主系统的所有交互必须严格输出符合 Nori 协议的 JSON 格式：
+		你与 Nori 宿主系统的所有交互必须严格输出符合 Nori 协议的 JSON 格式：
 
 		1. 普通回复：
 		```json

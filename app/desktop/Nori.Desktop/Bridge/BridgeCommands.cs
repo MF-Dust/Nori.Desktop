@@ -586,7 +586,7 @@ public sealed class BridgeCommands
 		"audio_upload_failed" => RequireMain(source, () =>
 			Run(() => Runtime.ReportRecordingFailed(Str(args, "token"), OptionalStr(args, "error")))),
 
-		// ---- 桌宠 Live2D 原生控制 ----
+		// ---- 伴侣 Live2D 原生控制 ----
 		// invoke("pet_play_motion", {name?})
 		"pet_play_motion" => RequireMain(source, () =>
 			Run(() => PlayPetMotion(args))),
@@ -1269,7 +1269,7 @@ public sealed class BridgeCommands
 	private async Task<object?> TtsTestAsync(IBridgeSource source, JsonElement args)
 	{
 		RequireMainVoid(source);
-		string text = OptionalStr(args, "text") is {Length: > 0} custom ? custom : "主人好呀！我是 Nori，这是一条声音播放测试~";
+		string text = OptionalStr(args, "text") is {Length: > 0} custom ? custom : "你好呀！我是 Nori，这是一条声音播放测试~";
 		await Runtime.Voice.SpeakAsync(text);
 		return null;
 	}
@@ -1714,7 +1714,7 @@ public sealed class BridgeCommands
 		}
 	}
 
-	/// <summary>行为开关写入并热应用到桌宠 + 广播给预览</summary>
+	/// <summary>行为开关写入并热应用到伴侣视窗 + 广播给预览</summary>
 	private void SetBehaviorKey(JsonElement args, string argName, string configKey)
 	{
 		if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty(argName, out JsonElement value)) return;
@@ -2002,7 +2002,7 @@ public sealed class BridgeCommands
 	private void InvalidateMcpSnapshot() => Runtime.InvalidateSnapshot("mcp");
 
 	// ===================================================================
-	// 桌宠状态
+	// 伴侣状态
 	// ===================================================================
 
 	private object GetPetState()

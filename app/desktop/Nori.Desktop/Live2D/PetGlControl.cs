@@ -132,7 +132,7 @@ public sealed class PetGlControl : OpenGlControlBase
 		catch (Exception exception)
 		{
 			// 渲染回调跑在合成器提交路径上, 抛出去就是进程级崩溃
-			_runtime.WriteCubismLog($"桌宠渲染帧异常: {exception}");
+			_runtime.WriteCubismLog($"伴侣渲染帧异常: {exception}");
 		}
 	}
 
@@ -329,7 +329,7 @@ public sealed class PetGlControl : OpenGlControlBase
 		catch (Exception exception)
 		{
 			DisposeRenderTargets();
-			_runtime.WriteCubismLog($"创建桌宠离屏渲染目标失败, 已降级为直接渲染: {exception.Message}");
+			_runtime.WriteCubismLog($"创建伴侣离屏渲染目标失败, 已降级为直接渲染: {exception.Message}");
 			return false;
 		}
 	}
@@ -337,9 +337,9 @@ public sealed class PetGlControl : OpenGlControlBase
 	private void DisposeRenderTargets()
 	{
 		try { _sceneSurface?.DestroyOffscreenSurface(); }
-		catch (Exception exception) { _runtime.WriteCubismLog($"释放桌宠场景 FBO 失败: {exception.Message}"); }
+		catch (Exception exception) { _runtime.WriteCubismLog($"释放伴侣场景 FBO 失败: {exception.Message}"); }
 		try { _hitMaskSurface?.DestroyOffscreenSurface(); }
-		catch (Exception exception) { _runtime.WriteCubismLog($"释放桌宠命中掩码 FBO 失败: {exception.Message}"); }
+		catch (Exception exception) { _runtime.WriteCubismLog($"释放伴侣命中掩码 FBO 失败: {exception.Message}"); }
 		_sceneWidth = 0;
 		_sceneHeight = 0;
 		_offscreenAvailable = false;

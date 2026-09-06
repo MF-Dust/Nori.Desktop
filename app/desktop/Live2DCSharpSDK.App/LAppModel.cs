@@ -63,7 +63,7 @@ public class LAppModel : CubismUserModel
     /// <summary>
     /// [Nori] 当前播放中的动作组名 (未播放时为 null)
     ///
-    /// CubismMotionQueueManager 不保留组名, 而桌宠的行为管线要靠"当前是不是待机动作"
+    /// CubismMotionQueueManager 不保留组名, 而伴侣的行为管线要靠"当前是不是待机动作"
     /// 决定是否接管眨眼与眼神微动, 所以在这里记一份.
     /// </summary>
     public string? CurrentMotionGroup { get; private set; }

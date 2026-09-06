@@ -1219,7 +1219,7 @@ public class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task 窗口命令只能操作自身且主界面召唤桌宠要求有效模型()
+	public async Task 窗口命令只能操作自身且主界面唤出伴侣要求有效模型()
 	{
 		BridgeCommands commands = CreateCommands();
 		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.FirstRun), "exit_app", Args(new { }));
@@ -1535,7 +1535,7 @@ public class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task init_enter_main只允许可见init并按有效模型和自动召唤切换窗口()
+	public async Task init_enter_main只允许可见init并按有效模型和自动唤出切换窗口()
 	{
 		InstallKnownModel("arg-nori");
 		_config.Set(ConfigStore.KeySelectedModel, new ConfigValue.Text("arg-nori"));
@@ -1556,7 +1556,7 @@ public class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task init_enter_main无效模型时不显示桌宠但仍进入主界面()
+	public async Task init_enter_main无效模型时不显示伴侣但仍进入主界面()
 	{
 		_config.Set(ConfigStore.KeySelectedModel, new ConfigValue.Text("other"));
 		_windows.Show(WindowLabels.Init);
@@ -1593,7 +1593,7 @@ public class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task 快照包含桌宠可见性与侧边栏折叠态()
+	public async Task 快照包含伴侣可见性与侧边栏折叠态()
 	{
 		BridgeCommands commands = CreateCommands();
 
@@ -1651,7 +1651,7 @@ public class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public void 桌宠显隐变化作废快照()
+	public void 伴侣显隐变化作废快照()
 	{
 		// 广播本体走 Dispatcher.UIThread, 单测无 UI 循环, 因此只验证版本递增与快照投影
 		int before = _runtime.SnapshotVersion;

@@ -13,7 +13,7 @@ namespace Nori.Desktop.Tray;
 /// <summary>
 /// 系统托盘
 ///
-/// 对应 Rust 版 tray.rs. 托盘是唯一常驻的入口: 左键开主界面, 菜单切换桌宠与退出.
+/// 对应 Rust 版 tray.rs. 托盘是唯一常驻的入口: 左键开主界面, 菜单切换 Nori 与退出.
 /// </summary>
 public static class TrayMenu
 {
@@ -33,10 +33,10 @@ public static class TrayMenu
 		NativeMenuItem openMain = new("打开主界面");
 		openMain.Click += (_, _) => ShowMain(services);
 
-		NativeMenuItem togglePet = new("显示/隐藏桌宠");
+		NativeMenuItem togglePet = new("显示/隐藏 Nori");
 		togglePet.Click += (_, _) =>
 		{
-			services.Logger.Write(LogSource.Backend, "info", "托盘菜单：切换桌宠显示");
+			services.Logger.Write(LogSource.Backend, "info", "托盘菜单：切换 Nori 显示");
 			if (!services.Windows.IsWindowVisible(WindowLabels.Pet) && !CanShowPet(services))
 			{
 				services.Logger.Write(LogSource.Backend, "warn", "当前 Live2D 模型不可用, 已打开主界面等待重新导入");
@@ -56,7 +56,7 @@ public static class TrayMenu
 		TrayIcon tray = new()
 		{
 			Icon = LoadIcon(),
-			ToolTipText = "Nori Desktop Pet - 点击打开主界面",
+			ToolTipText = "Nori - 桌面伴侣（点击打开主界面）",
 			Menu = [openMain, togglePet, quit],
 		};
 		// 左键点击直接开主界面, 不弹菜单

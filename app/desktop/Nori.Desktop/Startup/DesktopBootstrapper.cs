@@ -260,7 +260,7 @@ internal sealed class DesktopBootstrapper
 			services.Bridge = bridge;
 			services.Windows.CreateAll(bridge, services);
 
-			// 业务运行时 (Agent/技能/情绪/提醒/语音): 桌宠窗口就绪后启动,
+			// 业务运行时 (Agent/技能/情绪/提醒/语音): 伴侣窗口就绪后启动,
 			// 桥接命令通过 services.Runtime 访问
 			Runtime.AppRuntime runtime = new(services);
 			services.Runtime = runtime;

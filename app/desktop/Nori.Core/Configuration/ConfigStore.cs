@@ -39,7 +39,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// <summary>配置键: 旧版界面语言 (仅用于 v1 → v2 迁移)。</summary>
 	public const string LegacyKeyLanguage = "app_language";
 
-	/// <summary>配置键: 桌宠模型。</summary>
+	/// <summary>配置键: 伴侣模型。</summary>
 	public const string KeySelectedModel = "selected_model";
 
 	/// <summary>配置键: 首次初始化是否已完成。</summary>
@@ -54,10 +54,10 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// <summary>MCP stdio 环境变量的独立敏感配置键前缀。</summary>
 	public const string McpEnvironmentKeyPrefix = "mcp_server_env_";
 
-	/// <summary>配置键: 桌宠窗口 X 坐标。</summary>
+	/// <summary>配置键: 伴侣窗口 X 坐标。</summary>
 	public const string KeyPetWindowX = "pet_window_x";
 
-	/// <summary>配置键: 桌宠窗口 Y 坐标。</summary>
+	/// <summary>配置键: 伴侣窗口 Y 坐标。</summary>
 	public const string KeyPetWindowY = "pet_window_y";
 
 	/// <summary>配置键: 全局音频音量 (0.0 ~ 1.0)。</summary>
@@ -84,7 +84,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// <summary>没有版本记录的旧数据库所使用的最后旧版本。</summary>
 	private const long LegacyConfigSchemaVersion = 1;
 
-	/// <summary>默认桌宠模型。</summary>
+	/// <summary>默认伴侣模型。</summary>
 	public const string DefaultModel = "arg-nori";
 
 	/// <summary>判断某个配置键是否必须加密。</summary>

@@ -13,7 +13,7 @@ public sealed record RenderQualityDecision
 }
 
 /// <summary>
-/// 原生桌宠自适应质量策略。
+/// 原生伴侣视窗自适应质量策略。
 ///
 /// Adaptive 在 Windows 交流电上从 60 FPS / 当前高质量倍率开始，电池上从 30 FPS / 平衡倍率开始；
 /// 连续两秒超出帧预算会降一级，连续五秒稳定后升一级。Quality 与 Eco 不会被性能采样改写。

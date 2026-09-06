@@ -41,6 +41,9 @@ public sealed class AppStoragePaths
 		PluginsWebViewCacheDirectory = Path.Combine(PluginsDirectory, "cache", "webview");
 		PluginsPackageInboxDirectory = Path.Combine(PluginsDirectory, "cache", "packages", "inbox");
 		PluginsStagingDirectory = Path.Combine(PluginsDirectory, "temp", "staging");
+		UpdatesDirectory = Path.Combine(DataRoot, "updates");
+		UpdatesDownloadDirectory = Path.Combine(UpdatesDirectory, "download");
+		UpdatesStagingDirectory = Path.Combine(UpdatesDirectory, "staging");
 		WebViewHostCacheDirectory = Path.Combine(DataRoot, "webview", "cache", "host");
 		AutomationBrowserTempDirectory = Path.Combine(DataRoot, "automation", "temp", "browser");
 		LogsDirectory = Path.Combine(DataRoot, "diagnostics", "logs");
@@ -75,6 +78,9 @@ public sealed class AppStoragePaths
 	public string PluginsWebViewCacheDirectory { get; }
 	public string PluginsPackageInboxDirectory { get; }
 	public string PluginsStagingDirectory { get; }
+	public string UpdatesDirectory { get; }
+	public string UpdatesDownloadDirectory { get; }
+	public string UpdatesStagingDirectory { get; }
 	public string WebViewHostCacheDirectory { get; }
 	public string AutomationBrowserTempDirectory { get; }
 	public string LogsDirectory { get; }
@@ -100,6 +106,9 @@ public sealed class AppStoragePaths
 		EnsureDirectory(PluginsWebViewCacheDirectory);
 		EnsureDirectory(PluginsPackageInboxDirectory);
 		EnsureDirectory(PluginsStagingDirectory);
+		EnsureDirectory(UpdatesDirectory);
+		EnsureDirectory(UpdatesDownloadDirectory);
+		EnsureDirectory(UpdatesStagingDirectory);
 		EnsureDirectory(WebViewHostCacheDirectory);
 		EnsureDirectory(AutomationBrowserTempDirectory);
 		EnsureDirectory(LogsDirectory);

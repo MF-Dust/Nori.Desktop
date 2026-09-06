@@ -65,6 +65,9 @@ public sealed class AppServices : IAsyncDisposable
 	/// <summary>统一插件运行时；安全模式下仅发现并标记禁用插件。</summary>
 	internal PluginRuntimeHost? PluginRuntime { get; set; }
 
+	/// <summary>自动更新服务</summary>
+	public Nori.Core.Update.UpdateService? Update { get; set; }
+
 	/// <summary>本地/模型 HTTP 客户端 (测试可在装配后替换)</summary>
 	public HttpClient Http { get; set; } = null!;
 
@@ -145,6 +148,11 @@ public sealed class AppServices : IAsyncDisposable
 			DisposeStep(() => Runtime?.DisposeAsync() ?? ValueTask.CompletedTask, TimeSpan.FromSeconds(4)),
 			DisposeStep(() => Automation?.DisposeAsync() ?? ValueTask.CompletedTask, TimeSpan.FromSeconds(4)),
 			DisposeStep(() => PluginRuntime?.DisposeAsync() ?? ValueTask.CompletedTask, TimeSpan.FromSeconds(4)),
+			DisposeStep(() =>
+			{
+				Update?.Dispose();
+				return ValueTask.CompletedTask;
+			}, TimeSpan.FromSeconds(1)),
 			DisposeStep(() => Mcp.DisposeAsync(), TimeSpan.FromSeconds(4)),
 			DisposeStep(() => Assets?.DisposeAsync() ?? ValueTask.CompletedTask, TimeSpan.FromSeconds(4)));
 		await DisposeStep(() =>

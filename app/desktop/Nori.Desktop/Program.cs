@@ -21,7 +21,7 @@ internal static class Program
 
 	internal static bool ConsumePendingActivation() => Interlocked.Exchange(ref _activationPending, 0) == 1;
 
-	private static string RuntimeRid()
+	internal static string RuntimeRid()
 	{
 		string rid = RuntimeInformation.RuntimeIdentifier;
 		if (rid.StartsWith("win-", StringComparison.Ordinal) || rid.StartsWith("linux-", StringComparison.Ordinal) || rid.StartsWith("osx-", StringComparison.Ordinal)) return rid;

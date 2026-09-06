@@ -63,6 +63,15 @@ const NAV_ITEMS = computed<{key: NavKey; label: string; icon: IconName; badge?: 
 	{key: "settings", label: I18N.value.nav.settings, icon: "settings", badge: !aiConfigured.value},
 ])
 
+// 常驻快照通知不会丢失后台检查结果，也不会强制弹窗或抢焦点。
+const UPDATE = computed(() => RUNTIME.snapshot.value?.updater)
+const UPDATE_NOTICE = computed(() => UPDATE.value?.state === "available" || UPDATE.value?.state === "readytorestart")
+const showUpdate = () => {
+	settingsTarget.value = "general"
+	settingsSeq.value += 1
+	goNav("settings", activeNav.value)
+}
+
 const activeNav = ref<NavKey>("home")
 const currentNav = computed(() => NAV_ITEMS.value.find((item) => item.key === activeNav.value))
 
@@ -249,6 +258,12 @@ onBeforeUnmount(() => {
 				class="flex-1 min-h-0 flex flex-col items-stretch overflow-hidden px-5 py-4 relative"
 				:data-main-panel="activeNav"
 			>
+				<div v-if="UPDATE_NOTICE" class="shrink-0 flex flex-wrap items-center justify-between gap-2 mb-2.5 px-3 py-2 border-b border-line-subtle" role="status" aria-live="polite">
+					<span class="text-sm text-text-primary break-all">
+						{{ UPDATE?.state === "readytorestart" ? I18N.general.updates.readyToRestart : I18N.general.updates.available }} · {{ UPDATE?.availableVersion }}
+					</span>
+					<AppButton size="sm" @click="showUpdate">{{ I18N.general.updates.viewUpdate }}</AppButton>
+				</div>
 				<p
 					v-if="panelError"
 					class="shrink-0 mb-2.5 px-3 py-1.5 rounded-sm text-sm text-danger-text bg-danger/12 border border-danger/28"

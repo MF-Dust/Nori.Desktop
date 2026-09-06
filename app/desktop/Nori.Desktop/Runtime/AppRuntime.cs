@@ -155,6 +155,7 @@ public sealed class AppRuntime : IAsyncDisposable
 			services.Automation.BrowserApprovalCallback = RequestAutomationApprovalAsync;
 		}
 		services.Automation.Changed += OnAutomationChanged;
+		if (services.Update is not null) services.Update.StatusChanged += OnUpdateStatusChanged;
 
 		Memory = new MemoryService(services.Memory, services.Embedding, config, startBackgroundWorker: !services.SafeMode);
 		// 嵌入批处理恢复期的单轮失败降级为 warn 日志, 连续多轮失败才由 MemoryService 升级为 Error 遥测。
@@ -1151,6 +1152,7 @@ public sealed class AppRuntime : IAsyncDisposable
 	private object BuildSnapshotCore(int snapshotVersion)
 	{
 		ConfigStore config = Services.Config;
+		var updateStatus = Services.Update?.CurrentStatus;
 		AiProviderSettings aiSettings = Services.AiSettings.Read();
 		AiChatSettingsSnapshot chatSnapshot = AiChatSettingsSnapshot.From(aiSettings.Chat);
 		AiEmbeddingSettingsSnapshot embeddingSnapshot = AiEmbeddingSettingsSnapshot.From(aiSettings.Embedding);
@@ -1190,6 +1192,7 @@ public sealed class AppRuntime : IAsyncDisposable
 				language = config.GetStringOr("language", "zh-CN"),
 				petAutoSummon = ParseBoolFlag(config.GetStringOr("pet_auto_summon", "true")) ?? true,
 				sidebarCollapsed = ParseBoolFlag(config.GetStringOr("ui_sidebar_collapsed", "")) ?? false,
+				autoCheckUpdates = config.GetBoolOr("auto_check_updates", true),
 			},
 			telemetry = new
 			{
@@ -1197,6 +1200,23 @@ public sealed class AppRuntime : IAsyncDisposable
 				enabled = config.GetTelemetryConsent() == TelemetryConsent.Granted,
 				available = Services.Telemetry.IsAvailable,
 			},
+			updater = updateStatus is not null
+				? new
+				{
+					state = updateStatus.State.ToString().ToLowerInvariant(),
+					progress = updateStatus.Progress,
+					downloadedBytes = updateStatus.DownloadedBytes,
+					totalBytes = updateStatus.TotalBytes,
+					message = updateStatus.Message,
+					currentVersion = updateStatus.CurrentVersion,
+					availableVersion = updateStatus.AvailableVersion,
+					releaseTag = updateStatus.ReleaseTag,
+					releaseNotes = updateStatus.ReleaseNotes,
+					lastCheckedAt = updateStatus.LastCheckedAt,
+					unavailableReason = updateStatus.UnavailableReason,
+					manualDownloadUrl = updateStatus.ManualDownloadUrl,
+				}
+				: null,
 			secretIssues = config.GetSecretIssues().Select(issue => new
 			{
 				key = issue.Key,
@@ -1417,6 +1437,11 @@ public sealed class AppRuntime : IAsyncDisposable
 		if (snapshot is not null) BroadcastEvent("nori:automation-changed", snapshot);
 	}
 
+	private void OnUpdateStatusChanged()
+	{
+		if (Volatile.Read(ref _disposed) == 0) InvalidateSnapshot("updater");
+	}
+
 	/// <summary>向所有 WebView 窗口广播</summary>
 	private void BroadcastEvent(string name, object payload)
 	{
@@ -1494,6 +1519,7 @@ public sealed class AppRuntime : IAsyncDisposable
 		CancelPetInteractionRequest();
 		CancelPetInteractionSpeech();
 		if (Services.Automation is not null) Services.Automation.Changed -= OnAutomationChanged;
+		if (Services.Update is not null) Services.Update.StatusChanged -= OnUpdateStatusChanged;
 
 		foreach ((string _, AgentSessionState session) in _sessions)
 		{

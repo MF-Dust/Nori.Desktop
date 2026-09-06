@@ -313,6 +313,7 @@ public class BridgeCommandsTests : IDisposable
 					browserTaskTimeout: browserTaskTimeout),
 			Windows = _windows,
 			SafeMode = safeMode,
+			Update = new Nori.Core.Update.UpdateService(new AppStoragePaths(_tempDir), "win-x64", "0.1.0", safeMode, httpClient: _http),
 		};
 		_runtime = new AppRuntime(_services);
 		_services.Runtime = _runtime;
@@ -320,6 +321,7 @@ public class BridgeCommandsTests : IDisposable
 
 	public void Dispose()
 	{
+		_services.Update?.Dispose();
 		_runtime.DisposeAsync().GetAwaiter().GetResult();
 		_database.Dispose();
 		_http.Dispose();
@@ -1660,5 +1662,59 @@ public class BridgeCommandsTests : IDisposable
 
 		Assert.True(_runtime.SnapshotVersion > before);
 		Assert.True(_windows.IsWindowVisible(WindowLabels.Pet));
+	}
+
+	[Fact]
+	public async Task Snapshot_ContainsUpdaterState()
+	{
+		BridgeCommands commands = CreateCommands();
+		object? snapshot = await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "ui_get_snapshot", Args(new { }));
+		Assert.NotNull(snapshot);
+
+		string json = JsonSerializer.Serialize(snapshot);
+		using JsonDocument doc = JsonDocument.Parse(json);
+		Assert.True(doc.RootElement.TryGetProperty("updater", out JsonElement updaterEl));
+		Assert.Equal("idle", updaterEl.GetProperty("state").GetString());
+	}
+
+	[Fact]
+	public async Task UpdaterCancel_ReturnsTrue()
+	{
+		BridgeCommands commands = CreateCommands();
+		object? result = await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "updater_cancel", Args(new { }));
+		Assert.Equal(true, result);
+	}
+
+	[Fact]
+	public async Task SettingsUpdateGeneral_UpdatesAutoCheckUpdates()
+	{
+		BridgeCommands commands = CreateCommands();
+
+		// 更新 autoCheckUpdates 为 false
+		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "settings_update_general", Args(new { autoCheckUpdates = false }));
+		Assert.Equal("false", _config.GetStringOr("auto_check_updates", "true"));
+
+		// 验证快照反映该值
+		object? snapshot = await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "ui_get_snapshot", Args(new { }));
+		string snapshotJson = JsonSerializer.Serialize(snapshot);
+		using JsonDocument doc = JsonDocument.Parse(snapshotJson);
+		Assert.False(doc.RootElement.GetProperty("general").GetProperty("autoCheckUpdates").GetBoolean());
+
+		// 重新开启
+		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "settings_update_general", Args(new { autoCheckUpdates = true }));
+		Assert.Equal("true", _config.GetStringOr("auto_check_updates", "false"));
+	}
+
+	[Fact]
+	public async Task UpdaterCommands_NonMainSource_Throws()
+	{
+		BridgeCommands commands = CreateCommands();
+		// 从 pet 窗口调用 updater_check 必须拒绝
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Pet), "updater_check", Args(new { })));
+
+		// 从 first-run 窗口调用 updater_install 必须拒绝
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.FirstRun), "updater_install", Args(new { })));
 	}
 }

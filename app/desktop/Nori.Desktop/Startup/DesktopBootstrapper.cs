@@ -33,6 +33,7 @@ internal sealed class DesktopBootstrapper
 	private AssetServer? _startupAssets;
 	private Nori.Core.Mcp.McpManager? _startupMcp;
 	private PluginRuntimeHost? _startupPluginRuntime;
+	private Nori.Core.Update.UpdateService? _startupUpdate;
 	private Task? _shutdownTask;
 	private int _shutdownStarted;
 	private int _secondInstanceActivationPending;
@@ -204,6 +205,14 @@ internal sealed class DesktopBootstrapper
 		_startupMcp = mcp;
 
 		ChatService chat = new(http, database, config);
+		Nori.Core.Update.UpdateService updateService = new(
+			paths,
+			Program.RuntimeRid(),
+			Nori.Core.ProductVersion.Current,
+			safeMode,
+			config: config);
+		_startupUpdate = updateService;
+
 		AppServices services = new()
 		{
 			Database = database,
@@ -220,6 +229,7 @@ internal sealed class DesktopBootstrapper
 			Mcp = mcp,
 			Assets = assets,
 			PluginRuntime = pluginRuntime,
+			Update = updateService,
 			Http = http,
 			PublicHttp = publicHttp,
 			AgentOperations = new Bridge.AgentOperationRegistry(),
@@ -242,6 +252,7 @@ internal sealed class DesktopBootstrapper
 		_startupAssets = null;
 		_startupMcp = null;
 		_startupPluginRuntime = null;
+		_startupUpdate = null;
 
 		// 安全模式不自动连接 MCP, 便于用户进入界面修复配置。
 		if (!safeMode)
@@ -265,6 +276,10 @@ internal sealed class DesktopBootstrapper
 			Runtime.AppRuntime runtime = new(services);
 			services.Runtime = runtime;
 			runtime.Start();
+
+			// 自动更新后台调度器：启动 30 秒后首检，每 24 小时检查一次
+			// 状态事件统一经 AppRuntime 作废快照；主窗口常驻通知不依赖设置页挂载。
+			updateService.StartScheduler();
 
 			// 托盘失败 (常见于部分 Linux 桌面) 时前端要显示内建入口
 			runtime.TrayAvailable = TrayMenu.Install(_application, services);
@@ -334,6 +349,8 @@ internal sealed class DesktopBootstrapper
 			try { await _startupPluginRuntime.DisposeAsync().ConfigureAwait(false); } catch { }
 			_startupPluginRuntime = null;
 		}
+		try { _startupUpdate?.Dispose(); } catch { }
+		_startupUpdate = null;
 		if (_startupMcp is not null)
 		{
 			try { await _startupMcp.DisposeAsync().ConfigureAwait(false); } catch { }

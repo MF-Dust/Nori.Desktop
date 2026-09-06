@@ -14,6 +14,56 @@ export interface JsonObject {
 }
 
 // ===================================================================
+// 自动更新
+// ===================================================================
+
+/** 统一自动更新状态 */
+export type UpdaterState =
+	| "idle"
+	| "checking"
+	| "available"
+	| "uptodate"
+	| "downloading"
+	| "verifying"
+	| "installing"
+	| "readytorestart"
+	| "error"
+	| "cancelled"
+
+/** 检查更新返回结果 */
+export interface UpdaterCheckResultDto {
+	available: boolean
+	currentVersion: string
+	latestVersion?: string | null
+	releaseTag?: string | null
+	releaseNotes?: string | null
+	publishedAt?: string | null
+}
+
+/** 安装更新返回结果 */
+export interface UpdaterInstallResultDto {
+	success: boolean
+	slotName: string
+	productVersion: string
+}
+
+/** 更新运行状态快照 */
+export interface UpdaterStatusDto {
+	state: UpdaterState
+	progress: number
+	downloadedBytes: number
+	totalBytes: number
+	message?: string | null
+	currentVersion: string
+	availableVersion?: string | null
+	releaseTag?: string | null
+	releaseNotes?: string | null
+	lastCheckedAt?: string | null
+	unavailableReason?: string | null
+	manualDownloadUrl?: string | null
+}
+
+// ===================================================================
 // 快照
 // ===================================================================
 
@@ -35,6 +85,8 @@ export interface GeneralState {
 	petAutoSummon: boolean
 	/** 主界面侧边栏是否折叠 */
 	sidebarCollapsed: boolean
+	/** 启动时是否自动检查更新 */
+	autoCheckUpdates?: boolean
 }
 
 /** 伴侣窗口状态 (宿主显隐的唯一真相, 托盘切换后同样同步) */
@@ -636,6 +688,8 @@ export interface UiSnapshot {
 	emotion: EmotionDto
 	/** 自动化能力快照 (可选, 后端未就绪时为 undefined) */
 	automation?: AutomationState
+	/** 自动更新状态快照 (可选) */
+	updater?: UpdaterStatusDto | null
 }
 
 // ===================================================================

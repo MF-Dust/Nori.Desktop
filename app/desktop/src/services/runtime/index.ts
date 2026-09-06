@@ -57,6 +57,8 @@ import type {
 	SkillRecordDto,
 	SkillRecordInput,
 	UiSnapshot,
+	UpdaterCheckResultDto,
+	UpdaterInstallResultDto,
 	VisionProbeResult,
 } from "./types"
 
@@ -407,8 +409,20 @@ export const RUNTIME = {
 	cloneIndexTtsVoice(filePath?: string): Promise<{voiceId: string}> {
 		return invoke("indextts_clone_voice", {filePath})
 	},
-	updateGeneral(patch: Partial<{language: string; petAutoSummon: boolean; sidebarCollapsed: boolean; telemetryEnabled: boolean}>): Promise<void> {
+	updateGeneral(patch: Partial<{language: string; petAutoSummon: boolean; sidebarCollapsed: boolean; autoCheckUpdates: boolean; telemetryEnabled: boolean}>): Promise<void> {
 		return invoke("settings_update_general", patch)
+	},
+	checkUpdate(): Promise<UpdaterCheckResultDto> {
+		return invoke("updater_check")
+	},
+	installUpdate(): Promise<UpdaterInstallResultDto> {
+		return invoke("updater_install")
+	},
+	cancelUpdate(): Promise<boolean> {
+		return invoke("updater_cancel")
+	},
+	restartApp(): Promise<void> {
+		return invoke("updater_restart")
 	},
 	updateProactive(patch: Partial<{idleEnabled: boolean; idleMinutes: number; dailyGreeting: boolean}>): Promise<void> {
 		return invoke("settings_update_proactive", patch)

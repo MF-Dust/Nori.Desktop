@@ -232,17 +232,80 @@ public sealed class BridgeCommands
 				Runtime.InvalidateSnapshot("voice");
 			})),
 
-		// invoke("settings_update_general", {language?, petAutoSummon?, sidebarCollapsed?, telemetryEnabled?})
+		// invoke("settings_update_general", {language?, petAutoSummon?, sidebarCollapsed?, autoCheckUpdates?, telemetryEnabled?})
 		"settings_update_general" => RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () =>
 			Run(() =>
 			{
 				UpdateOptionalConfig(args, "language", ConfigStore.KeyLanguage);
 				UpdateBoolConfig(args, "petAutoSummon", "pet_auto_summon");
 				UpdateBoolConfig(args, "sidebarCollapsed", "ui_sidebar_collapsed");
+				UpdateBoolConfig(args, "autoCheckUpdates", "auto_check_updates");
 				UpdateTelemetryConsent(source, args);
 				_services.Telemetry.Configure(_services.Config.GetTelemetryConsent() == TelemetryConsent.Granted);
 				Runtime.InvalidateSnapshot("general", "telemetry");
 			})),
+
+		// ---- 自动更新 ----
+		/// <summary>
+		/// 检查是否有可用软件更新。
+		/// 前端调用：invoke("updater_check")
+		/// </summary>
+		"updater_check" => await RequireMainAsync(source, async () =>
+		{
+			var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
+			var check = await update.CheckForUpdateAsync(cancellationToken);
+			Runtime.InvalidateSnapshot("updater");
+			return (object?)new
+			{
+				available = check.Available,
+				currentVersion = check.CurrentVersion,
+				latestVersion = check.LatestVersion,
+				releaseTag = check.ReleaseTag,
+				releaseNotes = check.ReleaseNotes,
+				publishedAt = check.PublishedAt?.ToString("o"),
+			};
+		}),
+
+		/// <summary>
+		/// 下载并安装候选版本到新部署槽。
+		/// 前端调用：invoke("updater_install")
+		/// </summary>
+		"updater_install" => await RequireMainAsync(source, async () =>
+		{
+			var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
+			var commit = await update.DownloadAndInstallAsync(progress: null, cancellationToken);
+			Runtime.InvalidateSnapshot("updater");
+			return (object?)new
+			{
+				success = true,
+				slotName = commit.SlotName,
+				productVersion = commit.Manifest.ProductVersion,
+			};
+		}),
+
+		/// <summary>
+		/// 取消当前正在进行的更新检查或安装。
+		/// 前端调用：invoke("updater_cancel")
+		/// </summary>
+		"updater_cancel" => RequireMain(source, () =>
+		{
+			var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
+			update.CancelActiveOperation();
+			Runtime.InvalidateSnapshot("updater");
+			return (object?)true;
+		}),
+
+		/// <summary>
+		/// 拉起启动器并安全退出当前宿主进程，由启动器等待旧进程退出后切换到新槽。
+		/// 前端调用：invoke("updater_restart")
+		/// </summary>
+		"updater_restart" => await RequireMainAsync(source, () =>
+		{
+			var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
+			update.LaunchRestart();
+			_services.Windows.Shutdown();
+			return Task.FromResult<object?>(null);
+		}),
 
 		// invoke("settings_update_proactive", {idleEnabled?, idleMinutes?, dailyGreeting?})
 		"settings_update_proactive" => RequireMain(source, () =>
@@ -660,6 +723,8 @@ public sealed class BridgeCommands
 			or "mcp_test_server"
 			or "mcp_call_tool"
 			or "mcp_import_url"
+			or "updater_check"
+			or "updater_install"
 			or "tts_test"
 			or "stt_start"
 			or "stt_stop"
@@ -1478,6 +1543,12 @@ public sealed class BridgeCommands
 	}
 
 	private static object? RequireMain(IBridgeSource source, Func<object?> factory) => RequireLabel(source, WindowLabels.Main, factory);
+
+	private static async Task<object?> RequireMainAsync(IBridgeSource source, Func<Task<object?>> factory)
+	{
+		RequireLabel(source, WindowLabels.Main, () => (object?)null);
+		return await factory();
+	}
 
 	/// <summary>
 	/// 首次启动完成: 只允许可见的 first-run 窗口调用。

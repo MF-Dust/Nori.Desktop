@@ -214,6 +214,8 @@ jobs:
         run: pnpm test
       - name: 发布结构 fixture 门
         run: node scripts/validate-publish-structure.test.mjs
+      - name: 自动更新清单 fixture 门
+        run: node scripts/generate-update-manifest.test.mjs
       # dotnet 调用不并行, 且 test 不再触发第二次 build, 避免 obj 锁冲突。
       - name: 后端门 · 构建
         run: dotnet build Nori.slnx --configuration Release
@@ -371,6 +373,7 @@ jobs:
             app/desktop/bin/release/THIRD-PARTY-NOTICES-win-x64.json
             app/desktop/bin/release/THIRD-PARTY-NOTICES-win-x64.md
             app/desktop/bin/release/RELEASE-MANIFEST-win-x64.json
+            app/desktop/bin/release/UPDATE-win-x64.json
           if-no-files-found: error
           retention-days: 2
 
@@ -431,6 +434,7 @@ jobs:
           cp "$metadata/THIRD-PARTY-NOTICES.md" "bin/release/THIRD-PARTY-NOTICES-$rid.md"
           cp "$metadata/RELEASE-MANIFEST.json" "bin/release/RELEASE-MANIFEST-$rid.json"
           rm -rf "$metadata"
+          node scripts/generate-update-manifest.mjs --version "$NORI_VERSION" --rid "$rid" --archive-path "$archive" --publish-dir "$publish" --output-dir "bin/release"
           echo "已生成 $archive 及 $rid 发布元数据"
       - name: 上传待发布 Linux/macOS 产物
         if: matrix.name != 'windows'
@@ -445,6 +449,7 @@ jobs:
             app/desktop/bin/release/THIRD-PARTY-NOTICES-${{ matrix.rid }}.json
             app/desktop/bin/release/THIRD-PARTY-NOTICES-${{ matrix.rid }}.md
             app/desktop/bin/release/RELEASE-MANIFEST-${{ matrix.rid }}.json
+            app/desktop/bin/release/UPDATE-${{ matrix.rid }}.json
           if-no-files-found: error
           retention-days: 2
 
@@ -559,6 +564,9 @@ jobs:
             release-artifacts/THIRD-PARTY-NOTICES-osx-arm64.json
             release-artifacts/THIRD-PARTY-NOTICES-osx-arm64.md
             release-artifacts/RELEASE-MANIFEST-osx-arm64.json
+            release-artifacts/UPDATE-win-x64.json
+            release-artifacts/UPDATE-linux-x64.json
+            release-artifacts/UPDATE-osx-arm64.json
           )
           for asset in "${assets[@]}"; do
             test -f "$asset"

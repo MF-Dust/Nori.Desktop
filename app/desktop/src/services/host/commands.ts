@@ -44,6 +44,8 @@ import type {
 	SkillRecordDto,
 	SkillRecordInput,
 	UiSnapshot,
+	UpdaterCheckResultDto,
+	UpdaterInstallResultDto,
 	VisionProbeResult,
 } from "../runtime/types"
 import type {PluginInfo, PluginInstallResult, PluginUninstallResult} from "../plugins"
@@ -66,6 +68,11 @@ export interface BridgeCommandMap {
 	exit_app: {args: EmptyCommandArgs; result: void}
 	clipboard_write_text: {args: {text: string}; result: void}
 	open_url: {args: {url: string}; result: void}
+
+	updater_check: {args: EmptyCommandArgs; result: UpdaterCheckResultDto}
+	updater_install: {args: EmptyCommandArgs; result: UpdaterInstallResultDto}
+	updater_cancel: {args: EmptyCommandArgs; result: boolean}
+	updater_restart: {args: EmptyCommandArgs; result: void}
 
 	llm_fetch_models: {args: {provider: string; baseUrl: string; apiKey: string}; result: string[]}
 	llm_test_connection: {args: {provider: string; baseUrl: string; apiKey: string; model: string}; result: ProviderConnectionTestResult}

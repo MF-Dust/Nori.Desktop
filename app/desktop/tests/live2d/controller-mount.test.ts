@@ -133,6 +133,10 @@ describe("Live2D 控制器挂载 source 格式", () => {
 
 		expect(currentModel.scale.set).toHaveBeenLastCalledWith(0.1, 0.1)
 
+		currentModel.scale.set.mockClear()
+		CONTROLLER.setUserScale(5)
+		expect(currentModel.scale.set).toHaveBeenLastCalledWith(4, 4)
+
 		await CONTROLLER.destroy()
 	})
 })

@@ -287,7 +287,7 @@ public sealed class PetRuntime
 			qualityMode,
 			maxFps);
 		_renderSettings = settings;
-		UserScale = Math.Clamp(userScale, 0.1f, 2.0f);
+		UserScale = Math.Clamp(userScale, 0.1f, 4.0f);
 		Opacity = settings.Opacity;
 		ShadowEnabled = settings.ShadowEnabled;
 		RenderScale = settings.RenderScale;
@@ -1189,7 +1189,7 @@ public sealed class PetRuntime
 		{
 			if (ParseFloat(value) is { } scale)
 			{
-				UserScale = Math.Clamp(scale, 0.1f, 2.0f);
+				UserScale = Math.Clamp(scale, 0.1f, 4.0f);
 				LayoutChanged?.Invoke();
 			}
 			return;

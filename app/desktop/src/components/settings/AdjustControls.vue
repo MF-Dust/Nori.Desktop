@@ -124,7 +124,7 @@ onMounted(() => {
 				<n-slider
 					v-model:value="scale"
 					:min="0.5"
-					:max="2"
+					:max="4"
 					:step="0.05"
 					:format-tooltip="(v: number) => `${Math.round(v * 100)}%`"
 					class="flex-1 min-w-0"

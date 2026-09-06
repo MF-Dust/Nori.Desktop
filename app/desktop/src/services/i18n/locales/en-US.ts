@@ -353,7 +353,7 @@ export default {
 					modelScale: "Model Size",
 					modelScaleDesc: "Adjust the pet's display size in the window",
 					renderScale: "Render Scale",
-					renderScaleDesc: "0.5x to 2x, higher is sharper but costs more performance",
+					renderScaleDesc: "0.5x to 4x, higher is sharper but costs more performance",
 					maxFps: "Max FPS",
 					maxFpsNone: "Unlimited",
 					maxFps30: "30 FPS",

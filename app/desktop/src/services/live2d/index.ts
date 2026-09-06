@@ -813,7 +813,7 @@ export const createLive2D = () => {
 	const setUserScale = (scale: number): void => {
 		const inner = internal
 		if (!inner) return
-		inner.userScale = clamp(scale, 0.1, 2)
+		inner.userScale = clamp(scale, 0.1, 4)
 		applyLayout()
 	}
 

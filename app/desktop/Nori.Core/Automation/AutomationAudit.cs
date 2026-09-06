@@ -84,19 +84,12 @@ public sealed record AutomationAuditRecord(
 	string? FailureCode,
 	long? DurationMilliseconds);
 
-/// <summary>自动化审计接收器；实现绝不能要求调用者提供正文。</summary>
-public interface IAutomationAuditSink
-{
-	/// <summary>写入一条固定字段审计事件。</summary>
-	void Record(AutomationAuditEvent entry);
-}
-
 /// <summary>
 /// 有界、脱敏的自动化审计仓储。
 ///
 /// 仅持久化固定分类、稳定失败码和耗时；不接受 URL、选择器、文本、截图、提示词、参数、凭据或路径。
 /// </summary>
-public sealed class AutomationAuditRepository : IAutomationAuditSink
+public sealed class AutomationAuditRepository
 {
 	/// <summary>最多保留的记录数。</summary>
 	public const int MaximumRecords = 500;
@@ -117,7 +110,7 @@ public sealed class AutomationAuditRepository : IAutomationAuditSink
 		_timeProvider = timeProvider ?? TimeProvider.System;
 	}
 
-	/// <inheritdoc />
+	/// <summary>写入一条固定字段审计事件。</summary>
 	public void Record(AutomationAuditEvent entry)
 	{
 		ArgumentNullException.ThrowIfNull(entry);

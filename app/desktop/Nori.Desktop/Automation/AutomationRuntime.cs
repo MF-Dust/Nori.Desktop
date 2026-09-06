@@ -217,7 +217,7 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	private readonly TimeSpan _browserTaskTimeout;
 	private DesktopVisionApprovalCallback? _desktopVisionApprovalCallback;
 	private AutomationApprovalCallback? _browserApprovalCallback;
-	private IAutomationAuditSink? _auditSink;
+	private AutomationAuditRepository? _auditSink;
 	private readonly SemaphoreSlim _browserGate = new(1, 1);
 	private readonly object _browserStateGate = new();
 	private IAutomationBrowserRunner? _browserRunner;
@@ -253,7 +253,7 @@ public sealed class AutomationRuntime : IAsyncDisposable
 		Func<IDesktopVisionWindowCatalog>? desktopVisionWindowCatalogFactory = null,
 		DesktopVisionApprovalCallback? desktopVisionApprovalCallback = null,
 		AutomationApprovalCallback? browserApprovalCallback = null,
-		IAutomationAuditSink? auditSink = null,
+		AutomationAuditRepository? auditSink = null,
 		BrowserAutomationResultStore? browserResults = null,
 		TimeSpan? browserTaskTimeout = null)
 	{
@@ -320,7 +320,7 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	}
 
 	/// <summary>设置审计接收器；审计失败不会影响自动化生命周期。</summary>
-	public IAutomationAuditSink? AuditSink
+	public AutomationAuditRepository? AuditSink
 	{
 		get => _auditSink;
 		set => _auditSink = value;

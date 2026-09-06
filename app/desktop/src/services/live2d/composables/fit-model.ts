@@ -50,7 +50,7 @@ export const MIN_PET_BASE_WIDTH = 240
 export const MIN_PET_BASE_HEIGHT = 320
 
 /**
- * 计算安全的桌宠基准视口尺寸 (DIP)
+ * 计算安全的伴侣基准视口尺寸 (DIP)
  *
  * 避免模型原始画布过大 (如 2048x2048 或 4096) 导致窗口尺寸爆炸、
  * 产生巨大矩形透明区域或 WebGL 显存溢出。
@@ -70,7 +70,7 @@ export const calculateSafeBaseSize = (
 		return {width: DEFAULT_PET_WIDTH, height: DEFAULT_PET_HEIGHT}
 	}
 
-	// 原始尺寸如果已经在合理的桌宠范围内，直接使用
+	// 原始尺寸如果已经在合理的伴侣视窗范围内，直接使用
 	if (
 		rawWidth <= MAX_PET_BASE_WIDTH &&
 		rawHeight <= MAX_PET_BASE_HEIGHT &&

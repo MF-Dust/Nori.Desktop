@@ -139,6 +139,13 @@ const communityLinks = computed<CommunityLink[]>(() => [
 		mode: "fill",
 		url: "https://space.bilibili.com/326505494",
 	},
+	{
+		key: "github",
+		label: I18N.value.links.github,
+		icon: "github",
+		mode: "fill",
+		url: "https://github.com/MF-Dust/Nori-Desktop-Pet",
+	},
 ])
 
 // 导航磁贴 (状态一律由上方运行概况承担, 这里只留去处)

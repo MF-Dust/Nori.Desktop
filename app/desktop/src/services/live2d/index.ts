@@ -76,7 +76,7 @@ export interface Live2DMountOptions {
 	 */
 	container?: HTMLElement
 	/**
-	 * 兼容字段: 预览与桌宠都统一按 userScale 缩放, 这里保留给旧调用.
+	 * 兼容字段: 预览与伴侣视窗都统一按 userScale 缩放, 这里保留给旧调用.
 	 */
 	fitModelToContainer?: boolean
 }

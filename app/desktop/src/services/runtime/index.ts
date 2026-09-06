@@ -490,7 +490,7 @@ export const RUNTIME = {
 	},
 
 	/**
-	 * init 窗口把主界面切换交给宿主；宿主会按模型有效性与 pet_auto_summon 决定桌宠显隐。
+	 * init 窗口把主界面切换交给宿主；宿主会按模型有效性与 pet_auto_summon 决定伴侣视窗显隐。
 	 */
 	initEnterMain(): Promise<void> {
 		return invoke("init_enter_main")
@@ -709,7 +709,7 @@ export const RUNTIME = {
 	},
 
 	// ------------------------------------------------------------------
-	// 桌宠 / 日志 / 调试
+	// 伴侣 / 日志 / 调试
 	// ------------------------------------------------------------------
 
 	getRecentLogs(): Promise<{time: string; level: string; source: string; message: string}[]> {

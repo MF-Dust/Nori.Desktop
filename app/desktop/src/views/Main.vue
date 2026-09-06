@@ -111,14 +111,14 @@ const exitApp = () => {
 	void RUNTIME.exitApp()
 }
 
-// 桌宠当前是否显示: 宿主快照是唯一真相 (托盘切换后会广播 state-changed, 不会陈旧)
+// 伴侣当前是否显示: 宿主快照是唯一真相 (托盘切换后会广播 state-changed, 不会陈旧)
 const petVisible = computed(() => RUNTIME.snapshot.value?.pet.visible ?? false)
 const selectedModelName = computed(() => {
 	const MODEL_ID = RUNTIME.snapshot.value?.models.selected ?? "nori"
 	return MODEL_LIST.find(model => model.id === MODEL_ID)?.name ?? MODEL_ID
 })
 
-// 召唤 / 收起桌宠
+// 唤出 / 收起 Nori
 const togglePet = async () => {
 	try {
 		if (petVisible.value) {
@@ -311,7 +311,7 @@ onBeforeUnmount(() => {
 			</p>
 
 			<div class="flex items-center justify-between gap-3">
-				<!-- 桌宠实时连接胶囊 -->
+				<!-- 伴侣实时连接胶囊 -->
 				<div class="flex items-center gap-2">
 					<AppChip :tone="petVisible ? 'success' : 'neutral'" dot>
 						<span>{{ I18N.footer.petLabel }}: {{ petVisible ? I18N.footer.petOnline : I18N.footer.petOffline }}</span>

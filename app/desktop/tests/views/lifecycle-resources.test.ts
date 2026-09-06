@@ -49,7 +49,7 @@ describe("页面与宿主资源生命周期", () => {
 		expect(LIVE2D).not.toContain("inner.app.destroy(true)\n")
 	})
 
-	it("真正关闭桌宠窗口时断开运行时事件与 WindowManager 强引用", () => {
+	it("真正关闭伴侣窗口时断开运行时事件与 WindowManager 强引用", () => {
 		const PET_WINDOW = readProject("Nori.Desktop/Windows/PetWindow.cs")
 		const WINDOW_MANAGER = readProject("Nori.Desktop/Windows/WindowManager.cs")
 

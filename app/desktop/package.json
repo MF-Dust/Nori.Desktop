@@ -1,7 +1,7 @@
 {
 	"name": "nori-desktop-pet",
 	"private": true,
-	"description": "Nori Desktop Pet - a desktop pet application",
+	"description": "Nori Desktop - an open-source AI companion application",
 	"license": "GPL-3.0",
 	"author": "erhio, Nori, qicajie",
 	"type": "module",

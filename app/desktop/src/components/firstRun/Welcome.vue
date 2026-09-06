@@ -106,7 +106,7 @@ const handleLink = async (link: Link) => {
 			<div class="flex items-center gap-1.5">
 				<span class="chip-teal">
 					<Icon name="sparkles" :size="12"/>
-					<span>Live2D Cyber Pet</span>
+					<span>Live2D Cyber Companion</span>
 				</span>
 				<span class="chip mono">{{ VERSION }}</span>
 			</div>

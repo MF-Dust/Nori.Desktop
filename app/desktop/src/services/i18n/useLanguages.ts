@@ -222,6 +222,7 @@ export default () => {
 						noriOS: t("views.main.home.links.noriOS"),
 						qq: t("views.main.home.links.qq"),
 						bilibili: t("views.main.home.links.bilibili"),
+						github: t("views.main.home.links.github"),
 						copied: t("views.main.home.links.copied"),
 					},
 				},

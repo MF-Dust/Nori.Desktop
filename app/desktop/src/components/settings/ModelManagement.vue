@@ -180,7 +180,7 @@ const syncPreviewClickInteraction = async () => {
 	PREVIEW.setClickInteraction(previewClickInteraction.value)
 }
 
-// 预览模型显示参数 (调整的模型, 非桌宠当前模型)
+// 预览模型显示参数 (调整的模型, 非伴侣当前模型)
 const pvScale = ref(1)
 const previewExpressionList = ref<string[]>([])
 
@@ -197,7 +197,7 @@ const onWindowResize = () => {
 	if (adjustFor.value) refreshPreviewLayout()
 }
 
-// ---- 预览配置保存 (按模型存储, 桌宠窗口会热更新) ----
+// ---- 预览配置保存 (按模型存储, 伴侣窗口会热更新) ----
 // 滑杆连续拖动会刷出大量写入, 统一走 SAVE 的 400ms 防抖 (每模型/字段独立计时器, 关面板与卸载时 flush)
 const savePreviewScale = (): void => {
 	const MODEL = adjustFor.value
@@ -486,7 +486,7 @@ onBeforeUnmount(() => {
 				</p>
 			</AppCard>
 
-			<!-- 3. 桌宠行为: 组件自带小标题, 这里只补卡片外壳 -->
+			<!-- 3. 伴侣交互行为: 组件自带小标题, 这里只补卡片外壳 -->
 			<AppCard>
 				<Live2dBehaviorControls :model-id="selectedModel"/>
 			</AppCard>
@@ -543,7 +543,7 @@ onBeforeUnmount(() => {
 					</div>
 
 					<div class="flex-1 min-w-0 flex flex-col gap-3.5 scroll-area">
-						<!-- 标签页 1: 基础显示 + 桌宠行为 (两组各自成卡) -->
+						<!-- 标签页 1: 基础显示 + 交互行为 (两组各自成卡) -->
 						<AppCard v-show="adjustTab === 'display'">
 							<AdjustControls
 								:model-id="adjustFor"

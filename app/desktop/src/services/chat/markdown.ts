@@ -5,7 +5,7 @@
  *   1. markdown-it 关闭 html, 原始标签一律转义
  *   2. DOMPurify 白名单再过一遍, 挡掉事件属性与 javascript: 伪协议
  *
- * 链接一律不在 WebView 内导航 (会把桌宠界面顶掉), 渲染成带 data-external 的锚点,
+ * 链接一律不在 WebView 内导航 (会把控制台界面顶掉), 渲染成带 data-external 的锚点,
  * 由 ChatView 统一拦截 click 交给宿主 open_url。
  */
 import MarkdownIt from "markdown-it"

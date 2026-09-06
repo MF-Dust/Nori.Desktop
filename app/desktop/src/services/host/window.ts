@@ -3,7 +3,7 @@
  *
  * 对应原 @tauri-apps/api/webviewWindow 与 /dpi.
  *
- * 桌宠头部跟踪每帧都要读窗口位置与缩放, 走 JSON 桥比 Tauri IPC 贵得多,
+ * 伴侣头部跟踪每帧都要读窗口位置与缩放, 走 JSON 桥比 Tauri IPC 贵得多,
  * 因此这里缓存这两项, 由宿主在窗口移动/缩放变化时推 nori:window-metrics 更新,
  * 调用方 (PetView) 不需要任何改动就能少掉两次往返.
  */
@@ -26,7 +26,7 @@ export class PhysicalPosition {
 }
 
 /**
- * 桌宠窗口命中图
+ * 伴侣窗口命中图
  */
 export interface WindowInputMask {
 	width: number

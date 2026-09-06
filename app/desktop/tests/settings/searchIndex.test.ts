@@ -29,7 +29,7 @@ describe("设置搜索索引", () => {
 				},
 				startup: {
 					title: "启动与运行行为",
-					autoSummon: "启动时自动唤出桌宠",
+					autoSummon: "启动时自动唤出 Nori",
 				},
 				loose: "没有小节的散装文案",
 			},
@@ -39,7 +39,7 @@ describe("设置搜索索引", () => {
 
 	it("命中字段文案, 并报出所在小节", () => {
 		expect(matchSettingsEntry(ENTRY, "匿名诊断")).toEqual(["诊断与隐私"])
-		expect(matchSettingsEntry(ENTRY, "唤出桌宠")).toEqual(["启动与运行行为"])
+		expect(matchSettingsEntry(ENTRY, "唤出 Nori")).toEqual(["启动与运行行为"])
 	})
 
 	it("命中英文键名 (中文语言包下也能搜英文术语)", () => {

@@ -37,7 +37,7 @@ export interface GeneralState {
 	sidebarCollapsed: boolean
 }
 
-/** 桌宠窗口状态 (宿主显隐的唯一真相, 托盘切换后同样同步) */
+/** 伴侣窗口状态 (宿主显隐的唯一真相, 托盘切换后同样同步) */
 export interface PetState {
 	visible: boolean
 }
@@ -58,7 +58,7 @@ export interface PlatformState {
 	supportsGlobalCursor: boolean
 	/** 能否从 HTML 标题栏发起原生窗口拖动 */
 	supportsWindowDrag: boolean
-	/** 能否按桌宠模型交互范围做点击空透 */
+	/** 能否按伴侣模型交互范围做点击空透 */
 	supportsHitThrough: boolean
 	/** 能否置顶窗口 */
 	supportsTopmost: boolean

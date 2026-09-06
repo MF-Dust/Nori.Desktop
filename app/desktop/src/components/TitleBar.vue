@@ -89,7 +89,7 @@ const startDrag = (event: MouseEvent) => {
 			</span>
 			<!-- 渐变裁剪文字在 WebView2 合成异常时会整行不可见, 这里用实色 + 轻光晕 -->
 			<span class="text-md font-700 tracking-[0.06rem] text-text-primary [text-shadow:0_0_1.2rem_var(--glow-teal-soft)]">Nori</span>
-			<span class="px-1.5 py-0.2 rounded-pill text-xs font-500 bg-overlay-4 border border-line-subtle text-text-faint mono">Pet OS</span>
+			<span class="px-1.5 py-0.2 rounded-pill text-xs font-500 bg-overlay-4 border border-line-subtle text-text-faint mono">Nori OS</span>
 			<!-- 拿不到原生拖动时给一个明确的提示图标, 不让用户以为标题栏坏了 -->
 			<span
 				v-if="!canDrag"

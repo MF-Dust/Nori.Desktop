@@ -31,7 +31,7 @@ describe("音频电平计算", () => {
 	})
 
 	it("小幅 RMS 被放大 3 倍进入可用动态范围", () => {
-		// 0.1 的 RMS → 0.3, 桌宠口型才有明显开合
+		// 0.1 的 RMS → 0.3, 伴侣嘴型才有明显开合
 		expect(computeLevel(new Float32Array(32).fill(0.1))).toBeCloseTo(0.3, 6)
 	})
 })

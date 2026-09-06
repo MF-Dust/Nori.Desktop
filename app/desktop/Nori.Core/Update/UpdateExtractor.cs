@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Nori.Core.Data;
 
 namespace Nori.Core.Update;
 
@@ -82,8 +83,8 @@ public static class UpdateExtractor
 
 		EnsureContained(fullStaging, Path.Combine(fullPackageRoot, "data", "updates", "staging"));
 		EnsureNoReparsePoints(fullArchive);
-		EnsureNoReparsePoints(fullStaging);
-		EnsureNoReparsePoints(Path.Combine(fullPackageRoot, ".current"));
+		EnsureNoReparsePoints(fullStaging, fullPackageRoot);
+		EnsureNoReparsePoints(Path.Combine(fullPackageRoot, ".current"), fullPackageRoot);
 		SlotManifest running = ReadAndValidateManifest(Path.Combine(fullPackageRoot, currentRunningSlotName), expectedRid);
 		if (running.NumericVersion != curNumeric || running.Revision != curRevision)
 			throw new InvalidOperationException("当前运行槽名称与部署清单不一致");
@@ -120,8 +121,8 @@ public static class UpdateExtractor
 			string finalSlotPath = Path.Combine(fullPackageRoot, slotName);
 			string partialSlotPath = Path.Combine(fullPackageRoot, slotName + $".{Guid.NewGuid():N}.partial");
 			string currentPath = Path.Combine(fullPackageRoot, ".current");
-			EnsureNoReparsePoints(finalSlotPath);
-			EnsureNoReparsePoints(currentPath);
+			EnsureNoReparsePoints(finalSlotPath, fullPackageRoot);
+			EnsureNoReparsePoints(currentPath, fullPackageRoot);
 
 			// 4. 若最终槽已存在：禁止移入 .destroy 或直接覆盖（防止破坏正在运行的实例）
 			if (Directory.Exists(finalSlotPath))
@@ -212,7 +213,7 @@ public static class UpdateExtractor
 			throw new InvalidOperationException($"部署入口不存在或超出槽目录: {entrypoint}");
 		}
 
-		EnsureNoReparsePoints(entryPath);
+		EnsureNoReparsePoints(entryPath, fullSlot);
 		return new SlotManifest(schema, product, numeric, revision, rid, entrypoint);
 	}
 
@@ -437,18 +438,22 @@ public static class UpdateExtractor
 	}
 
 	/// <summary>拒绝目标及任意父目录中的符号链接或重解析点。</summary>
-	internal static void EnsureNoReparsePoints(string path)
+	internal static void EnsureNoReparsePoints(string path, string? boundaryRoot = null)
 	{
-		for (string? current = Path.GetFullPath(path); current is not null; current = Path.GetDirectoryName(current))
+		if (boundaryRoot is not null)
 		{
-			try
-			{
-				if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-					throw new InvalidOperationException($"更新路径包含符号链接或重解析点: {current}");
-			}
-			catch (FileNotFoundException) { }
-			catch (DirectoryNotFoundException) { }
+			AppStoragePaths.EnsureNoReparsePoints(path, boundaryRoot);
+			return;
 		}
+
+		string fullPath = Path.GetFullPath(path);
+		try
+		{
+			if ((File.GetAttributes(fullPath) & FileAttributes.ReparsePoint) != 0)
+				throw new InvalidOperationException($"更新路径包含符号链接或重解析点: {fullPath}");
+		}
+		catch (FileNotFoundException) { }
+		catch (DirectoryNotFoundException) { }
 	}
 
 	private static void WriteCurrent(string path, string slot)

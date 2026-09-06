@@ -96,9 +96,11 @@ $hash = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLower
 $checksumPath = $artifactPath + ".sha256"
 [IO.File]::WriteAllText($checksumPath, ($hash + "  " + $artifactName + "`n"), (New-Object Text.UTF8Encoding($false)))
 
-node (Join-Path $PSScriptRoot "generate-update-manifest.mjs") `
-	--version $Version --rid win-x64 --archive-path $artifactPath --publish-dir $publish --output-dir $output
-if ($LASTEXITCODE -ne 0) { throw "生成 Windows 更新清单失败" }
+if ($Version -ne "Dev") {
+	node (Join-Path $PSScriptRoot "generate-update-manifest.mjs") `
+		--version $Version --rid win-x64 --archive-path $artifactPath --publish-dir $publish --output-dir $output
+	if ($LASTEXITCODE -ne 0) { throw "生成 Windows 更新清单失败" }
+}
 
 Remove-Item -LiteralPath $staging, $expanded -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "Windows framework-dependent ZIP 已生成: $artifactPath"

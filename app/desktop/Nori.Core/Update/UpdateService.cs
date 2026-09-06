@@ -141,7 +141,7 @@ public sealed class UpdateService : IDisposable
 		{
 			UpdateManifest candidate;
 			lock (_stateLock) candidate = _candidate ?? throw new InvalidOperationException("当前没有可安装的候选版本，请先检查更新");
-			UpdateExtractor.EnsureNoReparsePoints(_paths.UpdatesDownloadDirectory);
+			UpdateExtractor.EnsureNoReparsePoints(_paths.UpdatesDownloadDirectory, _paths.PackageRoot);
 			Directory.CreateDirectory(_paths.UpdatesDownloadDirectory);
 			long requiredSpace = candidate.SizeBytes + UpdateExtractor.MaxTotalBytes + 64L * 1024 * 1024;
 			if (new DriveInfo(Path.GetPathRoot(_paths.PackageRoot)!).AvailableFreeSpace < requiredSpace)
@@ -181,7 +181,7 @@ public sealed class UpdateService : IDisposable
 			ObjectDisposedException.ThrowIf(_disposed, this);
 			if (_status.State != UpdaterState.ReadyToRestart || _status.CommittedSlot is not { } slot || _activeCts is not null)
 				throw new InvalidOperationException("当前没有已就绪的更新");
-			UpdateExtractor.EnsureNoReparsePoints(Path.Combine(_paths.PackageRoot, ".current"));
+			UpdateExtractor.EnsureNoReparsePoints(Path.Combine(_paths.PackageRoot, ".current"), _paths.PackageRoot);
 			if (File.ReadAllText(Path.Combine(_paths.PackageRoot, ".current")).Trim() != slot.SlotName)
 				throw new InvalidOperationException("部署槽指针已改变，请重新启动应用");
 		}
@@ -219,7 +219,7 @@ public sealed class UpdateService : IDisposable
 		if (_safeMode) throw new InvalidOperationException("安全模式已禁用自动更新功能");
 		if (_rid is not ("win-x64" or "linux-x64" or "osx-arm64")) throw new InvalidOperationException($"当前架构 ({_rid}) 不在正式更新支持列表中");
 		string launcher = ResolveLauncher();
-		UpdateExtractor.EnsureNoReparsePoints(launcher);
+		UpdateExtractor.EnsureNoReparsePoints(launcher, _paths.PackageRoot);
 		if (!File.Exists(launcher)) throw new InvalidOperationException("未找到可信的根启动器入口，拒绝执行更新");
 		string slot = ResolveRunningSlot();
 		SlotManifest manifest = UpdateExtractor.ReadAndValidateManifest(slot, _rid);
@@ -244,7 +244,7 @@ public sealed class UpdateService : IDisposable
 		if (directory?.Parent is null || !directory.Name.StartsWith("app-", StringComparison.Ordinal)) throw new InvalidOperationException("当前进程不在发布包部署槽中");
 		string? env = Environment.GetEnvironmentVariable("NORI_DEPLOYMENT_ROOT");
 		if (!string.IsNullOrWhiteSpace(env) && !PathsEqual(env, directory.FullName)) throw new InvalidOperationException("部署环境变量与当前进程不一致");
-		UpdateExtractor.EnsureNoReparsePoints(directory.FullName);
+		UpdateExtractor.EnsureNoReparsePoints(directory.FullName, _paths.PackageRoot);
 		return directory.FullName;
 	}
 

@@ -543,6 +543,7 @@ export default () => {
 					general: t("views.main.settingsTabs.general"),
 					debug: t("views.main.settingsTabs.debug"),
 					about: t("views.main.settingsTabs.about"),
+					updates: t("views.main.settingsTabs.updates"),
 				},
 				automation: {
 					title: t("views.main.automation.title"),
@@ -760,6 +761,7 @@ export default () => {
 						available: t("views.main.general.updates.available"),
 						downloadAndInstall: t("views.main.general.updates.downloadAndInstall"),
 					installNotice: t("views.main.general.updates.installNotice"),
+					subtitle: t("views.main.general.updates.subtitle"),
 					commitNotice: t("views.main.general.updates.commitNotice"),
 					cancelling: t("views.main.general.updates.cancelling"),
 					manualRequired: t("views.main.general.updates.manualRequired"),

@@ -24,7 +24,6 @@
 		<PackageReference Include="OpenAI" Version="2.12.0"/>
 		<PackageReference Include="Anthropic" Version="12.42.0"/>
 		<PackageReference Include="Google.GenAI" Version="1.19.0"/>
-		<PackageReference Include="Microsoft.Security.AntiSSRF" Version="1.0.0"/>
 		<PackageReference Include="AngleSharp" Version="1.7.1"/>
 		<PackageReference Include="YamlDotNet" Version="18.1.0"/>
 		<PackageReference Include="NLog" Version="6.2.0"/>

@@ -67,7 +67,7 @@ const NAV_ITEMS = computed<{key: NavKey; label: string; icon: IconName; badge?: 
 const UPDATE = computed(() => RUNTIME.snapshot.value?.updater)
 const UPDATE_NOTICE = computed(() => UPDATE.value?.state === "available" || UPDATE.value?.state === "readytorestart")
 const showUpdate = () => {
-	settingsTarget.value = "general"
+	settingsTarget.value = "updates"
 	settingsSeq.value += 1
 	goNav("settings", activeNav.value)
 }

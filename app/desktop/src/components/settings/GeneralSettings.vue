@@ -15,7 +15,15 @@ import Icon from "../Icon.vue"
 import zhCn from "../../assets/images/flags/cn.png"
 import enUs from "../../assets/images/flags/us.png"
 
+const PROPS = withDefaults(defineProps<{
+	updatesOnly?: boolean
+}>(), {
+	updatesOnly: false,
+})
+
 const TEXT = computed(() => useLanguages().views.main.general)
+const PAGE_TITLE = computed(() => PROPS.updatesOnly ? TEXT.value.updates.title : TEXT.value.title)
+const PAGE_SUBTITLE = computed(() => PROPS.updatesOnly ? TEXT.value.updates.subtitle : TEXT.value.subtitle)
 
 const SAVE_MGR = useSnapshotSave({
 	onError: (key, error) => {
@@ -196,9 +204,10 @@ onMounted(() => {
 
 <template>
 	<div class="w-full h-full flex flex-col gap-4 px-6 py-4 scroll-area">
-		<AppSectionHeader :title="TEXT.title" :subtitle="TEXT.subtitle"/>
+		<AppSectionHeader :title="PAGE_TITLE" :subtitle="PAGE_SUBTITLE"/>
 
 		<div class="flex flex-col gap-3.5 pb-5">
+		<template v-if="!PROPS.updatesOnly">
 			<!-- 1. 界面语言 -->
 			<AppCard :title="TEXT.language.title" icon="noriOS">
 				<div class="flex flex-wrap gap-2.5">
@@ -267,9 +276,10 @@ onMounted(() => {
 				/>
 				<span class="text-hint">{{ TELEMETRY_STATUS }}</span>
 			</AppCard>
+		</template>
 
-			<!-- 4. 软件更新 -->
-			<AppCard :title="TEXT.updates.title" icon="sparkle">
+		<!-- 4. 软件更新 -->
+		<AppCard :title="TEXT.updates.title" icon="sparkle">
 				<template #actions>
 					<AppButton
 						variant="ghost"

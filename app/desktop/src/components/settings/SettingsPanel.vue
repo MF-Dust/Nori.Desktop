@@ -25,7 +25,7 @@ import DebugSettings from "./DebugSettings.vue"
 import AboutSettings from "./AboutSettings.vue"
 
 /** 二级页 key, 同时是它在语言包 `views.main` 下的子树名 (搜索索引靠这个对应) */
-type SettingsTabKey = "ai" | "voice" | "proactive" | "skills" | "mcp" | "automation" | "plugins" | "general" | "debug" | "about"
+type SettingsTabKey = "ai" | "voice" | "proactive" | "skills" | "mcp" | "automation" | "plugins" | "general" | "updates" | "debug" | "about"
 
 const props = withDefaults(defineProps<{
 	/** 打开时直达的子页 (主页磁贴跳转用) */
@@ -89,6 +89,7 @@ const TAB_GROUPS = computed<TabGroup[]>(() => [
 		title: GROUP_I18N.value.system,
 		tabs: [
 			{key: "general", label: I18N.value.general, icon: "settings"},
+			{key: "updates", label: I18N.value.updates, icon: "refresh"},
 			{key: "debug", label: I18N.value.debug, icon: "terminal"},
 			{key: "about", label: I18N.value.about, icon: "info"},
 		],
@@ -106,7 +107,9 @@ const SEARCH_INDEX = computed(() => {
 	return buildSettingsSearchIndex(ALL_TABS.value.map(tab => ({
 		key: tab.key,
 		label: tab.label,
-		page: ROOT?.[tab.key],
+		page: tab.key === "updates" && ROOT?.general && typeof ROOT.general !== "string"
+			? ROOT.general.updates
+			: ROOT?.[tab.key],
 	})))
 })
 
@@ -239,6 +242,7 @@ const onListKeydown = (event: KeyboardEvent) => {
 					<AutomationSettings v-else-if="currentTab === 'automation'"/>
 					<PluginsSettings v-else-if="currentTab === 'plugins'"/>
 					<GeneralSettings v-else-if="currentTab === 'general'"/>
+					<GeneralSettings v-else-if="currentTab === 'updates'" updates-only/>
 					<DebugSettings v-else-if="currentTab === 'debug'"/>
 					<AboutSettings v-else/>
 				</KeepAlive>

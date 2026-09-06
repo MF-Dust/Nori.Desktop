@@ -334,10 +334,6 @@ public static class BuiltinTools
 				{
 					response = await deps.Http.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, ct);
 				}
-				catch (Microsoft.Security.AntiSSRF.AntiSSRFException exception)
-				{
-					throw UrlAccessPolicy.Translate(exception, resolved.Endpoint);
-				}
 				catch (HttpRequestException exception)
 				{
 					throw UrlAccessPolicy.Translate(exception, resolved.Endpoint);

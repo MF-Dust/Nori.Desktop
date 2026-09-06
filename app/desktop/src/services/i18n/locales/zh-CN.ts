@@ -539,6 +539,7 @@ export default {
 				general: "系统常规",
 				debug: "调试",
 				about: "关于 Nori",
+				updates: "软件更新",
 			},
 			automation: {
 				title: "系统与自动化设置",
@@ -756,6 +757,7 @@ export default {
 					available: "发现新版本",
 					downloadAndInstall: "确认下载并安装",
 					installNotice: "安装到独立新槽，保留当前版本和用户数据；完成后由您决定何时重启。",
+					subtitle: "管理稳定版检查、下载安装与重启时机",
 					commitNotice: "解压可取消；最后提交阶段将安全完成，不强行中断。",
 					cancelling: "正在取消...",
 					manualRequired: "此正式版没有适用的自动更新清单，请手动下载。",

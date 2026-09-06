@@ -539,6 +539,7 @@ export default {
 				general: "General System",
 				debug: "Debug",
 				about: "About Nori",
+				updates: "Software Updates",
 			},
 			automation: {
 				title: "System & Automation Settings",
@@ -756,6 +757,7 @@ export default {
 					available: "New version available",
 					downloadAndInstall: "Confirm Download & Install",
 					installNotice: "Installs into a separate slot, preserving your current version and data. You decide when to restart.",
+					subtitle: "Manage stable release checks, installation and restart timing",
 					commitNotice: "Extraction can be cancelled; the final commit will finish safely without interruption.",
 					cancelling: "Cancelling...",
 					manualRequired: "This stable release has no compatible update manifest. Please download it manually.",

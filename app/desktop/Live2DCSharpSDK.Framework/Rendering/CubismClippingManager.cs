@@ -25,10 +25,6 @@ public abstract class CubismClippingManager
     public const int ClippingMaskMaxCountOnMultiRenderTexture = 32;
 
     /// <summary>
-    /// オフスクリーンサーフェイスのアドレス
-    /// </summary>
-    protected CubismOffscreenSurface CurrentMaskBuffer;
-    /// <summary>
     /// マスクのクリアフラグの配列
     /// </summary>
     protected List<bool> ClearedMaskBufferFlags = [];

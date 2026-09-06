@@ -56,27 +56,6 @@ public record CubismModelMatrix : CubismMatrix44
     }
 
     /// <summary>
-    /// 位置を設定する。
-    /// </summary>
-    /// <param name="x">X軸の位置</param>
-    /// <param name="y">Y軸の位置</param>
-    public void SetPosition(float x, float y)
-    {
-        Translate(x, y);
-    }
-
-    /// <summary>
-    /// 中心位置を設定する。
-    /// </summary>
-    /// <param name="x">X軸の中心位置</param>
-    /// <param name="y">Y軸の中心位置</param>
-    public void SetCenterPosition(float x, float y)
-    {
-        CenterX(x);
-        CenterY(y);
-    }
-
-    /// <summary>
     /// 上辺の位置を設定する。
     /// </summary>
     /// <param name="y">上辺のY軸位置</param>

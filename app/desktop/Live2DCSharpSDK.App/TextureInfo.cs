@@ -5,19 +5,10 @@
 /// </summary>
 public abstract class TextureInfo
 {
-    public int Index;
     /// <summary>
     /// テクスチャID
     /// </summary>
     public int Id;
-    /// <summary>
-    /// 横幅
-    /// </summary>
-    public int Width;
-    /// <summary>
-    /// 高さ
-    /// </summary>
-    public int Height;
     /// <summary>
     /// ファイル名
     /// </summary>

@@ -11,18 +11,6 @@ public class CubismIdManager
     private readonly List<string> _ids = [];
 
     /// <summary>
-    /// ID名をリストから登録する。
-    /// </summary>
-    /// <param name="list">ID名リスト</param>
-    public void RegisterIds(List<string> list)
-    {
-        list.ForEach((item) =>
-        {
-            GetId(item);
-        });
-    }
-
-    /// <summary>
     /// ID名からIDを取得する。
     /// 未登録のID名の場合、登録も行う。
     /// </summary>

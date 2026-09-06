@@ -11,11 +11,6 @@ public static class CubismLog
         CubismFramework.CoreLogFunction(data);
     }
 
-    public static void Verbose(string fmt, params object?[] args)
-    {
-        CubismLogPrintln(LogLevel.Verbose, "[V]", fmt, args);
-    }
-
     public static void Debug(string fmt, params object?[] args)
     {
         CubismLogPrintln(LogLevel.Debug, "[D]", fmt, args);

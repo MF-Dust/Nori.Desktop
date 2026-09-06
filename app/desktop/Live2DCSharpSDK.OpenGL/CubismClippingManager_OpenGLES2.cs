@@ -50,8 +50,8 @@ public class CubismClippingManager_OpenGLES2(OpenGLApi gl) : CubismClippingManag
         gl.Viewport(0, 0, (int)ClippingMaskBufferSize.X, (int)ClippingMaskBufferSize.Y);
 
         // 後の計算のためにインデックスの最初をセット
-        CurrentMaskBuffer = renderer.GetMaskBuffer(0);
-        var buffer = (CurrentMaskBuffer as CubismOffscreenSurface_OpenGLES2)!;
+        var currentMaskBuffer = renderer.GetMaskBuffer(0);
+        var buffer = currentMaskBuffer;
         // ----- マスク描画処理 -----
         buffer.BeginDraw(lastFBO);
 
@@ -93,11 +93,11 @@ public class CubismClippingManager_OpenGLES2(OpenGLApi gl) : CubismClippingManag
             var clipContextOffscreenSurface = renderer.GetMaskBuffer(clipContext.BufferIndex);
 
             // 現在のオフスクリーンサーフェイスがclipContextのものと異なる場合
-            if (CurrentMaskBuffer != clipContextOffscreenSurface)
+            if (currentMaskBuffer != clipContextOffscreenSurface)
             {
                 buffer.EndDraw();
-                CurrentMaskBuffer = clipContextOffscreenSurface;
-                buffer = (CurrentMaskBuffer as CubismOffscreenSurface_OpenGLES2)!;
+                currentMaskBuffer = clipContextOffscreenSurface;
+                buffer = currentMaskBuffer;
                 // マスク用RenderTextureをactiveにセット
                 buffer.BeginDraw(lastFBO);
 

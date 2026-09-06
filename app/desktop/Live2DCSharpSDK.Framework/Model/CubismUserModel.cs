@@ -46,14 +46,6 @@ public abstract class CubismUserModel : IDisposable
     /// </summary>
     protected CubismMotionManager _motionManager;
     /// <summary>
-    /// 表情管理
-    /// </summary>
-    protected CubismExpressionMotionManager _expressionManager;
-    /// <summary>
-    /// 自動まばたき
-    /// </summary>
-    protected CubismEyeBlink? _eyeBlink;
-    /// <summary>
     /// 呼吸
     /// </summary>
     protected CubismBreath _breath;
@@ -70,18 +62,6 @@ public abstract class CubismUserModel : IDisposable
     /// </summary>
     protected CubismPhysics? _physics;
     /// <summary>
-    /// ユーザデータ
-    /// </summary>
-    protected CubismModelUserData? _modelUserData;
-    /// <summary>
-    /// リップシンクするかどうか
-    /// </summary>
-    protected bool _lipSync;
-    /// <summary>
-    /// 最後のリップシンクの制御値
-    /// </summary>
-    protected float _lastLipSyncValue;
-    /// <summary>
     /// マウスドラッグのX位置
     /// </summary>
     protected float _dragX;
@@ -89,18 +69,6 @@ public abstract class CubismUserModel : IDisposable
     /// マウスドラッグのY位置
     /// </summary>
     protected float _dragY;
-    /// <summary>
-    /// X軸方向の加速度
-    /// </summary>
-    protected float _accelerationX;
-    /// <summary>
-    /// Y軸方向の加速度
-    /// </summary>
-    protected float _accelerationY;
-    /// <summary>
-    /// Z軸方向の加速度
-    /// </summary>
-    protected float _accelerationZ;
     /// <summary>
     /// MOC3整合性検証するかどうか
     /// </summary>
@@ -122,17 +90,12 @@ public abstract class CubismUserModel : IDisposable
     /// </summary>
     public CubismUserModel()
     {
-        _lipSync = true;
-
         Opacity = 1.0f;
 
         // モーションマネージャーを作成
         // MotionQueueManagerクラスからの継承なので使い方は同じ
         _motionManager = new();
         _motionManager.SetEventCallback(CubismDefaultMotionEventCallback, this);
-
-        // 表情モーションマネージャを作成
-        _expressionManager = new();
 
         // ドラッグによるアニメーション
         _dragManager = new();
@@ -153,19 +116,6 @@ public abstract class CubismUserModel : IDisposable
     public void SetDragging(float x, float y)
     {
         _dragManager.Set(x, y);
-    }
-
-    /// <summary>
-    /// 加速度の情報を設定する。
-    /// </summary>
-    /// <param name="x">X軸方向の加速度</param>
-    /// <param name="y">Y軸方向の加速度</param>
-    /// <param name="z">Z軸方向の加速度</param>
-    protected void SetAcceleration(float x, float y, float z)
-    {
-        _accelerationX = x;
-        _accelerationY = y;
-        _accelerationZ = z;
     }
 
     /// <summary>
@@ -196,15 +146,6 @@ public abstract class CubismUserModel : IDisposable
     protected void LoadPhysics(string buffer)
     {
         _physics = new CubismPhysics(buffer);
-    }
-
-    /// <summary>
-    /// ユーザーデータを読み込む。
-    /// </summary>
-    /// <param name="buffer">userdata3.jsonが読み込まれているバッファ</param>
-    protected void LoadUserData(string buffer)
-    {
-        _modelUserData = new CubismModelUserData(buffer);
     }
 
     /// <summary>

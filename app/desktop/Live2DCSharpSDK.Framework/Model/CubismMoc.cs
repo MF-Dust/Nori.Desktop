@@ -13,11 +13,6 @@ public class CubismMoc : IDisposable
     /// Mocデータ
     /// </summary>
     private readonly IntPtr _moc;
-    /// <summary>
-    /// 読み込んだモデルの.moc3 Version
-    /// </summary>
-    public uint MocVersion { get; }
-
     public CubismModel Model { get; }
 
     /// <summary>
@@ -34,7 +29,7 @@ public class CubismMoc : IDisposable
         if (shouldCheckMocConsistency)
         {
             // .moc3の整合性を確認
-            bool consistency = HasMocConsistency(alignedBuffer, mocBytes.Length);
+            bool consistency = CubismCore.HasMocConsistency(alignedBuffer, mocBytes.Length);
             if (!consistency)
             {
                 CubismFramework.DeallocateAligned(alignedBuffer);
@@ -53,8 +48,6 @@ public class CubismMoc : IDisposable
 
         _moc = moc;
 
-        MocVersion = CubismCore.GetMocVersion(alignedBuffer, mocBytes.Length);
-
         var modelSize = CubismCore.GetSizeofModel(_moc);
         var modelMemory = CubismFramework.AllocateAligned(modelSize, CsmEnum.CsmAlignofModel);
 
@@ -66,44 +59,6 @@ public class CubismMoc : IDisposable
         }
 
         Model = new CubismModel(model);
-    }
-
-    /// <summary>
-    /// 最新の.moc3 Versionを取得する。
-    /// </summary>
-    /// <returns></returns>
-    public static uint GetLatestMocVersion()
-    {
-        return CubismCore.GetLatestMocVersion();
-    }
-
-    /// <summary>
-    /// Checks consistency of a moc.
-    /// </summary>
-    /// <param name="address">Address of unrevived moc. The address must be aligned to 'csmAlignofMoc'.</param>
-    /// <param name="size">Size of moc (in bytes).</param>
-    /// <returns>'1' if Moc is valid; '0' otherwise.</returns>
-    public static bool HasMocConsistency(IntPtr address, int size)
-    {
-        return CubismCore.HasMocConsistency(address, size);
-    }
-
-    /// <summary>
-    /// Checks consistency of a moc.
-    /// </summary>
-    /// <param name="mocBytes">Mocファイルのバッファ</param>
-    /// <param name="size">バッファのサイズ</param>
-    /// <returns>'true' if Moc is valid; 'false' otherwise.</returns>
-    public static bool HasMocConsistencyFromUnrevivedMoc(byte[] data)
-    {
-        IntPtr alignedBuffer = CubismFramework.AllocateAligned(data.Length, CsmEnum.csmAlignofMoc);
-        Marshal.Copy(data, 0, alignedBuffer, data.Length);
-
-        bool consistency = HasMocConsistency(alignedBuffer, data.Length);
-
-        CubismFramework.DeallocateAligned(alignedBuffer);
-
-        return consistency;
     }
 
     /// <summary>

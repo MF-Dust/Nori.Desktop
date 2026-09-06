@@ -3,8 +3,6 @@
 public abstract class OpenGLApi
 {
     public abstract bool AlwaysClear { get; }
-    public abstract bool IsES2 { get; }
-    public abstract bool IsPhoneES2 { get; }
 
     public readonly int GL_FALSE = 0;
     public readonly int GL_ZERO = 0;
@@ -55,7 +53,6 @@ public abstract class OpenGLApi
     public readonly int GL_VERTEX_SHADER = 0x8B31;
     public readonly int GL_COMPILE_STATUS = 0x8B81;
     public readonly int GL_LINK_STATUS = 0x8B82;
-    public readonly int GL_VALIDATE_STATUS = 0x8B83;
     public readonly int GL_INFO_LOG_LENGTH = 0x8B84;
     public readonly int GL_CURRENT_PROGRAM = 0x8B8D;
     public readonly int GL_STATIC_DRAW = 0x88E4;
@@ -104,9 +101,7 @@ public abstract class OpenGLApi
     public abstract void LinkProgram(int index);
     public abstract unsafe void GetProgramiv(int index, int type, int* length);
     public abstract unsafe void GetProgramInfoLog(int index, out string log);
-    public abstract void ValidateProgram(int index);
     public abstract unsafe void DrawElements(int type, int count, int type1, nint arry);
-    public abstract void BindVertexArrayOES(int data);
     public abstract void TexParameterf(int type, int type1, float value);
     public abstract void BindFramebuffer(int type, int data);
     public abstract int GenTexture();
@@ -117,10 +112,7 @@ public abstract class OpenGLApi
     public abstract void DeleteTexture(int data);
     public abstract void DeleteFramebuffer(int fb);
     public abstract void BlendFunc(int a, int b);
-    public abstract void GetWindowSize(out int w, out int h);
     public abstract void GenerateMipmap(int a);
-    public abstract void ClearDepthf(float data);
-    public abstract int GetError();
     public abstract int GenBuffer();
     public abstract void DeleteBuffer(int buffer);
     public abstract void BufferData(int type, int v1, nint v2, int type1);

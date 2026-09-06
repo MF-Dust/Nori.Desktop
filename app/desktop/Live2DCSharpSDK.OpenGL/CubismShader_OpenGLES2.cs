@@ -8,23 +8,14 @@ namespace Live2DCSharpSDK.OpenGL;
 internal class CubismShader_OpenGLES2(OpenGLApi gl)
 {
     public const string CSM_FRAGMENT_SHADER_FP_PRECISION_HIGH = "highp";
-    public const string CSM_FRAGMENT_SHADER_FP_PRECISION_MID = "mediump";
-    public const string CSM_FRAGMENT_SHADER_FP_PRECISION_LOW = "lowp";
-
     public const string CSM_FRAGMENT_SHADER_FP_PRECISION = CSM_FRAGMENT_SHADER_FP_PRECISION_HIGH;
 
     private const string GLES2 = "#version 100\n";
     private const string GLES2C = GLES2 + "precision " + CSM_FRAGMENT_SHADER_FP_PRECISION + " float;";
-    private const string Normal = "#version 120\n";
-    private const string Tegra = "#version 100\n" +
-        "#extension GL_NV_shader_framebuffer_fetch : enable\n" +
-        "precision " + CSM_FRAGMENT_SHADER_FP_PRECISION + " float;";
 
     // SetupMask
     public const string VertShaderSrcSetupMask_ES2 =
         GLES2 + VertShaderSrcSetupMask_Base;
-    public const string VertShaderSrcSetupMask_Normal =
-        Normal + VertShaderSrcSetupMask_Base;
     private const string VertShaderSrcSetupMask_Base =
         @"attribute vec4 a_position;
 attribute vec2 a_texCoord;
@@ -40,7 +31,6 @@ v_texCoord.y = 1.0 - v_texCoord.y;
 }";
 
     public const string FragShaderSrcSetupMask_ES2 = GLES2C + FragShaderSrcSetupMask_Base;
-    public const string FragShaderSrcSetupMask_Normal = Normal + FragShaderSrcSetupMask_Base;
     private const string FragShaderSrcSetupMask_Base =
         @"varying vec2 v_texCoord;
 varying vec4 v_myPos;
@@ -57,13 +47,9 @@ float isInside =
 gl_FragColor = u_channelFlag * texture2D(s_texture0 , v_texCoord).a * isInside;
 }";
 
-    public const string FragShaderSrcSetupMaskTegra =
-        Tegra + FragShaderSrcSetupMask_Base;
-
     //----- バーテックスシェーダプログラム -----
     // Normal & Add & Mult 共通
     public const string VertShaderSrc_ES2 = GLES2 + VertShaderSrc_Base;
-    public const string VertShaderSrc_Normal = Normal + VertShaderSrc_Base;
     private const string VertShaderSrc_Base =
         @"attribute vec4 a_position;
 attribute vec2 a_texCoord;
@@ -78,7 +64,6 @@ v_texCoord.y = 1.0 - v_texCoord.y;
 
     // Normal & Add & Mult 共通（クリッピングされたものの描画用）
     public const string VertShaderSrcMasked_ES2 = GLES2 + VertShaderSrcMasked_Base;
-    public const string VertShaderSrcMasked_Normal = Normal + VertShaderSrcMasked_Base;
     private const string VertShaderSrcMasked_Base =
         @"attribute vec4 a_position;
 attribute vec2 a_texCoord;
@@ -97,7 +82,6 @@ v_texCoord.y = 1.0 - v_texCoord.y;
     //----- フラグメントシェーダプログラム -----
     // Normal & Add & Mult 共通
     public const string FragShaderSrc_ES2 = GLES2C + FragShaderSrc_Base;
-    public const string FragShaderSrc_Normal = Normal + FragShaderSrc_Base;
     public const string FragShaderSrc_Base =
     @"varying vec2 v_texCoord;
 uniform sampler2D s_texture0;
@@ -113,11 +97,8 @@ vec4 color = texColor * u_baseColor;
 gl_FragColor = vec4(color.rgb * color.a,  color.a);
 }";
 
-    public const string FragShaderSrcTegra = Tegra + FragShaderSrc_Base;
-
     // Normal & Add & Mult 共通 （PremultipliedAlpha）
     public const string FragShaderSrcPremultipliedAlpha_ES2 = GLES2C + FragShaderSrcPremultipliedAlpha_Base;
-    public const string FragShaderSrcPremultipliedAlpha_Normal = Normal + FragShaderSrcPremultipliedAlpha_Base;
     public const string FragShaderSrcPremultipliedAlpha_Base =
         @"varying vec2 v_texCoord;
 uniform sampler2D s_texture0;
@@ -132,11 +113,8 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 gl_FragColor = texColor * u_baseColor;
 }";
 
-    public const string FragShaderSrcPremultipliedAlphaTegra = Tegra + FragShaderSrcPremultipliedAlpha_Base;
-
     // Normal & Add & Mult 共通（クリッピングされたものの描画用）
     public const string FragShaderSrcMask_ES2 = GLES2C + FragShaderSrcMask_Base;
-    public const string FragShaderSrcMask_Normal = Normal + FragShaderSrcMask_Base;
     public const string FragShaderSrcMask_Base =
         @"varying vec2 v_texCoord;
 varying vec4 v_clipPos;
@@ -159,11 +137,8 @@ col_formask = col_formask * maskVal;
 gl_FragColor = col_formask;
 }";
 
-    public const string FragShaderSrcMaskTegra = Tegra + FragShaderSrcMask_Base;
-
     // Normal & Add & Mult 共通（クリッピングされて反転使用の描画用）
     public const string FragShaderSrcMaskInverted_ES2 = GLES2C + FragShaderSrcMaskInverted_Base;
-    public const string FragShaderSrcMaskInverted_Normal = Normal + FragShaderSrcMaskInverted_Base;
     public const string FragShaderSrcMaskInverted_Base =
         @"varying vec2 v_texCoord;
 varying vec4 v_clipPos;
@@ -186,11 +161,8 @@ col_formask = col_formask * (1.0 - maskVal);
 gl_FragColor = col_formask;
 }";
 
-    public const string FragShaderSrcMaskInvertedTegra = Tegra + FragShaderSrcMaskInverted_Base;
-
     // Normal & Add & Mult 共通（クリッピングされたものの描画用、PremultipliedAlphaの場合）
     public const string FragShaderSrcMaskPremultipliedAlpha_ES2 = GLES2C + FragShaderSrcMaskPremultipliedAlpha_Base;
-    public const string FragShaderSrcMaskPremultipliedAlpha_Normal = Normal + FragShaderSrcMaskPremultipliedAlpha_Base;
     public const string FragShaderSrcMaskPremultipliedAlpha_Base =
         @"varying vec2 v_texCoord;
         varying vec4 v_clipPos;
@@ -212,11 +184,8 @@ gl_FragColor = col_formask;
         gl_FragColor = col_formask;
         }";
 
-    public const string FragShaderSrcMaskPremultipliedAlphaTegra = Tegra + FragShaderSrcMaskPremultipliedAlpha_Base;
-
     // Normal & Add & Mult 共通（クリッピングされて反転使用の描画用、PremultipliedAlphaの場合）
     public const string FragShaderSrcMaskInvertedPremultipliedAlpha_ES2 = GLES2C + FragShaderSrcMaskInvertedPremultipliedAlpha_Base;
-    public const string FragShaderSrcMaskInvertedPremultipliedAlpha_Normal = Normal + FragShaderSrcMaskInvertedPremultipliedAlpha_Base;
     public const string FragShaderSrcMaskInvertedPremultipliedAlpha_Base =
         @"varying vec2 v_texCoord;
 varying vec4 v_clipPos;
@@ -238,19 +207,7 @@ col_formask = col_formask * (1.0 - maskVal);
 gl_FragColor = col_formask;
 }";
 
-    public const string FragShaderSrcMaskInvertedPremultipliedAlphaTegra = Tegra + FragShaderSrcMaskInvertedPremultipliedAlpha_Base;
-
     public const int ShaderCount = 19; // シェーダの数 = マスク生成用 + (通常 + 加算 + 乗算) * (マスク無 + マスク有 + マスク有反転 + マスク無の乗算済アルファ対応版 + マスク有の乗算済アルファ対応版 + マスク有反転の乗算済アルファ対応版)
-
-    /// <summary>
-    /// Tegra対応.拡張方式で描画
-    /// </summary>
-    internal bool s_extMode;
-
-    /// <summary>
-    /// 拡張方式のPA設定用の変数
-    /// </summary>
-    internal bool s_extPAMode;
 
     /// <summary>
     /// ロードしたシェーダプログラムを保持する変数
@@ -423,74 +380,30 @@ gl_FragColor = col_formask;
             _shaderSets.Add(new CubismShaderSet());
         }
 
-        if (gl.IsES2)
-        {
-            if (s_extMode)
-            {
-                _shaderSets[0].ShaderProgram = LoadShaderProgram(VertShaderSrcSetupMask_ES2, FragShaderSrcSetupMaskTegra);
+        _shaderSets[0].ShaderProgram = LoadShaderProgram(VertShaderSrcSetupMask_ES2, FragShaderSrcSetupMask_ES2);
 
-                _shaderSets[1].ShaderProgram = LoadShaderProgram(VertShaderSrc_ES2, FragShaderSrcTegra);
-                _shaderSets[2].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMaskTegra);
-                _shaderSets[3].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMaskInvertedTegra);
-                _shaderSets[4].ShaderProgram = LoadShaderProgram(VertShaderSrc_ES2, FragShaderSrcPremultipliedAlphaTegra);
-                _shaderSets[5].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMaskPremultipliedAlphaTegra);
-                _shaderSets[6].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMaskInvertedPremultipliedAlphaTegra);
-            }
-            else
-            {
-                _shaderSets[0].ShaderProgram = LoadShaderProgram(VertShaderSrcSetupMask_ES2, FragShaderSrcSetupMask_ES2);
+        _shaderSets[1].ShaderProgram = LoadShaderProgram(VertShaderSrc_ES2, FragShaderSrc_ES2);
+        _shaderSets[2].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMask_ES2);
+        _shaderSets[3].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMaskInverted_ES2);
+        _shaderSets[4].ShaderProgram = LoadShaderProgram(VertShaderSrc_ES2, FragShaderSrcPremultipliedAlpha_ES2);
+        _shaderSets[5].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMaskPremultipliedAlpha_ES2);
+        _shaderSets[6].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMaskInvertedPremultipliedAlpha_ES2);
 
-                _shaderSets[1].ShaderProgram = LoadShaderProgram(VertShaderSrc_ES2, FragShaderSrc_ES2);
-                _shaderSets[2].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMask_ES2);
-                _shaderSets[3].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMaskInverted_ES2);
-                _shaderSets[4].ShaderProgram = LoadShaderProgram(VertShaderSrc_ES2, FragShaderSrcPremultipliedAlpha_ES2);
-                _shaderSets[5].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMaskPremultipliedAlpha_ES2);
-                _shaderSets[6].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_ES2, FragShaderSrcMaskInvertedPremultipliedAlpha_ES2);
-            }
+        // 加算も通常と同じシェーダーを利用する
+        _shaderSets[7].ShaderProgram = _shaderSets[1].ShaderProgram;
+        _shaderSets[8].ShaderProgram = _shaderSets[2].ShaderProgram;
+        _shaderSets[9].ShaderProgram = _shaderSets[3].ShaderProgram;
+        _shaderSets[10].ShaderProgram = _shaderSets[4].ShaderProgram;
+        _shaderSets[11].ShaderProgram = _shaderSets[5].ShaderProgram;
+        _shaderSets[12].ShaderProgram = _shaderSets[6].ShaderProgram;
 
-            // 加算も通常と同じシェーダーを利用する
-            _shaderSets[7].ShaderProgram = _shaderSets[1].ShaderProgram;
-            _shaderSets[8].ShaderProgram = _shaderSets[2].ShaderProgram;
-            _shaderSets[9].ShaderProgram = _shaderSets[3].ShaderProgram;
-            _shaderSets[10].ShaderProgram = _shaderSets[4].ShaderProgram;
-            _shaderSets[11].ShaderProgram = _shaderSets[5].ShaderProgram;
-            _shaderSets[12].ShaderProgram = _shaderSets[6].ShaderProgram;
-
-            // 乗算も通常と同じシェーダーを利用する
-            _shaderSets[13].ShaderProgram = _shaderSets[1].ShaderProgram;
-            _shaderSets[14].ShaderProgram = _shaderSets[2].ShaderProgram;
-            _shaderSets[15].ShaderProgram = _shaderSets[3].ShaderProgram;
-            _shaderSets[16].ShaderProgram = _shaderSets[4].ShaderProgram;
-            _shaderSets[17].ShaderProgram = _shaderSets[5].ShaderProgram;
-            _shaderSets[18].ShaderProgram = _shaderSets[6].ShaderProgram;
-        }
-        else
-        {
-            _shaderSets[0].ShaderProgram = LoadShaderProgram(VertShaderSrcSetupMask_Normal, FragShaderSrcSetupMask_Normal);
-
-            _shaderSets[1].ShaderProgram = LoadShaderProgram(VertShaderSrc_Normal, FragShaderSrc_Normal);
-            _shaderSets[2].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_Normal, FragShaderSrcMask_Normal);
-            _shaderSets[3].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_Normal, FragShaderSrcMaskInverted_Normal);
-            _shaderSets[4].ShaderProgram = LoadShaderProgram(VertShaderSrc_Normal, FragShaderSrcPremultipliedAlpha_Normal);
-            _shaderSets[5].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_Normal, FragShaderSrcMaskPremultipliedAlpha_Normal);
-            _shaderSets[6].ShaderProgram = LoadShaderProgram(VertShaderSrcMasked_Normal, FragShaderSrcMaskInvertedPremultipliedAlpha_Normal);
-
-            // 加算も通常と同じシェーダーを利用する
-            _shaderSets[7].ShaderProgram = _shaderSets[1].ShaderProgram;
-            _shaderSets[8].ShaderProgram = _shaderSets[2].ShaderProgram;
-            _shaderSets[9].ShaderProgram = _shaderSets[3].ShaderProgram;
-            _shaderSets[10].ShaderProgram = _shaderSets[4].ShaderProgram;
-            _shaderSets[11].ShaderProgram = _shaderSets[5].ShaderProgram;
-            _shaderSets[12].ShaderProgram = _shaderSets[6].ShaderProgram;
-
-            // 乗算も通常と同じシェーダーを利用する
-            _shaderSets[13].ShaderProgram = _shaderSets[1].ShaderProgram;
-            _shaderSets[14].ShaderProgram = _shaderSets[2].ShaderProgram;
-            _shaderSets[15].ShaderProgram = _shaderSets[3].ShaderProgram;
-            _shaderSets[16].ShaderProgram = _shaderSets[4].ShaderProgram;
-            _shaderSets[17].ShaderProgram = _shaderSets[5].ShaderProgram;
-            _shaderSets[18].ShaderProgram = _shaderSets[6].ShaderProgram;
-        }
+        // 乗算も通常と同じシェーダーを利用する
+        _shaderSets[13].ShaderProgram = _shaderSets[1].ShaderProgram;
+        _shaderSets[14].ShaderProgram = _shaderSets[2].ShaderProgram;
+        _shaderSets[15].ShaderProgram = _shaderSets[3].ShaderProgram;
+        _shaderSets[16].ShaderProgram = _shaderSets[4].ShaderProgram;
+        _shaderSets[17].ShaderProgram = _shaderSets[5].ShaderProgram;
+        _shaderSets[18].ShaderProgram = _shaderSets[6].ShaderProgram;
 
         // SetupMask
         _shaderSets[0].AttributePositionLocation = gl.GetAttribLocation(_shaderSets[0].ShaderProgram, "a_position");
@@ -828,44 +741,6 @@ gl_FragColor = col_formask;
         }
 
         return true;
-    }
-
-    /// <summary>
-    /// シェーダプログラムを検証する
-    /// </summary>
-    /// <param name="shaderProgram">検証するシェーダプログラムのアドレス</param>
-    /// <returns>true            .  正常
-    /// false           .  異常</returns>
-    internal unsafe bool ValidateProgram(int shaderProgram)
-    {
-        int logLength, status;
-
-        gl.ValidateProgram(shaderProgram);
-        gl.GetProgramiv(shaderProgram, gl.GL_INFO_LOG_LENGTH, &logLength);
-        if (logLength > 0)
-        {
-            gl.GetProgramInfoLog(shaderProgram, out string log);
-            CubismLog.Error($"[Live2D OpenGL]Validate program log: {log}");
-        }
-
-        gl.GetProgramiv(shaderProgram, gl.GL_VALIDATE_STATUS, &status);
-        if (status == gl.GL_FALSE)
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Tegraプロセッサ対応。拡張方式による描画の有効・無効
-    /// </summary>
-    /// <param name="extMode">trueなら拡張方式で描画する</param>
-    /// <param name="extPAMode">trueなら拡張方式のPA設定を有効にする</param>
-    internal void SetExtShaderMode(bool extMode, bool extPAMode)
-    {
-        s_extMode = extMode;
-        s_extPAMode = extPAMode;
     }
 
     /// <summary>

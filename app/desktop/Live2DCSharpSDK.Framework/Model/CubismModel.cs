@@ -56,42 +56,6 @@ public class CubismModel : IDisposable
     /// </summary>
     private float _modelOpacity;
 
-    /// <summary>
-    /// Drawable 乗算色の配列
-    /// </summary>
-    private readonly List<DrawableColorData> _userScreenColors = [];
-    /// <summary>
-    /// Drawable スクリーン色の配列
-    /// </summary>
-    private readonly List<DrawableColorData> _userMultiplyColors = [];
-    /// <summary>
-    /// カリング設定の配列
-    /// </summary>
-    private readonly List<DrawableCullingData> _userCullings = [];
-    /// <summary>
-    /// Part 乗算色の配列
-    /// </summary>
-    private readonly List<PartColorData> _userPartScreenColors = [];
-    /// <summary>
-    /// Part スクリーン色の配列
-    /// </summary>
-    private readonly List<PartColorData> _userPartMultiplyColors = [];
-    /// <summary>
-    /// Partの子DrawableIndexの配列
-    /// </summary>
-    private readonly List<int>[] _partChildDrawables;
-    /// <summary>
-    /// 乗算色を全て上書きするか？
-    /// </summary>
-    private bool _isOverwrittenModelMultiplyColors;
-    /// <summary>
-    /// スクリーン色を全て上書きするか？
-    /// </summary>
-    private bool _isOverwrittenModelScreenColors;
-    /// <summary>
-    /// モデルのカリング設定をすべて上書きするか？
-    /// </summary>
-    private bool _isOverwrittenCullings;
 
     public unsafe CubismModel(IntPtr model)
     {
@@ -117,67 +81,19 @@ public class CubismModel : IDisposable
         int partCount = CubismCore.GetPartCount(Model);
         var partIds = CubismCore.GetPartIds(Model);
 
-        _partChildDrawables = new List<int>[partCount];
         for (int i = 0; i < partCount; ++i)
         {
             var str = new string(partIds[i]);
             PartIds.Add(CubismFramework.CubismIdManager.GetId(str));
-            _partChildDrawables[i] = [];
         }
 
         var drawableIds = CubismCore.GetDrawableIds(Model);
         var drawableCount = CubismCore.GetDrawableCount(Model);
 
-        // カリング設定
-        var userCulling = new DrawableCullingData()
-        {
-            IsOverwritten = false,
-            IsCulling = false
-        };
-
-        // 乗算色
-        var multiplyColor = new CubismTextureColor();
-
-        // スクリーン色
-        var screenColor = new CubismTextureColor(0, 0, 0, 1.0f);
-
-        // Parts
-        for (int i = 0; i < partCount; ++i)
-        {
-            _userPartMultiplyColors.Add(new()
-            {
-                IsOverwritten = false,
-                Color = multiplyColor // 乗算色
-            });
-            _userPartScreenColors.Add(new()
-            {
-                IsOverwritten = false,
-                Color = screenColor // スクリーン色
-            });
-        }
-
-        // Drawables
         for (int i = 0; i < drawableCount; ++i)
         {
             var str = new string(drawableIds[i]);
             DrawableIds.Add(CubismFramework.CubismIdManager.GetId(str));
-            _userMultiplyColors.Add(new()
-            {
-                IsOverwritten = false,
-                Color = multiplyColor // 乗算色
-            });
-            _userScreenColors.Add(new()
-            {
-                IsOverwritten = false,
-                Color = screenColor   // スクリーン色
-            });
-            _userCullings.Add(userCulling);
-
-            var parentIndex = CubismCore.GetDrawableParentPartIndices(Model)[i];
-            if (parentIndex >= 0)
-            {
-                _partChildDrawables[parentIndex].Add(i);
-            }
         }
     }
 
@@ -185,52 +101,6 @@ public class CubismModel : IDisposable
     {
         CubismFramework.DeallocateAligned(Model);
         GC.SuppressFinalize(this);
-    }
-
-    /// <summary>
-    /// partのOverwriteColor Set関数
-    /// </summary>
-    public void SetPartColor(int partIndex, float r, float g, float b, float a,
-       List<PartColorData> partColors, List<DrawableColorData> drawableColors)
-    {
-        partColors[partIndex].Color.R = r;
-        partColors[partIndex].Color.G = g;
-        partColors[partIndex].Color.B = b;
-        partColors[partIndex].Color.A = a;
-
-        if (partColors[partIndex].IsOverwritten)
-        {
-            for (int i = 0; i < _partChildDrawables[partIndex].Count; i++)
-            {
-                int drawableIndex = _partChildDrawables[partIndex][i];
-                drawableColors[drawableIndex].Color.R = r;
-                drawableColors[drawableIndex].Color.G = g;
-                drawableColors[drawableIndex].Color.B = b;
-                drawableColors[drawableIndex].Color.A = a;
-            }
-        }
-    }
-
-    /// <summary>
-    /// partのOverwriteFlag Set関数
-    /// </summary>
-    public void SetOverwriteColorForPartColors(int partIndex, bool value,
-        List<PartColorData> partColors, List<DrawableColorData> drawableColors)
-    {
-        partColors[partIndex].IsOverwritten = value;
-
-        for (int i = 0; i < _partChildDrawables[partIndex].Count; i++)
-        {
-            int drawableIndex = _partChildDrawables[partIndex][i];
-            drawableColors[drawableIndex].IsOverwritten = value;
-            if (value)
-            {
-                drawableColors[drawableIndex].Color.R = partColors[partIndex].Color.R;
-                drawableColors[drawableIndex].Color.G = partColors[partIndex].Color.G;
-                drawableColors[drawableIndex].Color.B = partColors[partIndex].Color.B;
-                drawableColors[drawableIndex].Color.A = partColors[partIndex].Color.A;
-            }
-        }
     }
 
     /// <summary>
@@ -342,20 +212,6 @@ public class CubismModel : IDisposable
         _notExistPartOpacities.Add(partIndex, 0);
 
         return partIndex;
-    }
-
-    /// <summary>
-    /// パーツのIDを取得する。
-    /// </summary>
-    /// <param name="partIndex">パーツのIndex</param>
-    /// <returns>パーツのID</returns>
-    public unsafe string GetPartId(int partIndex)
-    {
-        if (0 <= partIndex && partIndex < PartIds.Count)
-        {
-            throw new IndexOutOfRangeException("Out of PartIds size");
-        }
-        return PartIds[partIndex];
     }
 
     /// <summary>
@@ -485,41 +341,10 @@ public class CubismModel : IDisposable
     }
 
     /// <summary>
-    /// パラメータの種類を取得する。
-    /// </summary>
-    /// <param name="parameterIndex">パラメータのインデックス</param>
-    /// <returns>csmParameterType_Normal -> 通常のパラメータ
-    /// csmParameterType_BlendShape -> ブレンドシェイプパラメータ</returns>
-    public unsafe int GetParameterType(int parameterIndex)
-    {
-        return CubismCore.GetParameterTypes(Model)[parameterIndex];
-    }
-
-    /// <summary>
-    /// パラメータの最大値を取得する。
-    /// </summary>
-    /// <param name="parameterIndex">パラメータのインデックス</param>
-    /// <returns>パラメータの最大値</returns>
-    public unsafe float GetParameterMaximumValue(int parameterIndex)
-    {
-        return CubismCore.GetParameterMaximumValues(Model)[parameterIndex];
-    }
-
-    /// <summary>
-    /// パラメータの最小値を取得する。
-    /// </summary>
-    /// <param name="parameterIndex">パラメータのインデックス</param>
-    /// <returns>パラメータの最小値</returns>
-    public unsafe float GetParameterMinimumValue(int parameterIndex)
-    {
-        return CubismCore.GetParameterMinimumValues(Model)[parameterIndex];
-    }
-
-    /// <summary>
     /// パラメータのデフォルト値を取得する。
     /// </summary>
     /// <param name="parameterIndex">パラメータのインデックス</param>
-    /// <returns> パラメータのデフォルト値</returns>
+    /// <returns>パラメータのデフォルト値</returns>
     public unsafe float GetParameterDefaultValue(int parameterIndex)
     {
         return CubismCore.GetParameterDefaultValues(Model)[parameterIndex];
@@ -681,37 +506,10 @@ public class CubismModel : IDisposable
     }
 
     /// <summary>
-    /// DrawableのIDを取得する。
-    /// </summary>
-    /// <param name="drawableIndex">Drawableのインデックス</param>
-    /// <returns>DrawableのID</returns>
-    public unsafe string GetDrawableId(int drawableIndex)
-    {
-        if (0 <= drawableIndex && drawableIndex < DrawableIds.Count)
-        {
-            throw new IndexOutOfRangeException("Out of DrawableIds size");
-        }
-        return DrawableIds[drawableIndex];
-    }
-
-    /// <summary>
     /// Drawableの描画順リストを取得する。
-    /// </summary>
-    /// <returns>Drawableの描画順リスト</returns>
     public unsafe int* GetDrawableRenderOrders()
     {
         return CubismCore.GetDrawableRenderOrders(Model);
-    }
-
-    /// <summary>
-    /// Drawableのテクスチャインデックスリストの取得
-    /// 関数名が誤っていたため、代替となる getDrawableTextureIndex を追加し、この関数は非推奨となりました。
-    /// </summary>
-    /// <param name="drawableIndex">Drawableのインデックス</param>
-    /// <returns>Drawableのテクスチャインデックスリスト</returns>
-    public int GetDrawableTextureIndices(int drawableIndex)
-    {
-        return GetDrawableTextureIndex(drawableIndex);
     }
 
     /// <summary>
@@ -796,36 +594,6 @@ public class CubismModel : IDisposable
     }
 
     /// <summary>
-    /// Drawableの乗算色を取得する。
-    /// </summary>
-    /// <param name="drawableIndex">Drawableのインデックス</param>
-    /// <returns>Drawableの乗算色</returns>
-    public unsafe Vector4 GetDrawableMultiplyColor(int drawableIndex)
-    {
-        return CubismCore.GetDrawableMultiplyColors(Model)[drawableIndex];
-    }
-
-    /// <summary>
-    /// Drawableのスクリーン色を取得する。
-    /// </summary>
-    /// <param name="drawableIndex">Drawableのインデックス</param>
-    /// <returns>Drawableのスクリーン色</returns>
-    public unsafe Vector4 GetDrawableScreenColor(int drawableIndex)
-    {
-        return CubismCore.GetDrawableScreenColors(Model)[drawableIndex];
-    }
-
-    /// <summary>
-    /// Drawableの親パーツのインデックスを取得する。
-    /// </summary>
-    /// <param name="drawableIndex">Drawableのインデックス</param>
-    /// <returns>drawableの親パーツのインデックス</returns>
-    public unsafe int GetDrawableParentPartIndex(int drawableIndex)
-    {
-        return CubismCore.GetDrawableParentPartIndices(Model)[drawableIndex];
-    }
-
-    /// <summary>
     /// Drawableのブレンドモードを取得する。
     /// </summary>
     /// <param name="drawableIndex">Drawableのインデックス</param>
@@ -865,55 +633,6 @@ public class CubismModel : IDisposable
     }
 
     /// <summary>
-    /// 直近のCubismModel::Update関数でDrawableの表示状態が変化したかを取得する。
-    /// </summary>
-    /// <param name="drawableIndex">Drawableのインデックス</param>
-    /// <returns>true    Drawableの表示状態が直近のCubismModel::Update関数で変化した
-    /// false   Drawableの表示状態が直近のCubismModel::Update関数で変化していない</returns>
-    public unsafe bool GetDrawableDynamicFlagVisibilityDidChange(int drawableIndex)
-    {
-        var dynamicFlags = CubismCore.GetDrawableDynamicFlags(Model)[drawableIndex];
-        return IsBitSet(dynamicFlags, CsmEnum.CsmVisibilityDidChange);
-    }
-
-    /// <summary>
-    /// 直近のCubismModel::Update関数でDrawableの不透明度が変化したかを取得する。
-    /// </summary>
-    /// <param name="drawableIndex">Drawableのインデックス</param>
-    /// <returns>true    Drawableの不透明度が直近のCubismModel::Update関数で変化した
-    /// false   Drawableの不透明度が直近のCubismModel::Update関数で変化していない</returns>
-    public unsafe bool GetDrawableDynamicFlagOpacityDidChange(int drawableIndex)
-    {
-        var dynamicFlags = CubismCore.GetDrawableDynamicFlags(Model)[drawableIndex];
-        return IsBitSet(dynamicFlags, CsmEnum.CsmOpacityDidChange);
-    }
-
-    /// <summary>
-    /// 直近のCubismModel::Update関数でDrawableのDrawOrderが変化したかを取得する。
-    /// DrawOrderはArtMesh上で指定する0から1000の情報
-    /// </summary>
-    /// <param name="drawableIndex">Drawableのインデックス</param>
-    /// <returns>true    Drawableの不透明度が直近のCubismModel::Update関数で変化した
-    /// false   Drawableの不透明度が直近のCubismModel::Update関数で変化していない</returns>
-    public unsafe bool GetDrawableDynamicFlagDrawOrderDidChange(int drawableIndex)
-    {
-        var dynamicFlags = CubismCore.GetDrawableDynamicFlags(Model)[drawableIndex];
-        return IsBitSet(dynamicFlags, CsmEnum.CsmDrawOrderDidChange);
-    }
-
-    /// <summary>
-    /// 直近のCubismModel::Update関数でDrawableの描画の順序が変化したかを取得する。
-    /// </summary>
-    /// <param name="drawableIndex">Drawableのインデックス</param>
-    /// <returns>true    Drawableの描画の順序が直近のCubismModel::Update関数で変化した
-    /// false   Drawableの描画の順序が直近のCubismModel::Update関数で変化していない</returns>
-    public unsafe bool GetDrawableDynamicFlagRenderOrderDidChange(int drawableIndex)
-    {
-        var dynamicFlags = CubismCore.GetDrawableDynamicFlags(Model)[drawableIndex];
-        return IsBitSet(dynamicFlags, CsmEnum.CsmRenderOrderDidChange);
-    }
-
-    /// <summary>
     /// 直近のCubismModel::Update関数でDrawableの頂点情報が変化したかを取得する。
     /// </summary>
     /// <param name="drawableIndex">Drawableのインデックス</param>
@@ -923,18 +642,6 @@ public class CubismModel : IDisposable
     {
         var dynamicFlags = CubismCore.GetDrawableDynamicFlags(Model)[drawableIndex];
         return IsBitSet(dynamicFlags, CsmEnum.CsmVertexPositionsDidChange);
-    }
-
-    /// <summary>
-    /// 直近のCubismModel::Update関数でDrawableの乗算色・スクリーン色が変化したかを取得する。
-    /// </summary>
-    /// <param name="drawableIndex">Drawableのインデックス</param>
-    /// <returns>true    Drawableの乗算色・スクリーン色が直近のCubismModel::Update関数で変化した
-    /// false   Drawableの乗算色・スクリーン色が直近のCubismModel::Update関数で変化していない</returns>
-    public unsafe bool GetDrawableDynamicFlagBlendColorDidChange(int drawableIndex)
-    {
-        var dynamicFlags = CubismCore.GetDrawableDynamicFlags(Model)[drawableIndex];
-        return IsBitSet(dynamicFlags, CsmEnum.CsmBlendColorDidChange);
     }
 
     /// <summary>
@@ -1021,216 +728,19 @@ public class CubismModel : IDisposable
     /// <summary>
     /// drawableの乗算色を取得する
     /// </summary>
-    public CubismTextureColor GetMultiplyColor(int drawableIndex)
+    public unsafe CubismTextureColor GetMultiplyColor(int drawableIndex)
     {
-        if (GetOverwriteFlagForModelMultiplyColors() ||
-            GetOverwriteFlagForDrawableMultiplyColors(drawableIndex))
-        {
-            return _userMultiplyColors[drawableIndex].Color;
-        }
-
-        var color = GetDrawableMultiplyColor(drawableIndex);
-
+        var color = CubismCore.GetDrawableMultiplyColors(Model)[drawableIndex];
         return new CubismTextureColor(color.X, color.Y, color.Z, color.W);
     }
 
     /// <summary>
-    ///  drawableのスクリーン色を取得する
+    /// drawableのスクリーン色を取得する
     /// </summary>
-    public CubismTextureColor GetScreenColor(int drawableIndex)
+    public unsafe CubismTextureColor GetScreenColor(int drawableIndex)
     {
-        if (GetOverwriteFlagForModelScreenColors() ||
-            GetOverwriteFlagForDrawableScreenColors(drawableIndex))
-        {
-            return _userScreenColors[drawableIndex].Color;
-        }
-
-        var color = GetDrawableScreenColor(drawableIndex);
+        var color = CubismCore.GetDrawableScreenColors(Model)[drawableIndex];
         return new CubismTextureColor(color.X, color.Y, color.Z, color.W);
-    }
-
-    /// <summary>
-    /// drawableの乗算色を設定する
-    /// </summary>
-    public void SetMultiplyColor(int drawableIndex, CubismTextureColor color)
-    {
-        SetMultiplyColor(drawableIndex, color.R, color.G, color.B, color.A);
-    }
-
-    /// <summary>
-    /// drawableの乗算色を設定する
-    /// </summary>
-    public void SetMultiplyColor(int drawableIndex, float r, float g, float b, float a = 1.0f)
-    {
-        _userMultiplyColors[drawableIndex].Color.R = r;
-        _userMultiplyColors[drawableIndex].Color.G = g;
-        _userMultiplyColors[drawableIndex].Color.B = b;
-        _userMultiplyColors[drawableIndex].Color.A = a;
-    }
-
-    /// <summary>
-    /// drawableのスクリーン色を設定する
-    /// </summary>
-    /// <param name="drawableIndex"></param>
-    /// <param name="color"></param>
-    public void SetScreenColor(int drawableIndex, CubismTextureColor color)
-    {
-        SetScreenColor(drawableIndex, color.R, color.G, color.B, color.A);
-    }
-
-    /// <summary>
-    /// drawableのスクリーン色を設定する
-    /// </summary>
-    public void SetScreenColor(int drawableIndex, float r, float g, float b, float a = 1.0f)
-    {
-        _userScreenColors[drawableIndex].Color.R = r;
-        _userScreenColors[drawableIndex].Color.G = g;
-        _userScreenColors[drawableIndex].Color.B = b;
-        _userScreenColors[drawableIndex].Color.A = a;
-    }
-
-    /// <summary>
-    /// partの乗算色を取得する
-    /// </summary>
-    public CubismTextureColor GetPartMultiplyColor(int partIndex)
-    {
-        return _userPartMultiplyColors[partIndex].Color;
-    }
-
-    /// <summary>
-    /// partの乗算色を取得する
-    /// </summary>
-    public CubismTextureColor GetPartScreenColor(int partIndex)
-    {
-        return _userPartScreenColors[partIndex].Color;
-    }
-
-    /// <summary>
-    /// partのスクリーン色を設定する
-    /// </summary>
-    public void SetPartMultiplyColor(int partIndex, CubismTextureColor color)
-    {
-        SetPartMultiplyColor(partIndex, color.R, color.G, color.B, color.A);
-    }
-
-    /// <summary>
-    /// partの乗算色を設定する
-    /// </summary>
-    public void SetPartMultiplyColor(int partIndex, float r, float g, float b, float a = 1.0f)
-    {
-        SetPartColor(partIndex, r, g, b, a, _userPartMultiplyColors, _userMultiplyColors);
-    }
-
-    /// <summary>
-    /// partのスクリーン色を設定する
-    /// </summary>
-    public void SetPartScreenColor(int partIndex, CubismTextureColor color)
-    {
-        SetPartScreenColor(partIndex, color.R, color.G, color.B, color.A);
-    }
-
-    /// <summary>
-    /// partのスクリーン色を設定する
-    /// </summary>
-    /// <param name="a"></param>
-    public void SetPartScreenColor(int partIndex, float r, float g, float b, float a = 1.0f)
-    {
-        SetPartColor(partIndex, r, g, b, a, _userPartScreenColors, _userScreenColors);
-    }
-
-    /// <summary>
-    /// SDKからモデル全体の乗算色を上書きするか。
-    /// </summary>
-    /// <returns>true    ->  SDK上の色情報を使用
-    /// false   ->  モデルの色情報を使用</returns>
-    public bool GetOverwriteFlagForModelMultiplyColors()
-    {
-        return _isOverwrittenModelMultiplyColors;
-    }
-
-    /// <summary>
-    /// SDKからモデル全体のスクリーン色を上書きするか。
-    /// </summary>
-    /// <returns>true    ->  SDK上の色情報を使用
-    /// false   ->  モデルの色情報を使用</returns>
-    public bool GetOverwriteFlagForModelScreenColors()
-    {
-        return _isOverwrittenModelScreenColors;
-    }
-
-    /// <summary>
-    /// SDKからモデル全体の乗算色を上書きするかをセットする
-    /// SDK上の色情報を使うならtrue、モデルの色情報を使うならfalse
-    /// </summary>
-    public void SetOverwriteFlagForModelMultiplyColors(bool value)
-    {
-        _isOverwrittenModelMultiplyColors = value;
-    }
-
-    /// <summary>
-    /// SDKからモデル全体のスクリーン色を上書きするかをセットする
-    /// SDK上の色情報を使うならtrue、モデルの色情報を使うならfalse
-    /// </summary>
-    public void SetOverwriteFlagForModelScreenColors(bool value)
-    {
-        _isOverwrittenModelScreenColors = value;
-    }
-
-    /// <summary>
-    /// SDKからdrawableの乗算色を上書きするか。
-    /// </summary>
-    /// <returns>true    ->  SDK上の色情報を使用
-    /// false   ->  モデルの色情報を使用</returns>
-    public bool GetOverwriteFlagForDrawableMultiplyColors(int drawableIndex)
-    {
-        return _userMultiplyColors[drawableIndex].IsOverwritten;
-    }
-
-    /// <summary>
-    /// SDKからdrawableのスクリーン色を上書きするか。
-    /// </summary>
-    /// <returns>true    ->  SDK上の色情報を使用
-    /// false   ->  モデルの色情報を使用</returns>
-    public bool GetOverwriteFlagForDrawableScreenColors(int drawableIndex)
-    {
-        return _userScreenColors[drawableIndex].IsOverwritten;
-    }
-
-    /// <summary>
-    /// SDKからdrawableの乗算色を上書きするかをセットする
-    /// SDK上の色情報を使うならtrue、モデルの色情報を使うならfalse
-    /// </summary>
-    public void SetOverwriteFlagForDrawableMultiplyColors(int drawableIndex, bool value)
-    {
-        _userMultiplyColors[drawableIndex].IsOverwritten = value;
-    }
-
-    /// <summary>
-    /// SDKからdrawableのスクリーン色を上書きするかをセットする
-    /// SDK上の色情報を使うならtrue、モデルの色情報を使うならfalse
-    /// </summary>
-    public void SetOverwriteFlagForDrawableScreenColors(int drawableIndex, bool value)
-    {
-        _userScreenColors[drawableIndex].IsOverwritten = value;
-    }
-
-    /// <summary>
-    /// SDKからpartの乗算色を上書きするか。
-    /// </summary>
-    /// <returns>true    ->  SDK上の色情報を使用
-    /// false   ->  モデルの色情報を使用</returns>
-    public bool GetOverwriteColorForPartMultiplyColors(int partIndex)
-    {
-        return _userPartMultiplyColors[partIndex].IsOverwritten;
-    }
-
-    /// <summary>
-    /// SDKからpartのスクリーン色を上書きするかをセットする
-    /// SDK上の色情報を使うならtrue、モデルの色情報を使うならfalse
-    /// </summary>
-    public bool GetOverwriteColorForPartScreenColors(int partIndex)
-    {
-        return _userPartScreenColors[partIndex].IsOverwritten;
     }
 
     /// <summary>
@@ -1240,59 +750,8 @@ public class CubismModel : IDisposable
     /// <returns>Drawableのカリング情報</returns>
     public unsafe bool GetDrawableCulling(int drawableIndex)
     {
-        if (GetOverwriteFlagForModelCullings() || GetOverwriteFlagForDrawableCullings(drawableIndex))
-        {
-            return _userCullings[drawableIndex].IsCulling;
-        }
-
         var constantFlags = CubismCore.GetDrawableConstantFlags(Model);
         return !IsBitSet(constantFlags[drawableIndex], CsmEnum.CsmIsDoubleSided);
-    }
-
-    /// <summary>
-    /// Drawableのカリング情報を設定する
-    /// </summary>
-    public void SetDrawableCulling(int drawableIndex, bool isCulling)
-    {
-        _userCullings[drawableIndex].IsCulling = isCulling;
-    }
-
-    /// <summary>
-    /// SDKからモデル全体のカリング設定を上書きするか。
-    /// </summary>
-    /// <returns>true    ->  SDK上のカリング設定を使用
-    /// false   ->  モデルのカリング設定を使用</returns>
-    public bool GetOverwriteFlagForModelCullings()
-    {
-        return _isOverwrittenCullings;
-    }
-
-    /// <summary>
-    /// SDKからモデル全体のカリング設定を上書きするかをセットする
-    /// SDK上のカリング設定を使うならtrue、モデルのカリング設定を使うならfalse
-    /// </summary>
-    public void SetOverwriteFlagForModelCullings(bool value)
-    {
-        _isOverwrittenCullings = value;
-    }
-
-    /// <summary>
-    /// SDKからdrawableのカリング設定を上書きするか。
-    /// </summary>
-    /// <returns>true    ->  SDK上のカリング設定を使用
-    /// false   ->  モデルのカリング設定を使用</returns>
-    public bool GetOverwriteFlagForDrawableCullings(int drawableIndex)
-    {
-        return _userCullings[drawableIndex].IsOverwritten;
-    }
-
-    /// <summary>
-    /// SDKからdrawableのカリング設定を上書きするかをセットする
-    /// SDK上のカリング設定を使うならtrue、モデルのカリング設定を使うならfalse
-    /// </summary>
-    public void SetOverwriteFlagForDrawableCullings(int drawableIndex, bool value)
-    {
-        _userCullings[drawableIndex].IsOverwritten = value;
     }
 
     /// <summary>
@@ -1318,29 +777,4 @@ public class CubismModel : IDisposable
         return (data & mask) == mask;
     }
 
-    public void SetOverwriteColorForPartMultiplyColors(int partIndex, bool value)
-    {
-        _userPartMultiplyColors[partIndex].IsOverwritten = value;
-        SetOverwriteColorForPartColors(partIndex, value, _userPartMultiplyColors, _userMultiplyColors);
-    }
-
-    public void SetOverwriteColorForPartScreenColors(int partIndex, bool value)
-    {
-        _userPartScreenColors[partIndex].IsOverwritten = value;
-        SetOverwriteColorForPartColors(partIndex, value, _userPartScreenColors, _userScreenColors);
-    }
-
-    /// <summary>
-    /// パラメータのIDを取得する。
-    /// </summary>
-    /// <param name="parameterIndex">パラメータのIndex</param>
-    /// <returns>パラメータのID</returns>
-    public unsafe string GetParameterId(int parameterIndex)
-    {
-        if (0 <= parameterIndex && parameterIndex < ParameterIds.Count)
-        {
-            throw new IndexOutOfRangeException("Out of ParameterIds size");
-        }
-        return ParameterIds[parameterIndex];
-    }
 }

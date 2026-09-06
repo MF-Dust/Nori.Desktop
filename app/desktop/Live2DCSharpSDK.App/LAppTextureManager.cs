@@ -1,6 +1,4 @@
-﻿using SkiaSharp;
-
-namespace Live2DCSharpSDK.App;
+﻿namespace Live2DCSharpSDK.App;
 
 /// <summary>
 /// 画像読み込み、管理を行うクラス。
@@ -22,20 +20,16 @@ public class LAppTextureManager(LAppDelegate lapp)
         {
             return item;
         }
-        var info1 = SKBitmap.DecodeBounds(fileName);
-        info1.ColorType = SKColorType.Rgba8888;
-        using var image = SKBitmap.Decode(fileName, info1);
+        TexturePixels pixels = lapp.DecodeTexture(fileName);
+        fixed (byte* data = pixels.Data)
+        {
+            // OpenGL用のテクスチャを生成する
+            var info = lapp.CreateTexture(model, index, pixels.Width, pixels.Height, (nint)data);
+            info.FileName = fileName;
 
-        // OpenGL用のテクスチャを生成する
-        var info = lapp.CreateTexture(model, index, image.Width, image.Height, image.GetPixels());
-        info.FileName = fileName;
-        info.Width = image.Width;
-        info.Index = index;
-        info.Height = image.Height;
-
-        _textures.Add(info);
-
-        return info;
+            _textures.Add(info);
+            return info;
+        }
     }
 
     /// <summary>

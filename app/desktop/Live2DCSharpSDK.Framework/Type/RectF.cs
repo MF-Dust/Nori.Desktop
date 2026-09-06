@@ -64,22 +64,6 @@ public class RectF
     }
 
     /// <summary>
-    /// 矩形中央のX座標を取得する
-    /// </summary>
-    public float GetCenterX()
-    {
-        return X + 0.5f * Width;
-    }
-
-    /// <summary>
-    /// 矩形中央のY座標を取得する
-    /// </summary>
-    public float GetCenterY()
-    {
-        return Y + 0.5f * Height;
-    }
-
-    /// <summary>
     /// 右端のX座標を取得する
     /// </summary>
     public float GetRight()

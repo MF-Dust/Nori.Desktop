@@ -6,11 +6,6 @@ public record ModelSettingObj
 {
     public record FileReference
     {
-        public record Expression
-        {
-            public string Name { get; set; }
-            public string File { get; set; }
-        }
         public record Motion
         {
             public string File { get; set; }
@@ -24,10 +19,7 @@ public record ModelSettingObj
         public List<string> Textures { get; set; }
         public string Physics { get; set; }
         public string Pose { get; set; }
-        public string DisplayInfo { get; set; }
-        public List<Expression> Expressions { get; set; }
         public Dictionary<string, List<Motion>> Motions { get; set; }
-        public string UserData { get; set; }
     }
 
     public record HitArea

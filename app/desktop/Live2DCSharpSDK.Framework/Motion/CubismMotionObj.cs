@@ -8,13 +8,11 @@ public record CubismMotionObj
         public bool Loop { get; set; }
         public bool AreBeziersRestricted { get; set; }
         public int CurveCount { get; set; }
-        public float Fps { get; set; }
         public int TotalSegmentCount { get; set; }
         public int TotalPointCount { get; set; }
         public float? FadeInTime { get; set; }
         public float? FadeOutTime { get; set; }
         public int UserDataCount { get; set; }
-        public int TotalUserDataSize { get; set; }
     }
     public record Curve
     {

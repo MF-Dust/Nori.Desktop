@@ -19,10 +19,6 @@ public class CubismMotion : ACubismMotion
     public const string IdNameOpacity = "Opacity";
 
     /// <summary>
-    /// ロードしたファイルのFPS。記述が無ければデフォルト値15fpsとなる
-    /// </summary>
-    private readonly float _sourceFrameRate;
-    /// <summary>
     /// mtnファイルで定義される一連のモーションの長さ
     /// </summary>
     private readonly float _loopDurationSeconds;
@@ -34,11 +30,6 @@ public class CubismMotion : ACubismMotion
     /// ループ時にフェードインが有効かどうかのフラグ。初期値では有効。
     /// </summary>
     public bool IsLoopFadeIn { get; set; }
-    /// <summary>
-    /// 最後に設定された重み
-    /// </summary>
-    private float _lastWeight;
-
     /// <summary>
     /// 実際のモーションデータ本体
     /// </summary>
@@ -70,11 +61,6 @@ public class CubismMotion : ACubismMotion
     /// モーションから取得した不透明度
     /// </summary>
     private float _modelOpacity;
-
-    /**
-    * Cubism SDK R2 以前のモーションを再現させるなら true 、アニメータのモーションを正しく再現するなら false 。
-    */
-    private readonly bool UseOldBeziersCurveMotion = false;
 
     private static CubismMotionPoint LerpPoints(CubismMotionPoint a, CubismMotionPoint b, float t)
     {
@@ -115,90 +101,6 @@ public class CubismMotion : ACubismMotion
 
         return LerpPoints(p012, p123, t).Value;
     }
-
-    //private static float BezierEvaluateBinarySearch(List<CubismMotionPoint> points, int start, float time)
-    //{
-    //    float x_error = 0.01f;
-
-    //    float x = time;
-    //    float x1 = points[0].Time;
-    //    float x2 = points[3].Time;
-    //    float cx1 = points[1].Time;
-    //    float cx2 = points[2].Time;
-
-    //    float ta = 0.0f;
-    //    float tb = 1.0f;
-    //    float t = 0.0f;
-    //    int i = 0;
-    //    for (; i < 20; ++i)
-    //    {
-    //        if (x < x1 + x_error)
-    //        {
-    //            t = ta;
-    //            break;
-    //        }
-
-    //        if (x2 - x_error < x)
-    //        {
-    //            t = tb;
-    //            break;
-    //        }
-
-    //        float centerx = (cx1 + cx2) * 0.5f;
-    //        cx1 = (x1 + cx1) * 0.5f;
-    //        cx2 = (x2 + cx2) * 0.5f;
-    //        float ctrlx12 = (cx1 + centerx) * 0.5f;
-    //        float ctrlx21 = (cx2 + centerx) * 0.5f;
-    //        centerx = (ctrlx12 + ctrlx21) * 0.5f;
-    //        if (x < centerx)
-    //        {
-    //            tb = (ta + tb) * 0.5f;
-    //            if (centerx - x_error < x)
-    //            {
-    //                t = tb;
-    //                break;
-    //            }
-
-    //            x2 = centerx;
-    //            cx2 = ctrlx12;
-    //        }
-    //        else
-    //        {
-    //            ta = (ta + tb) * 0.5f;
-    //            if (x < centerx + x_error)
-    //            {
-    //                t = ta;
-    //                break;
-    //            }
-
-    //            x1 = centerx;
-    //            cx1 = ctrlx21;
-    //        }
-    //    }
-
-    //    if (i == 20)
-    //    {
-    //        t = (ta + tb) * 0.5f;
-    //    }
-
-    //    if (t < 0.0f)
-    //    {
-    //        t = 0.0f;
-    //    }
-    //    if (t > 1.0f)
-    //    {
-    //        t = 1.0f;
-    //    }
-
-    //    CubismMotionPoint p01 = LerpPoints(points[start], points[start + 1], t);
-    //    CubismMotionPoint p12 = LerpPoints(points[start + 1], points[start + 2], t);
-    //    CubismMotionPoint p23 = LerpPoints(points[start + 2], points[start + 3], t);
-
-    //    CubismMotionPoint p012 = LerpPoints(p01, p12, t);
-    //    CubismMotionPoint p123 = LerpPoints(p12, p23, t);
-
-    //    return LerpPoints(p012, p123, t).Value;
-    //}
 
     private static float BezierEvaluateCardanoInterpretation(CubismMotionPoint[] points, int start, float time)
     {
@@ -275,7 +177,6 @@ public class CubismMotion : ACubismMotion
     /// <param name="onFinishedMotionHandler">モーション再生終了時に呼び出されるコールバック関数。NULLの場合、呼び出されない。</param>
     public CubismMotion(string buffer, FinishedMotionCallback? onFinishedMotionHandler = null)
     {
-        _sourceFrameRate = 30.0f;
         _loopDurationSeconds = -1.0f;
         IsLoopFadeIn = true;       // ループ時にフェードインが有効かどうかのフラグ
         _modelOpacity = 1.0f;
@@ -289,7 +190,6 @@ public class CubismMotion : ACubismMotion
             Duration = obj.Meta.Duration,
             Loop = obj.Meta.Loop,
             CurveCount = obj.Meta.CurveCount,
-            Fps = obj.Meta.Fps,
             EventCount = obj.Meta.UserDataCount,
             Curves = new CubismMotionCurve[obj.Meta.CurveCount],
             Segments = new CubismMotionSegment[obj.Meta.TotalSegmentCount],
@@ -387,7 +287,7 @@ public class CubismMotion : ACubismMotion
                     case CubismMotionSegmentType.Bezier:
                         {
                             _motionData.Segments[totalSegmentCount].SegmentType = CubismMotionSegmentType.Bezier;
-                            if (areBeziersRestructed || UseOldBeziersCurveMotion)
+                            if (areBeziersRestructed)
                             {
                                 _motionData.Segments[totalSegmentCount].Evaluate = BezierEvaluate;
                             }
@@ -471,7 +371,6 @@ public class CubismMotion : ACubismMotion
             };
         }
 
-        _sourceFrameRate = _motionData.Fps;
         _loopDurationSeconds = _motionData.Duration;
         OnFinishedMotion = onFinishedMotionHandler;
     }
@@ -719,8 +618,6 @@ public class CubismMotion : ACubismMotion
                 motionQueueEntry.Finished = true;
             }
         }
-
-        _lastWeight = fadeWeight;
     }
 
     /// <summary>
@@ -739,84 +636,6 @@ public class CubismMotion : ACubismMotion
     public override float GetLoopDuration()
     {
         return _loopDurationSeconds;
-    }
-
-    /// <summary>
-    /// パラメータに対するフェードインの時間を設定する。
-    /// </summary>
-    /// <param name="parameterId">パラメータID</param>
-    /// <param name="value">フェードインにかかる時間[秒]</param>
-    public void SetParameterFadeInTime(string parameterId, float value)
-    {
-        var curves = _motionData.Curves;
-
-        for (int i = 0; i < _motionData.CurveCount; ++i)
-        {
-            if (parameterId == curves[i].Id)
-            {
-                curves[i].FadeInTime = value;
-                return;
-            }
-        }
-    }
-
-    /// <summary>
-    /// パラメータに対するフェードアウトの時間を設定する。
-    /// </summary>
-    /// <param name="parameterId">パラメータID</param>
-    /// <param name="value">フェードアウトにかかる時間[秒]</param>
-    public void SetParameterFadeOutTime(string parameterId, float value)
-    {
-        var curves = _motionData.Curves;
-
-        for (int i = 0; i < _motionData.CurveCount; ++i)
-        {
-            if (parameterId == curves[i].Id)
-            {
-                curves[i].FadeOutTime = value;
-                return;
-            }
-        }
-    }
-
-    /// <summary>
-    /// パラメータに対するフェードインの時間を取得する。
-    /// </summary>
-    /// <param name="parameterId">パラメータID</param>
-    /// <returns>フェードインにかかる時間[秒]</returns>
-    public float GetParameterFadeInTime(string parameterId)
-    {
-        var curves = _motionData.Curves;
-
-        for (int i = 0; i < _motionData.CurveCount; ++i)
-        {
-            if (parameterId == curves[i].Id)
-            {
-                return curves[i].FadeInTime;
-            }
-        }
-
-        return -1;
-    }
-
-    /// <summary>
-    /// パラメータに対するフェードアウトの時間を取得する。
-    /// </summary>
-    /// <param name="parameterId">パラメータID</param>
-    /// <returns>フェードアウトにかかる時間[秒]</returns>
-    public float GetParameterFadeOutTime(string parameterId)
-    {
-        var curves = _motionData.Curves;
-
-        for (int i = 0; i < _motionData.CurveCount; ++i)
-        {
-            if (parameterId == curves[i].Id)
-            {
-                return curves[i].FadeOutTime;
-            }
-        }
-
-        return -1;
     }
 
     /// <summary>

@@ -8,9 +8,12 @@ public class LAppDelegateOpenGL : LAppDelegate
 {
     public OpenGLApi GL { get; }
 
-    public LAppDelegateOpenGL(OpenGLApi gl)
+    private readonly Func<string, TexturePixels> _decodeTexture;
+
+    public LAppDelegateOpenGL(OpenGLApi gl, Func<string, TexturePixels> decodeTexture)
     {
         GL = gl;
+        _decodeTexture = decodeTexture;
 
         //テクスチャサンプリング設定
         GL.TexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR);
@@ -20,24 +23,12 @@ public class LAppDelegateOpenGL : LAppDelegate
         GL.Enable(GL.GL_BLEND);
         GL.BlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA);
 
-        View = new LAppViewOpenGL(this);
-
         InitApp();
     }
 
-    public override void GetWindowSize(out int width, out int height)
+    public override TexturePixels DecodeTexture(string fileName)
     {
-        GL.GetWindowSize(out width, out height);
-    }
-
-    public override bool RunPre()
-    {
-        // 画面の初期化
-        GL.ClearColor(BGColor.R, BGColor.G, BGColor.B, BGColor.A);
-        GL.Clear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT);
-        GL.ClearDepthf(1.0f);
-
-        return false;
+        return _decodeTexture(fileName);
     }
 
     public override CubismRenderer CreateRenderer(CubismModel model)
@@ -61,15 +52,5 @@ public class LAppDelegateOpenGL : LAppDelegate
         {
             Id = textureId
         };
-    }
-
-    public override void RunPost()
-    {
-
-    }
-
-    public override void OnUpdatePre()
-    {
-
     }
 }

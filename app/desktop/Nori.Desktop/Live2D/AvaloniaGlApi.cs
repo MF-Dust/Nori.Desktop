@@ -1,7 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using Avalonia.OpenGL;
-using Avalonia.OpenGL.Controls;
 using Live2DCSharpSDK.OpenGL;
 
 namespace Nori.Desktop.Live2D;
@@ -11,15 +10,12 @@ namespace Nori.Desktop.Live2D;
 ///
 /// 实现 Live2DCSharpSDK.OpenGL.OpenGLApi，将 SDK 的 OpenGL 调用转接到 Avalonia GlInterface 及动态加载的 OpenGL 函数。
 /// </summary>
-public sealed class AvaloniaGlApi(OpenGlControlBase control, GlInterface gl) : OpenGLApi
+public sealed class AvaloniaGlApi(GlInterface gl) : OpenGLApi
 {
-	public override bool IsES2 => true;
 	public override bool AlwaysClear => true;
-	public override bool IsPhoneES2 => false;
 
 	public delegate void Func1(int a, int b);
 	public delegate void Func2(int a, int b, int c, int d);
-	public delegate void Func3(float a);
 	public delegate void Func4(bool a, bool b, bool c, bool d);
 	public delegate void Func5(int a);
 	public delegate void Func6(int a, int b, int c, int d, int e);
@@ -34,7 +30,6 @@ public sealed class AvaloniaGlApi(OpenGlControlBase control, GlInterface gl) : O
 
 	public Func1 GLBlendFunc = Marshal.GetDelegateForFunctionPointer<Func1>(gl.GetProcAddress("glBlendFunc"));
 	public Func2 GLBlendFuncSeparate = Marshal.GetDelegateForFunctionPointer<Func2>(gl.GetProcAddress("glBlendFuncSeparate"));
-	public Func3 GLClearDepthf = Marshal.GetDelegateForFunctionPointer<Func3>(gl.GetProcAddress("glClearDepthf"));
 	public Func4 GLColorMask = Marshal.GetDelegateForFunctionPointer<Func4>(gl.GetProcAddress("glColorMask"));
 	public Func1 GLDetachShader = Marshal.GetDelegateForFunctionPointer<Func1>(gl.GetProcAddress("glDetachShader"));
 	public Func5 GLDisable = Marshal.GetDelegateForFunctionPointer<Func5>(gl.GetProcAddress("glDisable"));
@@ -48,27 +43,18 @@ public sealed class AvaloniaGlApi(OpenGlControlBase control, GlInterface gl) : O
 	public Func11 GLTexParameterf = Marshal.GetDelegateForFunctionPointer<Func11>(gl.GetProcAddress("glTexParameterf"));
 	public Func1 GLUniform1i = Marshal.GetDelegateForFunctionPointer<Func1>(gl.GetProcAddress("glUniform1i"));
 	public Func12 GLUniform4f = Marshal.GetDelegateForFunctionPointer<Func12>(gl.GetProcAddress("glUniform4f"));
-	public Func5 GLValidateProgram = Marshal.GetDelegateForFunctionPointer<Func5>(gl.GetProcAddress("glValidateProgram"));
 	public GlReadPixelsFunc GLReadPixels = Marshal.GetDelegateForFunctionPointer<GlReadPixelsFunc>(gl.GetProcAddress("glReadPixels"));
 	public GlCheckFramebufferStatusFunc GLCheckFramebufferStatus = Marshal.GetDelegateForFunctionPointer<GlCheckFramebufferStatusFunc>(gl.GetProcAddress("glCheckFramebufferStatus"));
-
-	public override void GetWindowSize(out int w, out int h)
-	{
-		w = (int)control.Bounds.Width;
-		h = (int)control.Bounds.Height;
-	}
 
 	public override void ActiveTexture(int bit) => gl.ActiveTexture(bit);
 	public override void AttachShader(int a, int b) => gl.AttachShader(a, b);
 	public override void BindBuffer(int bit, int index) => gl.BindBuffer(bit, index);
 	public override void BindFramebuffer(int type, int data) => gl.BindFramebuffer(type, data);
 	public override void BindTexture(int bit, int index) => gl.BindTexture(bit, index);
-	public override void BindVertexArrayOES(int data) => gl.BindVertexArray(data);
 	public override void BlendFunc(int a, int b) => GLBlendFunc(a, b);
 	public override void BlendFuncSeparate(int a, int b, int c, int d) => GLBlendFuncSeparate(a, b, c, d);
 	public override void Clear(int bit) => gl.Clear(bit);
 	public override void ClearColor(float r, float g, float b, float a) => gl.ClearColor(r, g, b, a);
-	public override void ClearDepthf(float data) => GLClearDepthf(data);
 	public override void ColorMask(bool a, bool b, bool c, bool d) => GLColorMask(a, b, c, d);
 	public override void CompileShader(int index) => gl.CompileShader(index);
 	public override int CreateProgram() => gl.CreateProgram();
@@ -96,7 +82,6 @@ public sealed class AvaloniaGlApi(OpenGlControlBase control, GlInterface gl) : O
 		fixed (bool* ptr = data) GLGetBooleanv(bit, ptr);
 	}
 
-	public override int GetError() => gl.GetError();
 	public override void GetIntegerv(int bit, out int data) => gl.GetIntegerv(bit, out data);
 
 	public override unsafe void GetIntegerv(int bit, int[] data)
@@ -158,5 +143,4 @@ public sealed class AvaloniaGlApi(OpenGlControlBase control, GlInterface gl) : O
 	public override void DeleteVertexArray(int vertexArray) => gl.DeleteVertexArray(vertexArray);
 	public override void BindVertexArray(int vertexArray) => gl.BindVertexArray(vertexArray);
 	public override int CheckFramebufferStatus(int target) => GLCheckFramebufferStatus(target);
-	public override void ValidateProgram(int index) => GLValidateProgram(index);
 }

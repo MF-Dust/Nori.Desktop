@@ -33,45 +33,6 @@ public enum MotionPriority : int
 }
 
 /// <summary>
-/// 表情パラメータ値の計算方式
-/// </summary>
-public enum ExpressionBlendType
-{
-    /// <summary>
-    /// 加算
-    /// </summary>
-    Add = 0,
-    /// <summary>
-    /// 乗算
-    /// </summary>
-    Multiply = 1,
-    /// <summary>
-    /// 上書き
-    /// </summary>
-    Overwrite = 2
-};
-
-/// <summary>
-/// 表情のパラメータ情報の構造体。
-/// </summary>
-public record ExpressionParameter
-{
-    /// <summary>
-    /// パラメータID
-    /// </summary>
-    public required string ParameterId { get; set; }
-    /// <summary>
-    /// パラメータの演算種類
-    /// </summary>
-    public ExpressionBlendType BlendType { get; set; }
-    /// <summary>
-    /// 値
-    /// </summary>
-    public float Value { get; set; }
-}
-
-
-/// <summary>
 /// モーションカーブの種類。
 /// </summary>
 public enum CubismMotionCurveTarget
@@ -208,10 +169,6 @@ public record CubismMotionData
     /// UserDataの個数
     /// </summary>
     public int EventCount;
-    /// <summary>
-    /// フレームレート
-    /// </summary>
-    public float Fps;
     /// <summary>
     /// カーブのリスト
     /// </summary>

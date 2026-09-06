@@ -39,28 +39,6 @@ public static class CubismMath
     }
 
     /// <summary>
-    /// 大きい方の値を返す。
-    /// </summary>
-    /// <param name="l">左辺の値</param>
-    /// <param name="r">右辺の値</param>
-    /// <returns>大きい方の値</returns>
-    public static float Max(float l, float r)
-    {
-        return (l > r) ? l : r;
-    }
-
-    /// <summary>
-    /// 小さい方の値を返す。
-    /// </summary>
-    /// <param name="l">左辺の値</param>
-    /// <param name="r">右辺の値</param>
-    /// <returns>小さい方の値</returns>
-    public static float Min(float l, float r)
-    {
-        return (l > r) ? r : l;
-    }
-
-    /// <summary>
     /// 角度値をラジアン値に変換します。
     /// </summary>
     /// <param name="degrees">角度値</param>
@@ -71,16 +49,6 @@ public static class CubismMath
     }
 
     /// <summary>
-    /// ラジアン値を角度値に変換します。
-    /// </summary>
-    /// <param name="radian">ラジアン値</param>
-    /// <returns>ラジアン値から変換した角度値</returns>
-    public static float RadianToDegrees(float radian)
-    {
-        return radian * 180.0f / Pi;
-    }
-
-    /// <summary>
     /// 2つのベクトルからラジアン値を求めます。
     /// </summary>
     /// <param name="from">始点ベクトル</param>
@@ -88,14 +56,9 @@ public static class CubismMath
     /// <returns>ラジアン値から求めた方向ベクトル</returns>
     public static float DirectionToRadian(Vector2 from, Vector2 to)
     {
-        float q1;
-        float q2;
-        float ret;
-
-        q1 = MathF.Atan2(to.Y, to.X);
-        q2 = MathF.Atan2(from.Y, from.X);
-
-        ret = q1 - q2;
+        float q1 = MathF.Atan2(to.Y, to.X);
+        float q2 = MathF.Atan2(from.Y, from.X);
+        float ret = q1 - q2;
 
         while (ret < -Pi)
         {
@@ -108,28 +71,6 @@ public static class CubismMath
         }
 
         return ret;
-    }
-
-    /// <summary>
-    /// 2つのベクトルから角度値を求めます。
-    /// </summary>
-    /// <param name="from">始点ベクトル</param>
-    /// <param name="to">終点ベクトル</param>
-    /// <returns>角度値から求めた方向ベクトル</returns>
-    public static float DirectionToDegrees(Vector2 from, Vector2 to)
-    {
-        float radian;
-        float degree;
-
-        radian = DirectionToRadian(from, to);
-        degree = RadianToDegrees(radian);
-
-        if ((to.X - from.X) > 0.0f)
-        {
-            degree = -degree;
-        }
-
-        return degree;
     }
 
     /// <summary>
@@ -252,70 +193,4 @@ public static class CubismMath
         return RangeF(root1, 0.0f, 1.0f);
     }
 
-    /// <summary>
-    /// 値を範囲内に納めて返す
-    /// </summary>
-    /// <param name="val">範囲内か確認する値</param>
-    /// <param name="min">最小値</param>
-    /// <param name="max">最大値</param>
-    /// <returns>範囲内に収まった値</returns>
-    public static int Clamp(int val, int min, int max)
-    {
-        if (val < min)
-        {
-            return min;
-        }
-        else if (max < val)
-        {
-            return max;
-        }
-
-        return val;
-    }
-
-    /// <summary>
-    /// 値を範囲内に納めて返す
-    /// </summary>
-    /// <param name="val">範囲内か確認する値</param>
-    /// <param name="min">最小値</param>
-    /// <param name="max">最大値</param>
-    /// <returns>範囲内に収まった値</returns>
-    public static float ClampF(float val, float min, float max)
-    {
-        if (val < min)
-        {
-            return min;
-        }
-        else if (max < val)
-        {
-            return max;
-        }
-
-        return val;
-    }
-
-    /// <summary>
-    /// 浮動小数点の余りを求める。
-    /// </summary>
-    /// <param name="dividend">被除数（割られる値）</param>
-    /// <param name="divisor">除数（割る値）</param>
-    /// <returns>余り</returns>
-    public static float ModF(float dividend, float divisor)
-    {
-        if (!float.IsFinite(dividend) || divisor == 0 || float.IsNaN(dividend) || float.IsNaN(divisor))
-        {
-            CubismLog.Warning("[Live2D SDK]dividend: %f, divisor: %f ModF() returns 'NaN'.", dividend, divisor);
-            return float.NaN;
-        }
-
-        // 絶対値に変換する。
-        float absDividend = MathF.Abs(dividend);
-        float absDivisor = MathF.Abs(divisor);
-
-        // 絶対値で割り算する。
-        float result = absDividend - MathF.Floor(absDividend / absDivisor) * absDivisor;
-
-        // 符号を被除数のものに指定する。
-        return MathF.CopySign(result, dividend);
-    }
 }

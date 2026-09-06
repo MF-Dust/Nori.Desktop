@@ -1,7 +1,10 @@
 ﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Avalonia;
-using Avalonia.OpenGL;
+using Avalonia.Media.Imaging;
 using Avalonia.OpenGL.Controls;
+using Avalonia.Platform;
+using Avalonia.OpenGL;
 using Avalonia.Threading;
 using Live2DCSharpSDK.App;
 using Live2DCSharpSDK.Framework;
@@ -73,8 +76,8 @@ public sealed class PetGlControl : OpenGlControlBase
 		};
 		CubismFramework.StartUp(cubismAllocator, cubismOption);
 
-		_glApi = new AvaloniaGlApi(this, gl);
-		_lapp = new LAppDelegateOpenGL(_glApi)
+		_glApi = new AvaloniaGlApi(gl);
+		_lapp = new LAppDelegateOpenGL(_glApi, DecodeTexture)
 		{
 			BGColor = new(0, 0, 0, 0),
 		};
@@ -85,6 +88,24 @@ public sealed class PetGlControl : OpenGlControlBase
 		_runtime.OnGlInit(_lapp, _glApi);
 		_runtime.SetRenderSurfaceState(false, false, _renderActive);
 		StartRenderLoop();
+	}
+
+	private static TexturePixels DecodeTexture(string fileName)
+	{
+		using Bitmap bitmap = new(fileName);
+		PixelSize size = bitmap.PixelSize;
+		using WriteableBitmap rgba = new(size, bitmap.Dpi, PixelFormat.Rgba8888, AlphaFormat.Unpremul);
+		using ILockedFramebuffer framebuffer = rgba.Lock();
+		bitmap.CopyPixels(framebuffer);
+
+		int rowBytes = checked(size.Width * 4);
+		byte[] data = new byte[checked(rowBytes * size.Height)];
+		for (int row = 0; row < size.Height; row++)
+		{
+			Marshal.Copy(framebuffer.Address + row * framebuffer.RowBytes, data, row * rowBytes, rowBytes);
+		}
+
+		return new TexturePixels(size.Width, size.Height, data);
 	}
 
 	protected override void OnOpenGlDeinit(GlInterface gl)

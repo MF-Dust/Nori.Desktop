@@ -103,26 +103,6 @@ public record CubismMatrix44
     }
 
     /// <summary>
-    /// X軸の値を現在の行列で計算する。
-    /// </summary>
-    /// <param name="src">X軸の値</param>
-    /// <returns>現在の行列で計算されたX軸の値</returns>
-    public float TransformX(float src)
-    {
-        return _tr[0] * src + _tr[12];
-    }
-
-    /// <summary>
-    /// Y軸の値を現在の行列で計算する。
-    /// </summary>
-    /// <param name="src">Y軸の値</param>
-    /// <returns>現在の行列で計算されたY軸の値</returns>
-    public float TransformY(float src)
-    {
-        return _tr[5] * src + _tr[13];
-    }
-
-    /// <summary>
     /// X軸の値を現在の行列で逆計算する。
     /// </summary>
     /// <param name="src">X軸の値</param>
@@ -152,17 +132,6 @@ public record CubismMatrix44
         _mpt1[12] = x;
         _mpt1[13] = y;
         MultiplyByMatrix(_mpt1);
-    }
-
-    /// <summary>
-    /// 現在の行列の位置を指定した位置へ移動する。
-    /// </summary>
-    /// <param name="x">X軸の移動量</param>
-    /// <param name="y">Y軸の移動量</param>
-    public void Translate(float x, float y)
-    {
-        _tr[12] = x;
-        _tr[13] = y;
     }
 
     /// <summary>

@@ -9,10 +9,6 @@ namespace Live2DCSharpSDK.OpenGL;
 
 public class CubismRenderer_OpenGLES2 : CubismRenderer
 {
-    public const int ColorChannelCount = 4;   // 実験時に1チャンネルの場合は1、RGBだけの場合は3、アルファも含める場合は4
-    public const int ClippingMaskMaxCountOnDefault = 36;  // 通常のフレームバッファ1枚あたりのマスク最大数
-    public const int ClippingMaskMaxCountOnMultiRenderTexture = 32;   // フレームバッファが2枚以上ある場合のフレームバッファ1枚あたりのマスク最大数
-
     private readonly OpenGLApi GL;
 
     /// <summary>
@@ -62,17 +58,6 @@ public class CubismRenderer_OpenGLES2 : CubismRenderer
 
     internal VBO[] vbo = new VBO[512];
 
-    /// <summary>
-    /// Tegraプロセッサ対応。拡張方式による描画の有効・無効
-    /// </summary>
-    /// <param name="extMode">trueなら拡張方式で描画する</param>
-    /// <param name="extPAMode">trueなら拡張方式のPA設定を有効にする</param>
-    public void SetExtShaderMode(bool extMode, bool extPAMode = false)
-    {
-        Shader.SetExtShaderMode(extMode, extPAMode);
-        Shader.ReleaseShaderProgram();
-    }
-
     private readonly LAppDelegate _lapp;
 
     public unsafe CubismRenderer_OpenGLES2(OpenGLApi gl, LAppDelegate lapp, CubismModel model, int maskBufferCount = 1) : base(model)
@@ -120,15 +105,6 @@ public class CubismRenderer_OpenGLES2 : CubismRenderer
     public void BindTexture(int modelTextureNo, int glTextureNo)
     {
         _textures[modelTextureNo] = glTextureNo;
-    }
-
-    /// <summary>
-    /// OpenGLにバインドされたテクスチャのリストを取得する
-    /// </summary>
-    /// <returns>テクスチャのアドレスのリスト</returns>
-    public Dictionary<int, int> GetBindedTextures()
-    {
-        return _textures;
     }
 
     /// <summary>
@@ -281,11 +257,6 @@ public class CubismRenderer_OpenGLES2 : CubismRenderer
 
         GL.Enable(GL.GL_BLEND);
         GL.ColorMask(true, true, true, true);
-
-        if (GL.IsPhoneES2)
-        {
-            GL.BindVertexArrayOES(0);
-        }
 
         GL.BindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0);
         GL.BindBuffer(GL.GL_ARRAY_BUFFER, 0); //前にバッファがバインドされていたら破棄する必要がある

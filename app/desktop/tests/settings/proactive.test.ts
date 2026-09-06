@@ -259,6 +259,51 @@ describe("ProactiveSettings.vue", () => {
 		}
 	})
 
+
+	it("creates a daily recurring reminder through the existing update API", async () => {
+		const INVOKED: {cmd: string; args: any}[] = []
+		;(window as any).__nori.invoke = async (cmd: string, args: any) => {
+			if (cmd === "ui_get_snapshot") return RUNTIME.snapshot.value ?? createMockSnapshot()
+			INVOKED.push({cmd, args})
+			if (cmd === "reminder_add") {
+				return {id: "rem-daily", content: args.content, triggerTime: Date.now() + args.delayMinutes * 60000}
+			}
+			if (cmd === "reminder_update") {
+				return {id: args.id, content: "每日复习", triggerTime: Date.now() + 900000, repeatDaily: true}
+			}
+			return null
+		}
+
+		RUNTIME.snapshot.value = createMockSnapshot() as any
+
+		const MOUNT = mountComponent()
+		try {
+			await settleView()
+			const REPEAT_SWITCH = MOUNT.container.querySelector("button[role='switch'][aria-label='每日重复']") as HTMLButtonElement
+			expect(REPEAT_SWITCH).not.toBeNull()
+			REPEAT_SWITCH.click()
+			await settleView()
+
+			const INPUT = MOUNT.container.querySelector("input[maxlength='200']") as HTMLInputElement
+			INPUT.value = "每日复习"
+			INPUT.dispatchEvent(new Event("input"))
+			await settleView()
+
+			const ADD_BTN = Array.from(MOUNT.container.querySelectorAll("button"))
+				.find(button => button.textContent?.includes("添加提醒"))
+			ADD_BTN?.click()
+			await settleView()
+
+			expect(INVOKED.some(call => call.cmd === "reminder_add" && call.args.content === "每日复习")).toBe(true)
+			expect(INVOKED.some(call => call.cmd === "reminder_update"
+				&& call.args.id === "rem-daily"
+				&& call.args.repeatDaily === true)).toBe(true)
+		} finally {
+			MOUNT.app.unmount()
+			MOUNT.container.remove()
+		}
+	})
+
 	it("handles reminder addition failure via feedback.error", async () => {
 		const FEEDBACK_ERROR_SPY = vi.spyOn(feedback, "error").mockImplementation(() => {})
 		;(window as any).__nori.invoke = async (cmd: string) => {

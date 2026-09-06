@@ -1360,7 +1360,7 @@ public sealed class BridgeCommands
 		string modelId = RequireKnownInstalledModel(Str(args, "modelId"));
 		if (args.TryGetProperty("scale", out JsonElement scaleElem))
 		{
-			ApplyDisplayKey($"l2d_scale_{modelId}", ReadFiniteNumber(scaleElem, "模型缩放", 0.1f, 2.0f));
+			ApplyDisplayKey($"l2d_scale_{modelId}", ReadFiniteNumber(scaleElem, "模型缩放", 0.1f, 4.0f));
 		}
 		if (args.TryGetProperty("opacity", out JsonElement opacityElem))
 		{

@@ -156,6 +156,7 @@ const formatRelativeTime = (timestamp: number): string => {
 const newReminderText = ref("")
 const selectedPreset = ref<number>(15)
 const customMinutesInput = ref<number | null>(null)
+const repeatDaily = ref(false)
 
 const isCustomMode = computed(() => selectedPreset.value === -1)
 
@@ -238,11 +239,20 @@ const createReminder = async () => {
 
 	isAdding.value = true
 	try {
-		await RUNTIME.reminderAdd(newReminderText.value.trim(), effectiveDelayMinutes.value)
+		const CREATED = await RUNTIME.reminderAdd(newReminderText.value.trim(), effectiveDelayMinutes.value)
+		if (repeatDaily.value) {
+			try {
+				await RUNTIME.reminderUpdate({id: CREATED.id, repeatDaily: true})
+			} catch (error) {
+				try { await RUNTIME.reminderCancel(CREATED.id) } catch { /* 保持原始更新异常 */ }
+				throw error
+			}
+		}
 		await RUNTIME.refresh()
 		newReminderText.value = ""
 		selectedPreset.value = 15
 		customMinutesInput.value = null
+		repeatDaily.value = false
 		validationError.value = ""
 	} catch (error) {
 		feedback.error(TEXT.value.reminders.addFailed, error)
@@ -447,6 +457,13 @@ const confirmCancelReminder = async () => {
 							</AppButton>
 						</div>
 					</div>
+
+					<AppSwitchRow
+						:title="TEXT.reminders.badgeDaily"
+						:model-value="repeatDaily"
+						:disabled="isSafeMode || isAdding"
+						@update:model-value="repeatDaily = $event"
+					/>
 
 					<!-- 错误校验提示 -->
 					<div v-if="validationError" class="flex items-center gap-1 text-xs text-danger-text" role="alert">

@@ -28,7 +28,6 @@ const beatSync = ref(false)
 const aiInteraction = ref(false)
 const renderScale = ref(2)
 const maxFps = ref(0)
-const modelScale = ref(1)
 
 // 是否已配置 AI (未配置时禁用 AI 互动开关)
 const aiConfigured = computed(() => Boolean(RUNTIME.snapshot.value?.ai.configured))
@@ -36,7 +35,7 @@ const clickThroughSupported = computed(() => RUNTIME.platform().supportsHitThrou
 
 // 保存辅助: 每个字段独立防抖 timer + 卸载 flush (规范要求); 设置页统一走 useSnapshotSave
 const SAVE = useSnapshotSave({
-	onError: (key, error) => feedback.error(key === "modelScale" ? I18N.value.scaleSaveFailed : I18N.value.saveFailed, error),
+	onError: (_key, error) => feedback.error(I18N.value.saveFailed, error),
 })
 
 const saveBehavior = (key: string, value: boolean | number) => {
@@ -100,7 +99,6 @@ onMounted(async () => {
 const loadModelDisplay = async (modelId: string): Promise<void> => {
 	try {
 		const META = await RUNTIME.modelMeta(modelId)
-		modelScale.value = META.scale
 		shadow.value = META.shadow
 		renderScale.value = META.renderScale
 		maxFps.value = META.maxFps
@@ -112,11 +110,6 @@ const loadModelDisplay = async (modelId: string): Promise<void> => {
 watch(() => props.modelId, async modelId => {
 	if (modelId) await loadModelDisplay(modelId)
 })
-
-const onModelScaleUpdate = (value: number) => {
-	modelScale.value = value
-	SAVE.save("modelScale", () => RUNTIME.setModelDisplay(props.modelId, {scale: value}))
-}
 
 const onRenderScaleUpdate = (value: number) => {
 	if (!props.modelId) return
@@ -223,30 +216,13 @@ const fpsOptions = computed(() => [
 		</div>
 
 		<div class="surface-inset flex flex-col gap-1.5 px-[1.1rem] py-2">
-			<span class="text-base font-500 text-text-primary">{{ I18N.modelScale }}</span>
-			<span class="text-hint">{{ I18N.modelScaleDesc }}</span>
-			<div class="flex items-center gap-2.5">
-				<n-slider
-					:value="modelScale"
-					:min="0.5"
-					:max="2"
-					:step="0.05"
-					:format-tooltip="(v: number) => `${Math.round(v * 100)}%`"
-					class="flex-1 min-w-0"
-					@update:value="onModelScaleUpdate"
-				/>
-				<span class="w-[5rem] shrink-0 text-sm font-600 text-right text-nori-teal-bright mono">{{ Math.round(modelScale * 100) }}%</span>
-			</div>
-		</div>
-
-		<div class="surface-inset flex flex-col gap-1.5 px-[1.1rem] py-2">
 			<span class="text-base font-500 text-text-primary">{{ I18N.renderScale }}</span>
 			<span class="text-hint">{{ I18N.renderScaleDesc }}</span>
 			<div class="flex items-center gap-2.5">
 				<n-slider
 					:value="renderScale"
 					:min="0.5"
-					:max="2"
+					:max="4"
 					:step="0.25"
 					:format-tooltip="(v: number) => `${v.toFixed(2)}x`"
 					class="flex-1 min-w-0"

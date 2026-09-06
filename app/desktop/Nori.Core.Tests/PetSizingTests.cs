@@ -56,9 +56,10 @@ public class PetSizingTests
 	[InlineData(0.5)]
 	[InlineData(1.0)]
 	[InlineData(1.5)]
+	[InlineData(4.0)]
 	public void WindowSize_ScalesWithUserScale_OnLargeScreen(double userScale)
 	{
-		// On 3840x2160 screen (large enough not to clamp 85%), scales directly
+		// On a large screen the requested display scale maps directly to the pet window.
 		var (width, height) = PetSizing.CalculateWindowSize(400, 520, userScale, 3840, 2160, 1.0);
 		Assert.Equal((int)Math.Round(400 * userScale), width);
 		Assert.Equal((int)Math.Round(520 * userScale), height);
@@ -73,11 +74,10 @@ public class PetSizingTests
 	}
 
 	[Fact]
-	public void WindowSize_ClampedByScreen85Percent()
+	public void WindowSize_AllowsFourHundredPercentForDefaultPet()
 	{
-		// 1000x1000 screen with scale 2.0 -> max is 850x850
-		var (width, height) = PetSizing.CalculateWindowSize(600, 700, 2.0, 1000, 1000, 1.0);
-		Assert.True(width <= 850);
-		Assert.True(height <= 850);
+		var (width, height) = PetSizing.CalculateWindowSize(400, 520, 4.0, 1920, 1080, 1.0);
+		Assert.Equal(1600, width);
+		Assert.Equal(2080, height);
 	}
 }

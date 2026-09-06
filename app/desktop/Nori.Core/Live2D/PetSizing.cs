@@ -58,7 +58,7 @@ public static class PetSizing
 	/// <summary>
 	/// 根据模型原始宽高、用户缩放比例和屏幕尺寸，计算窗口最终物理像素尺寸
 	///
-	/// 窗口尺寸 = 安全基准 x userScale，并按屏幕尺寸 85% 保护收口。
+	/// 窗口尺寸 = 安全基准 x userScale，并允许扩展到工作区 200%，让高倍缩放仍保留完整模型区域。
 	/// </summary>
 	public static (int Width, int Height) CalculateWindowSize(
 		double rawWidth,
@@ -68,15 +68,15 @@ public static class PetSizing
 		double screenHeight,
 		double renderScaling)
 	{
-		double clampedScale = Math.Clamp(double.IsFinite(userScale) && userScale > 0 ? userScale : 1.0, 0.1, 2.0);
+		double clampedScale = Math.Clamp(double.IsFinite(userScale) && userScale > 0 ? userScale : 1.0, 0.1, 4.0);
 		var (baseW, baseH) = CalculateSafeBaseSize(rawWidth, rawHeight);
 
 		double screenW = screenWidth > 0 ? screenWidth : 1920;
 		double screenH = screenHeight > 0 ? screenHeight : 1080;
 		double scaleFactor = renderScaling > 0 ? renderScaling : 1.0;
 
-		int maxPhysicalW = Math.Max(200, (int)Math.Round(screenW * scaleFactor * 0.85));
-		int maxPhysicalH = Math.Max(200, (int)Math.Round(screenH * scaleFactor * 0.85));
+		int maxPhysicalW = Math.Max(200, (int)Math.Round(screenW * scaleFactor * 2.0));
+		int maxPhysicalH = Math.Max(200, (int)Math.Round(screenH * scaleFactor * 2.0));
 
 		int targetPhysicalW = Math.Max(80, (int)Math.Round(baseW * clampedScale * scaleFactor));
 		int targetPhysicalH = Math.Max(80, (int)Math.Round(baseH * clampedScale * scaleFactor));

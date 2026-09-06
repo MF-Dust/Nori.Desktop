@@ -22,6 +22,13 @@ public sealed class Live2DRenderSettingsTests
 	}
 
 	[Fact]
+	public void RenderScaleSupportsFourXAndClampsAboveIt()
+	{
+		Assert.Equal(4.0f, Live2DRenderSettings.Normalize("nori", renderScale: 4.0f).RenderScale);
+		Assert.Equal(4.0f, Live2DRenderSettings.Normalize("nori", renderScale: 8.0f).RenderScale);
+	}
+
+	[Fact]
 	public void NativeSliceContainsOnlyTheTwoExistingModelIds()
 	{
 		Assert.Equal(["arg-nori", "nori"], SupportedModelIds.All);

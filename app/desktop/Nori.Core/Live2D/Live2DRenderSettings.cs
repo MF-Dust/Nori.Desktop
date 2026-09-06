@@ -29,7 +29,7 @@ public sealed record Live2DRenderSettings
 	public const float MinOpacity = 0.0f;
 	public const float MaxOpacity = 1.0f;
 	public const float MinRenderScale = 0.5f;
-	public const float MaxRenderScale = 2.0f;
+	public const float MaxRenderScale = 4.0f;
 	public const int MaxExplicitFps = 240;
 
 	public string ModelId { get; init; } = "arg-nori";

@@ -353,7 +353,7 @@ export default {
 					modelScale: "模型大小",
 					modelScaleDesc: "调整桌宠在窗口中的显示大小",
 					renderScale: "渲染分辨率",
-					renderScaleDesc: "0.5x ~ 2x, 越高越清晰但更耗性能",
+					renderScaleDesc: "0.5x ~ 4x, 越高越清晰但更耗性能",
 					maxFps: "帧率上限",
 					maxFpsNone: "不限",
 					maxFps30: "30 FPS",

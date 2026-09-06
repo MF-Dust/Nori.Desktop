@@ -23,7 +23,7 @@ body:
       options:
         - label: 我已将本应用更新到最新版或测试版 ![最新的版本号](https://img.shields.io/github/v/release/MF-Dust/Nori-Desktop-Pet?include_prereleases&style=flat-square&label=)，并看过 [最新提交](https://github.com/MF-Dust/Nori-Desktop-Pet/commits/main/)，确认我想要的功能还没有实现。我也已在 [Issues](https://github.com/MF-Dust/Nori-Desktop-Pet/issues?q=-label%3ABug) 和 [DeepWiki 知识库](https://deepwiki.ai/MF-Dust/Nori-Desktop-Pet) 中检索，确认我想要的功能未被提交过。
           required: true
-        - label: 我已确认该需求与 Nori Desktop Pet 的核心功能相关（桌宠交互 / Live2D / AI 伴侣 / 记忆 / 声音 / 工具扩展等）。若需求属于定制化工具能力，可优先考虑通过 MCP (Model Context Protocol) 插件机制进行扩展。
+        - label: 我已确认该需求与 Nori Desktop 的核心功能相关（Live2D 伴侣交互 / AI 伴侣 / 记忆 / 声音 / 工具扩展等）。若需求属于定制化工具能力，可优先考虑通过 MCP (Model Context Protocol) 插件机制进行扩展。
           required: true
         - label: 我已经仔细阅读过选项里的内容，并且知道这个选项不用勾选。
         - label: 我已知晓由于开发者时间精力有限，提交的功能请求可能需要一定时间进行评估与排期实现。
@@ -53,7 +53,7 @@ body:
       label: 期望效果
       description: 请详细描述这个功能实现后的具体交互与视觉效果。
       placeholder: |
-        例如：开启设置面板中【XX开关】后，桌宠在受到XX事件触发时会做出XX动作，并在控制台显示XX……
+        例如：开启设置面板中【XX开关】后，Nori 在受到XX事件触发时会做出XX动作，并在控制台显示XX……
     validations:
       required: true
   - type: checkboxes

@@ -41,7 +41,7 @@ pnpm dev                                      # vite only; must be running for N
 ### Stabilization contracts
 
 - 产品版本由构建环境控制；未显式注入时唯一默认值是 `Dev`。Release 必须手动输入全历史唯一 codename，数字版本也不得由另一个发布标签重用；通过 `NORI_PRODUCT_VERSION` 注入稳定版本、通过 `NORI_PRODUCT_INFORMATIONAL_VERSION` 注入带 `NORI_COMMIT_SHA` 短 hash 的 informational version。CLR/File/NuGet 版本保持数字格式，`ProductVersion.Current` 保留完整 `v<version>-<codename>+<shortsha>` informational version。不要新增 `0.1.0` 回退。`ProductVersion.Current` 进入 snapshot、Smoke readiness、诊断、Crash 报告和 MCP clientInfo。
-- `--safe-mode` 只接受人工命令行启动，不自动恢复。它保留 UI、日志、诊断和本地手动修复，跳过 MCP 自动连接、Proactive/Reflection、知识与记忆后台维护、AI 桌宠交互及 Live2D 自动模型加载；Bridge 入口同时拒绝交互式联网、Provider/MCP/语音外部操作。
+- `--safe-mode` 只接受人工命令行启动，不自动恢复。它保留 UI、日志、诊断和本地手动修复，跳过 MCP 自动连接、Proactive/Reflection、知识与记忆后台维护、AI 伴侣交互及 Live2D 自动模型加载；Bridge 入口同时拒绝交互式联网、Provider/MCP/语音外部操作。
 - `readiness.json` schema v2 必须包含 `product_version`、`database_schema_version`、`config_schema_version` 和 `safe_mode`；Windows CI 覆盖 first-run、initialized 和 initialized safe-mode。
 - `export_diagnostics` 只生成大小受限、脱敏白名单 ZIP；不得包含数据库、聊天/记忆/提示词、工具参数/结果、请求正文、录音、资源、凭据或真实用户路径。Provider 连接测试发送固定探测且不持久化配置或内容。
 - 迁移前备份使用 `VACUUM INTO`，单文件上限 64 MiB、最多保留 3 份；新增迁移必须保持这条保护。

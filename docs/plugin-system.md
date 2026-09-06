@@ -205,7 +205,7 @@ ping
 
 除此之外，插件可以在创建窗口时通过 `PluginWebViewOptions.CommandHandler` 注册自己的 `IPluginWebViewCommandHandler`，页面发起的非白名单命令会被转发给该处理器（deny-by-default：未注册处理器时一律拒绝）。白名单命令始终优先于自定义处理器。
 
-插件还可以注册 `IPluginActionContribution` 贡献（Id/Description/参数 Schema/InvokeAsync）。宿主在活跃插件变化时把这些动作注册进 `ToolRegistry` 的 `plugin` 分类（工具名 `plugin__<pluginId>__<actionId>`，权限级别 safe），桌宠 AI 对话即可调用；动作内部经 `IPluginWebViewWindow.SendEventAsync` 向页面推送事件（`kind:'event'` 信封），由页面执行实际播放控制。桥接使用独立的 `window.__noriPlugin.dispatch` 信封；旧点号/短名称别名、安装/启用/禁用/卸载以及宿主核心命令均拒绝。插件窗口使用独立的 WebView 数据目录，插件上下文撤销时自动关闭。
+插件还可以注册 `IPluginActionContribution` 贡献（Id/Description/参数 Schema/InvokeAsync）。宿主在活跃插件变化时把这些动作注册进 `ToolRegistry` 的 `plugin` 分类（工具名 `plugin__<pluginId>__<actionId>`，权限级别 safe），伴侣 AI 对话即可调用；动作内部经 `IPluginWebViewWindow.SendEventAsync` 向页面推送事件（`kind:'event'` 信封），由页面执行实际播放控制。桥接使用独立的 `window.__noriPlugin.dispatch` 信封；旧点号/短名称别名、安装/启用/禁用/卸载以及宿主核心命令均拒绝。插件窗口使用独立的 WebView 数据目录，插件上下文撤销时自动关闭。
 
 ## 插件聊天卡片 (约定)
 

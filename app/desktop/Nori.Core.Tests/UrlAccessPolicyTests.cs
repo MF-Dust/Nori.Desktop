@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Security.AntiSSRF;
 using Nori.Core.Network;
 
 namespace Nori.Core.Tests;
@@ -42,52 +43,88 @@ public class UrlAccessPolicyTests
 		Assert.Throws<InvalidOperationException>(() =>
 			UrlAccessPolicy.EnsurePublicHttp(new Uri("http://[::ffff:127.0.0.1]/x")));
 
+	[Theory]
+	[InlineData("8.8.8.8")]
+	[InlineData("1.1.1.1")]
+	[InlineData("172.32.0.1")]
+	[InlineData("192.0.1.1")]
+	[InlineData("2001:200::1")]
+	[InlineData("2001:4860:4860::8888")]
+	[InlineData("2606:4700:4700::1111")]
+	[InlineData("3ff0::1")]
+	[InlineData("3fff:1000::1")]
+	[InlineData("::ffff:8.8.8.8")]
+	public void 推荐黑名单以外的IP地址允许(string address) =>
+		Assert.False(UrlAccessPolicy.IsRestricted(IPAddress.Parse(address)));
+
+	[Theory]
+	[InlineData("0.0.0.0")]
+	[InlineData("127.0.0.1")]
+	[InlineData("::")]
+	[InlineData("::1")]
+	[InlineData("::ffff:127.0.0.1")]
+	[InlineData("::ffff:192.168.1.1")]
+	[InlineData("64:ff9b::808:808")]
+	[InlineData("64:ff9b:1::1")]
+	[InlineData("100::1")]
+	[InlineData("100:0:0:1::1")]
+	[InlineData("192.0.0.1")]
+	[InlineData("168.63.129.16")]
+	[InlineData("2001:1ff::1")]
+	[InlineData("2001:db8::1")]
+	[InlineData("2002::1")]
+	[InlineData("2620:4f:8000::1")]
+	[InlineData("3fff:fff::1")]
+	[InlineData("5f00::1")]
+	[InlineData("fc00::1")]
+	[InlineData("fe80::1")]
+	[InlineData("fec0::1")]
+	[InlineData("ff02::1")]
+	public void 推荐黑名单内的IP地址受限(string address) =>
+		Assert.True(UrlAccessPolicy.IsRestricted(IPAddress.Parse(address)));
+
 	[Fact]
-	public void 内部判定_回环与未指定地址受限()
+	public void 推荐黑名单所有范围的首尾地址均受限()
 	{
-		Assert.True(UrlAccessPolicy.IsRestricted(IPAddress.Loopback));
-		Assert.True(UrlAccessPolicy.IsRestricted(IPAddress.IPv6Loopback));
-		Assert.True(UrlAccessPolicy.IsRestricted(IPAddress.Any));
-		Assert.False(UrlAccessPolicy.IsRestricted(IPAddress.Parse("8.8.8.8")));
-		Assert.False(UrlAccessPolicy.IsRestricted(IPAddress.Parse("172.32.0.1")));
+		foreach (string cidr in IPAddressRanges.recommendedLatest)
+		{
+			IPNetwork network = IPNetwork.Parse(cidr);
+			byte[] endBytes = network.BaseAddress.GetAddressBytes();
+			for (int bit = network.PrefixLength; bit < endBytes.Length * 8; bit++)
+				endBytes[bit / 8] |= (byte)(1 << (7 - bit % 8));
+			IPAddress last = new(endBytes);
+
+			Assert.True(UrlAccessPolicy.IsRestricted(network.BaseAddress), $"{cidr} 首地址未拦截");
+			Assert.True(UrlAccessPolicy.IsRestricted(last), $"{cidr} 尾地址未拦截");
+			Assert.True(UrlAccessPolicy.IsRestricted(network.BaseAddress.MapToIPv6()), $"{cidr} 映射首地址未拦截");
+			Assert.True(UrlAccessPolicy.IsRestricted(last.MapToIPv6()), $"{cidr} 映射尾地址未拦截");
+		}
 	}
 
 	[Fact]
-	public void 系统代理接管的公网请求默认被拒绝()
+	public void DNS解析结果包含受限地址时被拒绝()
 	{
-		try
-		{
-			UrlAccessPolicy.PublicSystemProxyAllowed = false;
-			InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
-				UrlAccessPolicy.EnsureDirectRoute(new Uri("https://api.anysearch.com/v1/search"), AlwaysProxy()));
-			Assert.Contains("系统代理", exception.Message);
-		}
-		finally
-		{
-			UrlAccessPolicy.PublicSystemProxyAllowed = false;
-		}
+		NetworkAddressPolicyException exception = Assert.Throws<NetworkAddressPolicyException>(() =>
+			UrlAccessPolicy.EnsureResolvedPublicAddresses(
+				"example.com", [IPAddress.Parse("8.8.8.8"), IPAddress.Loopback]));
+		Assert.Contains("安全策略", exception.Message, StringComparison.Ordinal);
 	}
 
 	[Fact]
-	public void 放行公网系统代理后不再拒绝()
+	public void DNS解析结果全部为公网地址时允许()
 	{
-		try
-		{
-			UrlAccessPolicy.PublicSystemProxyAllowed = true;
-			UrlAccessPolicy.EnsureDirectRoute(new Uri("https://api.anysearch.com/v1/search"), AlwaysProxy());
-		}
-		finally
-		{
-			UrlAccessPolicy.PublicSystemProxyAllowed = false;
-		}
+		Exception? exception = Record.Exception(() =>
+			UrlAccessPolicy.EnsureResolvedPublicAddresses(
+				"example.com", [IPAddress.Parse("8.8.8.8"), IPAddress.Parse("1.1.1.1"), IPAddress.Parse("2001:4860:4860::8888")]));
+		Assert.Null(exception);
 	}
 
-	private static IWebProxy AlwaysProxy() => new AlwaysProxyStub();
-
-	private sealed class AlwaysProxyStub : IWebProxy
+	[Fact]
+	public void DNS安全异常翻译为稳定消息()
 	{
-		public Uri? GetProxy(Uri destination) => new("http://127.0.0.1:7890");
-		public bool IsBypassed(Uri host) => false;
-		public ICredentials? Credentials { get; set; }
+		InvalidOperationException exception = UrlAccessPolicy.Translate(
+			new HttpRequestException("连接失败", new NetworkAddressPolicyException("内部地址")),
+			new Uri("https://example.com"));
+		Assert.Equal("公网地址被安全策略拒绝: example.com", exception.Message);
 	}
 }

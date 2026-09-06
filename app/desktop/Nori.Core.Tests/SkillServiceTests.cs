@@ -7,6 +7,7 @@ using Nori.Core.Skills;
 namespace Nori.Core.Tests;
 
 /// <summary>技能服务的远程内容边界、工具可用性与兼容语义测试。</summary>
+[Collection("HttpClient.DefaultProxy")]
 public sealed class SkillServiceTests : IDisposable
 {
 	private static readonly SemaphoreSlim RemoteRequestGate = new(1, 1);

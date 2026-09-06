@@ -313,7 +313,6 @@ public static class BuiltinTools
 					OptionalString(args, "apiKey"),
 					deps.Config.Get("anysearch_api_key")?.ToStorage());
 				UrlAccessPolicy.EnsurePublicHttp(resolved.Endpoint);
-				UrlAccessPolicy.EnsureDirectRoute(resolved.Endpoint);
 
 				JsonObject payload = new()
 				{

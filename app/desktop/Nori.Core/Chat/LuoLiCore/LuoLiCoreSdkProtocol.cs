@@ -19,6 +19,17 @@ internal static class LuoLiCoreSdkProtocol
 	internal const string EventError = "error";
 
 	/// <summary>
+	/// 工具活动事件。**只有请求里显式要了才会收到**（见 <see cref="SdkSendMessageInput"/>）。
+	///
+	/// 它不参与顺序不变量：可以出现在任意两个 delta 之间，也可以出现在一个没有任何 delta 的
+	/// 轮次里，但仍然排在 done / error 之前。
+	/// </summary>
+	internal const string EventTool = "tool";
+
+	/// <summary>请求 <c>tool</c> 事件时填进 <c>events</c> 的取值。</summary>
+	internal const string OptInTool = "tool";
+
+	/// <summary>
 	/// 队列满在流式端点上不表现为 HTTP 429。
 	///
 	/// 响应头在配额判定通过、流开始建立时就锁定成了 200 + text/event-stream，之后再发现
@@ -66,11 +77,36 @@ internal sealed record SdkResetResult(
 	[property: JsonPropertyName("ok")] bool Ok,
 	[property: JsonPropertyName("commitId")] string? CommitId);
 
-/// <summary>发消息入参。<c>endUserId</c> 落库前由服务端加 <c>&lt;sourceId&gt;:</c> 前缀。</summary>
+/// <summary>
+/// 发消息入参。<c>endUserId</c> 落库前由服务端加 <c>&lt;sourceId&gt;:</c> 前缀。
+///
+/// <c>events</c> 是加法式的开关：不填就只收到 delta / done / error / queued 四种，与对端
+/// 未支持工具事件时的行为一致。因此这个字段发给旧版服务端也是安全的 —— 它会被 zod 的
+/// 宽松解析忽略（多余键不报错），行为退化成没有工具事件。
+/// </summary>
 internal sealed record SdkSendMessageInput(
 	[property: JsonPropertyName("endUserId")] string EndUserId,
 	[property: JsonPropertyName("text")] string Text,
-	[property: JsonPropertyName("modelAlias")] string? ModelAlias);
+	[property: JsonPropertyName("modelAlias")] string? ModelAlias,
+	[property: JsonPropertyName("events")] IReadOnlyList<string>? Events = null);
+
+/// <summary>SSE <c>tool</c> 的载荷。只有名字：入参与结果不出网。</summary>
+internal sealed record SdkStreamTool(
+	[property: JsonPropertyName("name")] string Name);
+
+/// <summary>
+/// <c>GET /sdk/v1/tools</c> 的一行。
+///
+/// <c>approval</c> 是 never / conditional / always 三档。SDK 会话没有人工审批通道，需要
+/// 审批的调用会直接被拒 —— 这一项让界面能提前把它标出来，而不是等一次失败。
+/// </summary>
+internal sealed record SdkToolInfo(
+	[property: JsonPropertyName("name")] string Name,
+	[property: JsonPropertyName("description")] string? Description,
+	[property: JsonPropertyName("approval")] string? Approval);
+
+internal sealed record SdkToolListResponse(
+	[property: JsonPropertyName("tools")] IReadOnlyList<SdkToolInfo>? Tools);
 
 /// <summary>用量。</summary>
 internal sealed record SdkUsage(

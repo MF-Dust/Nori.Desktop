@@ -40,6 +40,19 @@ public sealed class LuoLiCoreConversation(
 		Action<string>? onChunk,
 		Action? onQueued,
 		CancellationToken cancellationToken)
+		=> await RunAsync(userText, onChunk, onQueued, null, cancellationToken);
+
+	/// <inheritdoc cref="RunAsync(string, Action{string}, Action, CancellationToken)"/>
+	/// <param name="onTool">
+	/// 对端开始执行一个工具时回调，参数是工具名。工具可能跑上几十秒，这段时间里流上没有文本 ——
+	/// 不把它说出去，界面就只能显示一个不动的「正在想」。
+	/// </param>
+	public async Task<ProtocolMessage> RunAsync(
+		string userText,
+		Action<string>? onChunk,
+		Action? onQueued,
+		Action<string>? onTool,
+		CancellationToken cancellationToken)
 	{
 		LuoLiCoreSettings settings = _settingsStore.Read();
 		if (!settings.IsActive) throw new ChatException("LuoLiCore 未启用或配置不完整");
@@ -54,8 +67,18 @@ public sealed class LuoLiCoreConversation(
 			_settingsStore.SaveSessionId(sessionId);
 		}
 
-		string text = await StreamWithQueueRetryAsync(client, sessionId, userText, onChunk, onQueued, cancellationToken);
+		string text = await StreamWithQueueRetryAsync(client, sessionId, userText, onChunk, onQueued, onTool, cancellationToken);
 		return new ProtocolMessage(text, null, null, null);
+	}
+
+	/// <summary>
+	/// 本来源能调哪些工具。未启用时返回空列表，不去碰远端。
+	/// </summary>
+	public async Task<IReadOnlyList<LuoLiCoreTool>> ListToolsAsync(CancellationToken cancellationToken)
+	{
+		LuoLiCoreSettings settings = _settingsStore.Read();
+		if (!settings.IsActive) return [];
+		return await _clientFactory(settings.ToOptions()).ListToolsAsync(cancellationToken);
 	}
 
 	/// <summary>
@@ -89,11 +112,12 @@ public sealed class LuoLiCoreConversation(
 		string userText,
 		Action<string>? onChunk,
 		Action? onQueued,
+		Action<string>? onTool,
 		CancellationToken cancellationToken)
 	{
 		for (int attempt = 0; ; attempt++)
 		{
-			(string? text, LuoLiCoreStreamEvent failure) = await StreamOnceAsync(client, sessionId, userText, onChunk, onQueued, cancellationToken);
+			(string? text, LuoLiCoreStreamEvent failure) = await StreamOnceAsync(client, sessionId, userText, onChunk, onQueued, onTool, cancellationToken);
 			if (text is not null) return text;
 
 			bool canRetry = failure.IsQueueFull && attempt < MaxQueueRetries;
@@ -116,6 +140,7 @@ public sealed class LuoLiCoreConversation(
 		string userText,
 		Action<string>? onChunk,
 		Action? onQueued,
+		Action<string>? onTool,
 		CancellationToken cancellationToken)
 	{
 		System.Text.StringBuilder buffer = new();
@@ -139,6 +164,10 @@ public sealed class LuoLiCoreConversation(
 
 				case LuoLiCoreStreamEventKind.Queued:
 					onQueued?.Invoke();
+					break;
+
+				case LuoLiCoreStreamEventKind.Tool:
+					onTool?.Invoke(item.Text);
 					break;
 
 				default:

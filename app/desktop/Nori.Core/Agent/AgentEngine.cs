@@ -504,6 +504,17 @@ public sealed class AgentEngine
 				},
 				// 排了队就明确退回 Thinking，让界面知道这一轮还没轮到。
 				() => SetState(AgentRunState.Thinking),
+				// 对端开始跑一个工具。走本机那条路一样的两个回调，界面不必分辨这一轮是谁在执行。
+				//
+				// 只有开始没有结束：对端那条流上没有「工具跑完了」这个事件。补一个假的结束回调
+				// 会让界面显示一个它并不知道的事实；下一个增量到来时状态自然回到 Streaming，
+				// 而一直没有增量的话，状态停在 ToolExecuting 恰好是真的。
+				name =>
+				{
+					streaming = false;
+					SetState(AgentRunState.ToolExecuting);
+					callbacks.OnToolExecuting?.Invoke(name, null);
+				},
 				runToken);
 
 			if (message.Text.Length == 0) throw new InvalidOperationException("LuoLiCore 未产出最终回复");
@@ -539,6 +550,14 @@ public sealed class AgentEngine
 			throw;
 		}
 	}
+
+	/// <summary>
+	/// 对端这一侧能调哪些工具。没接这条路或未启用时返回空列表。
+	/// </summary>
+	public Task<IReadOnlyList<Chat.LuoLiCore.LuoLiCoreTool>> ListRemoteToolsAsync(CancellationToken cancellationToken) =>
+		_luoLiCore is null
+			? Task.FromResult<IReadOnlyList<Chat.LuoLiCore.LuoLiCoreTool>>([])
+			: _luoLiCore.ListToolsAsync(cancellationToken);
 
 	/// <summary>
 	/// 清掉对端记着的这段对话。清空本地聊天记录时一起调用。

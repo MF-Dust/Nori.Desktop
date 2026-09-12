@@ -106,6 +106,16 @@ internal static class LuoLiCoreSseReader
 					break;
 				}
 
+				case LuoLiCoreSdkProtocol.EventTool:
+				{
+					// 不参与顺序不变量：它可以夹在任意两个 delta 之间，也可以出现在没有 delta 的
+					// 轮次里。因此这里既不检查 sawDelta，也不置 terminated。
+					SdkStreamTool? tool = Deserialize<SdkStreamTool>(frame.Data, "tool");
+					if (!string.IsNullOrWhiteSpace(tool?.Name))
+						yield return LuoLiCoreStreamEvent.Tool(tool!.Name);
+					break;
+				}
+
 				case LuoLiCoreSdkProtocol.EventDone:
 				{
 					SdkDone? done = Deserialize<SdkDone>(frame.Data, "done");
@@ -166,6 +176,10 @@ public readonly record struct LuoLiCoreStreamEvent(
 	internal static LuoLiCoreStreamEvent Delta(string text) =>
 		new(LuoLiCoreStreamEventKind.Delta, text, null, null, null, null, false);
 
+	/// <summary>工具名借 <see cref="Text"/> 承载，不为它单开一个字段。</summary>
+	internal static LuoLiCoreStreamEvent Tool(string name) =>
+		new(LuoLiCoreStreamEventKind.Tool, name, null, null, null, null, false);
+
 	internal static LuoLiCoreStreamEvent Done(string text, SdkUsage? usage) =>
 		new(LuoLiCoreStreamEventKind.Done, text, usage?.InputTokens, usage?.OutputTokens, null, null, false);
 
@@ -185,6 +199,13 @@ public enum LuoLiCoreStreamEventKind
 
 	/// <summary>文本增量。零至多次。</summary>
 	Delta,
+
+	/// <summary>
+	/// 对端开始执行一个工具，<see cref="LuoLiCoreStreamEvent.Text"/> 是工具名。
+	///
+	/// 只有请求里显式要了才会出现。不参与顺序不变量 —— 可以夹在任意两个 Delta 之间。
+	/// </summary>
+	Tool,
 
 	/// <summary>正常结束。与 Error 互斥，二者之一必定是最后一项。</summary>
 	Done,

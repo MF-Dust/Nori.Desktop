@@ -89,6 +89,34 @@ public sealed class LuoLiCoreSdkClient(HttpClient httpClient, LuoLiCoreSdkOption
 	}
 
 	/// <summary>
+	/// 本来源能调哪些工具。
+	///
+	/// 返回的是**上界**：对端按角色、运维禁用与来源白名单算出来的静态集合，不含轮次内才成立
+	/// 的收窄（连续失败后的停用、skill 收窄、目录截断）。当作「可能可用」看，不是「这一次调用
+	/// 一定成功」。
+	///
+	/// 对端没有这个端点时（版本较旧）返回空列表而不是抛：这条信息是锦上添花，拿不到不该让
+	/// 设置页或启动流程失败。
+	/// </summary>
+	public async Task<IReadOnlyList<LuoLiCoreTool>> ListToolsAsync(CancellationToken cancellationToken = default)
+	{
+		using HttpRequestMessage request = NewRequest(HttpMethod.Get, "/tools");
+		using HttpResponseMessage response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken);
+		if (!response.IsSuccessStatusCode) return [];
+
+		SdkToolListResponse? listed = await response.Content.ReadFromJsonAsync<SdkToolListResponse>(
+			LuoLiCoreSdkProtocol.Json, cancellationToken);
+		return listed?.Tools is null
+			? []
+			: [.. listed.Tools
+				.Where(tool => !string.IsNullOrWhiteSpace(tool.Name))
+				.Select(tool => new LuoLiCoreTool(
+					tool.Name,
+					tool.Description ?? string.Empty,
+					tool.Approval is "always" or "conditional"))];
+	}
+
+	/// <summary>
 	/// 发一条消息并流式读回。
 	///
 	/// 取消时主动断连 —— 对端把客户端断连映射到轮次取消，所以这里不需要另外调取消接口。
@@ -100,7 +128,13 @@ public sealed class LuoLiCoreSdkClient(HttpClient httpClient, LuoLiCoreSdkOption
 	{
 		using HttpRequestMessage request = NewRequest(HttpMethod.Post, $"/sessions/{Uri.EscapeDataString(sessionId)}/messages/stream");
 		request.Content = JsonContent.Create(
-			new SdkSendMessageInput(_options.EndUserId, text, _options.ModelAlias),
+			// 要工具事件。对端缺省不发，这一项是加法：发给还不支持它的服务端会被忽略，
+			// 行为退回到只有 delta / done / error / queued 四种。
+			new SdkSendMessageInput(
+				_options.EndUserId,
+				text,
+				_options.ModelAlias,
+				[LuoLiCoreSdkProtocol.OptInTool]),
 			options: LuoLiCoreSdkProtocol.Json);
 		request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
@@ -165,3 +199,11 @@ public sealed class LuoLiCoreSdkClient(HttpClient httpClient, LuoLiCoreSdkOption
 		throw new ChatException($"LuoLiCore 返回 HTTP {(int)response.StatusCode}, {detail}");
 	}
 }
+
+/// <summary>
+/// 对端的一件工具。
+///
+/// <c>NeedsApproval</c> 摊平自对端的三档 approval：SDK 会话没有人工审批通道，凡是需要审批的
+/// 调用都会被直接拒绝，所以对本地只有「会不会被拒」这一个区别，不必把三档原样搬过来。
+/// </summary>
+public sealed record LuoLiCoreTool(string Name, string Description, bool NeedsApproval);

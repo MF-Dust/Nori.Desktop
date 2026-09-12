@@ -8,6 +8,15 @@ log() {
 	printf '[nori-codex] %s\n' "$*"
 }
 
+if command -v mise >/dev/null 2>&1; then
+	NODE24_DIR="$(mise where node@24 2>/dev/null || true)"
+	if [[ -n "$NODE24_DIR" ]]; then
+		export PATH="$NODE24_DIR/bin:$PATH"
+		hash -r
+	fi
+	unset NODE24_DIR
+fi
+
 if [[ -x "$HOME/.dotnet/dotnet" ]]; then
 	export DOTNET_ROOT="$HOME/.dotnet"
 	export PATH="$DOTNET_ROOT:$DOTNET_ROOT/tools:$PATH"
@@ -15,6 +24,11 @@ fi
 
 if [[ -d "$HOME/.local/bin" ]]; then
 	export PATH="$HOME/.local/bin:$PATH"
+fi
+
+if ! command -v node >/dev/null 2>&1 || (( $(node -p 'process.versions.node.split(".")[0]') < 24 )); then
+	echo "Node.js 24 不可用，Codex Cloud 缓存环境需要重建。" >&2
+	exit 1
 fi
 
 if ! command -v pnpm >/dev/null 2>&1; then

@@ -12,7 +12,7 @@
 - Codex `universal` 当前内置 Node 版本选择最高为 `22`；setup script 会通过镜像自带的 `mise` 额外安装并激活 Nori.Desktop 要求的 Node.js `24`
 - 其他 Codex 内置语言运行时保持默认
 - .NET 10 SDK 由 setup script 检查并在缺失时安装到 `~/.dotnet`
-- pnpm 由 setup script 固定到 `11.x`
+- pnpm 由 setup script 通过 `mise` 固定到 `11.x`
 
 Setup script：
 
@@ -51,13 +51,31 @@ Agent 阶段推荐使用“常用依赖项”域名允许列表，并只开放 `
 
 1. 在 apt 系 Linux 环境安装 `libgtk-3-0` 与 `libwebkit2gtk-4.1-0`，与 Linux CI 保持一致。
 2. 检测当前 Node.js；当 Codex 面板提供的 Node.js 22 低于项目要求时，通过 `mise` 安装并激活 Node.js 24。
-3. 固定 pnpm 11。
+3. 通过 `mise` 的 `pnpm` 后端安装并激活 pnpm 11。这里不使用 `corepack prepare pnpm@11`，避免 Corepack 自举阶段直接访问 npm registry 时因 Cloud 网络代理或短时网络问题失败。
 4. 验证 .NET 10 SDK；缺失时安装到 `~/.dotnet`，并将路径持久化到 `~/.bashrc`。
 5. 在 `app/desktop` 执行 `pnpm install --frozen-lockfile`。
 6. 执行 `dotnet restore Nori.slnx`。
 7. 额外预还原 `linux-x64` 发布依赖，避免 Agent 阶段发布时再次联网还原。
 
-Maintenance script 用于恢复缓存容器后的依赖同步。它会重新定位由 `mise` 安装的 Node.js 24 和 `~/.dotnet`，再同步 pnpm 与 NuGet 依赖。
+Maintenance script 用于恢复缓存容器后的依赖同步。它会重新定位由 `mise` 安装的 Node.js 24 与 pnpm 11，以及 `~/.dotnet`，再同步 pnpm 与 NuGet 依赖。
+
+## pnpm 自举说明
+
+Codex `universal` 镜像会自带 pnpm，但其版本可能低于 Nori.Desktop 当前要求的 pnpm 11。setup script 因此需要补齐 pnpm 11。
+
+不要在该环境中使用：
+
+```bash
+corepack prepare pnpm@11 --activate
+```
+
+Corepack 会在自举阶段自行请求 npm registry；在 Codex Cloud 的网络环境里，这条请求可能先于项目依赖恢复失败。当前脚本改用：
+
+```bash
+mise install pnpm@11
+```
+
+`mise` 的 `pnpm` 短名称默认使用其注册表配置的 pnpm 安装后端，并由脚本通过 `mise which` 定位实际可执行文件。
 
 ## 环境验证
 
@@ -77,7 +95,7 @@ dotnet build Nori.slnx --configuration Release
 dotnet test Nori.slnx --configuration Release --no-build --no-restore -m:1
 ```
 
-其中 `node --version` 应显示 `v24.x`。Codex 面板选择 Node.js 22 只决定基础环境版本，真正运行 Nori.Desktop 构建时会使用 setup script 准备的 Node.js 24。
+其中 `node --version` 应显示 `v24.x`，`pnpm --version` 应显示 `11.x`。Codex 面板选择 Node.js 22 只决定基础环境版本，真正运行 Nori.Desktop 构建时会使用 setup script 准备的 Node.js 24。
 
 覆盖率任务按需运行：
 

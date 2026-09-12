@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -224,26 +223,6 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 		_ => category,
 	};
 
-	private static string StatusText(string status) => status switch
-	{
-		"connected" => NativeSettingsResources.Get("mcp.connected"),
-		_ => NativeSettingsResources.Get("mcp.disconnected"),
-	};
-
 	private static IReadOnlyList<string> SplitCsv(string value) => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(item => item.Length > 0).ToArray();
 
-	private static IReadOnlyList<string> SplitArgs(string value) => value.Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToArray();
-
-	private static Dictionary<string, string> ParseEnv(string value)
-	{
-		Dictionary<string, string> result = new(StringComparer.Ordinal);
-		foreach (string line in value.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-		{
-			int index = line.IndexOf('=');
-			if (index > 0) result[line[..index].Trim()] = line[(index + 1)..].Trim();
-		}
-		return result;
-	}
-
-	private static string FormatEnv(IReadOnlyDictionary<string, string> values) => string.Join(Environment.NewLine, values.Select(item => $"{item.Key}={item.Value}"));
 }

@@ -26,7 +26,10 @@ public sealed class AiSettingsPage : SettingsPageBase
 	private readonly SettingsFieldViewModel _embeddingDimensions;
 	private readonly List<string> _models = [];
 	private readonly SettingsFieldViewModel _modelPicker;
-	private bool _actionBusy;
+	private readonly SettingsFieldViewModel _chatResult;
+	private readonly SettingsFieldViewModel _embeddingResult;
+	private bool _chatBusy;
+	private bool _embeddingBusy;
 
 	/// <summary>创建 AI 设置页。</summary>
 	public AiSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
@@ -58,6 +61,10 @@ public sealed class AiSettingsPage : SettingsPageBase
 		AddAction(chat, "fetchModels", new("获取模型", "Fetch models"), new("使用当前服务商列出可用模型。", "List models from the selected provider."), new SettingsCommand(_ => _ = FetchModelsAsync()));
 		AddAction(chat, "testChat", new("测试对话连接", "Test chat connection"), new("发送一次最小连接测试。", "Run a minimal connection test."), new SettingsCommand(_ => _ = TestChatAsync()));
 
+		_chatResult = AddField(chat, "chatResult", new("对话连接结果", "Chat connection result"), new("", ""), SettingsEditorKind.Multiline,
+			_ => _chatResult?.Text ?? string.Empty, string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
+		_chatResult.IsVisible = false;
+
 		SettingsSectionViewModel embedding = AddSection(new("向量服务", "Embedding provider"));
 		_embeddingModel = AddField(embedding, "embeddingModel", new("Embedding 模型", "Embedding model"), new("用于记忆和知识库检索。", "Used for memory and knowledge retrieval."), SettingsEditorKind.Text,
 			snapshot => FirstString(snapshot, "BAAI/bge-m3", ["ai", "embedding", "model"], ["embedding", "model"]), "BAAI/bge-m3",
@@ -72,6 +79,9 @@ public sealed class AiSettingsPage : SettingsPageBase
 			snapshot => FirstString(snapshot, string.Empty, ["ai", "embedding", "dimensions"], ["embedding", "dimensions"]), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_ai_providers", new {embedding = new {dimensions = NormalizeDimensions(Convert.ToString(value))}}, token));
 		AddAction(embedding, "testEmbedding", new("测试向量连接", "Test embedding connection"), new("检查 Embedding 地址、密钥和模型。", "Check the embedding endpoint, key and model."), new SettingsCommand(_ => _ = TestEmbeddingAsync()));
+		_embeddingResult = AddField(embedding, "embeddingResult", new("向量连接结果", "Embedding connection result"), new("", ""), SettingsEditorKind.Multiline,
+			_ => _embeddingResult?.Text ?? string.Empty, string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
+		_embeddingResult.IsVisible = false;
 	}
 
 	internal override void ApplySnapshot(JsonElement snapshot)
@@ -126,11 +136,11 @@ public sealed class AiSettingsPage : SettingsPageBase
 
 	private async Task FetchModelsAsync()
 	{
-		if (_actionBusy) return;
-		SetActionsBusy(true);
+		if (_chatBusy) return;
+		SetActionsBusy(false, true);
 		try
 		{
-			if (!await FlushPendingSavesAsync(LifetimeToken).ConfigureAwait(true)) return;
+			if (!await FlushConnectionSettingsAsync(false, LifetimeToken).ConfigureAwait(true)) return;
 			ApplySnapshot(await Service.GetSnapshotAsync(LifetimeToken).ConfigureAwait(true));
 			string provider = _provider.Selected;
 			string baseUrl = _baseUrl.Text.Trim();
@@ -141,31 +151,58 @@ public sealed class AiSettingsPage : SettingsPageBase
 				_models.AddRange(result.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
 					.Select(item => item.GetString()!).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal));
 			UpdateModelOptions();
-			if (_models.Count == 0) SetStatus(Text("没有找到可用模型。", "No models were returned."));
-			else SetStatus(Text($"已找到 {_models.Count} 个模型，可在列表中选择。", $"{_models.Count} models available to select."));
+			if (_models.Count == 0) SetConnectionResult(false, Text("没有找到可用模型。", "No models were returned."));
+			else SetConnectionResult(false, Text($"已找到 {_models.Count} 个模型，可在列表中选择。", $"{_models.Count} models available to select."));
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetStatus(exception.Message); }
-		finally { SetActionsBusy(false); }
+		catch (Exception exception) { SetConnectionResult(false, exception.Message); }
+		finally { SetActionsBusy(false, false); }
 	}
 
-	private void SetActionsBusy(bool busy)
+	private void SetActionsBusy(bool embedding, bool busy)
 	{
-		_actionBusy = busy;
+		if (embedding) _embeddingBusy = busy;
+		else _chatBusy = busy;
 		foreach (SettingsFieldViewModel field in Sections.SelectMany(section => section.Fields))
-			if (field.EditorKind == SettingsEditorKind.Action) field.IsReadOnly = busy;
-		if (busy) SetStatus(Text("正在连接服务…", "Connecting to the provider…"));
+		{
+			if (embedding && field.Key == "testEmbedding") field.IsReadOnly = busy;
+			if (!embedding && field.Key is "fetchModels" or "testChat") field.IsReadOnly = busy;
+		}
+		if (busy) SetConnectionResult(embedding, Text("正在连接服务…", "Connecting to the provider…"));
+	}
+
+	/// <summary>连接探测只保存本组字段，另一组无效草稿不会阻断当前操作。</summary>
+	internal async Task<bool> FlushConnectionSettingsAsync(bool embedding, CancellationToken cancellationToken = default)
+	{
+		SettingsFieldViewModel[] fields = embedding
+			? [_embeddingModel, _embeddingBaseUrl, _embeddingApiKey, _embeddingDimensions]
+			: [_baseUrl, _apiKey, _model, _modelPicker, _provider];
+		foreach (SettingsFieldViewModel field in fields)
+		{
+			if (await field.FlushPendingSavesAsync(cancellationToken).ConfigureAwait(true)) continue;
+			SetConnectionResult(embedding, field.Label + ": " + field.ErrorText);
+			return false;
+		}
+		return true;
+	}
+
+	/// <summary>将探测结果保留在对应卡片中，不覆盖另一组结果。</summary>
+	internal void SetConnectionResult(bool embedding, string message)
+	{
+		SettingsFieldViewModel field = embedding ? _embeddingResult : _chatResult;
+		field.Text = message;
+		field.IsVisible = message.Length > 0;
 	}
 
 	private static string Text(string chinese, string english) => SettingsLocalization.IsEnglish ? english : chinese;
 
 	private async Task TestChatAsync()
 	{
-		if (_actionBusy) return;
-		SetActionsBusy(true);
+		if (_chatBusy) return;
+		SetActionsBusy(false, true);
 		try
 		{
-			if (!await FlushPendingSavesAsync(LifetimeToken).ConfigureAwait(true)) return;
+			if (!await FlushConnectionSettingsAsync(false, LifetimeToken).ConfigureAwait(true)) return;
 			ApplySnapshot(await Service.GetSnapshotAsync(LifetimeToken).ConfigureAwait(true));
 			JsonElement result = await ExecuteAsync("ai_test_connection", new
 			{
@@ -174,20 +211,20 @@ public sealed class AiSettingsPage : SettingsPageBase
 				baseUrl = _baseUrl.Text.Trim(),
 				model = _model.Text.Trim(),
 			}, LifetimeToken).ConfigureAwait(true);
-			SetStatus(ConnectionStatus(result));
+			SetConnectionResult(false, ConnectionStatus(result));
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetStatus(exception.Message); }
-		finally { SetActionsBusy(false); }
+		catch (Exception exception) { SetConnectionResult(false, exception.Message); }
+		finally { SetActionsBusy(false, false); }
 	}
 
 	private async Task TestEmbeddingAsync()
 	{
-		if (_actionBusy) return;
-		SetActionsBusy(true);
+		if (_embeddingBusy) return;
+		SetActionsBusy(true, true);
 		try
 		{
-			if (!await FlushPendingSavesAsync(LifetimeToken).ConfigureAwait(true)) return;
+			if (!await FlushConnectionSettingsAsync(true, LifetimeToken).ConfigureAwait(true)) return;
 			ApplySnapshot(await Service.GetSnapshotAsync(LifetimeToken).ConfigureAwait(true));
 			JsonElement result = await ExecuteAsync("ai_test_connection", new
 			{
@@ -196,11 +233,11 @@ public sealed class AiSettingsPage : SettingsPageBase
 				model = _embeddingModel.Text.Trim(),
 				dimensions = NormalizeDimensions(_embeddingDimensions.Text),
 			}, LifetimeToken).ConfigureAwait(true);
-			SetStatus(ConnectionStatus(result));
+			SetConnectionResult(true, ConnectionStatus(result));
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetStatus(exception.Message); }
-		finally { SetActionsBusy(false); }
+		catch (Exception exception) { SetConnectionResult(true, exception.Message); }
+		finally { SetActionsBusy(true, false); }
 	}
 
 	private static string ConnectionStatus(JsonElement result)

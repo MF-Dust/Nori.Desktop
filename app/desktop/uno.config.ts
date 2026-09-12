@@ -111,12 +111,6 @@ export default defineConfig({
 			"focus-ring",
 			"outline-none focus-visible:(outline outline-2 outline-offset-[0.2rem] outline-nori-teal-bright)",
 		],
-		// 包裹层描边: 单选药丸把真实 input 设成 sr-only, 焦点落在子元素上, 只能由外层代为描边。
-		// 与 focus-ring 的 focus-visible 语义不同 (鼠标点击也会亮), 不可互换。
-		[
-			"focus-ring-within",
-			"focus-within:(outline outline-2 outline-offset-[0.2rem] outline-nori-teal-bright)",
-		],
 
 		// ---- 按钮 ----
 		[
@@ -185,7 +179,7 @@ export default defineConfig({
 		// ---- 单选药丸组 (语言 / 空闲时长 / 日志级别 / TTS 协议 / 表情开关) ----
 		// 这些组以前各页手抄三串: 外形、选中态、未选中态。尺寸与内部结构仍由调用方定,
 		// 只把这三串收进来 —— 选中态的描边与光晕一旦漂移, 同一个页面里就能一眼看出两套观感。
-		// 焦点环不含在里面: <label> 包 sr-only input 的用 focus-ring-within, <button> 的用 focus-ring。
+		// 焦点环由使用方通过 focus-ring 补充。
 		["pill-choice", "inline-flex items-center rounded-pill border font-inherit cursor-pointer transition-all duration-200"],
 		["pill-choice-on", "border-nori-teal-bright bg-nori-teal-bright/14 text-nori-teal-bright font-600 shadow-glow"],
 		[

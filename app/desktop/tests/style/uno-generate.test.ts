@@ -62,9 +62,5 @@ describe("shortcut 生成结果", () => {
 		expect(RING).toContain("outline-color")
 		// ring 是内阴影而不是描边: 出现它就说明名字又被解析成 focus 变体 + ring 工具类
 		expect(RING).not.toContain("--un-ring-width")
-
-		const WITHIN = await cssOf("focus-ring-within")
-		expect(WITHIN).toContain(".focus-ring-within:focus-within")
-		expect(WITHIN).toContain("outline-color")
 	})
 })

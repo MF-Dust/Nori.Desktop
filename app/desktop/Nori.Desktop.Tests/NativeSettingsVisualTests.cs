@@ -61,7 +61,7 @@ public partial class BridgeCommandsTests
 
 			foreach ((int width, int height) in new[] {(720, 480), (1920, 1080)})
 			foreach (ThemeVariant theme in new[] {ThemeVariant.Light, ThemeVariant.Dark})
-			foreach (string page in new[] {"ai", "general", "debug", "voice"})
+			foreach (string page in new[] {"ai", "voice", "proactive", "skills", "mcp", "automation", "plugins", "general", "updates", "debug", "about"})
 			{
 				SettingsWindow window = new() {Width = width, Height = height, RequestedThemeVariant = theme};
 				using SettingsService service = new(fixture._services, window);
@@ -127,7 +127,7 @@ public partial class BridgeCommandsTests
 					Assert.True(sampledColors > 8, $"真实渲染内容不足：{fileName}，采样颜色数 {sampledColors}");
 					Assert.True(presenter.Bounds.Width > 0 && presenter.Bounds.Height > 0);
 					Assert.True(scroll.Extent.Width <= scroll.Viewport.Width + 2, $"页面横向溢出：{fileName}");
-					if (page != "debug") Assert.NotEmpty(fields);
+					if (page is "ai" or "voice" or "proactive" or "general" or "updates" or "about") Assert.NotEmpty(fields);
 					Assert.All(fields, field => Assert.True(field.Bounds.Width > 0 && field.Bounds.Height > 0));
 				}
 				finally
@@ -139,7 +139,7 @@ public partial class BridgeCommandsTests
 			SettingsLocalization.SetLanguage("zh-CN");
 			return true;
 		}, CancellationToken.None);
-		Assert.Equal(16, manifest.Count);
+		Assert.Equal(44, manifest.Count);
 	}
 
 	private static int NativeSettingsSampledColors(WriteableBitmap frame)

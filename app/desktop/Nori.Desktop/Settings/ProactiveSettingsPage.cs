@@ -18,6 +18,9 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 	private bool _safeMode;
 	private bool _adding;
 	private bool _refreshing;
+	private bool _cancelling;
+	private long _reminderRevision;
+	private readonly SemaphoreSlim _reminderGate = new(1, 1);
 
 	/// <summary>创建主动互动设置页。</summary>
 	public ProactiveSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
@@ -59,8 +62,8 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 		};
 		_repeatDaily = AddField(reminders, "repeatDaily", new("每天重复", "Repeat daily"), new("让提醒每天在相同时间触发。", "Repeat the reminder at the same time every day."), SettingsEditorKind.Boolean,
 			_ => _repeatDaily?.Boolean ?? false, false, (_, _) => Task.FromResult(default(JsonElement)));
-		_addCommand = new SettingsCommand(_ => _ = AddReminderAsync(), _ => !_safeMode && !_adding);
-		_refreshCommand = new SettingsCommand(_ => _ = RefreshRemindersAsync(), _ => !_refreshing);
+		_addCommand = new SettingsCommand(_ => _ = AddReminderAsync(), _ => !_safeMode && !_adding && !_refreshing && !_cancelling);
+		_refreshCommand = new SettingsCommand(_ => _ = RefreshRemindersAsync(), _ => !_refreshing && !_adding && !_cancelling);
 		AddAction(reminders, "addReminder", new("添加提醒", "Add reminder"), new("保存后会立即出现在下方列表。", "The reminder appears in the list after saving."), _addCommand);
 		AddAction(reminders, "refreshReminders", new("刷新提醒", "Refresh reminders"), new("从运行时重新读取提醒列表。", "Read reminders from the runtime again."), _refreshCommand);
 	}
@@ -80,7 +83,11 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 			if (field.Key is "idleEnabled" or "idleMinutes" or "dailyGreeting") field.IsReadOnly = _safeMode;
 		UpdateDraftReadOnly();
 		_addCommand.RaiseCanExecuteChanged();
-		if (SettingsSnapshotReader.Get(snapshot, "proactive", "reminders") is { } reminders) ApplyReminders(reminders);
+		if (SettingsSnapshotReader.Get(snapshot, "proactive", "reminders") is { } reminders)
+		{
+			_reminderRevision++;
+			ApplyReminders(reminders);
+		}
 	}
 
 	private void UpdateDraftReadOnly()
@@ -126,7 +133,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 
 	internal async Task AddReminderAsync()
 	{
-		if (_adding || _safeMode) return;
+		if (_adding || _refreshing || _cancelling || _safeMode) return;
 		string content = _newReminderText.Text.Trim();
 		double delay = _delayPreset.Selected == "custom" ? _delayMinutes.Number
 			: double.TryParse(_delayPreset.Selected, NumberStyles.None, CultureInfo.InvariantCulture, out double preset) ? preset : 0;
@@ -143,9 +150,13 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 		}
 		_adding = true;
 		UpdateDraftReadOnly();
-		_addCommand.RaiseCanExecuteChanged();
+		RefreshActionAvailability();
+		bool entered = false;
 		try
 		{
+			await _reminderGate.WaitAsync(LifetimeToken).ConfigureAwait(true);
+			entered = true;
+			_reminderRevision++;
 			await CreateReminderAsync(
 				(command, args, token) => Service.ExecuteAsync(command, args, token),
 				content, delay, repeat, LifetimeToken).ConfigureAwait(true);
@@ -153,12 +164,20 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 			_delayPreset.Selected = "15";
 			_delayMinutes.Number = 15;
 			_repeatDaily.Boolean = false;
-			await RefreshRemindersAsync().ConfigureAwait(true);
+			long revision = _reminderRevision;
+			JsonElement reminders = await ExecuteAsync("reminder_list", cancellationToken: LifetimeToken).ConfigureAwait(true);
+			if (revision == _reminderRevision) ApplyReminders(reminders);
 			SetStatus(Text("提醒已添加。", "Reminder added."));
 		}
 		catch (OperationCanceledException) { }
 		catch (Exception exception) { SetStatus(exception.Message); }
-		finally { _adding = false; UpdateDraftReadOnly(); _addCommand.RaiseCanExecuteChanged(); }
+		finally
+		{
+			if (entered) _reminderGate.Release();
+			_adding = false;
+			UpdateDraftReadOnly();
+			RefreshActionAvailability();
+		}
 	}
 
 	/// <summary>重复规则保存失败时撤销新建提醒，避免悄悄留下单次提醒。</summary>
@@ -180,33 +199,67 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 		}
 	}
 
-	internal async Task RefreshRemindersAsync()
+	internal Task RefreshRemindersAsync() =>
+		RefreshRemindersAsync(token => ExecuteAsync("reminder_list", cancellationToken: token));
+
+	/// <summary>序列化列表读取，并拒绝覆盖读取期间收到的新快照。</summary>
+	internal async Task RefreshRemindersAsync(Func<CancellationToken, Task<JsonElement>> read)
 	{
-		if (_refreshing) return;
+		if (_refreshing || _adding || _cancelling) return;
 		_refreshing = true;
-		_refreshCommand.RaiseCanExecuteChanged();
+		RefreshActionAvailability();
+		bool entered = false;
 		try
 		{
-			JsonElement result = await ExecuteAsync("reminder_list", cancellationToken: LifetimeToken).ConfigureAwait(true);
+			await _reminderGate.WaitAsync(LifetimeToken).ConfigureAwait(true);
+			entered = true;
+			long revision = _reminderRevision;
+			JsonElement result = await read(LifetimeToken).ConfigureAwait(true);
+			if (revision != _reminderRevision) return;
 			ApplyReminders(result);
 			SetStatus(Text($"已加载 {Reminders.Count} 条提醒。", $"{Reminders.Count} reminders loaded."));
 		}
 		catch (OperationCanceledException) { }
 		catch (Exception exception) { SetStatus(exception.Message); }
-		finally { _refreshing = false; _refreshCommand.RaiseCanExecuteChanged(); }
+		finally
+		{
+			if (entered) _reminderGate.Release();
+			_refreshing = false;
+			RefreshActionAvailability();
+		}
 	}
 
-	/// <summary>在界面完成确认后取消提醒。</summary>
+	/// <summary>在界面完成确认后取消提醒，等待先前列表读取结束。</summary>
 	internal async Task CancelReminderAsync(ReminderItemViewModel reminder)
 	{
+		if (_cancelling) return;
+		_cancelling = true;
+		RefreshActionAvailability();
+		bool entered = false;
 		try
 		{
+			await _reminderGate.WaitAsync(LifetimeToken).ConfigureAwait(true);
+			entered = true;
+			_reminderRevision++;
 			await ExecuteAsync("reminder_cancel", new {id = reminder.Id}, LifetimeToken).ConfigureAwait(true);
-			Reminders.Remove(reminder);
+			for (int index = Reminders.Count - 1; index >= 0; index--)
+				if (Reminders[index].Id == reminder.Id) Reminders.RemoveAt(index);
 			SetStatus(Text("提醒已取消。", "Reminder cancelled."));
 		}
 		catch (OperationCanceledException) { }
 		catch (Exception exception) { SetStatus(exception.Message); }
+		finally
+		{
+			if (entered) _reminderGate.Release();
+			_cancelling = false;
+			RefreshActionAvailability();
+		}
+	}
+
+	private void RefreshActionAvailability()
+	{
+		_addCommand.RaiseCanExecuteChanged();
+		_refreshCommand.RaiseCanExecuteChanged();
 	}
 
 	internal void ReportActionFailure(Exception exception) => SetStatus(exception.Message);

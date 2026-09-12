@@ -138,8 +138,16 @@ jobs:
         if: always() && matrix.name == 'windows'
         shell: pwsh
         run: |
-          if (Test-Path "artifacts/native-settings/preview-base64.txt") {
-            Get-Content "artifacts/native-settings/preview-base64.txt"
+          $samples = @("ai-dark-720x480", "general-light-720x480", "debug-dark-720x480", "proactive-light-1920x1080")
+          foreach ($sample in $samples) {
+            $capture = "artifacts/native-settings/$sample.png.base64.txt"
+            if (Test-Path $capture) {
+              Write-Output "NORI_SETTINGS_CAPTURE:$sample"
+              Get-Content $capture
+            }
+          }
+          if (Test-Path "artifacts/native-settings/manifest.json") {
+            Get-Content "artifacts/native-settings/manifest.json"
           }
 
       - name: 上传原生设置视觉产物

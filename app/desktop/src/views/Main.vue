@@ -45,7 +45,6 @@ const PANEL_OPTIONS = {
 } as const
 
 const HomePanel = defineAsyncComponent({loader: () => import("../components/home/HomePanel.vue"), ...PANEL_OPTIONS})
-const SettingsPanel = defineAsyncComponent({loader: () => import("../components/settings/SettingsPanel.vue"), ...PANEL_OPTIONS})
 const ModelManagement = defineAsyncComponent({loader: () => import("../components/settings/ModelManagement.vue"), ...PANEL_OPTIONS})
 const MemoryPanel = defineAsyncComponent({loader: () => import("../components/settings/MemorySettings.vue"), ...PANEL_OPTIONS})
 const ChatView = defineAsyncComponent({loader: () => import("../components/ChatView.vue"), ...PANEL_OPTIONS})
@@ -67,9 +66,7 @@ const NAV_ITEMS = computed<{key: NavKey; label: string; icon: IconName; badge?: 
 const UPDATE = computed(() => RUNTIME.snapshot.value?.updater)
 const UPDATE_NOTICE = computed(() => UPDATE.value?.state === "available" || UPDATE.value?.state === "readytorestart")
 const showUpdate = () => {
-	settingsTarget.value = "updates"
-	settingsSeq.value += 1
-	goNav("settings", activeNav.value)
+	void openNativeSettings("updates")
 }
 
 const activeNav = ref<NavKey>("home")
@@ -77,8 +74,6 @@ const currentNav = computed(() => NAV_ITEMS.value.find((item) => item.key === ac
 
 // 设置面板要打开的初始子页 (从主页磁贴跳过来时直达)。
 // seq 是同一目标重复跳转的信号: 只看 target 的话第二次点同一张磁贴不会有反应。
-const settingsTarget = ref("")
-const settingsSeq = ref(0)
 
 // ---- 来路记录: 从对话/主页跳进设置后给一条明确的回头路 ----
 const navOrigin = ref<NavKey | null>(null)
@@ -94,6 +89,22 @@ const goNav = (key: NavKey, origin: NavKey | null = null) => {
 const goBack = () => {
 	const ORIGIN = navOrigin.value
 	if (ORIGIN) goNav(ORIGIN)
+}
+
+const openNativeSettings = async (page?: string) => {
+	try {
+		await RUNTIME.openSettings(page)
+	} catch (error) {
+		feedback.error(UI_I18N.value.saveFailed, error)
+	}
+}
+
+const navigateSidebar = (key: NavKey) => {
+	if (key === "settings") {
+		void openNativeSettings()
+		return
+	}
+	goNav(key)
 }
 
 // ---- 侧边栏折叠 (状态持久化在 general.sidebarCollapsed) ----
@@ -147,8 +158,8 @@ const togglePet = async () => {
 // 主页磁贴跳转
 const navigate = (tab: "talk" | "model" | "settings", origin: NavKey = "home") => {
 	if (tab === "settings") {
-		settingsTarget.value = "ai"
-		settingsSeq.value += 1
+		void openNativeSettings("ai")
+		return
 	}
 	goNav(tab, origin)
 }
@@ -220,7 +231,7 @@ onBeforeUnmount(() => {
 						:title="collapsed ? item.label : undefined"
 						:aria-label="item.label"
 						:aria-current="item.key === activeNav ? 'page' : undefined"
-						@click="goNav(item.key)"
+						@click="navigateSidebar(item.key)"
 					>
 						<span
 							v-if="item.key === activeNav"
@@ -301,11 +312,6 @@ onBeforeUnmount(() => {
 					</KeepAlive>
 					<ModelManagement v-if="activeNav === 'model'"/>
 					<MemoryPanel v-if="activeNav === 'memory'"/>
-					<SettingsPanel
-						v-if="activeNav === 'settings'"
-						:initial-tab="settingsTarget"
-						:open-seq="settingsSeq"
-					/>
 				</div>
 			</main>
 		</div>

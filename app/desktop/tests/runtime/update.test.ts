@@ -66,4 +66,20 @@ describe("自动更新运行时接口", () => {
 
 		expect(HOST_INVOKE).toHaveBeenCalledWith("settings_update_general", {autoCheckUpdates: false})
 	})
+
+	it("openSettings 调用原生桥接窗口命令", async () => {
+		HOST_INVOKE.mockResolvedValue(undefined)
+
+		await RUNTIME.openSettings("plugins")
+
+		expect(HOST_INVOKE).toHaveBeenCalledWith("window_open_settings", {page: "plugins"})
+	})
+
+	it("openSettings 未指定页面时传递 undefined", async () => {
+		HOST_INVOKE.mockResolvedValue(undefined)
+
+		await RUNTIME.openSettings()
+
+		expect(HOST_INVOKE).toHaveBeenCalledWith("window_open_settings", undefined)
+	})
 })

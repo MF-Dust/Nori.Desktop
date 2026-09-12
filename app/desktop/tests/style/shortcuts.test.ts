@@ -28,7 +28,9 @@ const TOKEN_SOURCE_DIR = join(SRC, "assets", "style")
  * 只放"成套刻度里补齐的档位"。名单被下面的自检看守: 条目必须仍是已声明的 shortcut
  * 且写清理由; 等组件用上了就该把它从名单里删掉, 别让白名单变成掩盖腐烂的垃圾场。
  */
-const INTENTIONAL_UNUSED: Record<string, string> = {}
+const INTENTIONAL_UNUSED: Record<string, string> = {
+	"focus-ring-within": "复杂设置页已迁移到原生 Avalonia，保留该无障碍快捷方式供剩余 Vue 表单复用",
+}
 
 /**
  * 手抄展开式的高价值检测项

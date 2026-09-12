@@ -8,19 +8,10 @@ import Main from "../../src/views/Main.vue"
 import HomePanel from "../../src/components/home/HomePanel.vue"
 import ChatView from "../../src/components/ChatView.vue"
 import ModelManagement from "../../src/components/settings/ModelManagement.vue"
-import SettingsPanel from "../../src/components/settings/SettingsPanel.vue"
-import AiSettings from "../../src/components/settings/AiSettings.vue"
 import MemorySettings from "../../src/components/settings/MemorySettings.vue"
-import VoiceSettings from "../../src/components/settings/VoiceSettings.vue"
-import ProactiveSettings from "../../src/components/settings/ProactiveSettings.vue"
-import SkillsSettings from "../../src/components/settings/SkillsSettings.vue"
-import McpSettings from "../../src/components/settings/McpSettings.vue"
-import AutomationSettings from "../../src/components/settings/AutomationSettings.vue"
-import GeneralSettings from "../../src/components/settings/GeneralSettings.vue"
-import DebugSettings from "../../src/components/settings/DebugSettings.vue"
-import AboutSettings from "../../src/components/settings/AboutSettings.vue"
 
 describe("Views and Panels Mounting", () => {
+	let INVOKED: string[] = []
 	const mockSnapshot = {
 		version: 1,
 		app: {
@@ -155,10 +146,12 @@ describe("Views and Panels Mounting", () => {
 	}
 
 	beforeEach(() => {
+		INVOKED = [];
 		(window as any).__nori = {
 			assetBase: "/nori-assets/",
 			label: "main",
 			invoke: async (cmd: string, _args: any) => {
+				INVOKED.push(cmd)
 				if (cmd === "ui_get_snapshot") return mockSnapshot
 				if (cmd === "model_get_meta") return {modelId: "arg-nori", scale: 1, expressions: [], motions: [], interactions: {version: 1, regions: []}, opacity: 1, shadow: true, renderScale: 2, qualityMode: "adaptive", maxFps: 0}
 				if (cmd === "audio_host_ready") return null
@@ -198,13 +191,13 @@ describe("Views and Panels Mounting", () => {
 	it("switches Main tabs without leaving a blank panel", async () => {
 		const MOUNT = mountComponent(Main)
 		// 「记忆」已从设置二级页提升为一级页, 侧栏共 5 项
-		const MAIN_TABS = ["home", "talk", "model", "memory", "settings"]
+		const MAIN_TABS = ["home", "talk", "model", "memory"]
 		try {
 			await settleView()
 			expect(MOUNT.container.innerHTML).toBeTruthy()
 
 			const NAV_BUTTONS = Array.from(MOUNT.container.querySelectorAll("aside nav button"))
-			expect(NAV_BUTTONS).toHaveLength(MAIN_TABS.length)
+			expect(NAV_BUTTONS).toHaveLength(MAIN_TABS.length + 1)
 			for (const [INDEX, TAB] of MAIN_TABS.entries()) {
 				click(NAV_BUTTONS[INDEX])
 				await settleView()
@@ -220,43 +213,8 @@ describe("Views and Panels Mounting", () => {
 			await settleView()
 			const PANELS = MOUNT.container.querySelectorAll("[data-main-panel]")
 			expect(PANELS).toHaveLength(1)
-			expect(PANELS[0].getAttribute("data-main-panel")).toBe("settings")
-		} finally {
-			MOUNT.app.unmount()
-			MOUNT.container.remove()
-		}
-	})
-
-	it("switches all SettingsPanel tabs without leaving a blank panel", async () => {
-		const MOUNT = mountComponent(SettingsPanel)
-		// 设置面板包含 11 个子页
-		const SETTINGS_TABS = ["ai", "voice", "proactive", "plugins", "skills", "mcp", "automation", "general", "updates", "debug", "about"]
-		try {
-			await settleView()
-			const NAV_BUTTONS = Array.from(MOUNT.container.querySelectorAll("nav button"))
-			expect(NAV_BUTTONS).toHaveLength(SETTINGS_TABS.length)
-			expect(NAV_BUTTONS.some(button => button.textContent?.includes("插件"))).toBe(true)
-			for (const [INDEX, TAB] of SETTINGS_TABS.entries()) {
-				click(NAV_BUTTONS[INDEX])
-				await settleView()
-				const PANELS = MOUNT.container.querySelectorAll("[data-settings-panel]")
-				expect(PANELS).toHaveLength(1)
-				expect(PANELS[0].getAttribute("data-settings-panel")).toBe(TAB)
-				expect(PANELS[0].textContent?.trim()).not.toBe("")
-			}
-
-			click(NAV_BUTTONS[8])
-			click(NAV_BUTTONS[3])
-			click(NAV_BUTTONS[0])
-			await settleView()
-			const PANELS = MOUNT.container.querySelectorAll("[data-settings-panel]")
-			expect(PANELS).toHaveLength(1)
-			expect(PANELS[0].getAttribute("data-settings-panel")).toBe("ai")
-
-			click(NAV_BUTTONS[7])
-			await settleView()
-			const GENERAL_PANEL = MOUNT.container.querySelector("[data-settings-panel='general']")
-			expect(GENERAL_PANEL?.textContent).toContain("鼠标穿透")
+			expect(PANELS[0].getAttribute("data-main-panel")).toBe("model")
+			expect(INVOKED).toContain("window_open_settings")
 		} finally {
 			MOUNT.app.unmount()
 			MOUNT.container.remove()
@@ -269,17 +227,7 @@ describe("Views and Panels Mounting", () => {
 			HomePanel,
 			ChatView,
 			ModelManagement,
-			SettingsPanel,
-			AiSettings,
 			MemorySettings,
-			VoiceSettings,
-			ProactiveSettings,
-			SkillsSettings,
-			McpSettings,
-			AutomationSettings,
-			GeneralSettings,
-			DebugSettings,
-			AboutSettings,
 		]
 		for (const comp of panels) {
 			const MOUNT = mountComponent(comp)

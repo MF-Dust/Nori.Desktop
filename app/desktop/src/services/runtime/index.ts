@@ -430,6 +430,10 @@ export const RUNTIME = {
 	updateAutomation(patch: Partial<{enabled: boolean; desktopEnabled: boolean; browserEnabled: boolean}>): Promise<AutomationSettingsDto> {
 		return invoke("settings_update_automation", patch)
 	},
+	/** 请求宿主显示独立的原生设置窗口，并可指定初始页面。 */
+	openSettings(page?: string): Promise<void> {
+		return invoke("window_open_settings", page ? {page} : undefined)
+	},
 	stopAutomationTask(taskId: string): Promise<boolean> {
 		return invoke("automation_stop_task", {taskId})
 	},

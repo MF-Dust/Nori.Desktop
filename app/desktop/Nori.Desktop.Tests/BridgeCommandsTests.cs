@@ -15,8 +15,13 @@ using Nori.Desktop.Automation.Desktop;
 using Nori.Desktop.Automation.Windows;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Runtime;
+using Nori.Desktop.Settings;
 using Nori.Desktop.Windows;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
+using Devolutions.AvaloniaTheme.MacOS;
+using Nori.Desktop.Settings.Pages;
 
 namespace Nori.Desktop.Tests;
 
@@ -25,6 +30,20 @@ namespace Nori.Desktop.Tests;
 /// </summary>
 public class BridgeCommandsTests : IDisposable
 {
+	/// <summary>无界面测试使用生产主题，但不启动桌面服务。</summary>
+	public static AppBuilder BuildAvaloniaApp() =>
+		AppBuilder.Configure<App>().UseHeadless(new AvaloniaHeadlessPlatformOptions());
+
+	private static async Task WithSettingsUiAsync(Func<Task> action)
+	{
+		using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(BridgeCommandsTests));
+		await session.Dispatch(async () =>
+		{
+			await action();
+			return true;
+		}, CancellationToken.None);
+	}
+
 	private sealed class FakeBridgeSource(string label, bool isVisible = true) : IBridgeSource
 	{
 		public string Label => label;
@@ -187,6 +206,7 @@ public class BridgeCommandsTests : IDisposable
 	private sealed class FakeWindowManager : IWindowManager
 	{
 		public List<(string Name, object? Payload)> Broadcasts { get; } = [];
+		public List<string?> SettingsPages { get; } = [];
 		private readonly Dictionary<string, bool> _visible = [];
 
 		public event Action<string, bool>? VisibilityChanged;
@@ -199,6 +219,8 @@ public class BridgeCommandsTests : IDisposable
 		{
 		}
 		public void Show(string label) => SetVisible(label, true);
+
+		public void ShowSettings(string? page = null) => SettingsPages.Add(page);
 
 		public void Hide(string label) => SetVisible(label, false);
 
@@ -317,6 +339,7 @@ public class BridgeCommandsTests : IDisposable
 		};
 		_runtime = new AppRuntime(_services);
 		_services.Runtime = _runtime;
+		_services.Commands = new BridgeCommands(_services, new SynchronousUiDispatcher());
 	}
 
 	public void Dispose()
@@ -1676,6 +1699,148 @@ public class BridgeCommandsTests : IDisposable
 		Assert.True(doc.RootElement.TryGetProperty("updater", out JsonElement updaterEl));
 		Assert.Equal("idle", updaterEl.GetProperty("state").GetString());
 	}
+
+	[Fact]
+	public async Task WindowOpenSettings_MainSourceDelegatesToWindowManager()
+	{
+		BridgeCommands commands = CreateCommands();
+		object? result = await commands.InvokeAsync(
+			new FakeBridgeSource(WindowLabels.Main),
+			"window_open_settings",
+			Args(new {page = "ai"}));
+
+		Assert.Null(result);
+		Assert.Equal(["ai"], _windows.SettingsPages);
+	}
+
+	[Fact]
+	public async Task WindowOpenSettings_NonMainSourceThrows()
+	{
+		BridgeCommands commands = CreateCommands();
+
+		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
+			new FakeBridgeSource(WindowLabels.Pet),
+			"window_open_settings",
+			Args(new {page = "ai"})));
+		Assert.Empty(_windows.SettingsPages);
+	}
+
+	[Fact]
+	public Task NativeSettingsServiceUsesSharedSnapshotAndStateNotification() => WithSettingsUiAsync(async () =>
+	{
+		using SettingsService settings = new(_services, new Window());
+		int stateChanged = 0;
+		settings.StateChanged += () => stateChanged++;
+
+		await settings.ExecuteAsync("settings_update_general", new {autoCheckUpdates = false});
+		Assert.Equal("false", _config.GetStringOr("auto_check_updates", "true"));
+		Assert.True(stateChanged > 0);
+
+		JsonElement snapshot = await settings.GetSnapshotAsync();
+		Assert.False(snapshot.GetProperty("general").GetProperty("autoCheckUpdates").GetBoolean());
+	});
+
+	[Fact]
+	public Task NativeSettingsServiceRejectsCommandsOutsideSettingsPolicy() => WithSettingsUiAsync(async () =>
+	{
+		using SettingsService settings = new(_services, new Window());
+
+		await Assert.ThrowsAsync<InvalidOperationException>(() => settings.ExecuteAsync("chat_start", new {text = "不能从设置窗口发起聊天"}));
+		await Assert.ThrowsAsync<InvalidOperationException>(() => settings.ExecuteAsync("window_open_settings", new {page = "ai"}));
+	});
+
+	[Fact]
+	public Task NativeSettingsThemeInitializesControlTemplates() => WithSettingsUiAsync(() =>
+	{
+		DevolutionsMacOsTheme theme = Assert.IsType<DevolutionsMacOsTheme>(Assert.Single(Application.Current!.Styles));
+		Assert.NotEmpty(theme);
+		Button button = new() {Content = "测试"};
+		TextBox input = new();
+		Window window = new() {Content = new StackPanel {Children = {button, input}}};
+		try
+		{
+			window.Show();
+			window.UpdateLayout();
+			Assert.NotNull(button.Template);
+			Assert.NotNull(input.Template);
+		}
+		finally { window.Close(); }
+		return Task.CompletedTask;
+	});
+
+	[Theory]
+	[InlineData(720, 480)]
+	[InlineData(1920, 1080)]
+	public Task NativeSettingsWindowRefreshesSnapshotOnUiThread(int width, int height) => WithSettingsUiAsync(async () =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text("en-US"));
+		using SettingsService service = new(fixture._services, new Window());
+		using SettingsViewModel viewModel = new(service);
+		SettingsWindow window = new() {DataContext = viewModel, Width = width, Height = height};
+		try
+		{
+			window.Show();
+			await viewModel.RefreshSnapshotAsync();
+			window.UpdateLayout();
+			Assert.Equal(string.Empty, viewModel.ErrorMessage);
+			Assert.Equal("en-US", viewModel.Language);
+			SettingsPagePresenter presenter = Assert.IsType<SettingsPagePresenter>(window.FindControl<SettingsPagePresenter>("PagePresenter"));
+			Assert.IsType<StackPanel>(presenter.Content);
+			Assert.True(presenter.Bounds.Width > 0);
+			Assert.True(presenter.Bounds.Height > 0);
+			// 状态通知来自后台线程，也必须走同一条 UI 刷新路径。
+			await Task.Run(() => viewModel.RefreshSnapshotAsync());
+			Assert.Equal(string.Empty, viewModel.ErrorMessage);
+		}
+		finally
+		{
+			window.DataContext = null;
+			window.Close();
+			SettingsLocalization.SetLanguage("zh-CN");
+		}
+	});
+
+	[Fact]
+	public Task NativeSettingsPagesSurviveAttachmentAndNavigation() => WithSettingsUiAsync(() =>
+	{
+		Window window = new() {Width = 720, Height = 480};
+		using SettingsService service = new(_services, window);
+		using SettingsViewModel viewModel = new(service);
+		SettingsPagePresenter presenter = new();
+		try
+		{
+			window.Show();
+			foreach (string key in new[] {"ai", "skills", "mcp", "automation", "plugins", "debug", "general", "ai"})
+			{
+				window.Content = null;
+				viewModel.Navigate(key);
+				presenter.DataContext = viewModel.CurrentPage;
+				object? content = presenter.Content;
+				window.Content = presenter;
+				window.UpdateLayout();
+				if (viewModel.CurrentPage is NativeSettingsPageBase)
+				{
+					Assert.IsType<NativeSettingsPagePresenter>(presenter.Content);
+					Assert.Same(content, presenter.Content);
+				}
+				else
+				{
+					StackPanel form = Assert.IsType<StackPanel>(presenter.Content);
+					Assert.Contains(form.Children, child => child is Border);
+				}
+				Assert.True(presenter.Bounds.Width > 0);
+				Assert.True(presenter.Bounds.Height > 0);
+				presenter.RefreshPage();
+			}
+		}
+		finally
+		{
+			presenter.DataContext = null;
+			window.Close();
+		}
+		return Task.CompletedTask;
+	});
 
 	[Fact]
 	public async Task UpdaterCancel_ReturnsTrue()

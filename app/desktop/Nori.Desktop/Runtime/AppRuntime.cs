@@ -101,6 +101,9 @@ public sealed class AppRuntime : IAsyncDisposable
 	/// <summary>当前快照版本号 (每次状态变更递增)</summary>
 	public int SnapshotVersion => Volatile.Read(ref _snapshotVersion);
 
+	/// <summary>运行时快照失效时通知原生设置窗口。</summary>
+	public event Action? StateChanged;
+
 	private int _snapshotVersion = 1;
 	private readonly Lock _snapshotCacheGate = new();
 	private object? _cachedSnapshot;
@@ -1056,11 +1059,14 @@ public sealed class AppRuntime : IAsyncDisposable
 	}
 
 	/// <summary>
-	/// 回传授权决定; 只允许原始窗口响应, 未匹配的请求 fail-closed 忽略
+	/// 回传授权决定; 只允许原始窗口响应。原生设置窗口可在明确可信上下文中
+	/// 响应主窗口发起的自动化审批，未匹配的请求 fail-closed 忽略。
 	/// </summary>
-	public bool RespondApproval(string sourceLabel, string requestId, bool approved)
+	public bool RespondApproval(string sourceLabel, string requestId, bool approved, bool allowNativeSettings = false)
 	{
-		if (_approvals.TryGetValue(requestId, out PendingApproval? approval) && approval.SourceLabel == sourceLabel)
+		if (_approvals.TryGetValue(requestId, out PendingApproval? approval)
+			&& (approval.SourceLabel == sourceLabel
+				|| (allowNativeSettings && approval.SourceLabel == WindowLabels.Main)))
 		{
 			if (!_approvals.TryRemove(new KeyValuePair<string, PendingApproval>(requestId, approval))) return false;
 			approval.Dispose(); // 停掉超时定时器
@@ -1075,7 +1081,7 @@ public sealed class AppRuntime : IAsyncDisposable
 			return approval.Tcs.TrySetResult(approved);
 		}
 
-		if (sourceLabel != WindowLabels.Main
+		if (sourceLabel != WindowLabels.Main && !allowNativeSettings
 			|| !_desktopApprovals.TryGetValue(requestId, out PendingDesktopApproval? desktopApproval)) return false;
 		if (!_desktopApprovals.TryRemove(new KeyValuePair<string, PendingDesktopApproval>(requestId, desktopApproval))) return false;
 		desktopApproval.Dispose();
@@ -1122,6 +1128,7 @@ public sealed class AppRuntime : IAsyncDisposable
 	public void InvalidateSnapshot(params string[] topics)
 	{
 		Interlocked.Increment(ref _snapshotVersion);
+		RaiseStateChanged();
 		BroadcastEvent("nori:state-changed", new {version = SnapshotVersion, topics});
 	}
 
@@ -1129,6 +1136,12 @@ public sealed class AppRuntime : IAsyncDisposable
 	public object BuildSnapshot(IBridgeSource source)
 	{
 		_ = source;
+		return BuildSnapshot();
+	}
+
+	/// <summary>构建不依赖 WebView 来源的脱敏 UI 状态快照。</summary>
+	public object BuildSnapshot()
+	{
 		while (true)
 		{
 			int version = SnapshotVersion;
@@ -1145,6 +1158,22 @@ public sealed class AppRuntime : IAsyncDisposable
 				_cachedSnapshot = snapshot;
 				_cachedSnapshotVersion = version;
 				return snapshot;
+			}
+		}
+	}
+
+	private void RaiseStateChanged()
+	{
+		if (Volatile.Read(ref _disposed) != 0) return;
+		Action? handlers = StateChanged;
+		if (handlers is null) return;
+		foreach (Action handler in handlers.GetInvocationList().Cast<Action>())
+		{
+			try { handler(); }
+			catch (Exception exception)
+			{
+				try { Services.Logger.Write(LogSource.Backend, "warn", $"原生设置状态通知失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); }
+				catch { }
 			}
 		}
 	}

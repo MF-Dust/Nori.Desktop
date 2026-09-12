@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Themes.Fluent;
+using Devolutions.AvaloniaTheme.MacOS;
 using Nori.Desktop.Diagnostics;
 
 namespace Nori.Desktop;
@@ -11,7 +11,15 @@ public sealed class App : Application
 {
 	private DesktopBootstrapper? _bootstrapper;
 
-	public override void Initialize() => Styles.Add(new FluentTheme());
+	public override void Initialize()
+	{
+		// 统一使用 Devolutions 主题，RequestedThemeVariant.Default 让系统决定深浅色。
+		DevolutionsMacOsTheme theme = new();
+		// 代码创建主题时不会经过 XAML 的初始化流程，必须显式加载内部样式。
+		theme.BeginInit();
+		theme.EndInit();
+		Styles.Add(theme);
+	}
 
 	public override void OnFrameworkInitializationCompleted()
 	{

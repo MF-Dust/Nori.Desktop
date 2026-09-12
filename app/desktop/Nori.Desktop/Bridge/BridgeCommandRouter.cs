@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Windows;
 using Nori.Desktop.Automation.Browser;
+using Nori.Desktop.Settings;
 using Nori.PluginRuntime;
 
 namespace Nori.Desktop.Bridge;
@@ -79,8 +80,23 @@ public sealed class BridgeCommandRouter(AppServices services)
 		{
 			PluginRuntimeHost runtime = _services.PluginRuntime
 				?? throw new InvalidOperationException("插件运行时尚未就绪");
+			bool nativeSettings = source is INativeSettingsSource;
+			bool sourceVisible = nativeSettings
+				? source.IsVisible
+				: _services.Windows.IsWindowVisible(source.Label);
+			if (nativeSettings
+				&& command is not "plugin_list"
+				&& !_services.SafeMode
+				&& !_services.Config.GetBoolOr(SettingsService.PluginTrustConfigKey, false))
+			{
+				throw new UnauthorizedAccessException("请先确认进程内插件运行风险");
+			}
 			return await runtime.InvokeManagementAsync(
-				new PluginManagementSource(source.Label, _services.Windows.IsWindowVisible(source.Label), source.Self),
+				new PluginManagementSource(
+					source.Label,
+					sourceVisible,
+					source.Self,
+					nativeSettings),
 				command,
 				args,
 				cancellationToken).ConfigureAwait(false);

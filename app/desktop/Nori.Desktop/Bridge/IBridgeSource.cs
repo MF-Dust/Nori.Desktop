@@ -25,3 +25,13 @@ public interface IBridgeSource
 	/// <summary>回复一次 invoke 调用</summary>
 	void PostResult(long id, object? value, string? error);
 }
+
+/// <summary>
+/// 原生设置窗口的可信桥接上下文标记。
+///
+/// 该接口不对 WebView 暴露，且不会伪装成 main 窗口；只有 SettingsService
+/// 能创建实现，BridgeCommands 也只在显式允许的设置命令中接受它。
+/// </summary>
+internal interface INativeSettingsSource : IBridgeSource
+{
+}

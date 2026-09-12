@@ -33,6 +33,9 @@ public static class TrayMenu
 		NativeMenuItem openMain = new("打开主界面");
 		openMain.Click += (_, _) => ShowMain(services);
 
+		NativeMenuItem openSettings = new(services.Config.GetStringOr("language", "zh-CN") == "en-US" ? "Settings" : "设置");
+		openSettings.Click += (_, _) => services.Windows.ShowSettings();
+
 		NativeMenuItem togglePet = new("显示/隐藏 Nori");
 		togglePet.Click += (_, _) =>
 		{
@@ -57,7 +60,7 @@ public static class TrayMenu
 		{
 			Icon = LoadIcon(),
 			ToolTipText = "Nori - 桌面伴侣（点击打开主界面）",
-			Menu = [openMain, togglePet, quit],
+			Menu = [openMain, openSettings, togglePet, quit],
 		};
 		// 左键点击直接开主界面, 不弹菜单
 		tray.Clicked += (_, _) => ShowMain(services);

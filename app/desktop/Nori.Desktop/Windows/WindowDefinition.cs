@@ -7,7 +7,7 @@ namespace Nori.Desktop.Windows;
 /// 窗口定义
 ///
 /// 逐条对应原 tauri.conf.json 的 app.windows 配置.
-/// 新增窗口要同时改这里、前端 WINDOW_ROUTES 与 router, 少一处窗口就会渲染成 /init.
+/// WebView 窗口需要同步前端路由；原生设置按需创建，不注册 WebView 路由。
 /// </summary>
 public sealed record WindowDefinition
 {
@@ -39,7 +39,7 @@ public sealed record WindowDefinition
 	public bool ShowInTaskbar { get; init; } = true;
 
 	/// <summary>
-	/// 四个窗口的完整定义
+	/// 启动时预建的四个窗口定义；原生设置窗口由窗口调度按需创建。
 	///
 	/// 全部无边框 + 透明 + 启动隐藏, 由窗口调度决定谁先显示
 	/// </summary>
@@ -89,6 +89,9 @@ public sealed record WindowDefinition
 /// </summary>
 public static class WindowLabels
 {
+	/// <summary>按需创建的原生设置窗口。</summary>
+	public const string Settings = "settings";
+
 	/// <summary>首次运行向导</summary>
 	public const string FirstRun = "first-run";
 

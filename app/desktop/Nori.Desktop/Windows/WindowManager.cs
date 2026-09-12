@@ -13,7 +13,7 @@ namespace Nori.Desktop.Windows;
 /// 窗口调度
 ///
 /// 承接原来 Rust 侧 lib.rs setup / tray.rs 与前端 services/window/index.ts 的窗口调度职责.
-/// 包含三个 WebView2 窗口 (first-run, init, main) 与一个原生 OpenGL 伴侣视窗 (pet)。
+/// 管理三个 WebView、原生伴侣视窗与按需创建的原生设置窗口。
 /// </summary>
 public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleApplicationLifetime lifetime, AppStoragePaths storagePaths) : IWindowManager
 {
@@ -23,6 +23,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	private readonly Dictionary<string, Window> _windows = [];
 	private readonly ConcurrentDictionary<string, bool> _visible = new();
 	private PetWindow? _petWindow;
+	private AppServices? _services;
 	private int _shutdownRequested;
 
 	/// <inheritdoc />
@@ -33,6 +34,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	/// </summary>
 	public void CreateAll(NoriBridge bridge, AppServices services)
 	{
+		_services = services;
 		foreach (WindowDefinition definition in WindowDefinition.All)
 		{
 			if (definition.Label == WindowLabels.Pet)
@@ -110,6 +112,11 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	/// </summary>
 	public void Show(string label)
 	{
+		if (label == WindowLabels.Settings)
+		{
+			ShowSettings();
+			return;
+		}
 		if (Get(label) is not { } window) return;
 		window.Show();
 		if (window is PetWindow pet)
@@ -120,6 +127,26 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 			return;
 		}
 		window.Activate();
+	}
+
+	/// <inheritdoc />
+	public void ShowSettings(string? page = null)
+	{
+		Dispatcher.UIThread.VerifyAccess();
+		if (Volatile.Read(ref _shutdownRequested) != 0) return;
+		if (page is not null && page is not ("ai" or "voice" or "proactive" or "skills" or "mcp" or "automation" or "plugins" or "general" or "updates" or "debug" or "about"))
+			throw new ArgumentException("未知的设置页面", nameof(page));
+		if (Get(WindowLabels.Settings) is not SettingsWindow settings)
+		{
+			AppServices services = _services ?? throw new InvalidOperationException("应用窗口尚未就绪");
+			settings = new SettingsWindow(services);
+			_windows[WindowLabels.Settings] = settings;
+			TrackVisibility(WindowLabels.Settings, settings);
+		}
+		settings.Navigate(page);
+		if (settings.WindowState == WindowState.Minimized) settings.WindowState = WindowState.Normal;
+		settings.Show();
+		settings.Activate();
 	}
 
 	/// <summary>
@@ -135,6 +162,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 		if (Get(label) is not { } window) return;
 		_windows.Remove(label);
 		if (window is NoriWindow nw) nw.AllowClose = true;
+		else if (window is SettingsWindow settings) settings.AllowClose = true;
 		else if (window is PetWindow pw)
 		{
 			pw.AllowClose = true;
@@ -184,11 +212,14 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	{
 		if (Interlocked.Exchange(ref _shutdownRequested, 1) != 0) return;
 
-		Dispatcher.UIThread.Post(() =>
+		Dispatcher.UIThread.Post(async () =>
 		{
+			if (Get(WindowLabels.Settings) is SettingsWindow settings)
+				await settings.PrepareShutdownAsync();
 			foreach (Window window in _windows.Values)
 			{
 				if (window is NoriWindow noriWindow) noriWindow.AllowClose = true;
+				else if (window is SettingsWindow settingsWindow) settingsWindow.AllowClose = true;
 				else if (window is PetWindow petWindow) petWindow.AllowClose = true;
 			}
 

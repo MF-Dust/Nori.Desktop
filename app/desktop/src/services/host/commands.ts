@@ -68,6 +68,7 @@ export interface BridgeCommandMap {
 	exit_app: {args: EmptyCommandArgs; result: void}
 	clipboard_write_text: {args: {text: string}; result: void}
 	open_url: {args: {url: string}; result: void}
+	window_open_settings: {args: {page?: string}; result: void}
 
 	updater_check: {args: EmptyCommandArgs; result: UpdaterCheckResultDto}
 	updater_install: {args: EmptyCommandArgs; result: UpdaterInstallResultDto}

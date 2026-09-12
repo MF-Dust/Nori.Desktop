@@ -125,7 +125,9 @@ public sealed class BridgeCommands
 
 		// ---- 自动化宿主接线 ----
 		/// invoke("automation_get_snapshot")
-		"automation_get_snapshot" => RequireWebViewSource(source, () => Automation.GetSnapshot()),
+		"automation_get_snapshot" => source is INativeSettingsSource
+			? await RequireVisibleMainAsync(source, () => Automation.GetSnapshot())
+			: RequireWebViewSource(source, () => Automation.GetSnapshot()),
 
 		/// 更新自动化设置: invoke("automation_update_settings", {enabled?, allowPointer?, allowKeyboard?, allowScroll?, browserEnabled?})
 		"automation_update_settings" => await RequireVisibleMainAsync(source, () => UpdateAutomationSettings(args)),
@@ -418,7 +420,10 @@ public sealed class BridgeCommands
 
 		// invoke("approval_respond", {requestId: "...", approved: true})
 		"approval_respond" => RequireMain(source, () => Runtime.RespondApproval(
-			source.Label, Str(args, "requestId"), OptionalBool(args, "approved") ?? false)),
+			source.Label,
+			Str(args, "requestId"),
+			OptionalBool(args, "approved") ?? false,
+			source is INativeSettingsSource)),
 
 		// invoke("chat_history_page", {limit?: 50, beforeId?: 0})
 		"chat_history_page" => RequireMain(source, () => GetHistoryPage(
@@ -662,6 +667,11 @@ public sealed class BridgeCommands
 		"pet_get_state" => RequireMain(source, GetPetState),
 
 		// ---- 窗口 ----
+		/// <summary>
+		/// 打开原生设置窗口；仅可由可见主 WebView 调用。
+		/// 前端调用：invoke("window_open_settings", {page?: "ai"})
+		/// </summary>
+		"window_open_settings" => await OpenSettingsAsync(source, args),
 		"window_show" => await OnUi(() => ShowWindow(source, args)),
 		"window_hide" => await OnUi(() => HideWindow(source, args)),
 		"window_close" => await OnUi(() => CloseWindow(source, args)),
@@ -745,10 +755,26 @@ public sealed class BridgeCommands
 		return factory();
 	}
 
+	private async Task<object?> OpenSettingsAsync(IBridgeSource source, JsonElement args)
+	{
+		// 设置窗口只能由可见的 main WebView 打开；原生设置上下文不能递归
+		// 调用此入口，避免把来源标记误用成主窗口身份。
+		if (source is INativeSettingsSource || source.Label != WindowLabels.Main)
+			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
+		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
+		if (!visible) throw new InvalidOperationException("main 窗口不可见");
+		return await OnUi(() =>
+		{
+			string? page = OptionalStr(args, "page");
+			_services.Windows.ShowSettings(string.IsNullOrWhiteSpace(page) ? null : page);
+			return (object?)null;
+		}).ConfigureAwait(false);
+	}
+
 	/// <summary>main 窗口校验 (无返回值场景)</summary>
 	private static void RequireMainVoid(IBridgeSource source)
 	{
-		if (source.Label != WindowLabels.Main)
+		if (source is not INativeSettingsSource && source.Label != WindowLabels.Main)
 		{
 			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
 		}
@@ -1526,7 +1552,7 @@ public sealed class BridgeCommands
 	/// </summary>
 	private static object? RequireLabel(IBridgeSource source, string allowed, Func<object?> factory)
 	{
-		if (source.Label != allowed)
+		if (!IsLabelAllowed(source, allowed))
 		{
 			throw new InvalidOperationException($"命令只能由 {allowed} 窗口调用");
 		}
@@ -1535,7 +1561,7 @@ public sealed class BridgeCommands
 
 	private static object? RequireLabel(IBridgeSource source, string allowedA, string allowedB, Func<object?> factory)
 	{
-		if (source.Label != allowedA && source.Label != allowedB)
+		if (!IsLabelAllowed(source, allowedA) && !IsLabelAllowed(source, allowedB))
 		{
 			throw new InvalidOperationException($"命令只能由 {allowedA}/{allowedB} 窗口调用");
 		}
@@ -1543,6 +1569,9 @@ public sealed class BridgeCommands
 	}
 
 	private static object? RequireMain(IBridgeSource source, Func<object?> factory) => RequireLabel(source, WindowLabels.Main, factory);
+
+	private static bool IsLabelAllowed(IBridgeSource source, string allowed) =>
+		source is INativeSettingsSource || source.Label == allowed;
 
 	private static async Task<object?> RequireMainAsync(IBridgeSource source, Func<Task<object?>> factory)
 	{

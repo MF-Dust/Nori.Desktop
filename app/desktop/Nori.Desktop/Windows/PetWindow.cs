@@ -479,7 +479,7 @@ public sealed class PetWindow : Window
 		if (props.IsLeftButtonPressed)
 		{
 			var pos = e.GetPosition(this);
-			if (!_glControl.IsPointOnModel(pos.X, pos.Y)) return;
+			if (!IsModelHit(pos)) return;
 
 			// 伴侣视窗是原生 Avalonia 窗口, 在 Linux/macOS 上优先让窗口管理器接管移动。
 			// 这条路径也覆盖 Wayland: WebView 的标题栏拖动能力不可用时, 原生窗口仍可拖动。
@@ -517,9 +517,11 @@ public sealed class PetWindow : Window
 			// 菜单已经挂在 Window.ContextMenu 上, 由 Avalonia 自己在 PointerReleased 时打开;
 			// 这里再 Open 一次会打架 (打开后立刻被关掉)
 			var pos = e.GetPosition(this);
-			if (!_glControl.IsPointOnModel(pos.X, pos.Y)) e.Handled = true;
+			if (!IsModelHit(pos)) e.Handled = true;
 		}
 	}
+
+	private bool IsModelHit(Point position) => OperatingSystem.IsWindows() || _glControl.IsPointOnModel(position.X, position.Y);
 
 	private void OnPointerMoved(object? sender, PointerEventArgs e)
 	{

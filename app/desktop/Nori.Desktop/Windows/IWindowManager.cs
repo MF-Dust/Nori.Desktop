@@ -26,6 +26,9 @@ public interface IWindowManager
 	/// <summary>显示窗口；伴侣窗口不抢焦点，其他窗口同时聚焦</summary>
 	void Show(string label);
 
+	/// <summary>打开原生设置窗口；可指定设置页，不指定时恢复上次页面。</summary>
+	void ShowSettings(string? page = null);
+
 	/// <summary>隐藏窗口</summary>
 	void Hide(string label);
 

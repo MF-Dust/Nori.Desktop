@@ -6,7 +6,11 @@ using Avalonia.Threading;
 namespace Nori.PluginRuntime;
 
 /// <summary>供插件管理命令使用的最小宿主来源。</summary>
-internal sealed record PluginManagementSource(string Label, bool IsVisible, Window? Owner = null);
+internal sealed record PluginManagementSource(
+	string Label,
+	bool IsVisible,
+	Window? Owner = null,
+	bool IsTrustedNativeSettings = false);
 
 /// <summary>宿主本地插件包文件选择器。</summary>
 internal interface IPluginPackagePicker
@@ -194,7 +198,8 @@ internal sealed class PluginManagementCommands
 
 	private void RequireVisibleMain(PluginManagementSource source)
 	{
-		if (!string.Equals(source.Label, _mainWindowLabel, StringComparison.Ordinal) || !source.IsVisible)
+		if ((!source.IsTrustedNativeSettings && !string.Equals(source.Label, _mainWindowLabel, StringComparison.Ordinal))
+			|| !source.IsVisible)
 			throw new UnauthorizedAccessException("插件管理仅允许可见的主窗口调用");
 	}
 }

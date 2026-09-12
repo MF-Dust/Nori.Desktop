@@ -20,7 +20,8 @@ describe("页面与宿主资源生命周期", () => {
 		expect(KEEP_ALIVE).not.toContain("<MemoryPanel")
 		expect(KEEP_ALIVE).not.toContain("<SettingsPanel")
 		expect(MAIN).toContain("<ModelManagement v-if=\"activeNav === 'model'\"")
-		expect(MAIN).toMatch(/<SettingsPanel\s+v-if="activeNav === 'settings'"/)
+		expect(MAIN).toContain("RUNTIME.openSettings")
+		expect(MAIN).not.toContain("<SettingsPanel")
 	})
 
 	it("应用根组件卸载时退订模块级语言监听", () => {

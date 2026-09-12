@@ -76,6 +76,11 @@ public partial class BridgeCommandsTests
 					Assert.Empty(viewModel.ErrorMessage);
 					Assert.Equal(page, viewModel.CurrentPage?.Key);
 					Assert.Equal(theme, window.ActualThemeVariant);
+					// 推进真实渲染时钟，截图保留换页淡入结束后的完整内容。
+					AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+					await Task.Delay(240);
+					AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+					Assert.Equal(1, window.FindControl<Grid>("SettingsPageBody")!.Opacity);
 
 					SettingsPagePresenter presenter = Assert.IsType<SettingsPagePresenter>(window.FindControl<SettingsPagePresenter>("PagePresenter"));
 					ScrollViewer scroll = Assert.IsType<ScrollViewer>(window.FindControl<ScrollViewer>("SettingsPageScroll"));
@@ -83,7 +88,7 @@ public partial class BridgeCommandsTests
 					string themeName = theme == ThemeVariant.Dark ? "dark" : "light";
 					string fileName = $"{page}-{themeName}-{width}x{height}.png";
 					string pngPath = Path.Combine(outputDirectory, fileName);
-					frame.Save(pngPath);
+					frame.Save(pngPath, PngBitmapEncoderOptions.Default);
 					byte[] png = File.ReadAllBytes(pngPath);
 					string preview = "NORI_SETTINGS_PREVIEW_PNG_BASE64:" + Convert.ToBase64String(png);
 					File.WriteAllText(Path.Combine(outputDirectory, fileName + ".base64.txt"), preview);

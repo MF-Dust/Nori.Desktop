@@ -1,0 +1,10 @@
+{
+	"timeout": 120000,
+	"servers": {
+		"csharp": {
+			"command": ["csharp-ls"],
+			"extensions": [".cs", ".csx"],
+			"skipDirectories": ["bin", "obj"]
+		}
+	}
+}

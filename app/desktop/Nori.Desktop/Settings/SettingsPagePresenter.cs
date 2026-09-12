@@ -58,7 +58,7 @@ public sealed class SettingsPagePresenter : ContentControl
 	{
 		// 复杂页面由专用呈现器负责，挂载时不能用空的普通分组覆盖它。
 		if (_page is null or NativeSettingsPageBase) return;
-		StackPanel root = new() { Spacing = 14, Margin = new Thickness(0) };
+		StackPanel root = new() { Spacing = 18, Margin = new Thickness(0) };
 		foreach (SettingsSectionViewModel section in _page.Sections)
 		{
 			Border card = new()
@@ -70,14 +70,14 @@ public sealed class SettingsPagePresenter : ContentControl
 				Padding = new Thickness(20, 16),
 			};
 			card.Bind(IsVisibleProperty, new Binding(nameof(SettingsSectionViewModel.IsVisible)) {Source = section});
-			StackPanel content = new() { Spacing = 3 };
+			StackPanel content = new() { Spacing = 0 };
 			content.Children.Add(new TextBlock
 			{
 				Text = section.Title,
-				FontSize = 16,
+				FontSize = 15,
 				FontWeight = FontWeight.SemiBold,
 				Foreground = Brush("SettingsPrimaryBrush"),
-				Margin = new Thickness(0, 0, 0, 8),
+				Margin = new Thickness(0, 0, 0, 14),
 			});
 			foreach (SettingsFieldViewModel field in section.Fields)
 				content.Children.Add(new SettingsFieldPresenter { DataContext = field });

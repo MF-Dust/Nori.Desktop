@@ -1,3 +1,5 @@
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Nori.Desktop.Bridge;
@@ -12,11 +14,13 @@ public partial class SettingsWindow : Window
 	private readonly SettingsViewModel _viewModel = null!;
 	private bool _closeInProgress;
 	private bool _prepared;
+	private CancellationTokenSource? _pageTransitionCts;
 
 	/// <summary>供 Avalonia XAML 编译器使用的设计构造函数。</summary>
 	public SettingsWindow()
 	{
 		InitializeComponent();
+		PagePresenter.DataContextChanged += OnPageChanged;
 	}
 
 	/// <summary>创建设置窗口。</summary>
@@ -58,6 +62,32 @@ public partial class SettingsWindow : Window
 		_settingsService.Dispose();
 	}
 
+	private async void OnPageChanged(object? sender, EventArgs args)
+	{
+		_pageTransitionCts?.Cancel();
+		SettingsPageScroll.Offset = default;
+		if (!IsVisible || PagePresenter.DataContext is not SettingsPageBase) return;
+
+		// 只在换页时淡入，不移动表单或重建编辑状态；快速切换取消上一段动画。
+		using CancellationTokenSource cancellation = new();
+		_pageTransitionCts = cancellation;
+		try
+		{
+			await new CrossFade(TimeSpan.FromMilliseconds(180))
+			{
+				FadeInEasing = new CubicEaseOut(),
+				FillMode = FillMode.None,
+			}.Start(null, SettingsPageBody, cancellation.Token);
+		}
+		catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+		{
+		}
+		finally
+		{
+			if (ReferenceEquals(_pageTransitionCts, cancellation)) _pageTransitionCts = null;
+		}
+	}
+
 	private void OnNavigateClick(object? sender, RoutedEventArgs args)
 	{
 		if (sender is Button {Tag: string page}) Navigate(page);
@@ -79,6 +109,8 @@ public partial class SettingsWindow : Window
 
 	protected override void OnClosed(EventArgs e)
 	{
+		_pageTransitionCts?.Cancel();
+		PagePresenter.DataContextChanged -= OnPageChanged;
 		// 真正关闭时解除呈现器的页面与全局语言订阅；隐藏窗口仍保留编辑上下文。
 		DataContext = null;
 		PagePresenter.RefreshPage();

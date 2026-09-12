@@ -18,28 +18,39 @@
 		<StyleInclude Source="avares://Nori.Desktop/Settings/SettingsTheme.axaml"/>
 	</Window.Styles>
 	<Border Background="{DynamicResource SettingsWindowBrush}">
-		<Grid ColumnDefinitions="192,*">
+		<Grid ColumnDefinitions="200,*">
 			<Border Grid.Column="0" Background="{DynamicResource SettingsSidebarBrush}" BorderBrush="{DynamicResource SettingsBorderBrush}" BorderThickness="0,0,1,0">
 				<DockPanel>
-					<StackPanel DockPanel.Dock="Top" Spacing="16" Margin="18,22,18,14">
-						<StackPanel Spacing="5">
-							<TextBlock Text="NORI" FontSize="12" FontWeight="Bold" LetterSpacing="2" Foreground="{DynamicResource SettingsAccentBrush}"/>
-							<TextBlock Text="{Binding WindowTitle}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SettingsPrimaryBrush}"/>
-						</StackPanel>
-						<TextBox Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{Binding SearchPlaceholder}" MinHeight="34"/>
+					<StackPanel DockPanel.Dock="Top" Spacing="20" Margin="16,24,16,12">
+						<Grid ColumnDefinitions="36,*" ColumnSpacing="10">
+							<Border Background="{DynamicResource SettingsSelectionBrush}" CornerRadius="11" Width="36" Height="36">
+								<TextBlock Text="N" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource SettingsAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+							</Border>
+							<StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+								<TextBlock Text="NORI" FontSize="11.5" FontWeight="Bold" LetterSpacing="2" Foreground="{DynamicResource SettingsSecondaryBrush}"/>
+								<TextBlock Text="{Binding WindowTitle}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource SettingsPrimaryBrush}" TextWrapping="Wrap"/>
+							</StackPanel>
+						</Grid>
+						<TextBox Classes="settings-search" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{Binding SearchPlaceholder}" AutomationProperties.Name="{Binding SearchPlaceholder}" MinHeight="34">
+							<TextBox.InnerLeftContent>
+								<PathIcon Width="13" Height="13" Margin="9,0,2,0" Foreground="{DynamicResource SettingsSecondaryBrush}" Data="M 6,0 A 6,6 0 1 0 6,12 A 6,6 0 0 0 6,0 Z M 6,2 A 4,4 0 1 1 6,10 A 4,4 0 0 1 6,2 Z M 10,11 L 11,10 16,15 15,16 Z"/>
+							</TextBox.InnerLeftContent>
+						</TextBox>
 					</StackPanel>
 					<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
 						<ItemsControl ItemsSource="{Binding FilteredGroups}">
 							<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="settings:SettingsGroupViewModel">
-									<StackPanel Spacing="4" Margin="10,8,10,8">
-										<TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="6,2,0,3"/>
+									<StackPanel Spacing="4" Margin="10,8,10,6">
+										<TextBlock Text="{Binding Title}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="10,2,0,4"/>
 										<ItemsControl ItemsSource="{Binding VisiblePages}">
 											<ItemsControl.ItemTemplate>
 												<DataTemplate x:DataType="settings:SettingsPageItemViewModel">
-													<Button Classes="settings-nav" Classes.selected="{Binding IsSelected}" Tag="{Binding Key}" Click="OnNavigateClick" HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch" Padding="10,9" Margin="0,1" MinHeight="38" CornerRadius="8">
-														<Grid ColumnDefinitions="16,*" ColumnSpacing="10">
-															<PathIcon Classes="settings-nav-icon" VerticalAlignment="Center"/>
+													<Button Classes="settings-nav" Classes.selected="{Binding IsSelected}" Tag="{Binding Key}" Click="OnNavigateClick" HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch" Padding="8,6" Margin="0,1" MinHeight="40" CornerRadius="9">
+														<Grid ColumnDefinitions="26,*" ColumnSpacing="9">
+															<Border Classes="settings-nav-symbol" Width="26" Height="26" CornerRadius="7">
+																<PathIcon Classes="settings-nav-icon" VerticalAlignment="Center"/>
+															</Border>
 															<TextBlock Grid.Column="1" Text="{Binding DisplayTitle}" VerticalAlignment="Center" TextWrapping="Wrap"/>
 														</Grid>
 													</Button>
@@ -53,14 +64,14 @@
 					</ScrollViewer>
 				</DockPanel>
 			</Border>
-			<Grid Grid.Column="1" RowDefinitions="Auto,*">
-				<Border Grid.Row="0" Background="{DynamicResource SettingsWindowBrush}" Padding="24,24,24,10">
-					<StackPanel Spacing="4" MaxWidth="820" HorizontalAlignment="Stretch">
-						<TextBlock Text="{Binding CurrentPageTitle}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource SettingsPrimaryBrush}"/>
+			<Grid x:Name="SettingsPageBody" Grid.Column="1" RowDefinitions="Auto,*" ClipToBounds="True">
+				<Border Grid.Row="0" Padding="24,28,24,16" BorderBrush="{DynamicResource SettingsBorderBrush}" BorderThickness="0,0,0,1">
+					<StackPanel Spacing="6" MaxWidth="820" HorizontalAlignment="Stretch">
+						<TextBlock Text="{Binding CurrentPageTitle}" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource SettingsPrimaryBrush}"/>
 						<TextBlock Text="{Binding CurrentPageDescription}" FontSize="13" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap"/>
 					</StackPanel>
 				</Border>
-				<ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled" Padding="24,14,24,28">
+				<ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="24,20,24,28">
 					<settings:SettingsPagePresenter x:Name="PagePresenter" DataContext="{Binding CurrentPage}" MaxWidth="820" HorizontalAlignment="Stretch"/>
 				</ScrollViewer>
 			</Grid>

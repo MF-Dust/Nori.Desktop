@@ -78,7 +78,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 		{
 			Text = _field.Label,
 			FontSize = 13,
-			FontWeight = FontWeight.SemiBold,
+			FontWeight = FontWeight.Medium,
 			Foreground = Brush("SettingsPrimaryBrush"),
 			VerticalAlignment = VerticalAlignment.Top,
 			TextWrapping = TextWrapping.Wrap,
@@ -119,14 +119,19 @@ public sealed class SettingsFieldPresenter : ContentControl
 				new ColumnDefinition(new GridLength(1.2, GridUnitType.Star)),
 			},
 			ColumnSpacing = 18,
-			Margin = new Thickness(0, 8, 0, 8),
+			Margin = new Thickness(0, 12, 0, 12),
 		};
 		Grid.SetColumn(labels, 0);
 		Grid.SetColumn(editorStack, 1);
 		row.Children.Add(labels);
 		row.Children.Add(editorStack);
 		_row = row;
-		Content = row;
+		Content = new Border
+		{
+			BorderBrush = Brush("SettingsBorderBrush"),
+			BorderThickness = new Thickness(0, 1, 0, 0),
+			Child = row,
+		};
 		UpdateFieldState();
 		UpdateLayoutForWidth(Bounds.Width);
 	}

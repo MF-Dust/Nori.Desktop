@@ -27,6 +27,7 @@
 					<StaticResource x:Key="CheckBoxCheckedBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
 					<StaticResource x:Key="CheckBoxCheckMarkBrush" ResourceKey="SettingsAccentForegroundBrush"/>
 					<StaticResource x:Key="FocusBorderBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="TextBoxMultiLineBackgroundBrush" ResourceKey="SettingsInputBrush"/>
 				</ResourceDictionary>
 				<ResourceDictionary x:Key="Dark">
 					<SolidColorBrush x:Key="SettingsWindowBrush" Color="#161A22"/>
@@ -50,6 +51,7 @@
 					<StaticResource x:Key="CheckBoxCheckedBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
 					<StaticResource x:Key="CheckBoxCheckMarkBrush" ResourceKey="SettingsAccentForegroundBrush"/>
 					<StaticResource x:Key="FocusBorderBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="TextBoxMultiLineBackgroundBrush" ResourceKey="SettingsInputBrush"/>
 				</ResourceDictionary>
 			</ResourceDictionary.ThemeDictionaries>
 		</ResourceDictionary>
@@ -110,6 +112,19 @@
 		<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
 	</Style>
+	<Style Selector="Border.settings-nav-symbol">
+		<Setter Property="Background" Value="{DynamicResource SettingsInputBrush}"/>
+	</Style>
+	<Style Selector="Button.settings-nav.selected Border.settings-nav-symbol">
+		<Setter Property="Background" Value="{DynamicResource SettingsAccentBrush}"/>
+	</Style>
+	<Style Selector="Button.settings-nav.selected PathIcon.settings-nav-icon">
+		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentForegroundBrush}"/>
+	</Style>
+	<Style Selector="Button.settings-nav:focus-visible">
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource SettingsAccentBrush}"/>
+	</Style>
 	<Style Selector="TextBox">
 		<Setter Property="FontSize" Value="13"/>
 		<Setter Property="MinHeight" Value="36"/>
@@ -118,6 +133,10 @@
 		<Setter Property="Background" Value="{DynamicResource SettingsInputBrush}"/>
 		<Setter Property="BorderBrush" Value="{DynamicResource SettingsBorderBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="TextBox.settings-search">
+		<Setter Property="CornerRadius" Value="9"/>
+		<Setter Property="FontSize" Value="12"/>
 	</Style>
 	<Style Selector="TextBox:focus">
 		<Setter Property="BorderBrush" Value="{DynamicResource SettingsAccentBrush}"/>

@@ -8,6 +8,15 @@ log() {
 	printf '[nori-codex] %s\n' "$*"
 }
 
+if [[ -x "$HOME/.dotnet/dotnet" ]]; then
+	export DOTNET_ROOT="$HOME/.dotnet"
+	export PATH="$DOTNET_ROOT:$DOTNET_ROOT/tools:$PATH"
+fi
+
+if [[ -d "$HOME/.local/bin" ]]; then
+	export PATH="$HOME/.local/bin:$PATH"
+fi
+
 if ! command -v pnpm >/dev/null 2>&1; then
 	echo "pnpm 不可用，Codex Cloud 缓存环境需要重建。" >&2
 	exit 1

@@ -14,9 +14,9 @@ public sealed class AboutSettingsPage : SettingsPageBase
 			snapshot => FirstString(snapshot, ProductVersion.Current, ["app", "productVersion"], ["app", "appVersion"]), ProductVersion.Current,
 			(_, _) => Task.FromResult(default(System.Text.Json.JsonElement)), readOnly: true);
 		AddField(identity, "license", new("许可证", "License"), new("项目源代码许可证。", "License for the project source code."), SettingsEditorKind.Text,
-			_ => "MIT", "MIT", (_, _) => Task.FromResult(default(System.Text.Json.JsonElement)), readOnly: true);
-		AddField(identity, "authors", new("作者", "Authors"), new("Nori Desktop Pet 社区。", "The Nori Desktop Pet community."), SettingsEditorKind.Text,
-			_ => "Nori Desktop Pet contributors", "Nori Desktop Pet contributors", (_, _) => Task.FromResult(default(System.Text.Json.JsonElement)), readOnly: true);
+			_ => "GPL-3.0", "GPL-3.0", (_, _) => Task.FromResult(default(System.Text.Json.JsonElement)), readOnly: true);
+		AddField(identity, "authors", new("作者", "Authors"), new("社区维护的非官方开源项目，与官方无关。", "An unofficial community-maintained open-source project, unaffiliated with the official project."), SettingsEditorKind.Text,
+			_ => "erhio · Nori · qicajie", "Nori Desktop Pet contributors", (_, _) => Task.FromResult(default(System.Text.Json.JsonElement)), readOnly: true);
 
 		SettingsSectionViewModel environment = AddSection(new("运行环境", "Runtime environment"));
 		AddField(environment, "renderer", new("渲染引擎", "Renderer"), new("当前平台使用的原生 WebView。", "The native WebView used on this platform."), SettingsEditorKind.Text,
@@ -31,9 +31,9 @@ public sealed class AboutSettingsPage : SettingsPageBase
 		string os = SettingsSnapshotReader.String(snapshot, string.Empty, "platform", "os");
 		return os switch
 		{
-			"windows" => "WebView2",
-			"macos" => "WKWebView",
-			"linux" => "WebKitGTK",
+			"windows" => "Avalonia UI + Microsoft WebView2",
+			"macos" => "Avalonia UI + WKWebView",
+			"linux" => "Avalonia UI + WebKitGTK",
 			_ => RendererFallback(),
 		};
 	}

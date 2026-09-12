@@ -128,6 +128,29 @@ jobs:
       - name: 后端门 · 单元测试
         run: dotnet test Nori.slnx --configuration Release --no-build --no-restore -m:1
 
+      - name: 原生设置 · 真实渲染与布局验证
+        if: matrix.name == 'windows'
+        env:
+          NORI_CAPTURE_SETTINGS: "1"
+        run: dotnet test Nori.Desktop.Tests/Nori.Desktop.Tests.csproj --configuration Release --no-build --no-restore --filter FullyQualifiedName~NativeSettingsVisual -m:1
+
+      - name: 原生设置 · 可检视预览
+        if: always() && matrix.name == 'windows'
+        shell: pwsh
+        run: |
+          if (Test-Path "artifacts/native-settings/preview-base64.txt") {
+            Get-Content "artifacts/native-settings/preview-base64.txt"
+          }
+
+      - name: 上传原生设置视觉产物
+        if: always() && matrix.name == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nori-native-settings-visuals
+          path: app/desktop/artifacts/native-settings
+          if-no-files-found: warn
+          retention-days: 7
+
       # 前面的 build/test 已准备好 Release 输出；覆盖率只重新收集，不重复还原/编译。
       - name: 后端门 · 覆盖率产物
         if: matrix.name == 'windows'

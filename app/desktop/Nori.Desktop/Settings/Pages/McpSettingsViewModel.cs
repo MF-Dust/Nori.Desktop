@@ -33,7 +33,11 @@ public sealed record McpServerDraft(
 	IReadOnlyDictionary<string, string> Environment,
 	string? Url,
 	bool Enabled,
-	bool AutoConnect);
+	bool AutoConnect)
+{
+	/// <summary>显式清除环境变量；默认保留宿主已有秘密。</summary>
+	public bool ClearEnvironment { get; init; }
+}
 
 /// <summary>MCP 与工具设置页的状态和宿主命令编排。</summary>
 public sealed class McpSettingsViewModel : SettingsPageViewModelBase
@@ -123,7 +127,7 @@ public sealed class McpSettingsViewModel : SettingsPageViewModelBase
 			transport,
 			command = transport == "stdio" ? draft.Command.Trim() : null,
 			args = transport == "stdio" ? draft.Arguments.ToArray() : Array.Empty<string>(),
-			env = draft.Environment.Count == 0 ? null : new Dictionary<string, string>(draft.Environment, StringComparer.Ordinal),
+			env = draft.ClearEnvironment ? new Dictionary<string, string>(StringComparer.Ordinal) : draft.Environment.Count == 0 ? null : new Dictionary<string, string>(draft.Environment, StringComparer.Ordinal),
 			url = transport == "sse" ? normalizedUrl : null,
 			enabled = draft.Enabled,
 			autoConnect = draft.AutoConnect,
@@ -191,6 +195,74 @@ public sealed class McpSettingsViewModel : SettingsPageViewModelBase
 			: await ExecuteAsync("tools_execute_manual", new {name = tool.Name, arguments}, cancellationToken).ConfigureAwait(true);
 	}
 
+
+	/// <summary>读取可编辑元数据；环境变量始终只写不读。</summary>
+	public async Task<McpServerDraft> LoadDraftAsync(McpServerItem server, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(server);
+		JsonElement config = await Service.GetMcpServerConfigAsync(server.Id, cancellationToken).ConfigureAwait(true);
+		if (!SettingsJson.IsObject(config)) throw new InvalidOperationException("MCP 服务配置已不存在，请刷新列表。");
+		return new McpServerDraft(
+			server.Id,
+			SettingsJson.String(config, "name", server.Name),
+			SettingsJson.String(config, "transport", "stdio"),
+			SettingsJson.String(config, "command"),
+			SettingsJson.Array(config, "args").Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString() ?? "").ToArray(),
+			new Dictionary<string, string>(StringComparer.Ordinal),
+			SettingsJson.NullableString(config, "url"),
+			SettingsJson.Bool(config, "enabled"),
+			SettingsJson.Bool(config, "autoConnect"));
+	}
+
+	/// <summary>从工具参数 schema 生成可编辑示例。</summary>
+	public static string CreateToolArguments(McpToolItem tool)
+	{
+		Dictionary<string, object?> sample = new(StringComparer.Ordinal);
+		JsonElement properties = SettingsJson.Object(tool.InputSchema, "properties");
+		if (properties.ValueKind == JsonValueKind.Object)
+		{
+			foreach (JsonProperty property in properties.EnumerateObject())
+			{
+				sample[property.Name] = SettingsJson.String(property.Value, "type") switch
+				{
+					"number" or "integer" => 1,
+					"boolean" => true,
+					"array" => Array.Empty<object>(),
+					"object" => new Dictionary<string, object?>(),
+					_ => "",
+				};
+			}
+		}
+		return JsonSerializer.Serialize(sample, new JsonSerializerOptions {WriteIndented = true});
+	}
+
+
+	/// <summary>读取精确参数数组，保留空参数、空格和 Windows 路径。</summary>
+	public static IReadOnlyList<string> ParseArgumentList(string json)
+	{
+		JsonElement value;
+		try { value = SettingsJson.Parse(string.IsNullOrWhiteSpace(json) ? "[]" : json); }
+		catch (JsonException exception) { throw new ArgumentException("启动参数必须是 JSON 字符串数组。", nameof(json), exception); }
+		if (value.ValueKind != JsonValueKind.Array || value.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.String))
+			throw new ArgumentException("启动参数必须是 JSON 字符串数组。", nameof(json));
+		return value.EnumerateArray().Select(item => item.GetString() ?? "").ToArray();
+	}
+
+	/// <summary>解析只写环境变量，保留值中的空白和等号。</summary>
+	public static IReadOnlyDictionary<string, string> ParseEnvironment(string text)
+	{
+		Dictionary<string, string> values = new(StringComparer.Ordinal);
+		foreach (string line in text.Split(["\r\n", "\n"], StringSplitOptions.None))
+		{
+			if (string.IsNullOrWhiteSpace(line)) continue;
+			int separator = line.IndexOf('=');
+			if (separator <= 0 || string.IsNullOrWhiteSpace(line[..separator]))
+				throw new ArgumentException("环境变量每行必须采用 NAME=value 格式。", nameof(text));
+			values[line[..separator].Trim()] = line[(separator + 1)..];
+		}
+		return values;
+	}
+
 	/// <summary>创建默认服务器草稿。</summary>
 	public static McpServerDraft NewDraft(string name) => new(
 		$"mcp_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x}",
@@ -216,7 +288,7 @@ public sealed class McpSettingsViewModel : SettingsPageViewModelBase
 			transport,
 			command = transport == "stdio" ? draft.Command.Trim() : null,
 			args = transport == "stdio" ? draft.Arguments.ToArray() : Array.Empty<string>(),
-			env = draft.Environment.Count == 0 ? null : new Dictionary<string, string>(draft.Environment, StringComparer.Ordinal),
+			env = draft.ClearEnvironment ? new Dictionary<string, string>(StringComparer.Ordinal) : draft.Environment.Count == 0 ? null : new Dictionary<string, string>(draft.Environment, StringComparer.Ordinal),
 			url = transport == "sse" ? normalizedUrl : null,
 			enabled = draft.Enabled,
 			autoConnect = draft.AutoConnect,

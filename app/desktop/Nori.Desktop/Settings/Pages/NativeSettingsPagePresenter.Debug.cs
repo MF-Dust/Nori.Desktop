@@ -11,6 +11,10 @@ public sealed partial class NativeSettingsPagePresenter
 	private StackPanel? _debugLogItems;
 	private IReadOnlyList<DebugLogItem>? _debugRenderedLogs;
 	private ComboBox? _debugFilter;
+	private TextBlock? _debugGcResult;
+	private Expander? _debugDanger;
+	private Button? _debugCopyLogs;
+	private Button? _debugCopyDiagnostic;
 	private readonly List<Button> _debugCrashButtons = [];
 
 	private void BuildDebug(StackPanel root, DebugSettingsViewModel viewModel)
@@ -19,7 +23,8 @@ public sealed partial class NativeSettingsPagePresenter
 		StackPanel diagnostic = CardBody(NativeSettingsResources.Get("debug.diagnostic"), null);
 		WrapPanel diagnosticActions = new() {Orientation = Orientation.Horizontal};
 		diagnosticActions.Children.Add(Button(NativeSettingsResources.Get("debug.refresh"), () => _ = RunAsync(() => viewModel.RefreshDiagnosticAsync())));
-		diagnosticActions.Children.Add(Button(NativeSettingsResources.Get("common.copy"), () => _ = RunAsync(() => viewModel.CopyDiagnosticAsync())));
+		_debugCopyDiagnostic = Button(NativeSettingsResources.Get("common.copy"), () => _ = RunAsync(() => viewModel.CopyDiagnosticAsync()));
+		diagnosticActions.Children.Add(_debugCopyDiagnostic);
 		diagnosticActions.Children.Add(Button(NativeSettingsResources.Get("debug.export"), () => _ = RunAsync(() => ExportDiagnosticsAsync(viewModel))));
 		diagnosticActions.Children.Add(Button(NativeSettingsResources.Get("debug.openFolder"), () => _ = RunAsync(() => viewModel.OpenLogFolderAsync())));
 		diagnostic.Children.Add(diagnosticActions);
@@ -44,6 +49,7 @@ public sealed partial class NativeSettingsPagePresenter
 		Grid.SetColumn(clear, 2);
 		logToolbar.Children.Add(clear);
 		Button copy = Button(NativeSettingsResources.Get("common.copy"), () => _ = RunAsync(() => viewModel.CopyLogsAsync()));
+		_debugCopyLogs = copy;
 		Grid.SetColumn(copy, 3);
 		logToolbar.Children.Add(copy);
 		logs.Children.Add(logToolbar);
@@ -62,13 +68,20 @@ public sealed partial class NativeSettingsPagePresenter
 			await NativeSettingsDialogs.ShowMessageAsync(Owner(), NativeSettingsResources.Get("debug.gc"), $"{NativeSettingsResources.Get("debug.released")}: {released}").ConfigureAwait(true);
 		})));
 		tools.Children.Add(Button(NativeSettingsResources.Get("debug.testLog"), () => _ = RunAsync(() => viewModel.WriteTestLogAsync())));
+		_debugGcResult = new TextBlock {Foreground = Brush("SettingsAccentBrush"), TextWrapping = TextWrapping.Wrap};
+		tools.Children.Add(_debugGcResult);
+		root.Children.Add(WrapCard(tools));
+		StackPanel danger = new() {Spacing = 10, Margin = new Avalonia.Thickness(0, 12, 0, 0)};
 		_debugCrashButtons.Clear();
 		bool crashEnabled = viewModel.CrashTestsAvailable;
-		_debugCrashButtons.Add(Button(NativeSettingsResources.Get("debug.uiCrash"), () => _ = RunCrashAsync(viewModel, "ui_thread", false), danger: true, enabled: crashEnabled));
-		_debugCrashButtons.Add(Button(NativeSettingsResources.Get("debug.backgroundCrash"), () => _ = RunCrashAsync(viewModel, "background_thread", true), danger: true, enabled: crashEnabled));
-		_debugCrashButtons.Add(Button(NativeSettingsResources.Get("debug.taskCrash"), () => _ = RunCrashAsync(viewModel, "unobserved_task", true), danger: true, enabled: crashEnabled));
-		foreach (Button button in _debugCrashButtons) tools.Children.Add(button);
-		root.Children.Add(WrapCard(tools));
+		_debugCrashButtons.Add(Button(NativeSettingsResources.Get("debug.uiCrash"), () => _ = RunAsync(() => RunCrashAsync(viewModel, "ui_thread", false)), danger: true, enabled: crashEnabled));
+		_debugCrashButtons.Add(Button(NativeSettingsResources.Get("debug.backgroundCrash"), () => _ = RunAsync(() => RunCrashAsync(viewModel, "background_thread", true)), danger: true, enabled: crashEnabled));
+		_debugCrashButtons.Add(Button(NativeSettingsResources.Get("debug.taskCrash"), () => _ = RunAsync(() => RunCrashAsync(viewModel, "unobserved_task", false)), danger: true, enabled: crashEnabled));
+		foreach (Button button in _debugCrashButtons) danger.Children.Add(button);
+		danger.Children.Add(Button(NativeSettingsResources.Get("debug.settingsError"), () => _ = RunAsync(() =>
+			Task.FromException(new InvalidOperationException(NativeSettingsResources.Get("debug.settingsErrorResult")))), danger: true));
+		_debugDanger = new Expander {Header = NativeSettingsResources.Get("debug.danger"), Content = danger, IsExpanded = false, IsVisible = crashEnabled};
+		root.Children.Add(_debugDanger);
 		UpdateDebug(viewModel);
 	}
 
@@ -81,6 +94,11 @@ public sealed partial class NativeSettingsPagePresenter
 			_errorText.Text = viewModel.ErrorMessage;
 			_errorText.IsVisible = !string.IsNullOrWhiteSpace(viewModel.ErrorMessage);
 		}
+		if (_debugDanger is not null) _debugDanger.IsVisible = viewModel.CrashTestsAvailable;
+		if (_debugCopyLogs is not null) _debugCopyLogs.IsEnabled = viewModel.FilteredLogs.Count > 0;
+		if (_debugCopyDiagnostic is not null) _debugCopyDiagnostic.IsEnabled = viewModel.Diagnostic.Count > 0;
+		if (_debugGcResult is not null)
+			_debugGcResult.Text = viewModel.ReleasedBytes is long released ? $"{NativeSettingsResources.Get("debug.released")}: {released:N0}" : "";
 		foreach (Button button in _debugCrashButtons)
 			button.IsEnabled = viewModel.CrashTestsAvailable && !viewModel.IsBusy;
 		if (_debugFilter is not null)

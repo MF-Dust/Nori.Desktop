@@ -140,7 +140,7 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 	public async Task<PluginItem> DisableAsync(PluginItem plugin, CancellationToken cancellationToken = default)
 	{
 		ArgumentNullException.ThrowIfNull(plugin);
-		EnsureCanMutate();
+		// 停用属于撤回授权，安全模式和未确认安装风险时仍然允许。
 		JsonElement result = await ExecuteAsync("plugin_disable", new {id = plugin.Id}, cancellationToken).ConfigureAwait(true);
 		PluginItem updated = ParsePlugin(result);
 		Replace(updated);

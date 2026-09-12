@@ -15,49 +15,17 @@
 	WindowDecorations="Full"
 	RequestedThemeVariant="Default">
 	<Window.Styles>
-		<Style Selector="Button.settings-nav">
-			<Setter Property="Background" Value="Transparent"/>
-			<Setter Property="BorderBrush" Value="Transparent"/>
-			<Setter Property="BorderThickness" Value="0"/>
-			<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
-		</Style>
-		<Style Selector="Button.settings-nav.selected">
-			<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
-			<Setter Property="FontWeight" Value="SemiBold"/>
-		</Style>
+		<StyleInclude Source="avares://Nori.Desktop/Settings/SettingsTheme.axaml"/>
 	</Window.Styles>
-	<Window.Resources>
-		<ResourceDictionary>
-			<ResourceDictionary.ThemeDictionaries>
-				<ResourceDictionary x:Key="Light">
-					<SolidColorBrush x:Key="SettingsWindowBrush" Color="#F6F7F9"/>
-					<SolidColorBrush x:Key="SettingsSidebarBrush" Color="#ECEEF2"/>
-					<SolidColorBrush x:Key="SettingsCardBrush" Color="#FFFFFF"/>
-					<SolidColorBrush x:Key="SettingsBorderBrush" Color="#D9DCE2"/>
-					<SolidColorBrush x:Key="SettingsPrimaryBrush" Color="#20242B"/>
-					<SolidColorBrush x:Key="SettingsSecondaryBrush" Color="#626A78"/>
-					<SolidColorBrush x:Key="SettingsErrorBrush" Color="#B42318"/>
-					<SolidColorBrush x:Key="SettingsSelectionBrush" Color="#DCEBFF"/>
-				</ResourceDictionary>
-				<ResourceDictionary x:Key="Dark">
-					<SolidColorBrush x:Key="SettingsWindowBrush" Color="#202227"/>
-					<SolidColorBrush x:Key="SettingsSidebarBrush" Color="#191B1F"/>
-					<SolidColorBrush x:Key="SettingsCardBrush" Color="#292C32"/>
-					<SolidColorBrush x:Key="SettingsBorderBrush" Color="#3C414B"/>
-					<SolidColorBrush x:Key="SettingsPrimaryBrush" Color="#F2F4F7"/>
-					<SolidColorBrush x:Key="SettingsSecondaryBrush" Color="#A9B0BC"/>
-					<SolidColorBrush x:Key="SettingsErrorBrush" Color="#FFB4AB"/>
-					<SolidColorBrush x:Key="SettingsSelectionBrush" Color="#243B5B"/>
-				</ResourceDictionary>
-			</ResourceDictionary.ThemeDictionaries>
-		</ResourceDictionary>
-	</Window.Resources>
 	<Border Background="{DynamicResource SettingsWindowBrush}">
-		<Grid ColumnDefinitions="184,*">
+		<Grid ColumnDefinitions="192,*">
 			<Border Grid.Column="0" Background="{DynamicResource SettingsSidebarBrush}" BorderBrush="{DynamicResource SettingsBorderBrush}" BorderThickness="0,0,1,0">
 				<DockPanel>
-					<StackPanel DockPanel.Dock="Top" Spacing="14" Margin="16,20,16,12">
-						<TextBlock Text="{Binding WindowTitle}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource SettingsPrimaryBrush}"/>
+					<StackPanel DockPanel.Dock="Top" Spacing="16" Margin="18,22,18,14">
+						<StackPanel Spacing="5">
+							<TextBlock Text="NORI" FontSize="12" FontWeight="Bold" LetterSpacing="2" Foreground="{DynamicResource SettingsAccentBrush}"/>
+							<TextBlock Text="{Binding WindowTitle}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SettingsPrimaryBrush}"/>
+						</StackPanel>
 						<TextBox Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{Binding SearchPlaceholder}" MinHeight="34"/>
 					</StackPanel>
 					<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Hidden">
@@ -69,8 +37,11 @@
 										<ItemsControl ItemsSource="{Binding VisiblePages}">
 											<ItemsControl.ItemTemplate>
 												<DataTemplate x:DataType="settings:SettingsPageItemViewModel">
-													<Button Classes="settings-nav" Classes.selected="{Binding IsSelected}" Tag="{Binding Key}" Click="OnNavigateClick" HorizontalContentAlignment="Left" HorizontalAlignment="Stretch" Padding="12,9" Margin="0,1" MinHeight="38" CornerRadius="8">
-														<TextBlock Text="{Binding DisplayTitle}" Foreground="{DynamicResource SettingsPrimaryBrush}"/>
+													<Button Classes="settings-nav" Classes.selected="{Binding IsSelected}" Tag="{Binding Key}" Click="OnNavigateClick" HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch" Padding="10,9" Margin="0,1" MinHeight="38" CornerRadius="8">
+														<Grid ColumnDefinitions="16,*" ColumnSpacing="10">
+															<PathIcon Classes="settings-nav-icon" VerticalAlignment="Center"/>
+															<TextBlock Grid.Column="1" Text="{Binding DisplayTitle}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+														</Grid>
 													</Button>
 												</DataTemplate>
 											</ItemsControl.ItemTemplate>
@@ -83,14 +54,14 @@
 				</DockPanel>
 			</Border>
 			<Grid Grid.Column="1" RowDefinitions="Auto,*">
-				<Border Grid.Row="0" Background="{DynamicResource SettingsWindowBrush}" Padding="22,22,22,18">
+				<Border Grid.Row="0" Background="{DynamicResource SettingsWindowBrush}" Padding="26,24,26,10">
 					<StackPanel Spacing="4">
-						<TextBlock Text="{Binding CurrentPageTitle}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource SettingsPrimaryBrush}"/>
+						<TextBlock Text="{Binding CurrentPageTitle}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource SettingsPrimaryBrush}"/>
 						<TextBlock Text="{Binding CurrentPageDescription}" FontSize="13" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap"/>
 					</StackPanel>
 				</Border>
-				<ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="{Binding HorizontalScrollBarVisibility}" Padding="20,16,20,20">
-					<settings:SettingsPagePresenter x:Name="PagePresenter" DataContext="{Binding CurrentPage}"/>
+				<ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="{Binding HorizontalScrollBarVisibility}" Padding="24,14,24,28">
+					<settings:SettingsPagePresenter x:Name="PagePresenter" DataContext="{Binding CurrentPage}" MaxWidth="820" HorizontalAlignment="Stretch"/>
 				</ScrollViewer>
 			</Grid>
 		</Grid>

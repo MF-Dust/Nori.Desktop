@@ -32,7 +32,8 @@ namespace Nori.Desktop.Tests;
 /// <summary>
 /// 后端化桥接命令面测试: 来源授权、快照脱敏、历史规范化与提醒持久化
 /// </summary>
-public class BridgeCommandsTests : IDisposable
+[Collection("Native settings")]
+public partial class BridgeCommandsTests : IDisposable
 {
 	/// <summary>无界面测试使用生产主题，但不启动桌面服务。</summary>
 	public static AppBuilder BuildAvaloniaApp() =>
@@ -1949,7 +1950,7 @@ public class BridgeCommandsTests : IDisposable
 			Assert.Empty(viewModel.ErrorMessage);
 			Assert.Contains("mcp", refreshed);
 			Assert.All(refreshed, key => Assert.Equal("mcp", key));
-			Assert.Equal("mcp", Assert.Single(viewModel.Groups.SelectMany(group => group.Pages).Where(item => item.IsSelected)).Key);
+			Assert.Equal("mcp", Assert.Single(viewModel.Groups.SelectMany(group => group.Pages), item => item.IsSelected).Key);
 		}
 		finally { window.Close(); }
 	});

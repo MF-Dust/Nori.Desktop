@@ -4,32 +4,8 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Windows.Input;
 using Avalonia.Controls;
-using Avalonia.Media;
-using Avalonia.Styling;
 
 namespace Nori.Desktop.Settings;
-
-internal static class SettingsBrushes
-{
-	public static IBrush Resolve(Control owner, string key)
-	{
-		if (owner.Resources.TryGetResource(key, owner.ActualThemeVariant, out object? value) && value is IBrush brush)
-			return brush;
-		bool dark = owner.ActualThemeVariant == ThemeVariant.Dark;
-		return new SolidColorBrush(Color.Parse(key switch
-		{
-			"SettingsWindowBrush" => dark ? "#202227" : "#F6F7F9",
-			"SettingsSidebarBrush" => dark ? "#191B1F" : "#ECEEF2",
-			"SettingsCardBrush" => dark ? "#292C32" : "#FFFFFF",
-			"SettingsBorderBrush" => dark ? "#3C414B" : "#D9DCE2",
-			"SettingsPrimaryBrush" => dark ? "#F2F4F7" : "#20242B",
-			"SettingsSecondaryBrush" => dark ? "#A9B0BC" : "#626A78",
-			"SettingsErrorBrush" => dark ? "#FFB4AB" : "#B42318",
-			"SettingsSelectionBrush" => dark ? "#243B5B" : "#DCEBFF",
-			_ => dark ? "#F2F4F7" : "#20242B",
-		}));
-	}
-}
 
 /// <summary>原生设置页支持的编辑器类型。</summary>
 public enum SettingsEditorKind
@@ -41,6 +17,7 @@ public enum SettingsEditorKind
 	Number,
 	Choice,
 	Slider,
+	Progress,
 	Action,
 }
 
@@ -81,6 +58,15 @@ public abstract class SettingsObservableObject : INotifyPropertyChanged
 /// <summary>设置分组中的一组字段。</summary>
 public sealed class SettingsSectionViewModel : SettingsObservableObject
 {
+	private bool _isVisible = true;
+
+	/// <summary>是否显示本节及其字段。</summary>
+	public bool IsVisible
+	{
+		get => _isVisible;
+		set => SetProperty(ref _isVisible, value);
+	}
+
 	private readonly SettingsText _titleText;
 	private string _language = "zh-CN";
 
@@ -296,7 +282,7 @@ public abstract class SettingsPageBase : SettingsObservableObject, ISettingsPage
 	}
 
 	/// <summary>应用服务端快照，不覆盖用户正在编辑的字段。</summary>
-	internal void ApplySnapshot(JsonElement snapshot)
+	internal virtual void ApplySnapshot(JsonElement snapshot)
 	{
 		foreach (SettingsFieldViewModel field in _fields) field.ApplySnapshot(snapshot);
 	}
@@ -364,7 +350,8 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	private readonly SemaphoreSlim _saveGate = new(1, 1);
 	private readonly object _saveSync = new();
 	private readonly bool _secret;
-	private readonly bool _readOnly;
+	private bool _readOnly;
+	private bool _isVisible = true;
 	private CancellationTokenSource? _debounceCts;
 	private Task _pendingTask = Task.CompletedTask;
 	private bool _suppress;
@@ -509,7 +496,40 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	public bool IsDirty => _dirty;
 
 	/// <summary>只读字段不会触发保存。</summary>
-	public bool IsReadOnly => _readOnly;
+	public bool IsReadOnly
+	{
+		get => _readOnly;
+		set => SetProperty(ref _readOnly, value);
+	}
+
+	/// <summary>当前提供方或运行状态下是否显示本字段。</summary>
+	public bool IsVisible
+	{
+		get => _isVisible;
+		set => SetProperty(ref _isVisible, value);
+	}
+
+	/// <summary>替换选择项但保留当前编辑值，不把刷新选项当作用户保存。</summary>
+	public void SetOptions(IEnumerable<SettingsOption> options)
+	{
+		ArgumentNullException.ThrowIfNull(options);
+		SettingsOption[] next = options.ToArray();
+		string selected = _selected;
+		_suppress = true;
+		try
+		{
+			Options.Clear();
+			foreach (SettingsOption option in next)
+			{
+				option.DisplayText = option.Text.Resolve(_language);
+				Options.Add(option);
+			}
+			_selected = selected;
+			OnPropertyChanged(nameof(Options));
+			OnPropertyChanged(nameof(Selected));
+		}
+		finally { _suppress = false; }
+	}
 
 	internal void SetLanguage(string language)
 	{
@@ -526,8 +546,9 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 		object? value;
 		try { value = _snapshotReader(snapshot) ?? _fallback; }
 		catch { value = _fallback; }
-		bool configured = value is not null && (value is not string text || !string.IsNullOrEmpty(text));
-		ApplyValue(value, configured);
+		bool configured = value is bool flag ? flag : value is not null && (value is not string text || !string.IsNullOrEmpty(text));
+		// 密钥快照只表达是否已配置，不能把 hasApiKey 的布尔值写进密码输入框。
+		ApplyValue(_secret ? string.Empty : value, configured);
 	}
 
 	private void ApplyValue(object? value, bool configured)
@@ -543,6 +564,7 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 					break;
 				case SettingsEditorKind.Number:
 				case SettingsEditorKind.Slider:
+				case SettingsEditorKind.Progress:
 					_number = value switch { double number => number, float single => single, int integer => integer, long longValue => longValue, string text when double.TryParse(text, out double parsed) => parsed, _ => Convert.ToDouble(value ?? 0) };
 					OnPropertyChanged(nameof(Number));
 					break;
@@ -567,7 +589,7 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	private object? ReadValue() => _editorKind switch
 	{
 		SettingsEditorKind.Boolean => _boolean,
-		SettingsEditorKind.Number or SettingsEditorKind.Slider => _number,
+		SettingsEditorKind.Number or SettingsEditorKind.Slider or SettingsEditorKind.Progress => _number,
 		SettingsEditorKind.Choice => _selected,
 		_ => _text,
 	};

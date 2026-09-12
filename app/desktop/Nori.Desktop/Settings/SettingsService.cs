@@ -90,6 +90,7 @@ public sealed class SettingsService : IDisposable
 		"export_diagnostics",
 		"open_log_folder",
 		"clipboard_write_text",
+		"open_url",
 		"run_gc_collect",
 		"write_log",
 		"debug_crash_test",
@@ -212,6 +213,19 @@ public sealed class SettingsService : IDisposable
 	/// <summary>读取插件列表。</summary>
 	public Task<JsonElement> ListPluginsAsync(CancellationToken cancellationToken = default) =>
 		ExecuteAsync("plugin_list", cancellationToken: cancellationToken);
+
+	/// <summary>读取原生 MCP 编辑器需要的配置元数据，不包含环境变量秘密。</summary>
+	public async Task<JsonElement> GetMcpServerConfigAsync(string id, CancellationToken cancellationToken = default)
+	{
+		ThrowIfDisposed();
+		bool visible = await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => _context.IsVisible);
+		if (!visible) throw new InvalidOperationException("设置窗口不可见");
+		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _services.ShutdownToken);
+		object config = await Task.Run(() => (object?)_services.Mcp.GetServerConfigs().FirstOrDefault(item => item.Id == id)
+			?? throw new InvalidOperationException("MCP 服务不存在"), linked.Token).ConfigureAwait(false);
+		linked.Token.ThrowIfCancellationRequested();
+		return ToJsonElement(config);
+	}
 
 	/// <summary>读取 MCP 服务器列表。</summary>
 	public Task<JsonElement> GetMcpServersAsync(CancellationToken cancellationToken = default) =>

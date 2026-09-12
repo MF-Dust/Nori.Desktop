@@ -83,7 +83,8 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 
 	/// <summary>诊断文本按视口换行，其它复杂表单保留横向滚动兜底。</summary>
 	public ScrollBarVisibility HorizontalScrollBarVisibility =>
-		CurrentPage is DebugSettingsPage ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
+		CurrentPage is SkillsSettingsPage or McpSettingsPage or AutomationSettingsPage or PluginsSettingsPage
+			? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
 
 	/// <summary>当前页面标题。</summary>
 	public string CurrentPageTitle => CurrentPage?.DisplayTitle ?? string.Empty;

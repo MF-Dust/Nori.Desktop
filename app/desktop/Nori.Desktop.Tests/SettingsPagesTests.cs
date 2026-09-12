@@ -5,6 +5,7 @@ using Nori.Desktop.Settings.Pages;
 namespace Nori.Desktop.Tests;
 
 /// <summary>复杂原生设置页的 JSON 契约和纯逻辑测试。</summary>
+[Collection("Native settings")]
 public sealed class SettingsPagesTests
 {
 	[Fact]
@@ -72,6 +73,7 @@ public sealed class SettingsPagesTests
 	[Fact]
 	public void NativeResourcesExposeBothLanguages()
 	{
+		SettingsLocalization.SetLanguage("zh-CN");
 		string chinese = NativeSettingsResources.Get("skills.installed");
 		SettingsLocalization.SetLanguage("en-US");
 		string english = NativeSettingsResources.Get("skills.installed");

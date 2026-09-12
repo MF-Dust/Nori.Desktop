@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Avalonia.Threading;
 
 namespace Nori.Desktop.Settings;
 
@@ -20,19 +21,28 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	private readonly SettingsFieldViewModel _ttsModel;
 	private readonly SettingsFieldViewModel _ttsVoice;
 	private readonly SettingsFieldViewModel _indexTemplate;
+	private readonly SettingsSectionViewModel _gptSection;
+	private readonly SettingsSectionViewModel _indexSection;
+	private readonly SettingsSectionViewModel _generalSection;
+	private readonly SettingsFieldViewModel _notice;
+	private readonly SettingsCommand _previewCommand;
+	private readonly SettingsCommand _cloneCommand;
+	private bool _previewing;
+	private bool _cloning;
+	private bool _speaking;
 
 	/// <summary>创建语音设置页。</summary>
 	public VoiceSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
 		: base(service, "voice", "perception", new("语音", "Voice"), new("配置朗读、语音克隆和语音识别。", "Configure speech, voice cloning and speech recognition."), lifetimeToken)
 	{
-		SettingsSectionViewModel general = AddSection(new("朗读", "Text to speech"));
+		SettingsSectionViewModel general = _generalSection = AddSection(new("朗读", "Text to speech"));
 		AddField(general, "volume", new("音量", "Volume"), new("调整 Nori 的全局朗读音量。", "Adjust Nori's global speech volume."), SettingsEditorKind.Slider,
 			snapshot => SettingsSnapshotReader.Number(snapshot, 1, "voice", "volume"), 1,
 			(value, token) => ExecuteAsync("settings_update_voice", new { volume = Convert.ToDouble(value).ToString(System.Globalization.CultureInfo.InvariantCulture) }, token),
 			minimum: 0, maximum: 1, increment: 0.01);
 		_ttsProvider = AddField(general, "ttsProvider", new("TTS 服务商", "TTS provider"), new("选择朗读服务。", "Choose the speech provider."), SettingsEditorKind.Choice,
 			snapshot => SettingsSnapshotReader.String(snapshot, "openai", "voice", "ttsProvider"), "openai",
-			(value, token) => ExecuteAsync("settings_update_voice", new { ttsProvider = Convert.ToString(value) ?? "openai" }, token), options: TtsProviders);
+			(value, token) => SaveProviderAsync(Convert.ToString(value) ?? "openai", token), options: TtsProviders);
 		_ttsBaseUrl = AddField(general, "ttsBaseUrl", new("TTS 地址", "TTS base URL"), new("云服务或本地兼容服务地址。", "Cloud or local compatible service endpoint."), SettingsEditorKind.Text,
 			snapshot => SettingsSnapshotReader.String(snapshot, string.Empty, "voice", "ttsBaseUrl"), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_voice", new { ttsBaseUrl = Convert.ToString(value)?.Trim() ?? string.Empty }, token));
@@ -52,10 +62,12 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 		AddField(general, "ttsAutoPlay", new("自动朗读", "Auto play"), new("让对话回复自动播放语音。", "Play speech automatically for chat replies."), SettingsEditorKind.Boolean,
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "voice", "ttsAutoPlay"), false,
 			(value, token) => ExecuteAsync("settings_update_voice", new { ttsAutoPlay = Convert.ToBoolean(value) }, token));
-		AddAction(general, "testVoice", new("试听当前声音", "Preview voice"), new("使用当前 TTS 配置播放一条测试语音。", "Play a sample with the current TTS configuration."), new SettingsCommand(_ => _ = TestVoiceAsync()));
-		AddAction(general, "ackVoiceNotice", new("关闭旧版提示", "Dismiss legacy notice"), new("确认已阅读旧版浏览器语音配置提示。", "Dismiss the legacy browser voice configuration notice."), new SettingsCommand(_ => _ = AcknowledgeVoiceNoticeAsync()));
+		_previewCommand = new SettingsCommand(_ => _ = TestVoiceAsync(), _ => !_previewing && !_speaking);
+		AddAction(general, "testVoice", new("试听当前声音", "Preview voice"), new("使用当前 TTS 配置播放一条测试语音。", "Play a sample with the current TTS configuration."), _previewCommand);
+		AddAction(general, "stopVoice", new("停止播放", "Stop playback"), new("停止当前语音播放。", "Stop the current speech."), new SettingsCommand(_ => _ = StopVoiceAsync()));
+		_notice = AddAction(general, "ackVoiceNotice", new("已了解语音配置迁移", "Dismiss voice migration notice"), new("旧版浏览器语音配置已停用，当前由宿主语音服务合成和播放。", "Legacy browser speech settings are no longer used. The host now synthesizes and plays speech."), new SettingsCommand(_ => _ = AcknowledgeVoiceNoticeAsync()));
 
-		SettingsSectionViewModel gpt = AddSection(new("GPT-SoVITS", "GPT-SoVITS"));
+		SettingsSectionViewModel gpt = _gptSection = AddSection(new("GPT-SoVITS", "GPT-SoVITS"));
 		AddField(gpt, "gptsovitsBaseUrl", new("服务地址", "Service URL"), new("GPT-SoVITS API 地址。", "GPT-SoVITS API endpoint."), SettingsEditorKind.Text,
 			snapshot => SettingsSnapshotReader.String(snapshot, "http://127.0.0.1:9880", "voice", "gptsovitsBaseUrl"), "http://127.0.0.1:9880",
 			(value, token) => ExecuteAsync("settings_update_voice", new { gptsovitsBaseUrl = Convert.ToString(value)?.Trim() ?? string.Empty }, token));
@@ -69,7 +81,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			snapshot => SettingsSnapshotReader.String(snapshot, "zh", "voice", "gptsovitsPromptLang"), "zh",
 			(value, token) => ExecuteAsync("settings_update_voice", new { gptsovitsPromptLang = Convert.ToString(value)?.Trim() ?? string.Empty }, token));
 
-		SettingsSectionViewModel index = AddSection(new("IndexTTS-2", "IndexTTS-2"));
+		SettingsSectionViewModel index = _indexSection = AddSection(new("IndexTTS-2", "IndexTTS-2"));
 		_indexTemplate = AddField(index, "indexttsTemplateAudio", new("模板音频", "Template audio"), new("用于克隆声音的本地音频。", "Local audio used for voice cloning."), SettingsEditorKind.Text,
 			snapshot => SettingsSnapshotReader.String(snapshot, string.Empty, "voice", "indexttsTemplateAudio"), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_voice", new { indexttsTemplateAudio = Convert.ToString(value)?.Trim() ?? string.Empty }, token));
@@ -78,7 +90,8 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			(value, token) => ExecuteAsync("settings_update_voice", new { indexttsEmoAlpha = Convert.ToDouble(value).ToString(System.Globalization.CultureInfo.InvariantCulture) }, token),
 			minimum: 0, maximum: 1, increment: 0.01);
 		AddAction(index, "pickIndexTemplate", new("选择模板音频", "Pick template audio"), new("选择用于 IndexTTS-2 克隆的本地音频文件。", "Choose local audio for IndexTTS-2 voice cloning."), new SettingsCommand(_ => _ = PickIndexTemplateAsync()));
-		AddAction(index, "cloneIndexVoice", new("克隆声音", "Clone voice"), new("使用模板音频创建声音配置。", "Create a voice configuration from the template audio."), new SettingsCommand(_ => _ = CloneIndexVoiceAsync()));
+		_cloneCommand = new SettingsCommand(_ => _ = CloneIndexVoiceAsync(), _ => !_cloning);
+		AddAction(index, "cloneIndexVoice", new("克隆声音", "Clone voice"), new("使用模板音频创建声音配置。", "Create a voice configuration from the template audio."), _cloneCommand);
 
 		SettingsSectionViewModel stt = AddSection(new("语音识别", "Speech to text"));
 		AddField(stt, "sttBaseUrl", new("识别地址", "STT base URL"), new("Whisper 兼容接口地址。", "Whisper-compatible endpoint."), SettingsEditorKind.Text,
@@ -87,13 +100,92 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 		AddField(stt, "sttApiKey", new("识别密钥", "STT API key"), new("保存成功后输入框自动清空。", "The input is cleared after a successful save."), SettingsEditorKind.Password,
 			snapshot => SettingsSnapshotReader.SecretConfigured(snapshot, "voice", "hasSttApiKey"), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_voice", new { sttApiKey = Convert.ToString(value)?.Trim() ?? string.Empty }, token), secret: true);
+		_ttsProvider.PropertyChanged += (_, args) =>
+		{
+			if (args.PropertyName == nameof(SettingsFieldViewModel.Selected)) UpdateProviderVisibility();
+		};
+		UpdateProviderVisibility();
+		_notice.IsVisible = false;
 	}
+
+	internal override void ApplySnapshot(JsonElement snapshot)
+	{
+		base.ApplySnapshot(snapshot);
+		_notice.IsVisible = SettingsSnapshotReader.Boolean(snapshot, false, "voice", "noticePending");
+		_speaking = SettingsSnapshotReader.Boolean(snapshot, false, "voice", "speaking");
+		_previewCommand.RaiseCanExecuteChanged();
+		UpdateProviderVisibility();
+	}
+
+	private void UpdateProviderVisibility()
+	{
+		string provider = _ttsProvider.Selected;
+		_gptSection.IsVisible = provider == "gpt_sovits";
+		_indexSection.IsVisible = provider == "indextts";
+		foreach (SettingsFieldViewModel field in _generalSection.Fields)
+		{
+			if (field.Key is "ttsBaseUrl" or "ttsApiKey") field.IsVisible = provider != "gpt_sovits";
+			if (field.Key == "ttsModel") field.IsVisible = provider is "openai" or "gemini" or "indextts";
+			if (field.Key == "ttsVoice") field.IsVisible = provider != "indextts";
+		}
+	}
+
+	private async Task<JsonElement> SaveProviderAsync(string provider, CancellationToken cancellationToken)
+	{
+		(string BaseUrl, string Model, string Voice) defaults = await Dispatcher.UIThread.InvokeAsync(
+			() => ProviderDefaults(provider, _ttsBaseUrl.Text, _ttsModel.Text, _ttsVoice.Text));
+		return await ExecuteAsync("settings_update_voice", new
+		{
+			ttsProvider = provider,
+			ttsBaseUrl = defaults.BaseUrl,
+			ttsModel = defaults.Model,
+			ttsVoice = defaults.Voice,
+		}, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>切换服务商时迁移默认参数，自定义接口和模型保持用户输入。</summary>
+	internal static (string BaseUrl, string Model, string Voice) ProviderDefaults(string provider, string baseUrl, string model, string voice)
+	{
+		Dictionary<string, string> defaults = new(StringComparer.Ordinal)
+		{
+			["openai"] = "https://api.openai.com/v1",
+			["gemini"] = "https://generativelanguage.googleapis.com/v1beta",
+			["minimax"] = "https://api.minimaxi.com/v1",
+			["indextts"] = "https://api.modelverse.cn/v1",
+		};
+		baseUrl = baseUrl.Trim();
+		model = model.Trim();
+		voice = voice.Trim();
+		if ((baseUrl.Length == 0 || defaults.Values.Contains(baseUrl, StringComparer.OrdinalIgnoreCase)) && defaults.TryGetValue(provider, out string? address))
+			baseUrl = address;
+		if (provider == "gemini")
+		{
+			if (model.Length == 0 || model == "tts-1") model = "gemini-3.1-flash-tts-preview";
+			if (voice.Length == 0 || voice is "nova" or "male-qn-qingse") voice = "Kore";
+		}
+		else if (provider == "minimax")
+		{
+			if (voice.Length == 0 || voice == "nova") voice = "male-qn-qingse";
+		}
+		else if (provider == "indextts")
+		{
+			if (model.Length == 0 || model == "tts-1" || model.StartsWith("gemini-", StringComparison.Ordinal)) model = "IndexTeam/IndexTTS-2";
+		}
+		else if (provider == "openai")
+		{
+			if (model.StartsWith("gemini-", StringComparison.Ordinal) || model.StartsWith("IndexTeam/", StringComparison.Ordinal)) model = "tts-1";
+			if (voice is "male-qn-qingse" or "Kore") voice = "nova";
+		}
+		return (baseUrl, model, voice);
+	}
+
+	private static string Text(string chinese, string english) => SettingsLocalization.IsEnglish ? english : chinese;
 
 	private async Task PickIndexTemplateAsync()
 	{
 		try
 		{
-			JsonElement result = await ExecuteAsync("indextts_pick_template", cancellationToken: LifetimeToken).ConfigureAwait(false);
+			JsonElement result = await ExecuteAsync("indextts_pick_template", cancellationToken: LifetimeToken).ConfigureAwait(true);
 			string path = result.ValueKind == JsonValueKind.String
 				? result.GetString() ?? string.Empty
 				: result.ValueKind == JsonValueKind.Object && result.TryGetProperty("filePath", out JsonElement filePath)
@@ -101,22 +193,35 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 					: string.Empty;
 			if (path.Length == 0)
 			{
-				SetStatus("未选择模板音频。 / No template audio selected.");
+				SetStatus(Text("未选择模板音频。", "No template audio selected."));
 				return;
 			}
 			_indexTemplate.Text = path;
-			SetStatus("模板音频已选择。 / Template audio selected.");
+			SetStatus(Text("模板音频已选择。", "Template audio selected."));
 		}
 		catch (Exception exception) { SetStatus(exception.Message); }
 	}
 
 	private async Task TestVoiceAsync()
 	{
+		if (_previewing || _speaking) return;
+		_previewing = true;
+		_previewCommand.RaiseCanExecuteChanged();
 		try
 		{
-			await ExecuteAsync("tts_test", cancellationToken: LifetimeToken).ConfigureAwait(false);
-			SetStatus("试听已开始。 / Voice preview started.");
+			if (!await FlushPendingSavesAsync(LifetimeToken).ConfigureAwait(true)) return;
+			await ExecuteAsync("tts_test", cancellationToken: LifetimeToken).ConfigureAwait(true);
+			SetStatus(Text("试听已开始。", "Voice preview started."));
 		}
+		catch (OperationCanceledException) { }
+		catch (Exception exception) { SetStatus(exception.Message); }
+		finally { _previewing = false; _previewCommand.RaiseCanExecuteChanged(); }
+	}
+
+	private async Task StopVoiceAsync()
+	{
+		try { await ExecuteAsync("tts_stop", cancellationToken: LifetimeToken).ConfigureAwait(true); }
+		catch (OperationCanceledException) { }
 		catch (Exception exception) { SetStatus(exception.Message); }
 	}
 
@@ -124,25 +229,32 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	{
 		try
 		{
-			await ExecuteAsync("settings_ack_voice_notice", cancellationToken: LifetimeToken).ConfigureAwait(false);
-			SetStatus("旧版提示已关闭。 / Legacy notice dismissed.");
+			await ExecuteAsync("settings_ack_voice_notice", cancellationToken: LifetimeToken).ConfigureAwait(true);
+			_notice.IsVisible = false;
+			SetStatus(Text("旧版提示已关闭。", "Legacy notice dismissed."));
 		}
 		catch (Exception exception) { SetStatus(exception.Message); }
 	}
 
 	private async Task CloneIndexVoiceAsync()
 	{
+		if (_cloning) return;
+		_cloning = true;
+		_cloneCommand.RaiseCanExecuteChanged();
 		try
 		{
+			if (!await FlushPendingSavesAsync(LifetimeToken).ConfigureAwait(true)) return;
 			if (string.IsNullOrWhiteSpace(_indexTemplate.Text))
 			{
-				SetStatus("请先填写模板音频路径。 / Set a template audio path first.");
+				SetStatus(Text("请先填写模板音频路径。", "Set a template audio path first."));
 				return;
 			}
-			JsonElement result = await ExecuteAsync("indextts_clone_voice", new { filePath = _indexTemplate.Text.Trim() }, LifetimeToken).ConfigureAwait(false);
+			JsonElement result = await ExecuteAsync("indextts_clone_voice", new { filePath = _indexTemplate.Text.Trim() }, LifetimeToken).ConfigureAwait(true);
 			string voiceId = result.ValueKind == JsonValueKind.Object && result.TryGetProperty("voiceId", out JsonElement id) ? id.GetString() ?? string.Empty : string.Empty;
-			SetStatus(voiceId.Length > 0 ? "声音克隆完成：" + voiceId : "声音克隆完成。 / Voice cloned.");
+			SetStatus(voiceId.Length > 0 ? Text("声音克隆完成：", "Voice cloned: ") + voiceId : Text("声音克隆完成。", "Voice cloned."));
 		}
+		catch (OperationCanceledException) { }
 		catch (Exception exception) { SetStatus(exception.Message); }
+		finally { _cloning = false; _cloneCommand.RaiseCanExecuteChanged(); }
 	}
 }

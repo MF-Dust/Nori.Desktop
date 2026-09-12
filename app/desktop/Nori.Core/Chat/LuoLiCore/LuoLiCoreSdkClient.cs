@@ -29,8 +29,8 @@ public sealed record LuoLiCoreSdkOptions
 /// <summary>
 /// LuoLiCore <c>/sdk/v1</c> 的最小客户端。
 ///
-/// 只做本集成用得上的三件事：建会话、发消息（流式与非流式）。会话的增删查改留给
-/// 设置页那条路，不在对话链路上。
+/// 只做本集成用得上的三件事：建会话、发消息、重置会话上下文。会话的列举、改名与彻底
+/// 删除留给设置页那条路，不在对话链路上。
 ///
 /// **这不是 IChatClient。** 对端一次「发消息」等于它自己跑完一整轮（含它那侧的工具循环），
 /// 语义是「把这一轮交出去」，不是「给我一次补全」。硬塞进 IChatClient 会让上层以为自己
@@ -67,6 +67,25 @@ public sealed class LuoLiCoreSdkClient(HttpClient httpClient, LuoLiCoreSdkOption
 			LuoLiCoreSdkProtocol.Json, cancellationToken);
 		if (session is null || string.IsNullOrWhiteSpace(session.Id)) throw new ChatException("SDK 建会话成功但没有返回 id");
 		return session.Id;
+	}
+
+	/// <summary>
+	/// 重置会话上下文。
+	///
+	/// 对端是 git 式的上下文引擎，reset 落一条新提交把工作上下文清空，历史提交仍在 —— 所以
+	/// 这是「她不再记得之前聊过什么」，不是「删掉这个会话」。会话 id 与它挂着的长期记忆都保留，
+	/// 下一轮接着用同一个会话。
+	/// </summary>
+	/// <returns>那条重置提交的 id。</returns>
+	public async Task<string> ResetSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+	{
+		using HttpRequestMessage request = NewRequest(HttpMethod.Post, $"/sessions/{Uri.EscapeDataString(sessionId)}/reset");
+		using HttpResponseMessage response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken);
+		await ThrowIfFailedAsync(response, cancellationToken);
+
+		SdkResetResult? result = await response.Content.ReadFromJsonAsync<SdkResetResult>(
+			LuoLiCoreSdkProtocol.Json, cancellationToken);
+		return result?.CommitId ?? string.Empty;
 	}
 
 	/// <summary>

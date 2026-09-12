@@ -28,6 +28,18 @@ public sealed class LuoLiCoreConversation(
 		string userText,
 		Action<string>? onChunk,
 		CancellationToken cancellationToken)
+		=> await RunAsync(userText, onChunk, null, cancellationToken);
+
+	/// <inheritdoc cref="RunAsync(string, Action{string}, CancellationToken)"/>
+	/// <param name="onQueued">
+	/// 轮次进了对端的排队闸时回调一次。排队可能长达数秒而流上没有任何保活帧，不把这件事
+	/// 说出去的话，界面在这段时间里既没有文字也没有状态变化，看起来就是卡住了。
+	/// </param>
+	public async Task<ProtocolMessage> RunAsync(
+		string userText,
+		Action<string>? onChunk,
+		Action? onQueued,
+		CancellationToken cancellationToken)
 	{
 		LuoLiCoreSettings settings = _settingsStore.Read();
 		if (!settings.IsActive) throw new ChatException("LuoLiCore 未启用或配置不完整");
@@ -42,8 +54,26 @@ public sealed class LuoLiCoreConversation(
 			_settingsStore.SaveSessionId(sessionId);
 		}
 
-		string text = await StreamWithQueueRetryAsync(client, sessionId, userText, onChunk, cancellationToken);
+		string text = await StreamWithQueueRetryAsync(client, sessionId, userText, onChunk, onQueued, cancellationToken);
 		return new ProtocolMessage(text, null, null, null);
+	}
+
+	/// <summary>
+	/// 清掉对端记着的这段对话。
+	///
+	/// 本地清空聊天记录时必须一起做：对端把上下文记在自己那边，只删本地表的话她下一句仍然
+	/// 接得上前面聊过的内容，而界面上什么都没有了 —— 用户会以为清空没生效。
+	///
+	/// 还没建过会话（没有 id）就没有要清的东西，返回 false；未启用时同样不做任何事，
+	/// 免得关掉开关之后清空记录还去碰远端。
+	/// </summary>
+	public async Task<bool> ResetAsync(CancellationToken cancellationToken)
+	{
+		LuoLiCoreSettings settings = _settingsStore.Read();
+		if (!settings.IsActive || settings.SessionId.Length == 0) return false;
+
+		await _clientFactory(settings.ToOptions()).ResetSessionAsync(settings.SessionId, cancellationToken);
+		return true;
 	}
 
 	/// <summary>
@@ -58,11 +88,12 @@ public sealed class LuoLiCoreConversation(
 		string sessionId,
 		string userText,
 		Action<string>? onChunk,
+		Action? onQueued,
 		CancellationToken cancellationToken)
 	{
 		for (int attempt = 0; ; attempt++)
 		{
-			(string? text, LuoLiCoreStreamEvent failure) = await StreamOnceAsync(client, sessionId, userText, onChunk, cancellationToken);
+			(string? text, LuoLiCoreStreamEvent failure) = await StreamOnceAsync(client, sessionId, userText, onChunk, onQueued, cancellationToken);
 			if (text is not null) return text;
 
 			bool canRetry = failure.IsQueueFull && attempt < MaxQueueRetries;
@@ -84,6 +115,7 @@ public sealed class LuoLiCoreConversation(
 		string sessionId,
 		string userText,
 		Action<string>? onChunk,
+		Action? onQueued,
 		CancellationToken cancellationToken)
 	{
 		System.Text.StringBuilder buffer = new();
@@ -106,6 +138,9 @@ public sealed class LuoLiCoreConversation(
 					return (null, item);
 
 				case LuoLiCoreStreamEventKind.Queued:
+					onQueued?.Invoke();
+					break;
+
 				default:
 					break;
 			}

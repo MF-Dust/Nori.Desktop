@@ -122,16 +122,14 @@ public sealed class AgentEngineLuoLiCoreTests : IDisposable
 		AgentEngine engine = BuildEngine(Conversation(_ => Sse("event: done\ndata: {\"text\":\"我在\"}\n\n")));
 
 		List<AgentRunState> states = [];
-		List<string> chunks = [];
 		ProtocolMessage message = await engine.RunAsync(
 			"在吗",
 			"session-1",
-			new AgentCallbacks { OnState = states.Add, OnTextChunk = chunks.Add },
+			new AgentCallbacks { OnState = states.Add },
 			CancellationToken.None);
 
 		// 走到本机适配器会抛，能返回就说明没走。
 		Assert.Equal("我在", message.Text);
-		Assert.Contains(AgentRunState.Streaming, states);
 		Assert.Equal(AgentRunState.Idle, states[^1]);
 	}
 
@@ -295,6 +293,70 @@ public sealed class AgentEngineLuoLiCoreTests : IDisposable
 
 		Assert.Null(message.Expression);
 		Assert.Null(message.Action);
+	}
+
+	/// <summary>
+	/// 排队期间不能显示成「正在说」。
+	///
+	/// 对端的排队闸可能让轮次等上数秒，而那条流在轮次执行期间没有任何保活帧。见到第一个
+	/// 增量才算开始说话，跟本机那条路一致。
+	/// </summary>
+	[Fact]
+	public async Task 排队时停在Thinking_见到增量才转Streaming()
+	{
+		EnableLuoLiCore();
+		AgentEngine engine = BuildEngine(Conversation(_ => Sse(
+			"event: queued\ndata: {}\n\n"
+			+ "event: delta\ndata: {\"text\":\"在\"}\n\n"
+			+ "event: done\ndata: {\"text\":\"在的\"}\n\n")));
+
+		List<AgentRunState> states = [];
+		await engine.RunAsync("在吗", "session-11", new AgentCallbacks { OnState = states.Add }, CancellationToken.None);
+
+		Assert.Equal(
+			[AgentRunState.Thinking, AgentRunState.Thinking, AgentRunState.Streaming, AgentRunState.Idle],
+			states);
+	}
+
+	/// <summary>一次性给完整文本的轮次没有「正在说」这一段，直接从想到说完。</summary>
+	[Fact]
+	public async Task 没有增量时不进入说话态()
+	{
+		EnableLuoLiCore();
+		AgentEngine engine = BuildEngine(Conversation(_ => Sse("event: done\ndata: {\"text\":\"在的\"}\n\n")));
+
+		List<AgentRunState> states = [];
+		await engine.RunAsync("在吗", "session-12", new AgentCallbacks { OnState = states.Add }, CancellationToken.None);
+
+		Assert.DoesNotContain(AgentRunState.Streaming, states);
+		Assert.Equal(AgentRunState.Idle, states[^1]);
+	}
+
+	[Fact]
+	public async Task 清空聊天记录时一并重置远端()
+	{
+		EnableLuoLiCore();
+		List<string> paths = [];
+		AgentEngine engine = BuildEngine(Conversation(request =>
+		{
+			paths.Add(request.RequestUri!.AbsolutePath);
+			return new HttpResponseMessage(HttpStatusCode.OK)
+			{
+				Content = new StringContent("{\"ok\":true,\"commitId\":\"c1\"}", Encoding.UTF8, "application/json"),
+			};
+		}));
+
+		Assert.True(await engine.ResetRemoteContextAsync(CancellationToken.None));
+		Assert.Equal(["/sdk/v1/sessions/sess_fixed/reset"], paths);
+	}
+
+	/// <summary>没接这条路的实例照常能清本地，不该因此报错。</summary>
+	[Fact]
+	public async Task 没有注入这条路时重置是空操作()
+	{
+		AgentEngine engine = BuildEngine(null);
+
+		Assert.False(await engine.ResetRemoteContextAsync(CancellationToken.None));
 	}
 
 	private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler

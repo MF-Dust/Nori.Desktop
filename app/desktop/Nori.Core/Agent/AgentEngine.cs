@@ -483,8 +483,28 @@ public sealed class AgentEngine
 
 		try
 		{
-			SetState(AgentRunState.Streaming);
-			ProtocolMessage message = await _luoLiCore!.RunAsync(userText, text => callbacks.OnTextChunk?.Invoke(text), runToken);
+			// 状态跟本机那条一致：入口已经是 Thinking，见到第一个增量才算开始说话。
+			//
+			// 不在这里直接置 Streaming：对端的排队闸可能让轮次等上数秒，而那条流在轮次执行
+			// 期间没有任何保活帧 —— 一上来就说「正在说」，界面会长时间停在一个不动的说话态。
+			bool streaming = false;
+			void EnterStreaming()
+			{
+				if (streaming) return;
+				streaming = true;
+				SetState(AgentRunState.Streaming);
+			}
+
+			ProtocolMessage message = await _luoLiCore!.RunAsync(
+				userText,
+				text =>
+				{
+					EnterStreaming();
+					callbacks.OnTextChunk?.Invoke(text);
+				},
+				// 排了队就明确退回 Thinking，让界面知道这一轮还没轮到。
+				() => SetState(AgentRunState.Thinking),
+				runToken);
 
 			if (message.Text.Length == 0) throw new InvalidOperationException("LuoLiCore 未产出最终回复");
 
@@ -519,6 +539,13 @@ public sealed class AgentEngine
 			throw;
 		}
 	}
+
+	/// <summary>
+	/// 清掉对端记着的这段对话。清空本地聊天记录时一起调用。
+	/// </summary>
+	/// <returns>远端确实被重置了返回 true；没启用或还没建过会话返回 false。</returns>
+	public Task<bool> ResetRemoteContextAsync(CancellationToken cancellationToken) =>
+		_luoLiCore is null ? Task.FromResult(false) : _luoLiCore.ResetAsync(cancellationToken);
 
 	/// <summary>
 	/// 给一条只有文本的回复补上表情与动作。

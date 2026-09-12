@@ -431,11 +431,7 @@ public sealed class BridgeCommands
 			(long)(OptionalDouble(args, "beforeId") ?? 0))),
 
 		// invoke("chat_clear")
-		"chat_clear" => RequireMain(source, () => Run(() =>
-		{
-			_services.Chat.ClearHistory();
-			Runtime.InvalidateSnapshot("chat");
-		})),
+		"chat_clear" => await ClearChatAsync(source, cancellationToken),
 
 		// ---- 记忆库 ----
 		/// invoke("memory_add", {content, type?, importance?, tags?})
@@ -918,6 +914,25 @@ public sealed class BridgeCommands
 		await RequireVisibleMainVoidAsync(source);
 		return await Automation.StopAllAsync(cancellationToken).ConfigureAwait(false);
 	}
+
+	/// <summary>
+	/// 清空聊天记录。
+	///
+	/// 对话交给 LuoLiCore 时，上下文记在对端，本地表只是一份副本。**先重置远端、成功了才删
+	/// 本地**：反过来的话，删完本地远端却没清，她下一句仍然接得上前面聊过的内容，而界面上
+	/// 什么都没有了，用户只会以为清空没生效 —— 这种不一致比清不掉难查得多。
+	///
+	/// 因此远端重置失败时整条命令失败，本地记录原样留着，两边仍然一致。连不上对端又确实要
+	/// 清本地的话，关掉 LuoLiCore 再清。
+	/// </summary>
+	private async Task<object?> ClearChatAsync(IBridgeSource source, CancellationToken cancellationToken) =>
+		await RequireMainAsync(source, async () =>
+		{
+			await Runtime.Engine.ResetRemoteContextAsync(cancellationToken);
+			_services.Chat.ClearHistory();
+			Runtime.InvalidateSnapshot("chat");
+			return null;
+		});
 
 	private async Task<object?> MemoryAddAsync(IBridgeSource source, JsonElement args)
 	{

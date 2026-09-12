@@ -199,6 +199,114 @@ public sealed class LuoLiCoreConversationTests : IDisposable
 		Assert.Contains("连不上", failure.Message, StringComparison.Ordinal);
 	}
 
+	// ---- 清空聊天记录时一起清掉对端记着的这段对话 ----
+
+	[Fact]
+	public async Task 重置打到reset端点()
+	{
+		Configure(sessionId: "sess_old");
+		List<string> paths = [];
+		LuoLiCoreConversation conversation = Build(request =>
+		{
+			paths.Add(request.Method + " " + request.RequestUri!.AbsolutePath);
+			return Json(HttpStatusCode.OK, "{\"ok\":true,\"commitId\":\"c1\"}");
+		});
+
+		Assert.True(await conversation.ResetAsync(CancellationToken.None));
+		Assert.Equal(["POST /sdk/v1/sessions/sess_old/reset"], paths);
+	}
+
+	/// <summary>reset 清的是上下文，会话与它挂着的长期记忆都留着，下一轮接着用同一个。</summary>
+	[Fact]
+	public async Task 重置之后仍然复用同一个会话()
+	{
+		Configure(sessionId: "sess_old");
+		List<string> paths = [];
+		LuoLiCoreConversation conversation = Build(request =>
+		{
+			paths.Add(request.RequestUri!.AbsolutePath);
+			return request.RequestUri!.AbsolutePath.EndsWith("/reset", StringComparison.Ordinal)
+				? Json(HttpStatusCode.OK, "{\"ok\":true,\"commitId\":\"c1\"}")
+				: Sse("event: done\ndata: {\"text\":\"在的\"}\n\n");
+		});
+
+		await conversation.ResetAsync(CancellationToken.None);
+		await conversation.RunAsync("在吗", null, CancellationToken.None);
+
+		Assert.Equal(
+			["/sdk/v1/sessions/sess_old/reset", "/sdk/v1/sessions/sess_old/messages/stream"],
+			paths);
+		Assert.Equal("sess_old", _settings.Read().SessionId);
+	}
+
+	[Fact]
+	public async Task 还没建过会话就没有要清的东西()
+	{
+		Configure();
+		List<string> paths = [];
+		LuoLiCoreConversation conversation = Build(request =>
+		{
+			paths.Add(request.RequestUri!.AbsolutePath);
+			return Json(HttpStatusCode.OK, "{\"ok\":true,\"commitId\":\"c1\"}");
+		});
+
+		Assert.False(await conversation.ResetAsync(CancellationToken.None));
+		Assert.Empty(paths);
+	}
+
+	/// <summary>关掉开关之后清空本地记录，不该再去碰远端。</summary>
+	[Fact]
+	public async Task 未启用时不碰远端()
+	{
+		Configure(enabled: false, sessionId: "sess_old");
+		List<string> paths = [];
+		LuoLiCoreConversation conversation = Build(request =>
+		{
+			paths.Add(request.RequestUri!.AbsolutePath);
+			return Json(HttpStatusCode.OK, "{\"ok\":true,\"commitId\":\"c1\"}");
+		});
+
+		Assert.False(await conversation.ResetAsync(CancellationToken.None));
+		Assert.Empty(paths);
+	}
+
+	/// <summary>重置失败必须报出来：吞掉的话本地被清空而远端还记着，两边就此分叉。</summary>
+	[Fact]
+	public async Task 重置失败照原样报出()
+	{
+		Configure(sessionId: "sess_old");
+		LuoLiCoreConversation conversation = Build(_ => Json(
+			HttpStatusCode.NotFound,
+			"{\"code\":\"session_deleted\",\"message\":\"会话已停用\",\"retryable\":false}"));
+
+		ChatException failure = await Assert.ThrowsAsync<ChatException>(
+			() => conversation.ResetAsync(CancellationToken.None));
+
+		Assert.Contains("session_deleted", failure.Message, StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// 排队要说出来。
+	///
+	/// 排队可能长达数秒，而这条流在轮次执行期间没有任何保活帧 —— 不回调的话界面在这段
+	/// 时间里既没有文字也没有状态变化，看起来就是卡住了。
+	/// </summary>
+	[Fact]
+	public async Task 排队时回调一次()
+	{
+		Configure(sessionId: "s");
+		int queued = 0;
+		LuoLiCoreConversation conversation = Build(_ => Sse(
+			"event: queued\ndata: {}\n\n"
+			+ "event: delta\ndata: {\"text\":\"在\"}\n\n"
+			+ "event: done\ndata: {\"text\":\"在的\"}\n\n"));
+
+		ProtocolMessage message = await conversation.RunAsync("在吗", null, () => queued++, CancellationToken.None);
+
+		Assert.Equal(1, queued);
+		Assert.Equal("在的", message.Text);
+	}
+
 	private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
 	{
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>

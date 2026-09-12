@@ -61,6 +61,11 @@ internal sealed record SdkSession(
 	[property: JsonPropertyName("createdAt")] long CreatedAt,
 	[property: JsonPropertyName("deletedAt")] long? DeletedAt);
 
+/// <summary>重置会话上下文的结果。<c>commitId</c> 是那条重置提交。</summary>
+internal sealed record SdkResetResult(
+	[property: JsonPropertyName("ok")] bool Ok,
+	[property: JsonPropertyName("commitId")] string? CommitId);
+
 /// <summary>发消息入参。<c>endUserId</c> 落库前由服务端加 <c>&lt;sourceId&gt;:</c> 前缀。</summary>
 internal sealed record SdkSendMessageInput(
 	[property: JsonPropertyName("endUserId")] string EndUserId,

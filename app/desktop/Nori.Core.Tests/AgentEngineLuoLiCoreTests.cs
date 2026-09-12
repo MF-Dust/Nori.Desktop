@@ -3,6 +3,7 @@ using System.Text;
 using Nori.Core.Agent;
 using Nori.Core.Chat;
 using Nori.Core.Chat.LuoLiCore;
+using Nori.Core.Emotion;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Security;
@@ -20,6 +21,7 @@ public sealed class AgentEngineLuoLiCoreTests : IDisposable
 	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-engine-luoli-{Guid.NewGuid():N}.db");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
+	private readonly List<IDisposable> _disposables = [];
 
 	private sealed class FixedKeyStore : ISecretKeyStore
 	{
@@ -39,6 +41,7 @@ public sealed class AgentEngineLuoLiCoreTests : IDisposable
 
 	public void Dispose()
 	{
+		foreach (IDisposable item in _disposables) item.Dispose();
 		_database.Dispose();
 		try { File.Delete(_path); } catch (IOException) { /* 临时库删不掉不影响断言 */ }
 	}
@@ -78,22 +81,38 @@ public sealed class AgentEngineLuoLiCoreTests : IDisposable
 	///
 	/// 构造函数只做字段赋值，不解引用这几项，所以这样构造是安全的。
 	/// </summary>
-	private AgentEngine BuildEngine(LuoLiCoreConversation? conversation)
+	private AgentEngine BuildEngine(
+		LuoLiCoreConversation? conversation,
+		ReplyReactionService? reaction = null,
+		IReadOnlyList<string>? motions = null,
+		IReadOnlyList<string>? expressions = null,
+		bool motionsThrow = false)
 	{
 		ChatService chat = new(new HttpClient(), _database, _config);
+		// 补表情那条路会读情绪，给它一个真的；其余四项仍然是 null 断言。
+		EmotionManager? emotion = reaction is null ? null : Track(new EmotionManager(_config));
 		return new AgentEngine(
 			new HttpClient(),
 			_config,
 			chat,
 			tools: null!,
 			skills: null!,
-			emotion: null!,
+			emotion: emotion!,
 			memory: null!,
 			pet: null,
-			motionNames: () => [],
-			expressionNames: () => [],
+			motionNames: motionsThrow
+				? () => throw new InvalidOperationException("模型还没加载好")
+				: () => motions ?? [],
+			expressionNames: () => expressions ?? [],
 			adapterFactory: ExplodingAdapter,
-			luoLiCore: conversation);
+			luoLiCore: conversation,
+			replyReaction: reaction);
+	}
+
+	private EmotionManager Track(EmotionManager emotion)
+	{
+		_disposables.Add(emotion);
+		return emotion;
 	}
 
 	[Fact]
@@ -189,6 +208,93 @@ public sealed class AgentEngineLuoLiCoreTests : IDisposable
 
 		await Assert.ThrowsAsync<InvalidOperationException>(
 			() => engine.RunAsync("在吗", "session-7", new AgentCallbacks(), CancellationToken.None));
+	}
+
+	// ---- 表情动作：远端只给文本，这几项由本地补 ----
+
+	private void ConfigureLocalLlm()
+	{
+		_config.Set(AiSettingsStore.KeyLlmBaseUrl, new ConfigValue.Text("https://llm.example/v1"));
+		_config.Set(AiSettingsStore.KeyLlmApiKey, new ConfigValue.Text("sk-local"));
+		_config.Set(AiSettingsStore.KeyLlmModel, new ConfigValue.Text("m"));
+	}
+
+	private sealed class FixedReplyAdapter(string reply) : ILlmAdapter
+	{
+		public Task<string> CompleteAsync(
+			string baseUrl, string apiKey, string model, string systemPrompt,
+			IReadOnlyList<ChatMessageInput> messages, CancellationToken cancellationToken = default) =>
+			Task.FromResult(reply);
+
+		public Task<string> StreamAsync(
+			string baseUrl, string apiKey, string model, string systemPrompt,
+			IReadOnlyList<ChatMessageInput> messages, Action<string> onChunk,
+			Action<LlmUsageInfo>? onUsage = null, CancellationToken cancellationToken = default) =>
+			throw new NotSupportedException();
+
+		public Task<IReadOnlyList<string>> FetchModelsAsync(
+			string baseUrl, string apiKey, CancellationToken cancellationToken = default) =>
+			throw new NotSupportedException();
+	}
+
+	private ReplyReactionService Reaction(string json) =>
+		new(new HttpClient(), _config, (_, _) => new FixedReplyAdapter(json));
+
+	[Fact]
+	public async Task 远端只给文本_表情动作在本地补上()
+	{
+		EnableLuoLiCore();
+		ConfigureLocalLlm();
+		AgentEngine engine = BuildEngine(
+			Conversation(_ => Sse("event: done\ndata: {\"text\":\"我在\"}\n\n")),
+			reaction: Reaction("{\"emotion\":\"happy\",\"expression\":\"smile\",\"action\":\"Tap\"}"),
+			motions: ["Tap"],
+			expressions: ["smile"]);
+
+		ProtocolMessage message = await engine.RunAsync("在吗", "session-8", new AgentCallbacks(), CancellationToken.None);
+
+		Assert.Equal("我在", message.Text);
+		Assert.Equal("happy", message.Emotion);
+		Assert.Equal("smile", message.Expression);
+		Assert.Equal("Tap", message.Action);
+	}
+
+	/// <summary>
+	/// 取候选名单要读当前模型，模型还没加载好时会抛。
+	///
+	/// 「挑表情失败」和「她没话说」在用户那边看起来一模一样，所以这条必须退化成没有表情，
+	/// 而不是让整轮对话失败。
+	/// </summary>
+	[Fact]
+	public async Task 挑表情时出错不影响这一轮()
+	{
+		EnableLuoLiCore();
+		ConfigureLocalLlm();
+		AgentEngine engine = BuildEngine(
+			Conversation(_ => Sse("event: done\ndata: {\"text\":\"我在\"}\n\n")),
+			reaction: Reaction("{\"expression\":\"smile\"}"),
+			motionsThrow: true);
+
+		ProtocolMessage message = await engine.RunAsync("在吗", "session-9", new AgentCallbacks(), CancellationToken.None);
+
+		Assert.Equal("我在", message.Text);
+		Assert.Null(message.Expression);
+	}
+
+	/// <summary>没有候选名单时不该凭空冒出一个动作名。</summary>
+	[Fact]
+	public async Task 没有候选名单时保持空值()
+	{
+		EnableLuoLiCore();
+		ConfigureLocalLlm();
+		AgentEngine engine = BuildEngine(
+			Conversation(_ => Sse("event: done\ndata: {\"text\":\"我在\"}\n\n")),
+			reaction: Reaction("{\"expression\":\"smile\",\"action\":\"Tap\"}"));
+
+		ProtocolMessage message = await engine.RunAsync("在吗", "session-10", new AgentCallbacks(), CancellationToken.None);
+
+		Assert.Null(message.Expression);
+		Assert.Null(message.Action);
 	}
 
 	private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler

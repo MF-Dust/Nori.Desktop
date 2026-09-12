@@ -214,7 +214,9 @@ public sealed class AppRuntime : IAsyncDisposable
 			// 未启用时这条路完全不参与，桌宠照旧走本机 agent。
 			luoLiCore: new Nori.Core.Chat.LuoLiCore.LuoLiCoreConversation(
 				new Nori.Core.Chat.LuoLiCore.LuoLiCoreSettingsStore(config),
-				options => new Nori.Core.Chat.LuoLiCore.LuoLiCoreSdkClient(services.Http, options)));
+				options => new Nori.Core.Chat.LuoLiCore.LuoLiCoreSdkClient(services.Http, options)),
+			// 走 LuoLiCore 时远端只给文本，表情动作在本地挑。
+			replyReaction: new ReplyReactionService(services.Http, config));
 
 		// 窗口显隐变化 (含托盘切换伴侣) 直接作废快照, 主界面的伴侣状态因此不会陈旧
 		if (services.Windows is not null)

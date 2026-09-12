@@ -81,6 +81,12 @@ public sealed class AgentEngine
 	/// </summary>
 	private readonly Chat.LuoLiCore.LuoLiCoreConversation? _luoLiCore;
 
+	/// <summary>
+	/// 回复文本 → 表情动作。只在走 LuoLiCore 那条路时用到：本机那条由模型在协议里直接给。
+	/// 为 null 时不挑，退化成只有物理摆动与口型。
+	/// </summary>
+	private readonly ReplyReactionService? _replyReaction;
+
 	private readonly HttpClient _http;
 	private readonly ConfigStore _config;
 	private readonly ChatService _chat;
@@ -109,7 +115,8 @@ public sealed class AgentEngine
 		AgentSessionCoordinator? sessionCoordinator = null,
 		AgentTraceSink? trace = null,
 		Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null,
-		Chat.LuoLiCore.LuoLiCoreConversation? luoLiCore = null)
+		Chat.LuoLiCore.LuoLiCoreConversation? luoLiCore = null,
+		ReplyReactionService? replyReaction = null)
 	{
 		_http = http;
 		_config = config;
@@ -127,6 +134,7 @@ public sealed class AgentEngine
 		_trace = trace ?? AgentTraceSink.Noop;
 		_adapterFactory = adapterFactory ?? LlmClient.CreateAdapter;
 		_luoLiCore = luoLiCore;
+		_replyReaction = replyReaction;
 	}
 
 	/// <summary>
@@ -480,13 +488,14 @@ public sealed class AgentEngine
 
 			if (message.Text.Length == 0) throw new InvalidOperationException("LuoLiCore 未产出最终回复");
 
+			// 远端只给文本，表情动作在本地挑：合法名随当前 Live2D 模型变化，只有宿主知道。
+			// 挑不出来（没配本机模型、超时、返回的不是 JSON）就保持空值 —— 退化成没有表情，
+			// 不影响这一轮对话。
+			message = await AttachReactionAsync(message, runToken);
+
 			SetState(AgentRunState.Idle);
 			_chat.SaveMessage("user", userText);
 			_chat.SaveMessage("assistant", message.Text);
-
-			// 情绪、表情、动作三项为空，DispatchEffects 会逐项跳过；表情动作由宿主另行决定
-			// （合法名随当前 Live2D 模型变化，只有宿主知道）。这里照样调，是为了不在两条
-			// 路径之间制造「一条有副作用、一条没有」的差异。
 			DispatchEffects(message);
 			callbacks.OnComplete?.Invoke(message);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "completed");
@@ -508,6 +517,46 @@ public sealed class AgentEngine
 			SetState(AgentRunState.Error);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", FailureCategory(exception));
 			throw;
+		}
+	}
+
+	/// <summary>
+	/// 给一条只有文本的回复补上表情与动作。
+	///
+	/// 挑选本身绝不允许影响这一轮：服务内部已经把超时与故障吞成空反应，这里再兜一层，
+	/// 是因为「挑表情失败」和「她没话说」在用户那边看起来一模一样，而前者根本不该让
+	/// 整轮失败。
+	/// </summary>
+	private async Task<ProtocolMessage> AttachReactionAsync(ProtocolMessage message, CancellationToken cancellationToken)
+	{
+		if (_replyReaction is null) return message;
+
+		try
+		{
+			PetInteractionReaction reaction = await _replyReaction.ReactAsync(
+				new ReplyReactionRequest
+				{
+					ReplyText = message.Text,
+					CurrentEmotion = _emotion?.CurrentType,
+					AvailableMotions = _motionNames(),
+					AvailableExpressions = _expressionNames(),
+				},
+				cancellationToken);
+
+			return message with
+			{
+				Emotion = reaction.Emotion,
+				Expression = reaction.Expression,
+				Action = reaction.Motion,
+			};
+		}
+		catch (OperationCanceledException)
+		{
+			throw;
+		}
+		catch (Exception)
+		{
+			return message;
 		}
 	}
 

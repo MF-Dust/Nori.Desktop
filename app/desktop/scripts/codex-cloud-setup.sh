@@ -31,16 +31,48 @@ install_linux_dependencies() {
 		libwebkit2gtk-4.1-0
 }
 
-ensure_node() {
-	if ! command -v node >/dev/null 2>&1; then
-		echo "未找到 Node.js。请在 Codex Cloud 的包版本中选择 Node.js 24。" >&2
+activate_node24() {
+	if ! command -v mise >/dev/null 2>&1; then
+		echo "Codex universal 环境中未找到 mise，无法安装 Nori.Desktop 所需的 Node.js 24。" >&2
 		exit 1
 	fi
 
-	local node_major
-	node_major="$(node -p 'process.versions.node.split(".")[0]')"
+	log "通过 mise 准备 Node.js 24。"
+	mise install node@24
+
+	local node_dir
+	node_dir="$(mise where node@24)"
+	export PATH="$node_dir/bin:$PATH"
+	hash -r
+
+	if ! grep -Fq '# Nori Codex Cloud Node.js 24' "$HOME/.bashrc" 2>/dev/null; then
+		cat >> "$HOME/.bashrc" <<'EOF'
+
+# Nori Codex Cloud Node.js 24
+if command -v mise >/dev/null 2>&1; then
+	NORI_NODE24_DIR="$(mise where node@24 2>/dev/null || true)"
+	if [[ -n "$NORI_NODE24_DIR" ]]; then
+		export PATH="$NORI_NODE24_DIR/bin:$PATH"
+	fi
+	unset NORI_NODE24_DIR
+fi
+EOF
+	fi
+}
+
+ensure_node() {
+	local node_major=0
+	if command -v node >/dev/null 2>&1; then
+		node_major="$(node -p 'process.versions.node.split(".")[0]')"
+	fi
+
 	if (( node_major < 24 )); then
-		echo "Nori.Desktop 需要 Node.js 24+，当前为 $(node --version)。请在 Codex Cloud 中切换到 Node.js 24。" >&2
+		activate_node24
+		node_major="$(node -p 'process.versions.node.split(".")[0]')"
+	fi
+
+	if (( node_major < 24 )); then
+		echo "Nori.Desktop 需要 Node.js 24+，当前为 $(node --version)。" >&2
 		exit 1
 	fi
 

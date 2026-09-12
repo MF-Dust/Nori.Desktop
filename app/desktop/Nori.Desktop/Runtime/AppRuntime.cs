@@ -210,7 +210,11 @@ public sealed class AppRuntime : IAsyncDisposable
 			pet: new PetActionsAdapter(() => services.PetRuntime),
 			motionNames: () => FlattenMotionNames(),
 			expressionNames: () => services.PetRuntime?.Expressions ?? [],
-			trace: services.AgentTrace);
+			trace: services.AgentTrace,
+			// 未启用时这条路完全不参与，桌宠照旧走本机 agent。
+			luoLiCore: new Nori.Core.Chat.LuoLiCore.LuoLiCoreConversation(
+				new Nori.Core.Chat.LuoLiCore.LuoLiCoreSettingsStore(config),
+				options => new Nori.Core.Chat.LuoLiCore.LuoLiCoreSdkClient(services.Http, options)));
 
 		// 窗口显隐变化 (含托盘切换伴侣) 直接作废快照, 主界面的伴侣状态因此不会陈旧
 		if (services.Windows is not null)

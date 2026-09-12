@@ -73,6 +73,14 @@ public sealed class AgentEngine
 	private readonly AgentTraceSink _trace;
 	private readonly Func<LlmProvider, HttpClient, ILlmAdapter> _adapterFactory;
 
+	/// <summary>
+	/// 把对话交给 LuoLiCore 的那条路。为 null 或未启用时本类行为不变。
+	///
+	/// 可选而不是必填：这条路是一个可选后端，缺省时桌宠仍然完整可用，
+	/// 不该让一个没配它的实例连构造都过不去。
+	/// </summary>
+	private readonly Chat.LuoLiCore.LuoLiCoreConversation? _luoLiCore;
+
 	private readonly HttpClient _http;
 	private readonly ConfigStore _config;
 	private readonly ChatService _chat;
@@ -100,7 +108,8 @@ public sealed class AgentEngine
 		int maxToolIterations = 5,
 		AgentSessionCoordinator? sessionCoordinator = null,
 		AgentTraceSink? trace = null,
-		Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null)
+		Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null,
+		Chat.LuoLiCore.LuoLiCoreConversation? luoLiCore = null)
 	{
 		_http = http;
 		_config = config;
@@ -117,6 +126,7 @@ public sealed class AgentEngine
 		_sessionCoordinator = sessionCoordinator ?? new AgentSessionCoordinator();
 		_trace = trace ?? AgentTraceSink.Noop;
 		_adapterFactory = adapterFactory ?? LlmClient.CreateAdapter;
+		_luoLiCore = luoLiCore;
 	}
 
 	/// <summary>
@@ -136,6 +146,15 @@ public sealed class AgentEngine
 		void SetState(AgentRunState state) => callbacks.OnState?.Invoke(state);
 
 		SetState(AgentRunState.Thinking);
+
+		// 0. 对话是否交给 LuoLiCore。
+		//
+		// 判定放在读取 LLM 配置之前：那一段要求 BaseUrl / ApiKey / Model 三项齐全，
+		// 而只配了 LuoLiCore 的实例本来就没有这三项，放在后面会先被那条检查挡掉。
+		if (_luoLiCore is { IsActive: true })
+		{
+			return await RunViaLuoLiCoreAsync(userText, sessionId, callbacks, runToken, runClock, cancellationToken);
+		}
 
 		// 1. 读取 AI 与用户自定义人设配置 (秘密只在后端流转)
 		Stopwatch configClock = Stopwatch.StartNew();
@@ -419,6 +438,64 @@ public sealed class AgentEngine
 			// 非用户取消的超时: 转成可读错误而不是当作正常中止
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", "timeout");
 			throw new ChatException($"回复超时 ({CallTimeoutSeconds}s), 请稍后重试");
+		}
+		catch (OperationCanceledException)
+		{
+			SetState(AgentRunState.Idle);
+			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "cancelled", "cancelled");
+			throw;
+		}
+		catch (Exception exception)
+		{
+			SetState(AgentRunState.Error);
+			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", FailureCategory(exception));
+			throw;
+		}
+	}
+
+	/// <summary>
+	/// 把这一轮整个交给 LuoLiCore。
+	///
+	/// 不跑本机的工具循环 —— 对端一次「发消息」等于它自己跑完一整轮（含它那侧的工具、
+	/// 记忆与审批）。两套 agent 同时持有工具循环的控制权是两套记忆、两套工具注册表、
+	/// 两条审批路径打架的起点。
+	///
+	/// 收尾与本机那条保持一致：同样落库、同样回调 OnComplete、同样记 trace。区别只有
+	/// 「谁生成了这段文本」，对上层与界面是透明的。
+	/// </summary>
+	private async Task<ProtocolMessage> RunViaLuoLiCoreAsync(
+		string userText,
+		string sessionId,
+		AgentCallbacks callbacks,
+		CancellationToken runToken,
+		Stopwatch runClock,
+		CancellationToken cancellationToken)
+	{
+		void SetState(AgentRunState state) => callbacks.OnState?.Invoke(state);
+
+		try
+		{
+			SetState(AgentRunState.Streaming);
+			ProtocolMessage message = await _luoLiCore!.RunAsync(userText, text => callbacks.OnTextChunk?.Invoke(text), runToken);
+
+			if (message.Text.Length == 0) throw new InvalidOperationException("LuoLiCore 未产出最终回复");
+
+			SetState(AgentRunState.Idle);
+			_chat.SaveMessage("user", userText);
+			_chat.SaveMessage("assistant", message.Text);
+
+			// 情绪、表情、动作三项为空，DispatchEffects 会逐项跳过；表情动作由宿主另行决定
+			// （合法名随当前 Live2D 模型变化，只有宿主知道）。这里照样调，是为了不在两条
+			// 路径之间制造「一条有副作用、一条没有」的差异。
+			DispatchEffects(message);
+			callbacks.OnComplete?.Invoke(message);
+			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "completed");
+			return message;
+		}
+		catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+		{
+			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", "timeout");
+			throw new ChatException("LuoLiCore 这一轮超时了, 请稍后重试");
 		}
 		catch (OperationCanceledException)
 		{

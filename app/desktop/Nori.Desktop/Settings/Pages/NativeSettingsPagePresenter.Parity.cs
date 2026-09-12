@@ -59,7 +59,7 @@ public sealed partial class NativeSettingsPagePresenter
 				marketplace.Classes.Set("accent", viewModel.ShowMarketplace);
 				IReadOnlyList<SkillItem> items = viewModel.ShowMarketplace ? viewModel.FilteredMarketplace : viewModel.FilteredInstalled;
 				if (items.Count == 0) list.Children.Add(Empty(NativeSettingsResources.Get("skills.noItems")));
-				foreach (SkillItem skill in items) list.Children.Add(SkillCard(viewModel, skill));
+				else list.Children.Add(CardGrid(items.Select(skill => SkillCard(viewModel, skill))));
 			});
 	}
 
@@ -328,10 +328,10 @@ public sealed partial class NativeSettingsPagePresenter
 
 	private Control SkillCard(SkillsSettingsViewModel viewModel, SkillItem skill)
 	{
-		StackPanel body = CardBody(skill.Name, $"{skill.Version} · {skill.Author} · {CategoryName(skill.Category)}");
+		StackPanel body = CardBody(skill.Name, $"{skill.Version} · {skill.Author} · {CategoryName(skill.Category)}", compact: true);
 		if (!string.IsNullOrWhiteSpace(skill.Description)) body.Children.Add(new TextBlock {Text = skill.Description, TextWrapping = TextWrapping.Wrap, Foreground = Brush("SettingsSecondaryBrush")});
-		if (skill.Tags.Count > 0) body.Children.Add(new TextBlock {Text = string.Join("  ·  ", skill.Tags), Foreground = Brush("SettingsSecondaryBrush")});
-		WrapPanel actions = new() {Margin = new Thickness(0, 8, 0, 0)};
+		if (skill.Tags.Count > 0) body.Children.Add(new TextBlock {Text = string.Join("  ·  ", skill.Tags), Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap});
+		WrapPanel actions = new() {Margin = new Thickness(0, 4, 0, 0)};
 		if (viewModel.ShowMarketplace)
 		{
 			Button install = Button(NativeSettingsResources.Get("common.install"), () => _ = RunAsync(() => viewModel.InstallMarketplaceAsync(skill)), accent: true);
@@ -341,6 +341,7 @@ public sealed partial class NativeSettingsPagePresenter
 		else
 		{
 			ToggleSwitch enabled = new() {IsChecked = skill.Enabled, OnContent = NativeSettingsResources.Get("common.enable"), OffContent = NativeSettingsResources.Get("common.disable")};
+			Avalonia.Automation.AutomationProperties.SetName(enabled, skill.Name);
 			enabled.IsCheckedChanged += (_, _) => _ = RunAsync(() => viewModel.ToggleAsync(skill, enabled.IsChecked == true));
 			actions.Children.Add(enabled);
 		}
@@ -353,9 +354,9 @@ public sealed partial class NativeSettingsPagePresenter
 			Button uninstall = Button(NativeSettingsResources.Get("common.delete"), () => _ = RunAsync(() => UninstallSkillAsync(viewModel, skill)), danger: true);
 			if (!string.Equals(skill.Source, "builtin", StringComparison.OrdinalIgnoreCase)) actions.Children.Add(uninstall);
 		}
-		foreach (Control action in actions.Children) action.Margin = new Thickness(0, 0, 8, 8);
+		foreach (Control action in actions.Children) action.Margin = new Thickness(0, 0, 6, 4);
 		body.Children.Add(actions);
-		return WrapCard(body);
+		return WrapCard(body, compact: true);
 	}
 
 	private async Task StartBrowserTaskAsync(AutomationSettingsViewModel viewModel)
@@ -396,16 +397,17 @@ public sealed partial class NativeSettingsPagePresenter
 
 	private Control ToolCard(McpSettingsViewModel viewModel, McpToolItem tool)
 	{
-		StackPanel body = CardBody(tool.Name, $"{tool.Category} · {tool.PermissionLevel}");
+		StackPanel body = CardBody(tool.Name, $"{tool.Category} · {tool.PermissionLevel}", compact: true);
 		body.Children.Add(new TextBlock {Text = tool.Description, Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap});
-		WrapPanel actions = new() {Margin = new Thickness(0, 8, 0, 0)};
+		WrapPanel actions = new() {Margin = new Thickness(0, 4, 0, 0)};
 		ToggleSwitch enabled = new() {IsChecked = tool.Enabled, OnContent = NativeSettingsResources.Get("common.enable"), OffContent = NativeSettingsResources.Get("common.disable")};
+		Avalonia.Automation.AutomationProperties.SetName(enabled, tool.Name);
 		enabled.IsCheckedChanged += (_, _) => _ = RunAsync(() => viewModel.ToggleToolAsync(tool, enabled.IsChecked == true));
 		actions.Children.Add(enabled);
 		actions.Children.Add(Button(NativeSettingsResources.Get("common.test"), () => _ = RunAsync(() => ExecuteMcpToolAsync(viewModel, tool)), enabled: tool.Enabled));
-		foreach (Control action in actions.Children) action.Margin = new Thickness(0, 0, 8, 8);
+		foreach (Control action in actions.Children) action.Margin = new Thickness(0, 0, 6, 4);
 		body.Children.Add(actions);
-		return WrapCard(body);
+		return WrapCard(body, compact: true);
 	}
 
 	private async Task UninstallPluginAsync(PluginsSettingsViewModel viewModel, PluginItem plugin)
@@ -472,12 +474,12 @@ public sealed partial class NativeSettingsPagePresenter
 				if (viewModel.ShowTools)
 				{
 					if (viewModel.FilteredTools.Count == 0) list.Children.Add(Empty(NativeSettingsResources.Get("mcp.noItems")));
-					foreach (McpToolItem tool in viewModel.FilteredTools) list.Children.Add(ToolCard(viewModel, tool));
+					else list.Children.Add(CardGrid(viewModel.FilteredTools.Select(tool => ToolCard(viewModel, tool))));
 				}
 				else
 				{
 					if (viewModel.FilteredServers.Count == 0) list.Children.Add(Empty(NativeSettingsResources.Get("mcp.noItems")));
-					foreach (McpServerItem server in viewModel.FilteredServers) list.Children.Add(ServerCard(viewModel, server));
+					else list.Children.Add(CardGrid(viewModel.FilteredServers.Select(server => ServerCard(viewModel, server))));
 				}
 			});
 	}
@@ -491,7 +493,7 @@ public sealed partial class NativeSettingsPagePresenter
 			"error" => ParityText("连接失败", "Connection failed"),
 			_ => NativeSettingsResources.Get("mcp.disconnected"),
 		};
-		StackPanel body = CardBody(server.Name, $"{status} · {server.Tools.Count} {NativeSettingsResources.Get("mcp.tools")} · {server.ResourceCount} {ParityText("资源", "resources")}");
+		StackPanel body = CardBody(server.Name, $"{status} · {server.Tools.Count} {NativeSettingsResources.Get("mcp.tools")} · {server.ResourceCount} {ParityText("资源", "resources")}", compact: true);
 		if (!string.IsNullOrWhiteSpace(server.ErrorMessage)) body.Children.Add(Empty(server.ErrorMessage));
 		if (!string.IsNullOrWhiteSpace(server.SecretIssue)) body.Children.Add(Empty($"{ParityText("环境变量状态", "Environment status")}: {server.SecretIssue}"));
 		if (server.HasEnvironment) body.Children.Add(Empty(ParityText("已保存加密环境变量", "Encrypted environment variables saved")));
@@ -505,13 +507,13 @@ public sealed partial class NativeSettingsPagePresenter
 			StackPanel toolList = new() {Spacing = 10};
 			foreach (McpToolItem tool in server.Tools)
 			{
-				StackPanel row = CardBody(tool.Name, tool.Description);
+				StackPanel row = CardBody(tool.Name, tool.Description, compact: true);
 				row.Children.Add(Button(NativeSettingsResources.Get("common.test"), () => _ = RunAsync(() => ExecuteMcpToolAsync(viewModel, tool)), enabled: server.Status == "connected"));
 				toolList.Children.Add(row);
 			}
 			body.Children.Add(new Expander {Header = NativeSettingsResources.Get("mcp.tools"), Content = toolList, HorizontalAlignment = HorizontalAlignment.Stretch});
 		}
-		return WrapCard(body);
+		return WrapCard(body, compact: true);
 	}
 
 	private void RenderPlugins(StackPanel root, PluginsSettingsViewModel viewModel)

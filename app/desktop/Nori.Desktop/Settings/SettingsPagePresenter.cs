@@ -39,6 +39,7 @@ public sealed class SettingsPagePresenter : ContentControl
 		_complex = null;
 		if (_page is not null) _page.PropertyChanged -= OnPagePropertyChanged;
 		_page = DataContext as SettingsPageBase;
+		MaxWidth = _page?.Key is "skills" or "mcp" ? 1200 : 820;
 		if (_page is null)
 		{
 			Content = null;

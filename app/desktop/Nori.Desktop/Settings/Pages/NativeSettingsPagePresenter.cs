@@ -23,6 +23,7 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 	/// <summary>创建复杂设置页呈现器。</summary>
 	public NativeSettingsPagePresenter()
 	{
+		HorizontalContentAlignment = HorizontalAlignment.Stretch;
 		DataContextChanged += OnDataContextChanged;
 		SettingsLocalization.Changed += OnLanguageChanged;
 		AttachedToVisualTree += (_, _) => Build();
@@ -146,23 +147,50 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 		if (await NativeSettingsDialogs.ConfirmAsync(Owner(), NativeSettingsResources.Get("debug.crash"), prompt, true).ConfigureAwait(true)) await viewModel.TriggerCrashAsync(mode).ConfigureAwait(true);
 	}
 
-	private StackPanel CardBody(string title, string? subtitle)
+	private StackPanel CardBody(string title, string? subtitle, bool compact = false)
 	{
-		StackPanel body = new() {Spacing = 4};
-		body.Children.Add(new TextBlock {Text = title, FontSize = 16, FontWeight = FontWeight.SemiBold, Foreground = Brush("SettingsPrimaryBrush")});
+		StackPanel body = new() {Spacing = compact ? 6 : 4};
+		body.Children.Add(new TextBlock {Text = title, FontSize = compact ? 14 : 16, FontWeight = FontWeight.SemiBold, Foreground = Brush("SettingsPrimaryBrush"), TextWrapping = TextWrapping.Wrap});
 		if (!string.IsNullOrWhiteSpace(subtitle)) body.Children.Add(new TextBlock {Text = subtitle, Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap});
 		return body;
 	}
 
-	private Border WrapCard(StackPanel body) => new()
+	private Border WrapCard(StackPanel body, bool compact = false) => new()
 	{
 		Background = Brush("SettingsCardBrush"),
 		BorderBrush = Brush("SettingsBorderBrush"),
 		BorderThickness = new Thickness(1),
 		CornerRadius = new CornerRadius(12),
-		Padding = new Thickness(20, 16),
+		Padding = compact ? new Thickness(14, 12) : new Thickness(20, 16),
 		Child = body,
 	};
+
+	private static Grid CardGrid(IEnumerable<Control> cards)
+	{
+		Grid grid = new() {ColumnSpacing = 12, RowSpacing = 12};
+		grid.Classes.Add("settings-card-grid");
+		foreach (Control card in cards) grid.Children.Add(card);
+		int previousColumns = 0;
+		void UpdateColumns(double width)
+		{
+			int columns = Math.Clamp((int)Math.Floor((width + 12) / (320 + 12)), 1, Math.Max(1, grid.Children.Count));
+			if (columns == previousColumns) return;
+			previousColumns = columns;
+			grid.ColumnDefinitions.Clear();
+			grid.RowDefinitions.Clear();
+			for (int column = 0; column < columns; column++) grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+			for (int index = 0; index < grid.Children.Count; index++)
+			{
+				if (index % columns == 0) grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+				Grid.SetColumn(grid.Children[index], index % columns);
+				Grid.SetRow(grid.Children[index], index / columns);
+			}
+		}
+		// 只调整网格位置，不重建卡片，保留键盘焦点、开关及展开状态。
+		grid.SizeChanged += (_, args) => UpdateColumns(args.NewSize.Width);
+		UpdateColumns(0);
+		return grid;
+	}
 
 	private TextBlock Empty(string text) => new() {Text = text, Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8)};
 

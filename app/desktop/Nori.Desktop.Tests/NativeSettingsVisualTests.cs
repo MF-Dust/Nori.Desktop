@@ -9,9 +9,9 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Nori.Core.Configuration;
-using Nori.Core.Data;
 using Nori.Core.Logging;
 using Nori.Desktop.Settings;
+using Nori.Desktop.Settings.Pages;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Tests;
@@ -40,7 +40,7 @@ public partial class BridgeCommandsTests
 			});
 	}
 
-	/// <summary>用隔离数据库和安全模式渲染设置页，保存最小尺寸与全高清明暗截图及布局清单。</summary>
+	/// <summary>用隔离数据库与停用的合成服务渲染设置页，保存最小尺寸与全高清明暗截图及布局清单。</summary>
 	[NativeSettingsVisualFact]
 	public async Task NativeSettingsVisualCaptureProducesInspectableFrames()
 	{
@@ -51,7 +51,7 @@ public partial class BridgeCommandsTests
 		using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(NativeSettingsVisualApplicationBuilder));
 		await session.Dispatch(async () =>
 		{
-			using BridgeCommandsTests fixture = new(safeMode: true);
+			using BridgeCommandsTests fixture = new(safeMode: false);
 			// 固定英文以检查较长文案；只使用临时数据库和保留测试域名，不加载个人配置。
 			fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text("en-US"));
 			fixture._config.Set(AiSettingsStore.KeyLlmBaseUrl, new ConfigValue.Text("https://api.example.test/v1"));
@@ -61,8 +61,9 @@ public partial class BridgeCommandsTests
 
 			foreach ((int width, int height) in new[] {(720, 480), (1920, 1080)})
 			foreach (ThemeVariant theme in new[] {ThemeVariant.Light, ThemeVariant.Dark})
-			foreach (string page in new[] {"ai", "voice", "proactive", "skills", "mcp", "automation", "plugins", "general", "updates", "debug", "about"})
+			foreach (string scenario in new[] {"ai", "voice", "proactive", "skills", "skills-marketplace", "mcp", "mcp-tools", "automation", "plugins", "general", "updates", "debug", "about"})
 			{
+				string page = scenario.Split('-')[0];
 				SettingsWindow window = new() {Width = width, Height = height, RequestedThemeVariant = theme};
 				using SettingsService service = new(fixture._services, window);
 				using SettingsViewModel viewModel = new(service);
@@ -71,6 +72,14 @@ public partial class BridgeCommandsTests
 				{
 					window.Show();
 					viewModel.Navigate(page);
+					if (viewModel.CurrentPage is SkillsSettingsPage skillsPage)
+						((SkillsSettingsViewModel)skillsPage.ComplexViewModel).ShowMarketplace = scenario == "skills-marketplace";
+					if (viewModel.CurrentPage is McpSettingsPage mcpPage)
+					{
+						McpSettingsViewModel mcp = (McpSettingsViewModel)mcpPage.ComplexViewModel;
+						mcp.ShowTools = scenario == "mcp-tools";
+						if (!mcp.ShowTools) await SeedSettingsServersAsync(mcp);
+					}
 					await viewModel.RefreshSnapshotAsync();
 					await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
 					Assert.Empty(viewModel.ErrorMessage);
@@ -86,7 +95,7 @@ public partial class BridgeCommandsTests
 					ScrollViewer scroll = Assert.IsType<ScrollViewer>(window.FindControl<ScrollViewer>("SettingsPageScroll"));
 					using WriteableBitmap frame = Assert.IsType<WriteableBitmap>(window.CaptureRenderedFrame());
 					string themeName = theme == ThemeVariant.Dark ? "dark" : "light";
-					string fileName = $"{page}-{themeName}-{width}x{height}.png";
+					string fileName = $"{scenario}-{themeName}-{width}x{height}.png";
 					string pngPath = Path.Combine(outputDirectory, fileName);
 					frame.Save(pngPath, PngBitmapEncoderOptions.Default);
 					byte[] png = File.ReadAllBytes(pngPath);
@@ -102,6 +111,7 @@ public partial class BridgeCommandsTests
 					{
 						fileName,
 						page,
+						scenario,
 						theme = themeName,
 						language = viewModel.Language,
 						pixelWidth = frame.PixelSize.Width,
@@ -144,7 +154,7 @@ public partial class BridgeCommandsTests
 			SettingsLocalization.SetLanguage("zh-CN");
 			return true;
 		}, CancellationToken.None);
-		Assert.Equal(44, manifest.Count);
+		Assert.Equal(52, manifest.Count);
 	}
 
 	private static int NativeSettingsSampledColors(WriteableBitmap frame)

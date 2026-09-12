@@ -20,6 +20,10 @@ using Nori.Desktop.Windows;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.LogicalTree;
+using Avalonia.VisualTree;
+using Avalonia.Controls.Primitives;
+using Avalonia.Threading;
 using Devolutions.AvaloniaTheme.MacOS;
 using Nori.Desktop.Settings.Pages;
 
@@ -1840,6 +1844,98 @@ public class BridgeCommandsTests : IDisposable
 			window.Close();
 		}
 		return Task.CompletedTask;
+	});
+
+	[Theory]
+	[InlineData(720, 480)]
+	[InlineData(1920, 1080)]
+	public Task NativeDiagnosticsRefreshPreservesControlsAndScroll(int width, int height) => WithSettingsUiAsync(async () =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		for (int index = 0; index < 80; index++)
+			fixture._services.Logger.Write(LogSource.Backend, "warn", $"诊断滚动回归日志 {index:D3}");
+		SettingsWindow window = new() {Width = width, Height = height};
+		using SettingsService service = new(fixture._services, window);
+		using SettingsViewModel viewModel = new(service);
+		window.DataContext = viewModel;
+		try
+		{
+			window.Show();
+			viewModel.Navigate("debug");
+			await viewModel.RefreshSnapshotAsync();
+			await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
+			Assert.Empty(viewModel.ErrorMessage);
+			SettingsPagePresenter pagePresenter = Assert.IsType<SettingsPagePresenter>(window.FindControl<SettingsPagePresenter>("PagePresenter"));
+			NativeSettingsPagePresenter presenter = Assert.IsType<NativeSettingsPagePresenter>(pagePresenter.Content);
+			Control root = Assert.IsAssignableFrom<Control>(presenter.Content);
+			ComboBox filter = Assert.Single(root.GetLogicalDescendants().OfType<ComboBox>());
+			ScrollViewer logs = root.GetLogicalDescendants().OfType<ScrollViewer>().Single(scroll => scroll.Name == "DebugLogScroll");
+			ScrollViewer pageScroll = pagePresenter.GetVisualAncestors().OfType<ScrollViewer>().First();
+			filter.SelectedIndex = 2;
+			await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
+			Assert.True(filter.Focus());
+			logs.Offset = new Vector(0, 100);
+			window.UpdateLayout();
+			Assert.True(logs.Offset.Y > 0);
+			Vector logOffset = logs.Offset;
+			Vector pageOffset = pageScroll.Offset;
+			object? logContent = logs.Content;
+			ScrollBar[] bars = pageScroll.GetVisualDescendants().OfType<ScrollBar>().ToArray();
+			Assert.NotEmpty(bars);
+			for (int iteration = 0; iteration < 3; iteration++)
+			{
+				await Task.WhenAll(viewModel.RefreshSnapshotAsync(), viewModel.RefreshSnapshotAsync());
+				await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
+				Assert.Empty(viewModel.ErrorMessage);
+				Assert.Same(root, presenter.Content);
+				Assert.Same(filter, Assert.Single(root.GetLogicalDescendants().OfType<ComboBox>()));
+				Assert.Same(logs, root.GetLogicalDescendants().OfType<ScrollViewer>().Single(scroll => scroll.Name == "DebugLogScroll"));
+				Assert.Same(logContent, logs.Content);
+				Assert.Equal(2, filter.SelectedIndex);
+				Assert.True(filter.IsFocused);
+				Assert.Equal(logOffset, logs.Offset);
+				Assert.Equal(pageOffset, pageScroll.Offset);
+				Assert.Equal(bars, pageScroll.GetVisualDescendants().OfType<ScrollBar>().ToArray());
+			}
+		}
+		finally
+		{
+			window.DataContext = null;
+			window.Close();
+		}
+	});
+
+	[Fact]
+	public Task NativeSettingsRefreshDoesNotLoadHiddenComplexPages() => WithSettingsUiAsync(async () =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		Window window = new();
+		using SettingsService service = new(fixture._services, window);
+		using SettingsViewModel viewModel = new(service);
+		NativeSettingsPageBase[] hidden = viewModel.Groups.SelectMany(group => group.Pages)
+			.Select(item => item.Page).OfType<NativeSettingsPageBase>().Where(page => page.Key != "debug").ToArray();
+		List<string> refreshed = [];
+		foreach (NativeSettingsPageBase page in hidden)
+			page.ComplexViewModel.PropertyChanged += (_, args) =>
+			{
+				if (args.PropertyName == nameof(SettingsPageViewModelBase.IsBusy) && page.ComplexViewModel.IsBusy)
+					refreshed.Add(page.Key);
+			};
+		try
+		{
+			window.Show();
+			viewModel.Navigate("debug");
+			for (int iteration = 0; iteration < 3; iteration++) await viewModel.RefreshSnapshotAsync();
+			Assert.Empty(viewModel.ErrorMessage);
+			Assert.Empty(refreshed);
+			viewModel.Navigate("mcp");
+			await viewModel.RefreshSnapshotAsync();
+			Assert.Empty(viewModel.ErrorMessage);
+			Assert.Contains("mcp", refreshed);
+			Assert.All(refreshed, key => Assert.Equal("mcp", key));
+			Assert.Equal("mcp", Assert.Single(viewModel.Groups.SelectMany(group => group.Pages).Where(item => item.IsSelected)).Key);
+		}
+		finally { window.Close(); }
 	});
 
 	[Fact]

@@ -31,6 +31,7 @@ public sealed class SettingsPagePresenter : ContentControl
 
 	private void OnDataContextChanged(object? sender, EventArgs args)
 	{
+		if (ReferenceEquals(_page, DataContext) && Content is not null) return;
 		_complex?.Dispose();
 		_complex = null;
 		if (_page is not null) _page.PropertyChanged -= OnPagePropertyChanged;
@@ -54,7 +55,7 @@ public sealed class SettingsPagePresenter : ContentControl
 	{
 		// 复杂页面由专用呈现器负责，挂载时不能用空的普通分组覆盖它。
 		if (_page is null or NativeSettingsPageBase) return;
-		StackPanel root = new() { Spacing = 10, Margin = new Thickness(2, 0, 14, 20) };
+		StackPanel root = new() { Spacing = 14, Margin = new Thickness(0) };
 		foreach (SettingsSectionViewModel section in _page.Sections)
 		{
 			Border card = new()
@@ -62,8 +63,8 @@ public sealed class SettingsPagePresenter : ContentControl
 				Background = Brush("SettingsCardBrush"),
 				BorderBrush = Brush("SettingsBorderBrush"),
 				BorderThickness = new Thickness(1),
-				CornerRadius = new CornerRadius(8),
-				Padding = new Thickness(16, 12),
+				CornerRadius = new CornerRadius(12),
+				Padding = new Thickness(20, 16),
 			};
 			StackPanel content = new() { Spacing = 3 };
 			content.Children.Add(new TextBlock
@@ -72,7 +73,7 @@ public sealed class SettingsPagePresenter : ContentControl
 				FontSize = 16,
 				FontWeight = FontWeight.SemiBold,
 				Foreground = Brush("SettingsPrimaryBrush"),
-				Margin = new Thickness(0, 0, 0, 4),
+				Margin = new Thickness(0, 0, 0, 8),
 			});
 			foreach (SettingsFieldViewModel field in section.Fields)
 				content.Children.Add(new SettingsFieldPresenter { DataContext = field });
@@ -135,8 +136,8 @@ public sealed class SettingsPagePresenter : ContentControl
 			Background = Brush("SettingsCardBrush"),
 			BorderBrush = Brush("SettingsBorderBrush"),
 			BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(8),
-			Padding = new Thickness(16, 12),
+			CornerRadius = new CornerRadius(12),
+			Padding = new Thickness(20, 16),
 			Child = new StackPanel
 			{
 				Spacing = 4,

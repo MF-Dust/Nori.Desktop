@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Windows.Input;
 using Avalonia.Threading;
+using Avalonia.Controls.Primitives;
 using Nori.Desktop.Settings.Pages;
 
 namespace Nori.Desktop.Settings;
@@ -26,6 +27,8 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 	private SettingsPageBase? _currentPage;
 	private string _errorMessage = string.Empty;
 	private bool _disposed;
+	private Task? _refreshTask;
+	private bool _refreshPending;
 
 	/// <summary>创建设置窗口状态。</summary>
 	public SettingsViewModel(SettingsService service)
@@ -67,12 +70,20 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 		{
 			if (ReferenceEquals(_currentPage, value)) return;
 			_currentPage = value;
+			foreach (SettingsGroupViewModel group in Groups)
+				foreach (SettingsPageItemViewModel item in group.Pages)
+					item.IsSelected = ReferenceEquals(item.Page, value);
 			OnPropertyChanged();
+			OnPropertyChanged(nameof(HorizontalScrollBarVisibility));
 			OnPropertyChanged(nameof(CurrentPageTitle));
 			OnPropertyChanged(nameof(CurrentPageDescription));
 			OnPropertyChanged(nameof(CurrentPageError));
 		}
 	}
+
+	/// <summary>诊断文本按视口换行，其它复杂表单保留横向滚动兜底。</summary>
+	public ScrollBarVisibility HorizontalScrollBarVisibility =>
+		CurrentPage is DebugSettingsPage ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
 
 	/// <summary>当前页面标题。</summary>
 	public string CurrentPageTitle => CurrentPage?.DisplayTitle ?? string.Empty;
@@ -140,7 +151,7 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 			throw new ArgumentException("设置页分组不存在：" + page.GroupKey, nameof(page));
 		if (_pages.ContainsKey(page.Key)) return;
 		_pages.Add(page.Key, page);
-		group.Pages.Add(new SettingsPageItemViewModel(page));
+		group.Pages.Add(new SettingsPageItemViewModel(page) {IsSelected = ReferenceEquals(CurrentPage, page)});
 		page.SetLanguage(Language);
 		if (CurrentPage is null) CurrentPage = page;
 		RefreshFilteredGroups();
@@ -151,7 +162,9 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 	{
 		if (!string.IsNullOrWhiteSpace(page) && _pages.TryGetValue(page, out SettingsPageBase? selected))
 		{
+			bool changed = !ReferenceEquals(CurrentPage, selected);
 			CurrentPage = selected;
+			if (changed) _ = RefreshSnapshotAsync(_lifetimeCts.Token);
 			return;
 		}
 		if (CurrentPage is null) CurrentPage = _pages.Values.FirstOrDefault();
@@ -166,22 +179,37 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 			await Dispatcher.UIThread.InvokeAsync(() => RefreshSnapshotAsync(cancellationToken));
 			return;
 		}
-		try
+		if (_disposed) return;
+		_refreshPending = true;
+		// 多个通知共享同一条刷新链，进行中的读取结束后最多补读一次最新状态。
+		if (_refreshTask is null || _refreshTask.IsCompleted)
+			_refreshTask = RefreshSnapshotsCoreAsync();
+		await _refreshTask.WaitAsync(cancellationToken).ConfigureAwait(true);
+	}
+
+	private async Task RefreshSnapshotsCoreAsync()
+	{
+		while (_refreshPending && !_disposed)
 		{
-			JsonElement snapshot = await _service.GetSnapshotAsync(cancellationToken).ConfigureAwait(true);
-			if (_disposed) return;
-			string language = SettingsSnapshotReader.String(snapshot, Language, "general", "language");
-			if (language is not ("zh-CN" or "en-US")) language = language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? "en-US" : "zh-CN";
-			Language = language;
-			foreach (SettingsPageBase page in _pages.Values) page.ApplySnapshot(snapshot);
-			NativeSettingsPageBase[] complexPages = _pages.Values.OfType<NativeSettingsPageBase>().ToArray();
-			await Task.WhenAll(complexPages.Select(page => page.RefreshComplexAsync(cancellationToken))).ConfigureAwait(true);
-			ErrorMessage = string.Empty;
-		}
-		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-		catch (Exception exception)
-		{
-			ErrorMessage = exception.Message;
+			_refreshPending = false;
+			try
+			{
+				JsonElement snapshot = await _service.GetSnapshotAsync(_lifetimeCts.Token).ConfigureAwait(true);
+				if (_disposed) return;
+				string language = SettingsSnapshotReader.String(snapshot, Language, "general", "language");
+				if (language is not ("zh-CN" or "en-US")) language = language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? "en-US" : "zh-CN";
+				Language = language;
+				foreach (SettingsPageBase page in _pages.Values) page.ApplySnapshot(snapshot);
+				// 未显示的复杂页面在导航时读取，避免每次运行时变化都查询所有宿主服务。
+				if (CurrentPage is NativeSettingsPageBase complex)
+					await complex.RefreshComplexAsync(_lifetimeCts.Token).ConfigureAwait(true);
+				ErrorMessage = string.Empty;
+			}
+			catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) { return; }
+			catch (Exception exception)
+			{
+				ErrorMessage = exception.Message;
+			}
 		}
 	}
 

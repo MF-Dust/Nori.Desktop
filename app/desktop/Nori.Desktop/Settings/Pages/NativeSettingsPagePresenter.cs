@@ -9,12 +9,17 @@ using Avalonia.Threading;
 namespace Nori.Desktop.Settings.Pages;
 
 /// <summary>复杂列表型设置页的原生控件呈现器。</summary>
-public sealed class NativeSettingsPagePresenter : ContentControl, IDisposable
+public sealed partial class NativeSettingsPagePresenter : ContentControl, IDisposable
 {
 	private NativeSettingsPageBase? _page;
 	private SettingsPageViewModelBase? _viewModel;
 	private StackPanel? _root;
+	private readonly Dictionary<string, SolidColorBrush> _themeBrushes = new(StringComparer.Ordinal);
 	private bool _building;
+	private bool _buildQueued;
+	private bool _disposed;
+	private TextBlock? _busyText;
+	private TextBlock? _errorText;
 
 	/// <summary>创建复杂设置页呈现器。</summary>
 	public NativeSettingsPagePresenter()
@@ -24,7 +29,14 @@ public sealed class NativeSettingsPagePresenter : ContentControl, IDisposable
 		AttachedToVisualTree += (_, _) => Build();
 	}
 
-	private void OnLanguageChanged() => Dispatcher.UIThread.Post(Build);
+	private void OnLanguageChanged()
+	{
+		Dispatcher.UIThread.Post(() =>
+		{
+			_root = null;
+			QueueBuild();
+		});
+	}
 
 	private void OnDataContextChanged(object? sender, EventArgs args)
 	{
@@ -33,6 +45,7 @@ public sealed class NativeSettingsPagePresenter : ContentControl, IDisposable
 			_viewModel.PropertyChanged -= OnViewModelPropertyChanged;
 			_viewModel.Changed -= OnViewModelChanged;
 		}
+		_root = null;
 		_page = DataContext as NativeSettingsPageBase;
 		_viewModel = _page?.ComplexViewModel;
 		if (_viewModel is null)
@@ -45,26 +58,56 @@ public sealed class NativeSettingsPagePresenter : ContentControl, IDisposable
 		Build();
 	}
 
-	private void OnViewModelChanged() => Dispatcher.UIThread.Post(Build);
+	private void OnViewModelChanged() => QueueBuild();
 
 	private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
 	{
-		if (args.PropertyName is nameof(SettingsPageViewModelBase.IsBusy) or nameof(SettingsPageViewModelBase.ErrorMessage))
-			Dispatcher.UIThread.Post(Build);
+		if (_viewModel is DebugSettingsViewModel
+			|| args.PropertyName is nameof(SettingsPageViewModelBase.IsBusy) or nameof(SettingsPageViewModelBase.ErrorMessage))
+			QueueBuild();
+	}
+
+	private void QueueBuild()
+	{
+		if (_disposed || _buildQueued) return;
+		_buildQueued = true;
+		Dispatcher.UIThread.Post(() =>
+		{
+			_buildQueued = false;
+			if (!_disposed) Build();
+		});
 	}
 
 	private void Build()
 	{
-		if (_viewModel is null || _building) return;
+		if (_disposed || _viewModel is null || _building) return;
+		// 诊断刷新保留控件树、筛选器焦点及两层滚动位置。
+		if (_viewModel is DebugSettingsViewModel currentDebug && _root is not null)
+		{
+			UpdateDebug(currentDebug);
+			return;
+		}
 		_building = true;
 		try
 		{
-			StackPanel root = new() {Spacing = 10, Margin = new Thickness(2, 0, 14, 20)};
+			StackPanel root = new() {Spacing = 14, Margin = new Thickness(0)};
 			_root = root;
-			if (_viewModel.IsBusy)
-				root.Children.Add(new TextBlock {Text = NativeSettingsResources.Get("common.working"), Foreground = Brush("SettingsSecondaryBrush")});
-			if (!string.IsNullOrWhiteSpace(_viewModel.ErrorMessage))
-				root.Children.Add(new TextBlock {Text = _viewModel.ErrorMessage, Foreground = Brush("SettingsErrorBrush"), TextWrapping = TextWrapping.Wrap});
+			_busyText = new TextBlock
+			{
+				Text = NativeSettingsResources.Get("common.working"),
+				Foreground = Brush("SettingsSecondaryBrush"),
+				MinHeight = 20,
+				Opacity = _viewModel.IsBusy ? 1 : 0,
+			};
+			_errorText = new TextBlock
+			{
+				Text = _viewModel.ErrorMessage,
+				Foreground = Brush("SettingsErrorBrush"),
+				TextWrapping = TextWrapping.Wrap,
+				IsVisible = !string.IsNullOrWhiteSpace(_viewModel.ErrorMessage),
+			};
+			root.Children.Add(_busyText);
+			root.Children.Add(_errorText);
 			switch (_viewModel)
 			{
 				case SkillsSettingsViewModel skills:
@@ -513,60 +556,6 @@ public sealed class NativeSettingsPagePresenter : ContentControl, IDisposable
 		if (result.RequiresRestart) await NativeSettingsDialogs.ShowMessageAsync(Owner(), plugin.Name, NativeSettingsResources.Get("plugins.restart")).ConfigureAwait(true);
 	}
 
-	private void BuildDebug(StackPanel root, DebugSettingsViewModel viewModel)
-	{
-		root.Children.Add(new TextBlock {Text = NativeSettingsResources.Get("debug.warning"), Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap});
-		StackPanel diagnostic = CardBody(NativeSettingsResources.Get("debug.diagnostic"), null);
-		StackPanel diagnosticActions = new() {Orientation = Orientation.Horizontal, Spacing = 8};
-		diagnosticActions.Children.Add(Button(NativeSettingsResources.Get("debug.refresh"), () => _ = RunAsync(() => viewModel.RefreshDiagnosticAsync())));
-		diagnosticActions.Children.Add(Button(NativeSettingsResources.Get("common.copy"), () => _ = RunAsync(() => viewModel.CopyDiagnosticAsync())));
-		diagnosticActions.Children.Add(Button(NativeSettingsResources.Get("debug.export"), () => _ = RunAsync(() => ExportDiagnosticsAsync(viewModel))));
-		diagnosticActions.Children.Add(Button(NativeSettingsResources.Get("debug.openFolder"), () => _ = RunAsync(() => viewModel.OpenLogFolderAsync())));
-		diagnostic.Children.Add(diagnosticActions);
-		foreach ((string key, string value) in viewModel.Diagnostic) diagnostic.Children.Add(new TextBlock {Text = $"{key}: {value}", Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap});
-		root.Children.Add(WrapCard(diagnostic));
-
-		StackPanel logs = CardBody(NativeSettingsResources.Get("debug.logs"), null);
-		Grid logToolbar = new() {ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto"), ColumnSpacing = 8};
-		ComboBox filter = new() {ItemsSource = new[] {NativeSettingsResources.Get("debug.all"), "error", "warn", "info"}, SelectedIndex = viewModel.LevelFilter switch {"error" => 1, "warn" => 2, "info" => 3, _ => 0}, MinWidth = 100};
-		filter.SelectionChanged += (_, _) => viewModel.LevelFilter = filter.SelectedIndex switch {1 => "error", 2 => "warn", 3 => "info", _ => "all"};
-		logToolbar.Children.Add(filter);
-		Button refresh = Button(NativeSettingsResources.Get("debug.refresh"), () => _ = RunAsync(() => viewModel.RefreshLogsAsync()));
-		Grid.SetColumn(refresh, 1);
-		logToolbar.Children.Add(refresh);
-		Button clear = Button(NativeSettingsResources.Get("debug.clear"), () => _ = RunAsync(async () =>
-		{
-			if (await NativeSettingsDialogs.ConfirmAsync(Owner(), NativeSettingsResources.Get("debug.clear"), NativeSettingsResources.Get("debug.clearConfirm"), true).ConfigureAwait(true)) await viewModel.ClearLogsAsync().ConfigureAwait(true);
-		}));
-		Grid.SetColumn(clear, 2);
-		logToolbar.Children.Add(clear);
-		Button copy = Button(NativeSettingsResources.Get("common.copy"), () => _ = RunAsync(() => viewModel.CopyLogsAsync()));
-		Grid.SetColumn(copy, 3);
-		logToolbar.Children.Add(copy);
-		logs.Children.Add(logToolbar);
-		ScrollViewer logScroll = new() {MaxHeight = 300};
-		StackPanel logItems = new() {Spacing = 3};
-		foreach (DebugLogItem item in viewModel.FilteredLogs)
-			logItems.Children.Add(new TextBlock {Text = $"[{item.Time}] [{item.Level}] [{item.Source}] {item.Message}", FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.Wrap, Foreground = item.Level.Equals("error", StringComparison.OrdinalIgnoreCase) ? Brush("SettingsErrorBrush") : Brush("SettingsSecondaryBrush")});
-		if (logItems.Children.Count == 0) logItems.Children.Add(Empty(NativeSettingsResources.Get("debug.noLogs")));
-		logScroll.Content = logItems;
-		logs.Children.Add(logScroll);
-		root.Children.Add(WrapCard(logs));
-
-		StackPanel tools = CardBody(NativeSettingsResources.Get("debug.crash"), null);
-		tools.Children.Add(Button(NativeSettingsResources.Get("debug.gc"), () => _ = RunAsync(async () =>
-		{
-			long released = await viewModel.CollectGarbageAsync().ConfigureAwait(true);
-			await NativeSettingsDialogs.ShowMessageAsync(Owner(), NativeSettingsResources.Get("debug.gc"), $"{NativeSettingsResources.Get("debug.released")}: {released}").ConfigureAwait(true);
-		})));
-		tools.Children.Add(Button(NativeSettingsResources.Get("debug.testLog"), () => _ = RunAsync(() => viewModel.WriteTestLogAsync())));
-		bool crashEnabled = viewModel.CrashTestsAvailable;
-		tools.Children.Add(Button(NativeSettingsResources.Get("debug.uiCrash"), () => _ = RunCrashAsync(viewModel, "ui_thread", false), danger: true, enabled: crashEnabled));
-		tools.Children.Add(Button(NativeSettingsResources.Get("debug.backgroundCrash"), () => _ = RunCrashAsync(viewModel, "background_thread", true), danger: true, enabled: crashEnabled));
-		tools.Children.Add(Button(NativeSettingsResources.Get("debug.taskCrash"), () => _ = RunCrashAsync(viewModel, "unobserved_task", true), danger: true, enabled: crashEnabled));
-		root.Children.Add(WrapCard(tools));
-	}
-
 	private async Task ExportDiagnosticsAsync(DebugSettingsViewModel viewModel)
 	{
 		DiagnosticExportItem? result = await viewModel.ExportDiagnosticsAsync().ConfigureAwait(true);
@@ -592,8 +581,8 @@ public sealed class NativeSettingsPagePresenter : ContentControl, IDisposable
 		Background = Brush("SettingsCardBrush"),
 		BorderBrush = Brush("SettingsBorderBrush"),
 		BorderThickness = new Thickness(1),
-		CornerRadius = new CornerRadius(8),
-		Padding = new Thickness(16, 12),
+		CornerRadius = new CornerRadius(12),
+		Padding = new Thickness(20, 16),
 		Child = body,
 	};
 
@@ -624,17 +613,34 @@ public sealed class NativeSettingsPagePresenter : ContentControl, IDisposable
 		}
 		finally
 		{
-			Dispatcher.UIThread.Post(Build);
+			QueueBuild();
 		}
 	}
 
 	private Window Owner() => TopLevel.GetTopLevel(this) as Window ?? throw new InvalidOperationException("设置窗口尚未就绪");
 
-	private IBrush Brush(string key) => SettingsBrushes.Resolve(this, key);
+	private IBrush Brush(string key)
+	{
+		if (_themeBrushes.TryGetValue(key, out SolidColorBrush? brush)) return brush;
+		brush = new SolidColorBrush(((ISolidColorBrush)SettingsBrushes.Resolve(this, key)).Color);
+		_themeBrushes.Add(key, brush);
+		return brush;
+	}
+
+	/// <inheritdoc />
+	protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+	{
+		base.OnPropertyChanged(change);
+		if (change.Property != ActualThemeVariantProperty) return;
+		// 稳定控件树共用可变画刷，系统主题切换时只更新颜色。
+		foreach ((string key, SolidColorBrush brush) in _themeBrushes)
+			brush.Color = ((ISolidColorBrush)SettingsBrushes.Resolve(this, key)).Color;
+	}
 
 	/// <summary>解除页面和语言资源订阅。</summary>
 	public void Dispose()
 	{
+		_disposed = true;
 		if (_viewModel is not null)
 		{
 			_viewModel.PropertyChanged -= OnViewModelPropertyChanged;

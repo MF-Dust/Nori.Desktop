@@ -5,14 +5,6 @@ import {describe, expect, it} from "vitest"
 const ROOT = resolve(__dirname, "../..")
 const SRC = join(ROOT, "src")
 
-/**
- * 尚未完成原子化迁移的文件 (P2 已全量清空)
- *
- * 迁移完成的文件不允许再出现 scoped 样式块、px 长度、裸 hex 色值与超小字号。
- * 名单保留作为逗号后置的逗号阀: 日后新增组件如果要临时开特例, 必须显式列在这里。
- */
-const LEGACY_FILES: string[] = []
-
 /** 裸 hex 的唯一豁免: 设计令牌单一色源 */
 const COLOR_SOURCE = "assets/style/tokens.ts"
 
@@ -29,7 +21,7 @@ const listFiles = (dir: string, extension: string): string[] => {
 const relativeSrc = (file: string): string => relative(SRC, file).replace(/\\/g, "/")
 
 const migratedVueFiles = (): string[] =>
-	listFiles(SRC, ".vue").filter(file => !LEGACY_FILES.includes(relativeSrc(file)))
+	listFiles(SRC, ".vue")
 
 /** 参与裸 hex 检查的 .ts 文件: src 下全覆盖, 只放过单一色源 */
 const scannedTsFiles = (): string[] =>
@@ -119,11 +111,4 @@ describe("样式规范静态检查", () => {
 		expect(FIRST_RUN).toContain("relative flex-1 w-full min-h-0 scroll-area flex flex-col")
 	})
 
-	it("legacy 名单只包含真实存在且仍未迁移的文件", () => {
-		const ALL = new Set(listFiles(SRC, ".vue").map(relativeSrc))
-		for (const file of LEGACY_FILES) {
-			expect(ALL.has(file), `${file} 已不存在, 请从 legacy 名单移除`).toBe(true)
-			expect(readFileSync(join(SRC, file), "utf8")).toContain("<style scoped")
-		}
-	})
 })

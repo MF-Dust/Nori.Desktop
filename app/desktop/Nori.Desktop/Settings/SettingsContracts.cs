@@ -129,6 +129,15 @@ public interface ISettingsPage
 /// <summary>页面导航项。</summary>
 public sealed class SettingsPageItemViewModel(SettingsPageBase page) : SettingsObservableObject
 {
+	private bool _isSelected;
+
+	/// <summary>当前页面是否被选中。</summary>
+	public bool IsSelected
+	{
+		get => _isSelected;
+		internal set => SetProperty(ref _isSelected, value);
+	}
+
 	/// <summary>页面实例。</summary>
 	public SettingsPageBase Page { get; } = page;
 

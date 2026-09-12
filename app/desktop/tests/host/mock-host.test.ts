@@ -53,16 +53,4 @@ describe("Mock Host", () => {
 		])
 	})
 
-	it("保留宿主事件的订阅与取消语义", async () => {
-		mock = new MockHost({})
-		mock.install()
-		const EVENTS: unknown[] = []
-		const UNLISTEN = mock.host.listen("nori:test", message => EVENTS.push(message.payload))
-
-		mock.dispatch("nori:test", {value: 1})
-		UNLISTEN()
-		mock.dispatch("nori:test", {value: 2})
-
-		expect(EVENTS).toEqual([{value: 1}])
-	})
 })

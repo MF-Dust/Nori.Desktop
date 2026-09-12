@@ -25,6 +25,7 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 	public NativeSettingsPagePresenter()
 	{
 		DataContextChanged += OnDataContextChanged;
+		ActualThemeVariantChanged += (_, _) => RefreshThemeBrushes();
 		SettingsLocalization.Changed += OnLanguageChanged;
 		AttachedToVisualTree += (_, _) => Build();
 	}
@@ -627,11 +628,8 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 		return brush;
 	}
 
-	/// <inheritdoc />
-	protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+	private void RefreshThemeBrushes()
 	{
-		base.OnPropertyChanged(change);
-		if (change.Property != ActualThemeVariantProperty) return;
 		// 稳定控件树共用可变画刷，系统主题切换时只更新颜色。
 		foreach ((string key, SolidColorBrush brush) in _themeBrushes)
 			brush.Color = ((ISolidColorBrush)SettingsBrushes.Resolve(this, key)).Color;

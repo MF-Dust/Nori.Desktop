@@ -160,6 +160,7 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 	/// <summary>切换设置页。</summary>
 	public void Navigate(string? page)
 	{
+		if (_disposed) return;
 		if (!string.IsNullOrWhiteSpace(page) && _pages.TryGetValue(page, out SettingsPageBase? selected))
 		{
 			bool changed = !ReferenceEquals(CurrentPage, selected);
@@ -247,6 +248,7 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 		}
 		// 字段落盘后再取消页面查询，保证关闭时不会因共享令牌取消最后一次保存。
 		_lifetimeCts.Cancel();
+		if (_refreshTask is not null) await _refreshTask.ConfigureAwait(false);
 		foreach (SettingsPageBase page in _pages.Values) await page.PrepareShutdownAsync(saveCts.Token).ConfigureAwait(false);
 		_disposed = true;
 	}

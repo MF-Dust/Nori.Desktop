@@ -1806,7 +1806,7 @@ public class BridgeCommandsTests : IDisposable
 	});
 
 	[Fact]
-	public Task NativeSettingsPagesSurviveAttachmentAndNavigation() => WithSettingsUiAsync(() =>
+	public Task NativeSettingsPagesSurviveAttachmentAndNavigation() => WithSettingsUiAsync(async () =>
 	{
 		Window window = new() {Width = 720, Height = 480};
 		using SettingsService service = new(_services, window);
@@ -1819,6 +1819,7 @@ public class BridgeCommandsTests : IDisposable
 			{
 				window.Content = null;
 				viewModel.Navigate(key);
+				await viewModel.RefreshSnapshotAsync();
 				presenter.DataContext = viewModel.CurrentPage;
 				object? content = presenter.Content;
 				window.Content = presenter;
@@ -1843,7 +1844,6 @@ public class BridgeCommandsTests : IDisposable
 			presenter.DataContext = null;
 			window.Close();
 		}
-		return Task.CompletedTask;
 	});
 
 	[Theory]

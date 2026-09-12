@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Markup.Xaml.Styling;
 
 namespace Nori.Desktop.Settings.Pages;
 
@@ -38,7 +39,7 @@ internal static class NativeSettingsDialogs
 		ScrollViewer scroll = new()
 		{
 			Content = new TextBlock {Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 640},
-			MaxHeight = 560,
+			MaxHeight = Math.Max(120, owner.ClientSize.Height - 140),
 		};
 		body.Children.Add(scroll);
 		Button close = new() {Content = NativeSettingsResources.Get("common.close"), HorizontalAlignment = HorizontalAlignment.Right, MinWidth = 88};
@@ -76,7 +77,7 @@ internal static class NativeSettingsDialogs
 		ArgumentNullException.ThrowIfNull(fields);
 		Dictionary<string, TextBox> editors = new(StringComparer.Ordinal);
 		StackPanel body = new() {Spacing = 12, Margin = new Avalonia.Thickness(24)};
-		ScrollViewer fieldScroll = new() {MaxHeight = 590};
+		ScrollViewer fieldScroll = new() {MaxHeight = Math.Max(120, owner.ClientSize.Height - 160)};
 		StackPanel fieldPanel = new() {Spacing = 10};
 		foreach (Field field in fields)
 		{
@@ -112,8 +113,10 @@ internal static class NativeSettingsDialogs
 		return editors.ToDictionary(pair => pair.Key, pair => pair.Value.Text ?? string.Empty, StringComparer.Ordinal);
 	}
 
-	private static Window CreateWindow(string title, Control content, double width = 500) => new()
+	internal static Window CreateWindow(string title, Control content, double width = 500)
 	{
+		Window dialog = new()
+		{
 		Title = title,
 		Width = width,
 		MinWidth = 420,
@@ -122,5 +125,11 @@ internal static class NativeSettingsDialogs
 		CanResize = true,
 		WindowStartupLocation = WindowStartupLocation.CenterOwner,
 		Content = content,
-	};
+		};
+		dialog.Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/"))
+		{
+			Source = new Uri("avares://Nori.Desktop/Settings/SettingsTheme.axaml"),
+		});
+		return dialog;
+	}
 }

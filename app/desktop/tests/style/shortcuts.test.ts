@@ -23,16 +23,6 @@ const SOURCE_EXTENSIONS = [".vue", ".ts"]
 const TOKEN_SOURCE_DIR = join(SRC, "assets", "style")
 
 /**
- * 刻意保留、暂时无人使用的 shortcut (键为 shortcut 名, 值为保留理由)
- *
- * 只放"成套刻度里补齐的档位"。名单被下面的自检看守: 条目必须仍是已声明的 shortcut
- * 且写清理由; 等组件用上了就该把它从名单里删掉, 别让白名单变成掩盖腐烂的垃圾场。
- */
-const INTENTIONAL_UNUSED: Record<string, string> = {
-	"focus-ring-within": "复杂设置页已迁移到原生 Avalonia，保留该无障碍快捷方式供剩余 Vue 表单复用",
-}
-
-/**
  * 手抄展开式的高价值检测项
  *
  * 同一段 class 文本里凑够 threshold 个特征类, 就说明在绕过 shortcut 重新推导它。
@@ -44,14 +34,8 @@ const HAND_ROLL_GUARDS: {shortcut: string, signature: string[], threshold: numbe
 		signature: ["outline-none", "outline-2", "outline-offset-[0.2rem]", "outline-nori-teal-bright"],
 		threshold: 2,
 		// focus-within 是"子控件获得焦点时给包裹层描边", 与 focus-ring 的 focus-visible
-		// 语义不同, 不能互换 —— 那一类交给下面的 focus-ring-within 看守, 两条各管一个伪类。
+		// 语义不同, 不能互换, 排除这类独立的包裹层样式。
 		exclude: /focus-within:/,
-	},
-	{
-		shortcut: "focus-ring-within",
-		signature: ["outline", "outline-2", "outline-offset-[0.2rem]", "outline-nori-teal-bright"],
-		threshold: 3,
-		exclude: /focus-visible:/,
 	},
 	{
 		// 单选药丸的选中/未选中态: 两串各自被四处抄过, 描边与光晕最容易先漂
@@ -184,16 +168,9 @@ describe("uno shortcut 与实际用法一致", () => {
 
 	it("每个 shortcut 都被 src 用到 (或被在用的 shortcut 组合进去)", () => {
 		const DEAD = [...SHORTCUTS.keys()]
-			.filter(name => !REACHED_USED.has(name) && !(name in INTENTIONAL_UNUSED))
-			.map(name => `${name} (uno.config.ts): 无人使用, 请删掉或写进 INTENTIONAL_UNUSED 并说明理由`)
+			.filter(name => !REACHED_USED.has(name))
+			.map(name => `${name} (uno.config.ts): 无人使用, 请删除该 shortcut`)
 		expect(DEAD).toEqual([])
-	})
-
-	it("INTENTIONAL_UNUSED 名单不腐烂 (条目仍是已声明的 shortcut 且写了理由)", () => {
-		for (const [name, reason] of Object.entries(INTENTIONAL_UNUSED)) {
-			expect(SHORTCUTS.has(name), `${name} 已不是 shortcut, 请从 INTENTIONAL_UNUSED 移除`).toBe(true)
-			expect(reason.length, `${name} 必须写清保留理由`).toBeGreaterThan(0)
-		}
 	})
 
 	it("手抄检测项与 shortcut 定义同步 (特征类必须还在展开式里)", () => {

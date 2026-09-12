@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Text.Json;
 
 namespace Nori.Desktop.Settings.Pages;
@@ -191,6 +190,8 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	public async Task<SkillItem> LoadDetailsAsync(SkillItem skill, CancellationToken cancellationToken = default)
 	{
 		ArgumentNullException.ThrowIfNull(skill);
+		// 未安装的市场技能正文已随目录返回，不能调用仅支持已安装条目的导出命令。
+		if (!InstalledIds.Contains(skill.Id)) return skill;
 		JsonElement result = await ExecuteAsync("skills_export", new {id = skill.Id}, cancellationToken).ConfigureAwait(true);
 		string raw = SettingsJson.RawOrString(result);
 		JsonElement? exported = SettingsJson.TryParse(raw);

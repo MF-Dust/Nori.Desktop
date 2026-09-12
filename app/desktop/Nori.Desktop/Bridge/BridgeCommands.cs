@@ -1239,8 +1239,13 @@ public sealed class BridgeCommands
 	{
 		RequireMainVoid(source);
 		IReadOnlyList<McpServerStatusInfo> servers = await _services.Mcp.GetServersAsync();
-		await Runtime.RefreshMcpToolsAsync();
-		Runtime.InvalidateSnapshot("mcp", "tools");
+		// 原生设置已订阅状态通知，读取列表不能再触发同一页面的刷新。
+		// 连接、断开与配置写入命令仍负责更新工具注册表并广播状态。
+		if (source is not INativeSettingsSource)
+		{
+			await Runtime.RefreshMcpToolsAsync();
+			Runtime.InvalidateSnapshot("mcp", "tools");
+		}
 		return servers;
 	}
 

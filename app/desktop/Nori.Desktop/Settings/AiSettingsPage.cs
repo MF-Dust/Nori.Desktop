@@ -1,5 +1,6 @@
 using System.Text.Json;
-using System.Windows.Input;
+using System.Globalization;
+using Avalonia.Threading;
 
 namespace Nori.Desktop.Settings;
 
@@ -24,6 +25,11 @@ public sealed class AiSettingsPage : SettingsPageBase
 	private readonly SettingsFieldViewModel _embeddingApiKey;
 	private readonly SettingsFieldViewModel _embeddingDimensions;
 	private readonly List<string> _models = [];
+	private readonly SettingsFieldViewModel _modelPicker;
+	private readonly SettingsFieldViewModel _chatResult;
+	private readonly SettingsFieldViewModel _embeddingResult;
+	private bool _chatBusy;
+	private bool _embeddingBusy;
 
 	/// <summary>创建 AI 设置页。</summary>
 	public AiSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
@@ -32,7 +38,7 @@ public sealed class AiSettingsPage : SettingsPageBase
 		SettingsSectionViewModel chat = AddSection(new("对话服务", "Chat provider"));
 		_provider = AddField(chat, "provider", new("服务商", "Provider"), new("选择兼容的对话 API。", "Choose a compatible chat API."), SettingsEditorKind.Choice,
 			snapshot => FirstString(snapshot, "openai", ["ai", "chat", "provider"], ["ai", "provider"]), "openai",
-			(value, token) => ExecuteAsync("settings_update_ai_providers", new { chat = new { provider = Convert.ToString(value) ?? "openai" } }, token),
+			(value, token) => SaveProviderAsync(Convert.ToString(value) ?? "openai", token),
 			options: ProviderOptions);
 		_baseUrl = AddField(chat, "baseUrl", new("接口地址", "Base URL"), new("自定义代理或兼容服务时填写。", "Use a custom proxy or compatible endpoint when needed."), SettingsEditorKind.Text,
 			snapshot => FirstString(snapshot, "https://api.openai.com/v1", ["ai", "chat", "baseUrl"], ["ai", "baseUrl"]), "https://api.openai.com/v1",
@@ -43,12 +49,21 @@ public sealed class AiSettingsPage : SettingsPageBase
 		_model = AddField(chat, "model", new("对话模型", "Chat model"), new("填写模型 ID，或使用获取模型列表。", "Enter a model ID or fetch the provider model list."), SettingsEditorKind.Text,
 			snapshot => FirstString(snapshot, string.Empty, ["ai", "chat", "model"], ["ai", "model"]), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_ai_providers", new { chat = new { model = Convert.ToString(value)?.Trim() ?? string.Empty } }, token));
+		_modelPicker = AddField(chat, "modelPicker", new("可用模型", "Available models"), new("获取列表后选择模型，也可在上方填写自定义 ID。", "Select a fetched model or enter a custom ID above."), SettingsEditorKind.Choice,
+			_ => _model.Text, string.Empty,
+			(value, token) => ExecuteAsync("settings_update_ai_providers", new {chat = new {model = Convert.ToString(value) ?? string.Empty}}, token));
+		_modelPicker.IsVisible = false;
+
 		_persona = AddField(chat, "persona", new("个性设定", "Persona"), new("可选的角色和语气说明。", "Optional role and tone instructions."), SettingsEditorKind.Multiline,
 			snapshot => FirstString(snapshot, string.Empty, ["ai", "chat", "persona"], ["ai", "persona"]), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_ai_providers", new { persona = Convert.ToString(value) ?? string.Empty }, token));
 
 		AddAction(chat, "fetchModels", new("获取模型", "Fetch models"), new("使用当前服务商列出可用模型。", "List models from the selected provider."), new SettingsCommand(_ => _ = FetchModelsAsync()));
 		AddAction(chat, "testChat", new("测试对话连接", "Test chat connection"), new("发送一次最小连接测试。", "Run a minimal connection test."), new SettingsCommand(_ => _ = TestChatAsync()));
+
+		_chatResult = AddField(chat, "chatResult", new("对话连接结果", "Chat connection result"), new("", ""), SettingsEditorKind.Multiline,
+			_ => _chatResult?.Text ?? string.Empty, string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
+		_chatResult.IsVisible = false;
 
 		SettingsSectionViewModel embedding = AddSection(new("向量服务", "Embedding provider"));
 		_embeddingModel = AddField(embedding, "embeddingModel", new("Embedding 模型", "Embedding model"), new("用于记忆和知识库检索。", "Used for memory and knowledge retrieval."), SettingsEditorKind.Text,
@@ -60,78 +75,178 @@ public sealed class AiSettingsPage : SettingsPageBase
 		_embeddingApiKey = AddField(embedding, "embeddingApiKey", new("Embedding 密钥", "Embedding API key"), new("保存成功后输入框自动清空。", "The input is cleared after a successful save."), SettingsEditorKind.Password,
 			snapshot => SettingsSnapshotReader.SecretConfigured(snapshot, "ai", "embedding", "hasApiKey") || SettingsSnapshotReader.SecretConfigured(snapshot, "embedding", "hasApiKey"), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_ai_providers", new { embedding = new { apiKey = Convert.ToString(value)?.Trim() ?? string.Empty } }, token), secret: true);
-		_embeddingDimensions = AddField(embedding, "embeddingDimensions", new("向量维度", "Dimensions"), new("兼容服务需要时填写数字。", "Set a number when the compatible service requires it."), SettingsEditorKind.Number,
-			snapshot => FirstNumber(snapshot, 0, ["ai", "embedding", "dimensions"], ["embedding", "dimensions"]), 0,
-			(value, token) => ExecuteAsync("settings_update_ai_providers", new { embedding = new { dimensions = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty } }, token),
-			minimum: 0, maximum: 65536, increment: 1);
+		_embeddingDimensions = AddField(embedding, "embeddingDimensions", new("向量维度", "Dimensions"), new("留空使用模型默认维度；自定义维度必须为正整数。", "Leave empty for model defaults, or enter a positive integer."), SettingsEditorKind.Text,
+			snapshot => FirstString(snapshot, string.Empty, ["ai", "embedding", "dimensions"], ["embedding", "dimensions"]), string.Empty,
+			(value, token) => ExecuteAsync("settings_update_ai_providers", new {embedding = new {dimensions = NormalizeDimensions(Convert.ToString(value))}}, token));
 		AddAction(embedding, "testEmbedding", new("测试向量连接", "Test embedding connection"), new("检查 Embedding 地址、密钥和模型。", "Check the embedding endpoint, key and model."), new SettingsCommand(_ => _ = TestEmbeddingAsync()));
+		_embeddingResult = AddField(embedding, "embeddingResult", new("向量连接结果", "Embedding connection result"), new("", ""), SettingsEditorKind.Multiline,
+			_ => _embeddingResult?.Text ?? string.Empty, string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
+		_embeddingResult.IsVisible = false;
+	}
+
+	internal override void ApplySnapshot(JsonElement snapshot)
+	{
+		base.ApplySnapshot(snapshot);
+		UpdateModelOptions();
+	}
+
+	private void UpdateModelOptions()
+	{
+		IEnumerable<string> values = new[] {_model.Text}.Concat(_models).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal);
+		_modelPicker.SetOptions(values.Select(value => new SettingsOption(value, new(value, value))));
+		_modelPicker.IsVisible = _models.Count > 0;
+	}
+
+	private async Task<JsonElement> SaveProviderAsync(string provider, CancellationToken cancellationToken)
+	{
+		string address = await Dispatcher.UIThread.InvokeAsync(() => DefaultBaseUrl(provider, _baseUrl.Text));
+		JsonElement result = await ExecuteAsync("settings_update_ai_providers", new {chat = new {provider, baseUrl = address}}, cancellationToken).ConfigureAwait(false);
+		await Dispatcher.UIThread.InvokeAsync(() =>
+		{
+			_models.Clear();
+			UpdateModelOptions();
+		});
+		return result;
+	}
+
+	/// <summary>更换协议时只替换已知默认地址，保留自定义代理。</summary>
+	internal static string DefaultBaseUrl(string provider, string current)
+	{
+		Dictionary<string, string> defaults = new(StringComparer.Ordinal)
+		{
+			["openai"] = "https://api.openai.com/v1",
+			["openai_responses"] = "https://api.openai.com/v1",
+			["anthropic"] = "https://api.anthropic.com/v1",
+			["google"] = "https://generativelanguage.googleapis.com/v1beta",
+		};
+		string address = current.Trim();
+		return (address.Length == 0 || defaults.Values.Contains(address, StringComparer.OrdinalIgnoreCase))
+			&& defaults.TryGetValue(provider, out string? next) ? next : address;
+	}
+
+	/// <summary>校验可选向量维度，空值表示恢复模型默认。</summary>
+	internal static string NormalizeDimensions(string? value)
+	{
+		string text = value?.Trim() ?? string.Empty;
+		if (text.Length == 0) return string.Empty;
+		if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int dimensions) || dimensions <= 0)
+			throw new ArgumentException("向量维度必须为正整数，或留空使用默认值。");
+		return dimensions.ToString(CultureInfo.InvariantCulture);
 	}
 
 	private async Task FetchModelsAsync()
 	{
+		if (_chatBusy) return;
+		SetActionsBusy(false, true);
 		try
 		{
+			if (!await FlushConnectionSettingsAsync(false, LifetimeToken).ConfigureAwait(true)) return;
+			ApplySnapshot(await Service.GetSnapshotAsync(LifetimeToken).ConfigureAwait(true));
 			string provider = _provider.Selected;
 			string baseUrl = _baseUrl.Text.Trim();
-			string key = _apiKey.Text.Trim();
-			JsonElement result = await ExecuteAsync("llm_fetch_models", new { provider, baseUrl, apiKey = key }, LifetimeToken).ConfigureAwait(false);
+			if (baseUrl.Length == 0) throw new InvalidOperationException("请先填写接口地址。");
+			JsonElement result = await ExecuteAsync("llm_fetch_models", new {provider, baseUrl}, LifetimeToken).ConfigureAwait(true);
 			_models.Clear();
 			if (result.ValueKind == JsonValueKind.Array)
-			{
-				foreach (JsonElement item in result.EnumerateArray())
-					if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString())) _models.Add(item.GetString()!);
-			}
-			if (_models.Count == 0) SetStatus("没有找到可用模型。 / No models were returned.");
-			else
-			{
-				_model.Text = _models[0];
-				SetStatus($"已找到 {_models.Count} 个模型。 / {_models.Count} models found.");
-			}
+				_models.AddRange(result.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
+					.Select(item => item.GetString()!).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal));
+			UpdateModelOptions();
+			if (_models.Count == 0) SetConnectionResult(false, Text("没有找到可用模型。", "No models were returned."));
+			else SetConnectionResult(false, Text($"已找到 {_models.Count} 个模型，可在列表中选择。", $"{_models.Count} models available to select."));
 		}
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (OperationCanceledException) { }
+		catch (Exception exception) { SetConnectionResult(false, exception.Message); }
+		finally { SetActionsBusy(false, false); }
 	}
+
+	private void SetActionsBusy(bool embedding, bool busy)
+	{
+		if (embedding) _embeddingBusy = busy;
+		else _chatBusy = busy;
+		foreach (SettingsFieldViewModel field in Sections.SelectMany(section => section.Fields))
+		{
+			if (embedding && field.Key == "testEmbedding") field.IsReadOnly = busy;
+			if (!embedding && field.Key is "fetchModels" or "testChat") field.IsReadOnly = busy;
+		}
+		if (busy) SetConnectionResult(embedding, Text("正在连接服务…", "Connecting to the provider…"));
+	}
+
+	/// <summary>连接探测只保存本组字段，另一组无效草稿不会阻断当前操作。</summary>
+	internal async Task<bool> FlushConnectionSettingsAsync(bool embedding, CancellationToken cancellationToken = default)
+	{
+		SettingsFieldViewModel[] fields = embedding
+			? [_embeddingModel, _embeddingBaseUrl, _embeddingApiKey, _embeddingDimensions]
+			: [_baseUrl, _apiKey, _model, _modelPicker, _provider];
+		foreach (SettingsFieldViewModel field in fields)
+		{
+			if (await field.FlushPendingSavesAsync(cancellationToken).ConfigureAwait(true)) continue;
+			SetConnectionResult(embedding, field.Label + ": " + field.ErrorText);
+			return false;
+		}
+		return true;
+	}
+
+	/// <summary>将探测结果保留在对应卡片中，不覆盖另一组结果。</summary>
+	internal void SetConnectionResult(bool embedding, string message)
+	{
+		SettingsFieldViewModel field = embedding ? _embeddingResult : _chatResult;
+		field.Text = message;
+		field.IsVisible = message.Length > 0;
+	}
+
+	private static string Text(string chinese, string english) => SettingsLocalization.IsEnglish ? english : chinese;
 
 	private async Task TestChatAsync()
 	{
+		if (_chatBusy) return;
+		SetActionsBusy(false, true);
 		try
 		{
+			if (!await FlushConnectionSettingsAsync(false, LifetimeToken).ConfigureAwait(true)) return;
+			ApplySnapshot(await Service.GetSnapshotAsync(LifetimeToken).ConfigureAwait(true));
 			JsonElement result = await ExecuteAsync("ai_test_connection", new
 			{
 				target = "chat",
 				provider = _provider.Selected,
 				baseUrl = _baseUrl.Text.Trim(),
-				apiKey = _apiKey.Text.Trim(),
 				model = _model.Text.Trim(),
-			}, LifetimeToken).ConfigureAwait(false);
-			SetStatus(ConnectionStatus(result));
+			}, LifetimeToken).ConfigureAwait(true);
+			SetConnectionResult(false, ConnectionStatus(result));
 		}
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (OperationCanceledException) { }
+		catch (Exception exception) { SetConnectionResult(false, exception.Message); }
+		finally { SetActionsBusy(false, false); }
 	}
 
 	private async Task TestEmbeddingAsync()
 	{
+		if (_embeddingBusy) return;
+		SetActionsBusy(true, true);
 		try
 		{
+			if (!await FlushConnectionSettingsAsync(true, LifetimeToken).ConfigureAwait(true)) return;
+			ApplySnapshot(await Service.GetSnapshotAsync(LifetimeToken).ConfigureAwait(true));
 			JsonElement result = await ExecuteAsync("ai_test_connection", new
 			{
 				target = "embedding",
 				baseUrl = _embeddingBaseUrl.Text.Trim(),
-				apiKey = _embeddingApiKey.Text.Trim(),
 				model = _embeddingModel.Text.Trim(),
-				dimensions = _embeddingDimensions.Number.ToString(System.Globalization.CultureInfo.InvariantCulture),
-			}, LifetimeToken).ConfigureAwait(false);
-			SetStatus(ConnectionStatus(result));
+				dimensions = NormalizeDimensions(_embeddingDimensions.Text),
+			}, LifetimeToken).ConfigureAwait(true);
+			SetConnectionResult(true, ConnectionStatus(result));
 		}
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (OperationCanceledException) { }
+		catch (Exception exception) { SetConnectionResult(true, exception.Message); }
+		finally { SetActionsBusy(true, false); }
 	}
 
 	private static string ConnectionStatus(JsonElement result)
 	{
 		if (result.ValueKind == JsonValueKind.Object && result.TryGetProperty("success", out JsonElement success) && success.ValueKind == JsonValueKind.True)
-			return "连接成功。 / Connection succeeded.";
+			return Text("连接成功。", "Connection succeeded.");
 		if (result.ValueKind == JsonValueKind.Object && result.TryGetProperty("message", out JsonElement message))
-			return message.GetString() ?? "连接失败。 / Connection failed.";
-		return "连接失败。 / Connection failed.";
+			return message.GetString() ?? Text("连接失败。", "Connection failed.");
+		return Text("连接失败。", "Connection failed.");
 	}
 
 	private static string FirstString(JsonElement root, string fallback, params string[][] paths)
@@ -144,15 +259,4 @@ public sealed class AiSettingsPage : SettingsPageBase
 		return fallback;
 	}
 
-	private static double FirstNumber(JsonElement root, double fallback, params string[][] paths)
-	{
-		foreach (string[] path in paths)
-		{
-			JsonElement? value = SettingsSnapshotReader.Get(root, path);
-			if (value is not { } element) continue;
-			if (element.ValueKind == JsonValueKind.Number && element.TryGetDouble(out double number)) return number;
-			if (double.TryParse(element.ToString(), out number)) return number;
-		}
-		return fallback;
-	}
 }

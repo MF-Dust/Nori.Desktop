@@ -1,7 +1,8 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
+using Avalonia.Data;
+using Avalonia.Threading;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Nori.Desktop.Settings.Pages;
@@ -15,12 +16,14 @@ public sealed class SettingsPagePresenter : ContentControl
 	private TextBlock? _error;
 	private TextBlock? _status;
 	private NativeSettingsPagePresenter? _complex;
+	private SettingsBrushPalette? _palette;
 
 	/// <summary>创建页面呈现器。</summary>
 	public SettingsPagePresenter()
 	{
 		DataContextChanged += OnDataContextChanged;
 		AttachedToVisualTree += (_, _) => Build();
+		HorizontalContentAlignment = HorizontalAlignment.Stretch;
 	}
 
 	/// <summary>在绑定时序不确定时显式刷新当前页面。</summary>
@@ -31,6 +34,7 @@ public sealed class SettingsPagePresenter : ContentControl
 
 	private void OnDataContextChanged(object? sender, EventArgs args)
 	{
+		if (ReferenceEquals(_page, DataContext) && Content is not null) return;
 		_complex?.Dispose();
 		_complex = null;
 		if (_page is not null) _page.PropertyChanged -= OnPagePropertyChanged;
@@ -54,7 +58,7 @@ public sealed class SettingsPagePresenter : ContentControl
 	{
 		// 复杂页面由专用呈现器负责，挂载时不能用空的普通分组覆盖它。
 		if (_page is null or NativeSettingsPageBase) return;
-		StackPanel root = new() { Spacing = 10, Margin = new Thickness(2, 0, 14, 20) };
+		StackPanel root = new() { Spacing = 14, Margin = new Thickness(0) };
 		foreach (SettingsSectionViewModel section in _page.Sections)
 		{
 			Border card = new()
@@ -62,9 +66,10 @@ public sealed class SettingsPagePresenter : ContentControl
 				Background = Brush("SettingsCardBrush"),
 				BorderBrush = Brush("SettingsBorderBrush"),
 				BorderThickness = new Thickness(1),
-				CornerRadius = new CornerRadius(8),
-				Padding = new Thickness(16, 12),
+				CornerRadius = new CornerRadius(12),
+				Padding = new Thickness(20, 16),
 			};
+			card.Bind(IsVisibleProperty, new Binding(nameof(SettingsSectionViewModel.IsVisible)) {Source = section});
 			StackPanel content = new() { Spacing = 3 };
 			content.Children.Add(new TextBlock
 			{
@@ -72,7 +77,7 @@ public sealed class SettingsPagePresenter : ContentControl
 				FontSize = 16,
 				FontWeight = FontWeight.SemiBold,
 				Foreground = Brush("SettingsPrimaryBrush"),
-				Margin = new Thickness(0, 0, 0, 4),
+				Margin = new Thickness(0, 0, 0, 8),
 			});
 			foreach (SettingsFieldViewModel field in section.Fields)
 				content.Children.Add(new SettingsFieldPresenter { DataContext = field });
@@ -82,7 +87,7 @@ public sealed class SettingsPagePresenter : ContentControl
 
 		if (_page is ProactiveSettingsPage proactive)
 		{
-			root.Children.Add(BuildReminderList(proactive));
+			root.Children.Add(new ProactiveReminderList {DataContext = proactive});
 		}
 
 		_error = new TextBlock
@@ -106,52 +111,13 @@ public sealed class SettingsPagePresenter : ContentControl
 		Content = root;
 	}
 
-	private Control BuildReminderList(ProactiveSettingsPage page)
-	{
-		ItemsControl items = new()
-		{
-			ItemsSource = page.Reminders,
-			ItemTemplate = new FuncDataTemplate<ProactiveSettingsPage.ReminderItemViewModel>((item, _) =>
-			{
-				Grid row = new()
-				{
-					ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-					Margin = new Thickness(0, 4),
-				};
-				StackPanel details = new() { Spacing = 2 };
-				details.Children.Add(new TextBlock { Text = item.Content, Foreground = Brush("SettingsPrimaryBrush") });
-				details.Children.Add(new TextBlock { Text = item.TriggerAt.ToLocalTime().ToString("g"), Foreground = Brush("SettingsSecondaryBrush"), FontSize = 12 });
-				Grid.SetColumn(details, 0);
-				row.Children.Add(details);
-				Button cancel = new() { Content = "取消 / Cancel", Command = item.CancelCommand, Margin = new Thickness(8, 0, 0, 0) };
-				Grid.SetColumn(cancel, 1);
-				row.Children.Add(cancel);
-				return row;
-			}),
-			Margin = new Thickness(0, 4, 0, 0),
-		};
-		Border card = new()
-		{
-			Background = Brush("SettingsCardBrush"),
-			BorderBrush = Brush("SettingsBorderBrush"),
-			BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(8),
-			Padding = new Thickness(16, 12),
-			Child = new StackPanel
-			{
-				Spacing = 4,
-				Children =
-				{
-					new TextBlock { Text = "现有提醒 / Existing reminders", FontSize = 16, FontWeight = FontWeight.SemiBold, Foreground = Brush("SettingsPrimaryBrush") },
-					items,
-				},
-			},
-		};
-		return card;
-	}
-
 	private void OnPagePropertyChanged(object? sender, PropertyChangedEventArgs args)
 	{
+		if (!Dispatcher.UIThread.CheckAccess())
+		{
+			Dispatcher.UIThread.Post(() => OnPagePropertyChanged(sender, args));
+			return;
+		}
 		if (_page is null) return;
 		if (args.PropertyName == nameof(SettingsPageBase.Sections))
 		{
@@ -170,5 +136,6 @@ public sealed class SettingsPagePresenter : ContentControl
 		}
 	}
 
-	private IBrush Brush(string key) => SettingsBrushes.Resolve(this, key);
+	private IBrush Brush(string key) => (_palette ??= new SettingsBrushPalette(this))[key];
+
 }

@@ -24,7 +24,12 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 	public IReadOnlyList<DebugLogItem> Logs
 	{
 		get => _logs;
-		private set => SetProperty(ref _logs, value);
+		private set
+		{
+			if (_logs.SequenceEqual(value)) return;
+			SetProperty(ref _logs, value);
+			NotifyChanged(nameof(FilteredLogs));
+		}
 	}
 
 	/// <summary>当前诊断信息。</summary>
@@ -98,7 +103,6 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 	{
 		await ExecuteAsync("clear_recent_logs", cancellationToken: cancellationToken).ConfigureAwait(true);
 		Logs = [];
-		NotifyChanged(nameof(Logs));
 	}
 
 	/// <summary>把当前日志复制到剪贴板。</summary>
@@ -160,7 +164,6 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 			SettingsJson.String(value, "level"),
 			SettingsJson.String(value, "source"),
 			SettingsJson.String(value, "message"))).ToArray();
-		NotifyChanged(nameof(FilteredLogs));
 	}
 
 	private async Task RefreshDiagnosticCoreAsync(CancellationToken cancellationToken)

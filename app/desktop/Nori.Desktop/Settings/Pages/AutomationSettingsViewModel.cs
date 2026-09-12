@@ -57,6 +57,9 @@ public sealed class AutomationSettingsViewModel : SettingsPageViewModelBase
 {
 	private AutomationStateModel _state = EmptyState;
 	private IReadOnlyList<AutomationAuditItem> _audit = [];
+	private bool _safeMode;
+	private bool _isSupported;
+	private bool _platformSupported;
 
 	/// <summary>创建自动化 ViewModel。</summary>
 	public AutomationSettingsViewModel(SettingsService service) : base(service) { }
@@ -76,7 +79,16 @@ public sealed class AutomationSettingsViewModel : SettingsPageViewModelBase
 	}
 
 	/// <summary>是否可用。</summary>
-	public bool IsSupported => State.Available || State.Capabilities.Count > 0 || State.UnavailableReason is null;
+	public bool IsSupported => _isSupported;
+
+	/// <summary>安全模式下不允许开启自动化能力。</summary>
+	public bool SafeMode => _safeMode;
+
+	/// <summary>平台支持且未进入安全模式时可以配置开关。</summary>
+	public bool CanConfigure => IsSupported && !SafeMode && _platformSupported;
+
+	/// <summary>桌面总开关与旧设置菜单保持相同投影。</summary>
+	public bool DesktopEnabled => State.AllowPointer || State.AllowKeyboard || State.AllowScroll;
 
 	/// <inheritdoc />
 	public override async Task RefreshAsync(CancellationToken cancellationToken = default)
@@ -85,7 +97,13 @@ public sealed class AutomationSettingsViewModel : SettingsPageViewModelBase
 		try
 		{
 			JsonElement snapshot = await Service.GetSnapshotAsync(cancellationToken).ConfigureAwait(true);
-			State = ParseState(SettingsJson.Object(snapshot, "automation"));
+			_safeMode = SettingsJson.Bool(SettingsJson.Object(snapshot, "app"), "safeMode");
+			_isSupported = SettingsJson.IsObject(SettingsJson.Object(snapshot, "automation"));
+			JsonElement detailed = _isSupported
+				? await Service.GetAutomationSnapshotAsync(cancellationToken).ConfigureAwait(true)
+				: default;
+			_platformSupported = SettingsJson.Bool(SettingsJson.Object(detailed, "capabilities"), "isWindows");
+			State = ParseState(detailed);
 			try
 			{
 				JsonElement browser = await Service.ExecuteAsync("automation_browser_status", cancellationToken: cancellationToken).ConfigureAwait(true);

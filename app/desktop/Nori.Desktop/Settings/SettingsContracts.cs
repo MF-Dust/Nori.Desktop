@@ -4,32 +4,8 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Windows.Input;
 using Avalonia.Controls;
-using Avalonia.Media;
-using Avalonia.Styling;
 
 namespace Nori.Desktop.Settings;
-
-internal static class SettingsBrushes
-{
-	public static IBrush Resolve(Control owner, string key)
-	{
-		if (owner.Resources.TryGetResource(key, owner.ActualThemeVariant, out object? value) && value is IBrush brush)
-			return brush;
-		bool dark = owner.ActualThemeVariant == ThemeVariant.Dark;
-		return new SolidColorBrush(Color.Parse(key switch
-		{
-			"SettingsWindowBrush" => dark ? "#202227" : "#F6F7F9",
-			"SettingsSidebarBrush" => dark ? "#191B1F" : "#ECEEF2",
-			"SettingsCardBrush" => dark ? "#292C32" : "#FFFFFF",
-			"SettingsBorderBrush" => dark ? "#3C414B" : "#D9DCE2",
-			"SettingsPrimaryBrush" => dark ? "#F2F4F7" : "#20242B",
-			"SettingsSecondaryBrush" => dark ? "#A9B0BC" : "#626A78",
-			"SettingsErrorBrush" => dark ? "#FFB4AB" : "#B42318",
-			"SettingsSelectionBrush" => dark ? "#243B5B" : "#DCEBFF",
-			_ => dark ? "#F2F4F7" : "#20242B",
-		}));
-	}
-}
 
 /// <summary>原生设置页支持的编辑器类型。</summary>
 public enum SettingsEditorKind
@@ -41,6 +17,7 @@ public enum SettingsEditorKind
 	Number,
 	Choice,
 	Slider,
+	Progress,
 	Action,
 }
 
@@ -81,6 +58,15 @@ public abstract class SettingsObservableObject : INotifyPropertyChanged
 /// <summary>设置分组中的一组字段。</summary>
 public sealed class SettingsSectionViewModel : SettingsObservableObject
 {
+	private bool _isVisible = true;
+
+	/// <summary>是否显示本节及其字段。</summary>
+	public bool IsVisible
+	{
+		get => _isVisible;
+		set => SetProperty(ref _isVisible, value);
+	}
+
 	private readonly SettingsText _titleText;
 	private string _language = "zh-CN";
 
@@ -129,6 +115,15 @@ public interface ISettingsPage
 /// <summary>页面导航项。</summary>
 public sealed class SettingsPageItemViewModel(SettingsPageBase page) : SettingsObservableObject
 {
+	private bool _isSelected;
+
+	/// <summary>当前页面是否被选中。</summary>
+	public bool IsSelected
+	{
+		get => _isSelected;
+		internal set => SetProperty(ref _isSelected, value);
+	}
+
 	/// <summary>页面实例。</summary>
 	public SettingsPageBase Page { get; } = page;
 
@@ -287,7 +282,7 @@ public abstract class SettingsPageBase : SettingsObservableObject, ISettingsPage
 	}
 
 	/// <summary>应用服务端快照，不覆盖用户正在编辑的字段。</summary>
-	internal void ApplySnapshot(JsonElement snapshot)
+	internal virtual void ApplySnapshot(JsonElement snapshot)
 	{
 		foreach (SettingsFieldViewModel field in _fields) field.ApplySnapshot(snapshot);
 	}
@@ -355,11 +350,13 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	private readonly SemaphoreSlim _saveGate = new(1, 1);
 	private readonly object _saveSync = new();
 	private readonly bool _secret;
-	private readonly bool _readOnly;
+	private bool _readOnly;
+	private bool _isVisible = true;
 	private CancellationTokenSource? _debounceCts;
 	private Task _pendingTask = Task.CompletedTask;
 	private bool _suppress;
 	private bool _dirty;
+	private long _editRevision;
 	private bool _prepared;
 	private string _language = "zh-CN";
 	private string _text = string.Empty;
@@ -423,44 +420,28 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	public string Text
 	{
 		get => _text;
-		set
-		{
-			if (!SetProperty(ref _text, value ?? string.Empty) || _suppress || _readOnly) return;
-			QueueSave();
-		}
+		set => SetEditorValue(ref _text, value ?? string.Empty, nameof(Text));
 	}
 
 	/// <summary>布尔编辑值。</summary>
 	public bool Boolean
 	{
 		get => _boolean;
-		set
-		{
-			if (!SetProperty(ref _boolean, value) || _suppress || _readOnly) return;
-			QueueSave();
-		}
+		set => SetEditorValue(ref _boolean, value, nameof(Boolean));
 	}
 
 	/// <summary>数字编辑值。</summary>
 	public double Number
 	{
 		get => _number;
-		set
-		{
-			if (!SetProperty(ref _number, value) || _suppress || _readOnly) return;
-			QueueSave();
-		}
+		set => SetEditorValue(ref _number, value, nameof(Number));
 	}
 
 	/// <summary>选择编辑值。</summary>
 	public string Selected
 	{
 		get => _selected;
-		set
-		{
-			if (!SetProperty(ref _selected, value ?? string.Empty) || _suppress || _readOnly) return;
-			QueueSave();
-		}
+		set => SetEditorValue(ref _selected, value ?? string.Empty, nameof(Selected));
 	}
 
 	/// <summary>选项列表。</summary>
@@ -497,10 +478,43 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	}
 
 	/// <summary>字段是否有未保存编辑。</summary>
-	public bool IsDirty => _dirty;
+	public bool IsDirty { get { lock (_saveSync) return _dirty; } }
 
 	/// <summary>只读字段不会触发保存。</summary>
-	public bool IsReadOnly => _readOnly;
+	public bool IsReadOnly
+	{
+		get => _readOnly;
+		set => SetProperty(ref _readOnly, value);
+	}
+
+	/// <summary>当前提供方或运行状态下是否显示本字段。</summary>
+	public bool IsVisible
+	{
+		get => _isVisible;
+		set => SetProperty(ref _isVisible, value);
+	}
+
+	/// <summary>替换选择项但保留当前编辑值，不把刷新选项当作用户保存。</summary>
+	public void SetOptions(IEnumerable<SettingsOption> options)
+	{
+		ArgumentNullException.ThrowIfNull(options);
+		SettingsOption[] next = options.ToArray();
+		string selected = _selected;
+		_suppress = true;
+		try
+		{
+			Options.Clear();
+			foreach (SettingsOption option in next)
+			{
+				option.DisplayText = option.Text.Resolve(_language);
+				Options.Add(option);
+			}
+			_selected = selected;
+			OnPropertyChanged(nameof(Options));
+			OnPropertyChanged(nameof(Selected));
+		}
+		finally { _suppress = false; }
+	}
 
 	internal void SetLanguage(string language)
 	{
@@ -513,12 +527,16 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 
 	internal void ApplySnapshot(JsonElement snapshot)
 	{
-		if (_dirty || _prepared) return;
-		object? value;
-		try { value = _snapshotReader(snapshot) ?? _fallback; }
-		catch { value = _fallback; }
-		bool configured = value is not null && (value is not string text || !string.IsNullOrEmpty(text));
-		ApplyValue(value, configured);
+		lock (_saveSync)
+		{
+			if (_dirty || _prepared) return;
+			object? value;
+			try { value = _snapshotReader(snapshot) ?? _fallback; }
+			catch { value = _fallback; }
+			bool configured = value is bool flag ? flag : value is not null && (value is not string text || !string.IsNullOrEmpty(text));
+			// 密钥快照只表达是否已配置，不能把 hasApiKey 的布尔值写进密码输入框。
+			ApplyValue(_secret ? string.Empty : value, configured);
+		}
 	}
 
 	private void ApplyValue(object? value, bool configured)
@@ -534,6 +552,7 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 					break;
 				case SettingsEditorKind.Number:
 				case SettingsEditorKind.Slider:
+				case SettingsEditorKind.Progress:
 					_number = value switch { double number => number, float single => single, int integer => integer, long longValue => longValue, string text when double.TryParse(text, out double parsed) => parsed, _ => Convert.ToDouble(value ?? 0) };
 					OnPropertyChanged(nameof(Number));
 					break;
@@ -558,55 +577,94 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	private object? ReadValue() => _editorKind switch
 	{
 		SettingsEditorKind.Boolean => _boolean,
-		SettingsEditorKind.Number or SettingsEditorKind.Slider => _number,
+		SettingsEditorKind.Number or SettingsEditorKind.Slider or SettingsEditorKind.Progress => _number,
 		SettingsEditorKind.Choice => _selected,
 		_ => _text,
 	};
 
-	private void QueueSave()
+	private void SetEditorValue<T>(ref T field, T value, string propertyName)
 	{
-		if (_prepared) return;
-		_dirty = true;
-		ErrorText = string.Empty;
-		OnPropertyChanged(nameof(IsDirty));
+		bool edited;
 		lock (_saveSync)
 		{
+			if (EqualityComparer<T>.Default.Equals(field, value)) return;
+			field = value;
+			edited = !_suppress && !_readOnly && !_prepared;
+			if (edited)
+			{
+				_editRevision++;
+				_dirty = true;
+			}
+		}
+		OnPropertyChanged(propertyName);
+		if (edited) QueueSave();
+	}
+
+	private void QueueSave()
+	{
+		lock (_saveSync)
+		{
+			if (_prepared || !_dirty) return;
+			_errorText = string.Empty;
 			_debounceCts?.Cancel();
 			_debounceCts?.Dispose();
 			_debounceCts = new CancellationTokenSource();
-			CancellationToken token = _debounceCts.Token;
-			_pendingTask = DebounceAndSaveAsync(token);
+			_pendingTask = DebounceAndSaveAsync(_debounceCts.Token);
 		}
+		OnPropertyChanged(nameof(ErrorText));
+		OnPropertyChanged(nameof(IsDirty));
 	}
 
 	private async Task DebounceAndSaveAsync(CancellationToken cancellationToken)
 	{
-		try { await Task.Delay(TimeSpan.FromMilliseconds(400), cancellationToken).ConfigureAwait(false); }
-		catch (OperationCanceledException) { return; }
-		await SaveNowAsync(cancellationToken).ConfigureAwait(false);
-	}
-
-	/// <summary>立即串行保存字段。</summary>
-	public async Task<bool> SaveNowAsync(CancellationToken cancellationToken = default)
-	{
-		if (!_dirty || _prepared) return !_dirty;
-		await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
 		try
 		{
+			await Task.Delay(TimeSpan.FromMilliseconds(400), cancellationToken).ConfigureAwait(false);
+			await SaveNowAsync(cancellationToken).ConfigureAwait(false);
+		}
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+	}
+
+	/// <summary>立即串行保存字段，只确认本次写入对应的编辑版本。</summary>
+	public async Task<bool> SaveNowAsync(CancellationToken cancellationToken = default)
+	{
+		lock (_saveSync)
+		{
 			if (!_dirty || _prepared) return !_dirty;
-			await _save(ReadValue(), cancellationToken).ConfigureAwait(false);
-			_dirty = false;
-			ErrorText = string.Empty;
-			IsConfigured = _secret ? true : IsConfigured;
+		}
+		try { await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false); }
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return false; }
+		long revision = 0;
+		try
+		{
+			object? value;
+			lock (_saveSync)
+			{
+				if (!_dirty || _prepared) return !_dirty;
+				revision = _editRevision;
+				value = ReadValue();
+			}
+			await _save(value, cancellationToken).ConfigureAwait(false);
+			lock (_saveSync)
+			{
+				// 保存期间的新输入仍然待保存，密码框也不能被较早的成功响应清空。
+				if (revision != _editRevision) return false;
+				_dirty = false;
+				_errorText = string.Empty;
+				if (_secret)
+				{
+					_isConfigured = true;
+					_text = string.Empty;
+				}
+			}
+			OnPropertyChanged(nameof(ErrorText));
 			if (_secret)
 			{
-				_suppress = true;
-				try { _text = string.Empty; }
-				finally { _suppress = false; }
+				OnPropertyChanged(nameof(IsConfigured));
 				OnPropertyChanged(nameof(Text));
 			}
 			OnPropertyChanged(nameof(IsDirty));
-			return true;
+			lock (_saveSync) return !_dirty;
 		}
 		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
 		{
@@ -614,7 +672,12 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 		}
 		catch (Exception exception)
 		{
-			ErrorText = exception.Message;
+			lock (_saveSync)
+			{
+				if (revision != _editRevision) return false;
+				_errorText = exception.Message;
+			}
+			OnPropertyChanged(nameof(ErrorText));
 			_page.ReportSaveFailure(this, exception);
 			return false;
 		}
@@ -624,16 +687,29 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	/// <inheritdoc />
 	public async Task<bool> FlushPendingSavesAsync(CancellationToken cancellationToken = default)
 	{
-		Task pending;
-		lock (_saveSync)
+		while (true)
 		{
-			_debounceCts?.Cancel();
-			pending = _pendingTask;
+			Task pending;
+			lock (_saveSync)
+			{
+				_debounceCts?.Cancel();
+				pending = _pendingTask;
+			}
+			try { await pending.WaitAsync(cancellationToken).ConfigureAwait(false); }
+			catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return false; }
+			long revision;
+			lock (_saveSync)
+			{
+				if (!_dirty) return true;
+				revision = _editRevision;
+			}
+			if (await SaveNowAsync(cancellationToken).ConfigureAwait(false)) return true;
+			lock (_saveSync)
+			{
+				if (cancellationToken.IsCancellationRequested || revision == _editRevision) return false;
+			}
+			// Flush 期间还有新编辑时继续收尾，不能把只保存旧版本报告为已全部保存。
 		}
-		try { await pending.ConfigureAwait(false); }
-		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-		if (!_dirty) return true;
-		return await SaveNowAsync(cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <inheritdoc />

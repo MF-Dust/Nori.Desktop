@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 
 namespace Nori.Desktop.Settings;
 
@@ -16,16 +17,37 @@ public sealed class SettingsFieldPresenter : ContentControl
 	private TextBlock? _description;
 	private TextBlock? _error;
 	private TextBox? _textBox;
+	private SelectableTextBlock? _readOnlyText;
 	private ToggleSwitch? _toggle;
 	private NumericUpDown? _numeric;
 	private Slider? _slider;
+	private ProgressBar? _progress;
 	private ComboBox? _combo;
+	private Control? _editor;
+	private Grid? _row;
+	private StackPanel? _editorStack;
+	private bool _updatingOptions;
+	private bool? _stacked;
+	private SettingsBrushPalette? _palette;
 
 	/// <summary>创建字段呈现器。</summary>
 	public SettingsFieldPresenter()
 	{
 		DataContextChanged += OnDataContextChanged;
-		AttachedToVisualTree += (_, _) => Build();
+		AttachedToVisualTree += (_, _) =>
+		{
+			if (_field is not null)
+			{
+				_field.PropertyChanged -= OnFieldPropertyChanged;
+				_field.PropertyChanged += OnFieldPropertyChanged;
+			}
+			Build();
+		};
+		DetachedFromVisualTree += (_, _) =>
+		{
+			if (_field is not null) _field.PropertyChanged -= OnFieldPropertyChanged;
+		};
+		HorizontalContentAlignment = HorizontalAlignment.Stretch;
 	}
 
 	private void OnDataContextChanged(object? sender, EventArgs args)
@@ -44,13 +66,22 @@ public sealed class SettingsFieldPresenter : ContentControl
 	private void Build()
 	{
 		if (_field is null) return;
+		_textBox = null;
+		_readOnlyText = null;
+		_toggle = null;
+		_numeric = null;
+		_slider = null;
+		_progress = null;
+		_combo = null;
+		_stacked = null;
 		_label = new TextBlock
 		{
 			Text = _field.Label,
-			FontSize = 14,
+			FontSize = 13,
 			FontWeight = FontWeight.SemiBold,
 			Foreground = Brush("SettingsPrimaryBrush"),
 			VerticalAlignment = VerticalAlignment.Top,
+			TextWrapping = TextWrapping.Wrap,
 		};
 		_description = new TextBlock
 		{
@@ -58,14 +89,17 @@ public sealed class SettingsFieldPresenter : ContentControl
 			FontSize = 12,
 			TextWrapping = TextWrapping.Wrap,
 			Foreground = Brush("SettingsSecondaryBrush"),
-			Margin = new Thickness(0, 4, 12, 0),
+			Margin = new Thickness(0, 4, 0, 0),
+			IsVisible = !string.IsNullOrWhiteSpace(_field.Description),
 		};
 		StackPanel labels = new() { Spacing = 1 };
 		labels.Children.Add(_label);
-		if (!string.IsNullOrWhiteSpace(_field.Description)) labels.Children.Add(_description);
+		labels.Children.Add(_description);
 
 		StackPanel editorStack = new() { Spacing = 4 };
 		Control editor = BuildEditor();
+		_editor = editor;
+		_editorStack = editorStack;
 		editorStack.Children.Add(editor);
 		_error = new TextBlock
 		{
@@ -91,12 +125,58 @@ public sealed class SettingsFieldPresenter : ContentControl
 		Grid.SetColumn(editorStack, 1);
 		row.Children.Add(labels);
 		row.Children.Add(editorStack);
+		_row = row;
 		Content = row;
+		UpdateFieldState();
+		UpdateLayoutForWidth(Bounds.Width);
+	}
+
+	/// <inheritdoc />
+	protected override Size MeasureOverride(Size availableSize)
+	{
+		UpdateLayoutForWidth(availableSize.Width);
+		return base.MeasureOverride(availableSize);
+	}
+
+	private void UpdateLayoutForWidth(double width)
+	{
+		if (_row is null || _editorStack is null || _field is null) return;
+		bool notice = _readOnlyText is not null && string.IsNullOrWhiteSpace(_readOnlyText.Text);
+		_editorStack.IsVisible = !notice;
+		bool stacked = notice || _field.EditorKind == SettingsEditorKind.Multiline || width < 560;
+		if (_stacked == stacked) return;
+		_stacked = stacked;
+		_row.ColumnDefinitions = new ColumnDefinitions(stacked ? "*" : "190,*");
+		_row.RowDefinitions = new RowDefinitions(stacked ? "Auto,Auto" : "Auto");
+		_row.ColumnSpacing = 14;
+		_row.RowSpacing = stacked ? 8 : 0;
+		Grid.SetColumn(_editorStack, stacked ? 0 : 1);
+		Grid.SetRow(_editorStack, stacked ? 1 : 0);
+	}
+
+	private void UpdateFieldState()
+	{
+		if (_field is null) return;
+		IsVisible = _field.IsVisible;
+		if (_readOnlyText is not null && !_field.IsReadOnly) { Build(); return; }
+		if (_editor is not null) _editor.IsEnabled = !_field.IsReadOnly || _editor is TextBox or SelectableTextBlock;
+		if (_textBox is not null) _textBox.IsReadOnly = _field.IsReadOnly;
+		if (_numeric is not null) _numeric.IsReadOnly = _field.IsReadOnly;
 	}
 
 	private Control BuildEditor()
 	{
 		if (_field is null) return new Border();
+		// 版本、状态与固定说明直接呈现为可复制文本，避免把信息伪装成空输入框。
+		if (_field.IsReadOnly && _field.EditorKind is SettingsEditorKind.Text or SettingsEditorKind.Multiline)
+		{
+			_readOnlyText = new SelectableTextBlock
+			{
+				Text = _field.Text, TextWrapping = TextWrapping.Wrap,
+				Foreground = Brush("SettingsPrimaryBrush"), FontSize = 13,
+			};
+			return _readOnlyText;
+		}
 		switch (_field.EditorKind)
 		{
 			case SettingsEditorKind.Boolean:
@@ -140,6 +220,9 @@ public sealed class SettingsFieldPresenter : ContentControl
 				};
 				_slider.ValueChanged += (_, args) => _field.Number = args.NewValue;
 				return _slider;
+			case SettingsEditorKind.Progress:
+				_progress = new ProgressBar {Minimum = 0, Maximum = 100, Value = _field.Number, Height = 6, HorizontalAlignment = HorizontalAlignment.Stretch};
+				return _progress;
 			case SettingsEditorKind.Choice:
 				_combo = new ComboBox
 				{
@@ -149,7 +232,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 				UpdateOptions();
 				_combo.SelectionChanged += (_, _) =>
 				{
-					if (_combo.SelectedIndex >= 0 && _combo.SelectedIndex < _field.Options.Count)
+					if (!_updatingOptions && _combo.SelectedIndex >= 0 && _combo.SelectedIndex < _field.Options.Count)
 						_field.Selected = _field.Options[_combo.SelectedIndex].Value;
 				};
 				return _combo;
@@ -169,7 +252,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 					IsReadOnly = _field.IsReadOnly,
 					AcceptsReturn = _field.EditorKind == SettingsEditorKind.Multiline,
 					TextWrapping = _field.EditorKind == SettingsEditorKind.Multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
-					MinHeight = _field.EditorKind == SettingsEditorKind.Multiline ? 72 : 34,
+					MinHeight = _field.EditorKind == SettingsEditorKind.Multiline ? 116 : 36,
 					PasswordChar = _field.EditorKind == SettingsEditorKind.Password ? '•' : '\0',
 					PlaceholderText = _field.IsConfigured && _field.EditorKind == SettingsEditorKind.Password ? "••••••••" : null,
 					HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -186,20 +269,41 @@ public sealed class SettingsFieldPresenter : ContentControl
 	private void UpdateOptions()
 	{
 		if (_combo is null || _field is null) return;
-		_combo.ItemsSource = _field.Options.Select(option => option.DisplayText).ToArray();
-		_combo.SelectedIndex = _field.Options.Select(option => option.Value).ToList().IndexOf(_field.Selected);
+		_updatingOptions = true;
+		try
+		{
+			_combo.ItemsSource = _field.Options.Select(option => option.DisplayText).ToArray();
+			_combo.SelectedIndex = _field.Options.Select(option => option.Value).ToList().IndexOf(_field.Selected);
+		}
+		finally { _updatingOptions = false; }
 	}
 
 	private void OnFieldPropertyChanged(object? sender, PropertyChangedEventArgs args)
 	{
-		if (_field is null) return;
+		if (!Dispatcher.UIThread.CheckAccess())
+		{
+			Dispatcher.UIThread.Post(() => OnFieldPropertyChanged(sender, args));
+			return;
+		}
+		if (_field is null || !ReferenceEquals(sender, _field)) return;
 		switch (args.PropertyName)
 		{
 			case nameof(SettingsFieldViewModel.Label):
 				if (_label is not null) _label.Text = _field.Label;
 				break;
 			case nameof(SettingsFieldViewModel.Description):
-				if (_description is not null) _description.Text = _field.Description;
+				if (_description is not null)
+				{
+					_description.Text = _field.Description;
+					_description.IsVisible = !string.IsNullOrWhiteSpace(_field.Description);
+				}
+				break;
+			case nameof(SettingsFieldViewModel.Command):
+				if (_editor is Button action) action.Command = _field.Command;
+				break;
+			case nameof(SettingsFieldViewModel.IsVisible):
+			case nameof(SettingsFieldViewModel.IsReadOnly):
+				UpdateFieldState();
 				break;
 			case nameof(SettingsFieldViewModel.ErrorText):
 				if (_error is not null)
@@ -208,13 +312,23 @@ public sealed class SettingsFieldPresenter : ContentControl
 					_error.IsVisible = !string.IsNullOrWhiteSpace(_field.ErrorText);
 				}
 				break;
+			case nameof(SettingsFieldViewModel.IsConfigured):
+				if (_textBox is not null && _field.EditorKind == SettingsEditorKind.Password)
+					_textBox.PlaceholderText = _field.IsConfigured ? "••••••••" : null;
+				break;
 			case nameof(SettingsFieldViewModel.Text):
+				if (_readOnlyText is not null)
+				{
+					_readOnlyText.Text = _field.Text;
+					UpdateLayoutForWidth(Bounds.Width);
+				}
 				if (_textBox is not null && _textBox.Text != _field.Text) _textBox.Text = _field.Text;
 				break;
 			case nameof(SettingsFieldViewModel.Boolean):
 				if (_toggle is not null && _toggle.IsChecked != _field.Boolean) _toggle.IsChecked = _field.Boolean;
 				break;
 			case nameof(SettingsFieldViewModel.Number):
+				if (_progress is not null) _progress.Value = _field.Number;
 				if (_numeric is not null && _numeric.Value != (decimal)_field.Number) _numeric.Value = (decimal)_field.Number;
 				if (_slider is not null && Math.Abs(_slider.Value - _field.Number) > 0.0001) _slider.Value = _field.Number;
 				break;
@@ -222,12 +336,12 @@ public sealed class SettingsFieldPresenter : ContentControl
 			case nameof(SettingsFieldViewModel.Options):
 				if (_combo is not null)
 				{
-					if (args.PropertyName == nameof(SettingsFieldViewModel.Options)) UpdateOptions();
-					else _combo.SelectedIndex = _field.Options.Select(option => option.Value).ToList().IndexOf(_field.Selected);
+					UpdateOptions();
 				}
 				break;
 		}
 	}
 
-	private IBrush Brush(string key) => SettingsBrushes.Resolve(this, key);
+	private IBrush Brush(string key) => (_palette ??= new SettingsBrushPalette(this))[key];
+
 }

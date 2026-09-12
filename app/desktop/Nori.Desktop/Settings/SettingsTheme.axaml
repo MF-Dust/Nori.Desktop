@@ -1,0 +1,184 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+	<!-- 参考 Nori.Web theme-nori 和原生兼容设置面板，统一窗口、表单与导航色源。 -->
+	<Styles.Resources>
+		<ResourceDictionary>
+			<BoxShadows x:Key="ButtonBorderBoxShadow">0 0 0 0 Transparent</BoxShadows>
+			<BoxShadows x:Key="ComboBoxBoxShadow">0 0 0 0 Transparent</BoxShadows>
+			<ResourceDictionary.ThemeDictionaries>
+				<ResourceDictionary x:Key="Light">
+					<SolidColorBrush x:Key="SettingsWindowBrush" Color="#F3F7F8"/>
+					<SolidColorBrush x:Key="SettingsSidebarBrush" Color="#EAF1F3"/>
+					<SolidColorBrush x:Key="SettingsCardBrush" Color="#FFFFFF"/>
+					<SolidColorBrush x:Key="SettingsBorderBrush" Color="#D3E1E5"/>
+					<SolidColorBrush x:Key="SettingsPrimaryBrush" Color="#20313D"/>
+					<SolidColorBrush x:Key="SettingsSecondaryBrush" Color="#556B78"/>
+					<SolidColorBrush x:Key="SettingsErrorBrush" Color="#B42318"/>
+					<SolidColorBrush x:Key="SettingsSelectionBrush" Color="#DAEDF2"/>
+					<SolidColorBrush x:Key="SettingsAccentBrush" Color="#176779"/>
+					<SolidColorBrush x:Key="SettingsInputBrush" Color="#F4F8F9"/>
+					<SolidColorBrush x:Key="SettingsHoverBrush" Color="#E2EDF0"/>
+					<SolidColorBrush x:Key="SettingsAccentForegroundBrush" Color="#FFFFFF"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedDefaultBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedPointeroverBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedPressedBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxButtonBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxButtonBorderBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxChevronBrush" ResourceKey="SettingsAccentForegroundBrush"/>
+					<StaticResource x:Key="CheckBoxCheckedBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="CheckBoxCheckMarkBrush" ResourceKey="SettingsAccentForegroundBrush"/>
+					<StaticResource x:Key="FocusBorderBrush" ResourceKey="SettingsAccentBrush"/>
+				</ResourceDictionary>
+				<ResourceDictionary x:Key="Dark">
+					<SolidColorBrush x:Key="SettingsWindowBrush" Color="#161A22"/>
+					<SolidColorBrush x:Key="SettingsSidebarBrush" Color="#13171E"/>
+					<SolidColorBrush x:Key="SettingsCardBrush" Color="#1D242D"/>
+					<SolidColorBrush x:Key="SettingsBorderBrush" Color="#34434B"/>
+					<SolidColorBrush x:Key="SettingsPrimaryBrush" Color="#E6F1F5"/>
+					<SolidColorBrush x:Key="SettingsSecondaryBrush" Color="#A4B4BF"/>
+					<SolidColorBrush x:Key="SettingsErrorBrush" Color="#FFB4AB"/>
+					<SolidColorBrush x:Key="SettingsSelectionBrush" Color="#233B45"/>
+					<SolidColorBrush x:Key="SettingsAccentBrush" Color="#77C6D4"/>
+					<SolidColorBrush x:Key="SettingsInputBrush" Color="#252E38"/>
+					<SolidColorBrush x:Key="SettingsHoverBrush" Color="#2D3A46"/>
+					<SolidColorBrush x:Key="SettingsAccentForegroundBrush" Color="#15212A"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedDefaultBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedPointeroverBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedPressedBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxButtonBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxButtonBorderBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxChevronBrush" ResourceKey="SettingsAccentForegroundBrush"/>
+					<StaticResource x:Key="CheckBoxCheckedBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="CheckBoxCheckMarkBrush" ResourceKey="SettingsAccentForegroundBrush"/>
+					<StaticResource x:Key="FocusBorderBrush" ResourceKey="SettingsAccentBrush"/>
+				</ResourceDictionary>
+			</ResourceDictionary.ThemeDictionaries>
+		</ResourceDictionary>
+	</Styles.Resources>
+	<Style Selector="Window">
+		<Setter Property="Background" Value="{DynamicResource SettingsWindowBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="Button">
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="MinHeight" Value="36"/>
+		<Setter Property="Padding" Value="12,8"/>
+		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="Background" Value="{DynamicResource SettingsInputBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource SettingsBorderBrush}"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="Button:pointerover">
+		<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource SettingsAccentBrush}"/>
+	</Style>
+	<Style Selector="Button:pressed">
+		<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
+	</Style>
+	<Style Selector="Button.accent">
+		<Setter Property="Background" Value="{DynamicResource SettingsAccentBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource SettingsAccentBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentForegroundBrush}"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+	</Style>
+	<Style Selector="Button.accent:pointerover">
+		<Setter Property="Background" Value="{DynamicResource SettingsAccentBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentForegroundBrush}"/>
+	</Style>
+	<Style Selector="Button.danger">
+		<Setter Property="Foreground" Value="{DynamicResource SettingsErrorBrush}"/>
+	</Style>
+	<Style Selector="Button.settings-nav">
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsSecondaryBrush}"/>
+		<Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+		<Setter Property="Padding" Value="10,9"/>
+		<Setter Property="CornerRadius" Value="8"/>
+	</Style>
+	<Style Selector="Button.settings-nav.selected">
+		<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+	</Style>
+	<Style Selector="Button.settings-nav:pointerover">
+		<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="Button.settings-nav.selected:pointerover">
+		<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
+	</Style>
+	<Style Selector="TextBox">
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="MinHeight" Value="36"/>
+		<Setter Property="Padding" Value="10,8"/>
+		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="Background" Value="{DynamicResource SettingsInputBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource SettingsBorderBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="TextBox:focus">
+		<Setter Property="BorderBrush" Value="{DynamicResource SettingsAccentBrush}"/>
+	</Style>
+	<Style Selector="ComboBox">
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="MinHeight" Value="36"/>
+		<Setter Property="Padding" Value="10,6"/>
+		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="Background" Value="{DynamicResource SettingsInputBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource SettingsBorderBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="NumericUpDown">
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="MinHeight" Value="36"/>
+		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="Background" Value="{DynamicResource SettingsInputBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource SettingsBorderBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="ToggleSwitch">
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="PathIcon.settings-nav-icon">
+		<Setter Property="Width" Value="16"/>
+		<Setter Property="Height" Value="16"/>
+		<Setter Property="Data" Value="M 2,2 L 6,2 6,6 2,6 Z M 10,2 L 14,2 14,6 10,6 Z M 2,10 L 6,10 6,14 2,14 Z M 10,10 L 14,10 14,14 10,14 Z"/>
+	</Style>
+	<Style Selector="Button.settings-nav[Tag=ai] PathIcon.settings-nav-icon">
+		<Setter Property="Data" Value="M 7,1 L 9,1 10,5 14,7 14,9 10,10 9,15 7,15 6,10 2,9 2,7 6,5 Z"/>
+	</Style>
+	<Style Selector="Button.settings-nav[Tag=voice] PathIcon.settings-nav-icon">
+		<Setter Property="Data" Value="M 7,1 L 9,1 9,10 7,10 Z M 3,5 L 5,5 5,10 7,12 9,12 11,10 11,5 13,5 13,11 10,14 9,14 9,16 7,16 7,14 6,14 3,11 Z"/>
+	</Style>
+	<Style Selector="Button.settings-nav[Tag=proactive] PathIcon.settings-nav-icon">
+		<Setter Property="Data" Value="M 7,1 L 9,1 9,2 12,4 13,11 15,12 15,13 1,13 1,12 3,11 4,4 7,2 Z M 6,14 L 10,14 9,16 7,16 Z"/>
+	</Style>
+	<Style Selector="Button.settings-nav[Tag=general] PathIcon.settings-nav-icon">
+		<Setter Property="Data" Value="M 1,3 L 9,3 9,1 11,1 11,3 15,3 15,5 11,5 11,7 9,7 9,5 1,5 Z M 1,11 L 5,11 5,9 7,9 7,11 15,11 15,13 7,13 7,15 5,15 5,13 1,13 Z"/>
+	</Style>
+	<Style Selector="Button.settings-nav[Tag=updates] PathIcon.settings-nav-icon">
+		<Setter Property="Data" Value="M 7,1 L 9,1 9,9 12,6 14,8 8,14 2,8 4,6 7,9 Z M 1,14 L 3,14 3,16 13,16 13,14 15,14 15,18 1,18 Z"/>
+	</Style>
+	<Style Selector="Button.settings-nav[Tag=about] PathIcon.settings-nav-icon">
+		<Setter Property="Data" Value="M 7,1 L 9,1 9,3 7,3 Z M 6,6 L 9,6 9,13 11,13 11,15 5,15 5,13 7,13 7,8 6,8 Z"/>
+	</Style>
+	<Style Selector="Button.settings-nav[Tag=skills] PathIcon.settings-nav-icon">
+		<Setter Property="Data" Value="M 3,1 L 11,1 15,5 15,15 3,15 Z M 11,2 L 11,5 14,5 Z M 5,7 L 13,7 13,8 5,8 Z M 5,10 L 12,10 12,11 5,11 Z"/>
+	</Style>
+	<Style Selector="Button.settings-nav[Tag=mcp] PathIcon.settings-nav-icon">
+		<Setter Property="Data" Value="M 1,1 L 6,1 6,6 4,6 4,9 12,9 12,6 10,6 10,1 15,1 15,6 14,6 14,11 9,11 9,15 7,15 7,11 2,11 2,6 1,6 Z"/>
+	</Style>
+	<Style Selector="Button.settings-nav[Tag=automation] PathIcon.settings-nav-icon">
+		<Setter Property="Data" Value="M 9,0 L 2,9 7,9 6,16 14,6 9,6 Z"/>
+	</Style>
+	<Style Selector="Button.settings-nav[Tag=plugins] PathIcon.settings-nav-icon">
+		<Setter Property="Data" Value="M 1,3 L 6,3 6,1 10,1 10,3 15,3 15,8 13,8 13,12 15,12 15,15 10,15 10,13 6,13 6,15 1,15 Z"/>
+	</Style>
+	<Style Selector="Button.settings-nav[Tag=debug] PathIcon.settings-nav-icon">
+		<Setter Property="Data" Value="M 5,2 L 11,2 12,5 15,5 15,7 12,7 12,9 15,9 15,11 12,11 11,14 5,14 4,11 1,11 1,9 4,9 4,7 1,7 1,5 4,5 Z M 7,5 L 9,5 9,11 7,11 Z"/>
+	</Style>
+</Styles>

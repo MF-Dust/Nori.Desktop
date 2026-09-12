@@ -17,6 +17,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 	private TextBlock? _description;
 	private TextBlock? _error;
 	private TextBox? _textBox;
+	private SelectableTextBlock? _readOnlyText;
 	private ToggleSwitch? _toggle;
 	private NumericUpDown? _numeric;
 	private Slider? _slider;
@@ -66,6 +67,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 	{
 		if (_field is null) return;
 		_textBox = null;
+		_readOnlyText = null;
 		_toggle = null;
 		_numeric = null;
 		_slider = null;
@@ -139,7 +141,9 @@ public sealed class SettingsFieldPresenter : ContentControl
 	private void UpdateLayoutForWidth(double width)
 	{
 		if (_row is null || _editorStack is null || _field is null) return;
-		bool stacked = _field.EditorKind == SettingsEditorKind.Multiline || width < 560;
+		bool notice = _readOnlyText is not null && string.IsNullOrWhiteSpace(_readOnlyText.Text);
+		_editorStack.IsVisible = !notice;
+		bool stacked = notice || _field.EditorKind == SettingsEditorKind.Multiline || width < 560;
 		if (_stacked == stacked) return;
 		_stacked = stacked;
 		_row.ColumnDefinitions = new ColumnDefinitions(stacked ? "*" : "190,*");
@@ -154,7 +158,8 @@ public sealed class SettingsFieldPresenter : ContentControl
 	{
 		if (_field is null) return;
 		IsVisible = _field.IsVisible;
-		if (_editor is not null) _editor.IsEnabled = !_field.IsReadOnly || _editor is TextBox;
+		if (_readOnlyText is not null && !_field.IsReadOnly) { Build(); return; }
+		if (_editor is not null) _editor.IsEnabled = !_field.IsReadOnly || _editor is TextBox or SelectableTextBlock;
 		if (_textBox is not null) _textBox.IsReadOnly = _field.IsReadOnly;
 		if (_numeric is not null) _numeric.IsReadOnly = _field.IsReadOnly;
 	}
@@ -162,6 +167,16 @@ public sealed class SettingsFieldPresenter : ContentControl
 	private Control BuildEditor()
 	{
 		if (_field is null) return new Border();
+		// 版本、状态与固定说明直接呈现为可复制文本，避免把信息伪装成空输入框。
+		if (_field.IsReadOnly && _field.EditorKind is SettingsEditorKind.Text or SettingsEditorKind.Multiline)
+		{
+			_readOnlyText = new SelectableTextBlock
+			{
+				Text = _field.Text, TextWrapping = TextWrapping.Wrap,
+				Foreground = Brush("SettingsPrimaryBrush"), FontSize = 13,
+			};
+			return _readOnlyText;
+		}
 		switch (_field.EditorKind)
 		{
 			case SettingsEditorKind.Boolean:
@@ -302,6 +317,11 @@ public sealed class SettingsFieldPresenter : ContentControl
 					_textBox.PlaceholderText = _field.IsConfigured ? "••••••••" : null;
 				break;
 			case nameof(SettingsFieldViewModel.Text):
+				if (_readOnlyText is not null)
+				{
+					_readOnlyText.Text = _field.Text;
+					UpdateLayoutForWidth(Bounds.Width);
+				}
 				if (_textBox is not null && _textBox.Text != _field.Text) _textBox.Text = _field.Text;
 				break;
 			case nameof(SettingsFieldViewModel.Boolean):

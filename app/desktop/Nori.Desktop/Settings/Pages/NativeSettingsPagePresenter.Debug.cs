@@ -21,12 +21,13 @@ public sealed partial class NativeSettingsPagePresenter
 	{
 		root.Children.Add(new TextBlock {Text = NativeSettingsResources.Get("debug.warning"), Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap});
 		StackPanel diagnostic = CardBody(NativeSettingsResources.Get("debug.diagnostic"), null);
-		WrapPanel diagnosticActions = new() {Orientation = Orientation.Horizontal};
-		diagnosticActions.Children.Add(Button(NativeSettingsResources.Get("debug.refresh"), () => _ = RunAsync(() => viewModel.RefreshDiagnosticAsync())));
 		_debugCopyDiagnostic = Button(NativeSettingsResources.Get("common.copy"), () => _ = RunAsync(() => viewModel.CopyDiagnosticAsync()));
-		diagnosticActions.Children.Add(_debugCopyDiagnostic);
-		diagnosticActions.Children.Add(Button(NativeSettingsResources.Get("debug.export"), () => _ = RunAsync(() => ExportDiagnosticsAsync(viewModel))));
-		diagnosticActions.Children.Add(Button(NativeSettingsResources.Get("debug.openFolder"), () => _ = RunAsync(() => viewModel.OpenLogFolderAsync())));
+		WrapPanel diagnosticActions = ActionGroup(
+			Button(NativeSettingsResources.Get("debug.refresh"), () => _ = RunAsync(() => viewModel.RefreshDiagnosticAsync())),
+			_debugCopyDiagnostic,
+			Button(NativeSettingsResources.Get("debug.export"), () => _ = RunAsync(() => ExportDiagnosticsAsync(viewModel))),
+			Button(NativeSettingsResources.Get("debug.openFolder"), () => _ = RunAsync(() => viewModel.OpenLogFolderAsync())));
+
 		diagnostic.Children.Add(diagnosticActions);
 		_debugDiagnosticRows.Clear();
 		_debugDiagnostic = new StackPanel {Spacing = 4};

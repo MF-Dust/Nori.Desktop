@@ -12,6 +12,7 @@ namespace Nori.Desktop.Settings;
 public sealed class ProactiveReminderList : ContentControl
 {
 	private ProactiveSettingsPage? _page;
+	private SettingsBrushPalette? _palette;
 	private readonly DispatcherTimer _timer = new() {Interval = TimeSpan.FromSeconds(30)};
 	private readonly List<(TextBlock Label, DateTimeOffset Trigger)> _times = [];
 	private bool _attached;
@@ -146,6 +147,6 @@ public sealed class ProactiveReminderList : ContentControl
 		finally { button.IsEnabled = true; }
 	}
 
-	private IBrush Brush(string key) => SettingsBrushes.Resolve(this, key);
+	private IBrush Brush(string key) => (_palette ??= new SettingsBrushPalette(this))[key];
 	private static string Text(string chinese, string english) => SettingsLocalization.IsEnglish ? english : chinese;
 }

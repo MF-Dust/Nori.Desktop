@@ -2,6 +2,8 @@
 	<!-- 参考 Nori.Web theme-nori 和原生兼容设置面板，统一窗口、表单与导航色源。 -->
 	<Styles.Resources>
 		<ResourceDictionary>
+			<BoxShadows x:Key="ButtonBorderBoxShadow">0 0 0 0 Transparent</BoxShadows>
+			<BoxShadows x:Key="ComboBoxBoxShadow">0 0 0 0 Transparent</BoxShadows>
 			<ResourceDictionary.ThemeDictionaries>
 				<ResourceDictionary x:Key="Light">
 					<SolidColorBrush x:Key="SettingsWindowBrush" Color="#F3F7F8"/>
@@ -16,6 +18,15 @@
 					<SolidColorBrush x:Key="SettingsInputBrush" Color="#F4F8F9"/>
 					<SolidColorBrush x:Key="SettingsHoverBrush" Color="#E2EDF0"/>
 					<SolidColorBrush x:Key="SettingsAccentForegroundBrush" Color="#FFFFFF"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedDefaultBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedPointeroverBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedPressedBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxButtonBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxButtonBorderBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxChevronBrush" ResourceKey="SettingsAccentForegroundBrush"/>
+					<StaticResource x:Key="CheckBoxCheckedBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="CheckBoxCheckMarkBrush" ResourceKey="SettingsAccentForegroundBrush"/>
+					<StaticResource x:Key="FocusBorderBrush" ResourceKey="SettingsAccentBrush"/>
 				</ResourceDictionary>
 				<ResourceDictionary x:Key="Dark">
 					<SolidColorBrush x:Key="SettingsWindowBrush" Color="#161A22"/>
@@ -30,6 +41,15 @@
 					<SolidColorBrush x:Key="SettingsInputBrush" Color="#252E38"/>
 					<SolidColorBrush x:Key="SettingsHoverBrush" Color="#2D3A46"/>
 					<SolidColorBrush x:Key="SettingsAccentForegroundBrush" Color="#15212A"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedDefaultBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedPointeroverBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ToggleSwitchContainerCheckedPressedBackground" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxButtonBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxButtonBorderBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="ComboBoxChevronBrush" ResourceKey="SettingsAccentForegroundBrush"/>
+					<StaticResource x:Key="CheckBoxCheckedBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
+					<StaticResource x:Key="CheckBoxCheckMarkBrush" ResourceKey="SettingsAccentForegroundBrush"/>
+					<StaticResource x:Key="FocusBorderBrush" ResourceKey="SettingsAccentBrush"/>
 				</ResourceDictionary>
 			</ResourceDictionary.ThemeDictionaries>
 		</ResourceDictionary>
@@ -48,11 +68,11 @@
 		<Setter Property="BorderThickness" Value="1"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
 	</Style>
-	<Style Selector="Button:pointerover /template/ ContentPresenter">
+	<Style Selector="Button:pointerover">
 		<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
 		<Setter Property="BorderBrush" Value="{DynamicResource SettingsAccentBrush}"/>
 	</Style>
-	<Style Selector="Button:pressed /template/ ContentPresenter">
+	<Style Selector="Button:pressed">
 		<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
 	</Style>
 	<Style Selector="Button.accent">
@@ -61,7 +81,7 @@
 		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentForegroundBrush}"/>
 		<Setter Property="FontWeight" Value="SemiBold"/>
 	</Style>
-	<Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+	<Style Selector="Button.accent:pointerover">
 		<Setter Property="Background" Value="{DynamicResource SettingsAccentBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentForegroundBrush}"/>
 	</Style>
@@ -82,15 +102,11 @@
 		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
 		<Setter Property="FontWeight" Value="SemiBold"/>
 	</Style>
-	<Style Selector="Button.settings-nav.selected /template/ ContentPresenter">
-		<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
-		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
-	</Style>
-	<Style Selector="Button.settings-nav:pointerover /template/ ContentPresenter">
+	<Style Selector="Button.settings-nav:pointerover">
 		<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
 	</Style>
-	<Style Selector="Button.settings-nav.selected:pointerover /template/ ContentPresenter">
+	<Style Selector="Button.settings-nav.selected:pointerover">
 		<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
 	</Style>

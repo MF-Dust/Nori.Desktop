@@ -30,7 +30,7 @@ public sealed partial class NativeSettingsPagePresenter
 	{
 		Button installed = Button(NativeSettingsResources.Get("skills.installed"), () => { viewModel.ShowMarketplace = false; Build(); });
 		Button marketplace = Button(NativeSettingsResources.Get("skills.marketplace"), () => { viewModel.ShowMarketplace = true; Build(); });
-		root.Children.Add(ParityActions(installed, marketplace,
+		root.Children.Add(ActionGroup(installed, marketplace,
 			Button(NativeSettingsResources.Get("skills.new"), () => _ = RunAsync(() => NewSkillAsync(viewModel)), accent: true),
 			Button(NativeSettingsResources.Get("skills.installUrl"), () => _ = RunAsync(() => InstallSkillUrlAsync(viewModel))),
 			Button(ParityText("刷新", "Refresh"), () => _ = RunAsync(() => viewModel.RefreshAsync()))));
@@ -171,7 +171,7 @@ public sealed partial class NativeSettingsPagePresenter
 		await EditSkillFormAsync(viewModel, draft).ConfigureAwait(true);
 	}
 
-	private static WrapPanel ParityActions(params Control[] children)
+	private static WrapPanel ActionGroup(params Control[] children)
 	{
 		WrapPanel panel = new();
 		foreach (Control child in children)
@@ -199,7 +199,7 @@ public sealed partial class NativeSettingsPagePresenter
 		if (!string.IsNullOrWhiteSpace(plugin.ErrorCode) || !string.IsNullOrWhiteSpace(plugin.ErrorMessage))
 			body.Children.Add(Empty(string.Join(" · ", new[] {plugin.ErrorCode, plugin.ErrorMessage}.Where(item => !string.IsNullOrWhiteSpace(item)))));
 		if (plugin.RequiresRestart || plugin.State == "pending_restart") body.Children.Add(Empty(NativeSettingsResources.Get("plugins.restart")));
-		WrapPanel actions = ParityActions(Button(NativeSettingsResources.Get("common.details"), () => _ = RunAsync(() => ShowPluginDetailsAsync(plugin))));
+		WrapPanel actions = ActionGroup(Button(NativeSettingsResources.Get("common.details"), () => _ = RunAsync(() => ShowPluginDetailsAsync(plugin))));
 		bool ready = plugin.State is not ("loading" or "stopping" or "pending_restart");
 		if (plugin.State is "active" or "failed")
 			actions.Children.Add(Button(NativeSettingsResources.Get("common.disable"), () => _ = RunAsync(() => viewModel.DisableAsync(plugin)), enabled: ready));
@@ -451,7 +451,7 @@ public sealed partial class NativeSettingsPagePresenter
 	{
 		Button servers = Button(NativeSettingsResources.Get("mcp.servers"), () => { viewModel.ShowTools = false; Build(); });
 		Button tools = Button(NativeSettingsResources.Get("mcp.tools"), () => { viewModel.ShowTools = true; Build(); });
-		root.Children.Add(ParityActions(servers, tools,
+		root.Children.Add(ActionGroup(servers, tools,
 			Button(NativeSettingsResources.Get("mcp.import"), () => _ = RunAsync(() => ImportMcpAsync(viewModel))),
 			Button(NativeSettingsResources.Get("mcp.add"), () => _ = RunAsync(() => EditMcpAsync(viewModel, null)), accent: true),
 			Button(ParityText("刷新", "Refresh"), () => _ = RunAsync(() => viewModel.RefreshAsync()))));
@@ -495,7 +495,7 @@ public sealed partial class NativeSettingsPagePresenter
 		if (!string.IsNullOrWhiteSpace(server.ErrorMessage)) body.Children.Add(Empty(server.ErrorMessage));
 		if (!string.IsNullOrWhiteSpace(server.SecretIssue)) body.Children.Add(Empty($"{ParityText("环境变量状态", "Environment status")}: {server.SecretIssue}"));
 		if (server.HasEnvironment) body.Children.Add(Empty(ParityText("已保存加密环境变量", "Encrypted environment variables saved")));
-		body.Children.Add(ParityActions(
+		body.Children.Add(ActionGroup(
 			Button(server.Status == "connected" ? NativeSettingsResources.Get("common.stop") : NativeSettingsResources.Get("common.start"),
 				() => _ = RunAsync(() => server.Status == "connected" ? viewModel.DisconnectAsync(server) : viewModel.ConnectAsync(server)), enabled: server.Status != "connecting"),
 			Button(NativeSettingsResources.Get("common.edit"), () => _ = RunAsync(() => EditMcpAsync(viewModel, server))),

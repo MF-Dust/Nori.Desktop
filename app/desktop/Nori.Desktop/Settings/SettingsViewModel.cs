@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Windows.Input;
 using Avalonia.Threading;
-using Avalonia.Controls.Primitives;
 using Nori.Desktop.Settings.Pages;
 
 namespace Nori.Desktop.Settings;
@@ -74,15 +73,11 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 				foreach (SettingsPageItemViewModel item in group.Pages)
 					item.IsSelected = ReferenceEquals(item.Page, value);
 			OnPropertyChanged();
-			OnPropertyChanged(nameof(HorizontalScrollBarVisibility));
 			OnPropertyChanged(nameof(CurrentPageTitle));
 			OnPropertyChanged(nameof(CurrentPageDescription));
 			OnPropertyChanged(nameof(CurrentPageError));
 		}
 	}
-
-	/// <summary>所有设置页在有限视口内排版，统一使用纵向滚动。</summary>
-	public ScrollBarVisibility HorizontalScrollBarVisibility => ScrollBarVisibility.Disabled;
 
 	/// <summary>当前页面标题。</summary>
 	public string CurrentPageTitle => CurrentPage?.DisplayTitle ?? string.Empty;
@@ -249,7 +244,7 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 		_lifetimeCts.Cancel();
 		if (_refreshTask is not null) await _refreshTask.ConfigureAwait(false);
 		foreach (SettingsPageBase page in _pages.Values) await page.PrepareShutdownAsync(saveCts.Token).ConfigureAwait(false);
-		_disposed = true;
+		Dispose();
 	}
 
 	private void OnStateChanged()

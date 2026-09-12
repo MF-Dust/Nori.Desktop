@@ -79,12 +79,12 @@ public partial class SettingsWindow : Window
 
 	protected override void OnClosed(EventArgs e)
 	{
-		if (AllowClose && !_prepared)
-		{
-			_prepared = true;
-			_viewModel.Dispose();
-			_settingsService.Dispose();
-		}
+		// 真正关闭时解除呈现器的页面与全局语言订阅；隐藏窗口仍保留编辑上下文。
+		DataContext = null;
+		PagePresenter.RefreshPage();
+		_viewModel?.Dispose();
+		_settingsService?.Dispose();
+		_prepared = true;
 		base.OnClosed(e);
 	}
 }

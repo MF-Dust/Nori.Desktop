@@ -359,6 +359,109 @@ public sealed class AgentEngineLuoLiCoreTests : IDisposable
 		Assert.False(await engine.ResetRemoteContextAsync(CancellationToken.None));
 	}
 
+
+	// ---- codex review 的两条 P1：落库顺序与取消窗口 ----
+
+	/// <summary>
+	/// 用一个真实的 ChatService 建引擎，并把「取候选名单」这一步当作挑表情的时机探针。
+	///
+	/// 那一步在 <c>AttachReactionAsync</c> 的 try 里、紧跟在落库之后，是观察「落库有没有先
+	/// 发生」最靠近的一个点。
+	/// </summary>
+	private AgentEngine BuildWithProbe(
+		ChatService chat,
+		LuoLiCoreConversation conversation,
+		ReplyReactionService reaction,
+		Func<IReadOnlyList<string>> motionNames) =>
+		new(
+			new HttpClient(),
+			_config,
+			chat,
+			tools: null!,
+			skills: null!,
+			emotion: Track(new EmotionManager(_config)),
+			memory: null!,
+			pet: null,
+			motionNames: motionNames,
+			expressionNames: () => ["smile"],
+			adapterFactory: ExplodingAdapter,
+			luoLiCore: conversation,
+			replyReaction: reaction);
+
+	/// <summary>
+	/// done 之后按停止，这一轮必须仍然落进本地历史。
+	///
+	/// 对端那一轮已经提交、界面上也已经有文本了，此刻若让取消把整轮掀掉，本地就永远没有这条
+	/// 记录 —— 远端记着、用户看见过、本地没有，下一轮的远端上下文与用户所见对不上。
+	/// </summary>
+	[Fact]
+	public async Task 完成之后取消仍然落库()
+	{
+		EnableLuoLiCore();
+		ConfigureLocalLlm();
+		using CancellationTokenSource stop = new();
+		ChatService chat = new(new HttpClient(), _database, _config);
+
+		AgentEngine engine = BuildWithProbe(
+			chat,
+			Conversation(_ => Sse("event: done\ndata: {\"text\":\"我在\"}\n\n")),
+			Reaction("{\"expression\":\"smile\"}"),
+			() =>
+			{
+				stop.Cancel();
+				stop.Token.ThrowIfCancellationRequested();
+				return [];
+			});
+
+		ProtocolMessage message = await engine.RunAsync(
+			"在吗", "session-cancel", new AgentCallbacks(), stop.Token);
+
+		Assert.Equal("我在", message.Text);
+		// 用户那条 + 她那条，两条都在。
+		Assert.Equal(2, chat.GetHistory().Count);
+	}
+
+	[Fact]
+	public async Task 挑表情之前就已经落库()
+	{
+		EnableLuoLiCore();
+		ConfigureLocalLlm();
+		ChatService chat = new(new HttpClient(), _database, _config);
+		int atReactionTime = -1;
+
+		AgentEngine engine = BuildWithProbe(
+			chat,
+			Conversation(_ => Sse("event: done\ndata: {\"text\":\"我在\"}\n\n")),
+			Reaction("{\"expression\":\"smile\",\"action\":\"Tap\"}"),
+			() =>
+			{
+				atReactionTime = chat.GetHistory().Count;
+				return ["Tap"];
+			});
+
+		ProtocolMessage message = await engine.RunAsync(
+			"在吗", "session-order", new AgentCallbacks(), CancellationToken.None);
+
+		Assert.Equal(2, atReactionTime);
+		// 顺序调整不能把表情弄丢。
+		Assert.Equal("smile", message.Expression);
+	}
+
+	[Fact]
+	public void 有会话时报告远端仍记着东西()
+	{
+		EnableLuoLiCore();
+		AgentEngine engine = BuildEngine(Conversation(_ => Sse("event: done\ndata: {}\n\n")));
+
+		Assert.True(engine.HasRemoteContext);
+	}
+
+	[Fact]
+	public void 没接这条路时不报告远端上下文()
+	{
+		Assert.False(BuildEngine(null).HasRemoteContext);
+	}
+
 	private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
 	{
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>

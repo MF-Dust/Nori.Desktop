@@ -17,6 +17,20 @@ public sealed class LuoLiCoreConversation(
 	public bool IsActive => _settingsStore.Read().IsActive;
 
 	/// <summary>
+	/// 对端那边是否已经有一段会话在记着东西。
+	///
+	/// 供调用方区分「没接外部后端」与「接了但这次没去重置」—— 后者需要提示用户，前者不用。
+	/// </summary>
+	public bool HasSession
+	{
+		get
+		{
+			LuoLiCoreSettings settings = _settingsStore.Read();
+			return settings.IsActive && settings.SessionId.Length > 0;
+		}
+	}
+
+	/// <summary>
 	/// 跑一轮。
 	///
 	/// 返回的协议消息**只带文本**：情绪、表情、动作三项留空，由宿主另行决定。合法的动作与

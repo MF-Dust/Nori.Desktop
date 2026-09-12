@@ -62,6 +62,14 @@ public sealed class LuoLiCoreSettingsStore(ConfigStore config, Func<string, stri
 	public const string KeyModelAlias = "luolicore_model_alias";
 
 	/// <summary>
+	/// 会话 id 是跟着哪一台服务端、哪一把密钥建出来的。
+	///
+	/// 存的是指纹（SHA-256 十六进制）而不是原值：这一列不敏感、不加密，把密钥原样写进去
+	/// 等于绕开 `_api_key` 那套加密存储。
+	/// </summary>
+	public const string KeySessionOwner = "luolicore_session_owner";
+
+	/// <summary>
 	/// 环境变量兜底。
 	///
 	/// 原生 UI 迁移期间还没有填这几项的地方，而密钥本来就该走环境变量而不是写进文件。
@@ -86,6 +94,18 @@ public sealed class LuoLiCoreSettingsStore(ConfigStore config, Func<string, stri
 		return stored.Length > 0 ? stored : Env(envName);
 	}
 
+	/// <summary>
+	/// 一台服务端 + 一把密钥的身份指纹。换了任意一项，之前建的会话就不再属于这里。
+	/// </summary>
+	private static string Fingerprint(string baseUrl, string apiKey)
+	{
+		if (baseUrl.Length == 0 || apiKey.Length == 0) return string.Empty;
+		// 换行分隔，免得 ("http://a", "b") 与 ("http://ab", "") 这类拼接出同一个串。
+		byte[] digest = System.Security.Cryptography.SHA256.HashData(
+			System.Text.Encoding.UTF8.GetBytes(baseUrl + "\n" + apiKey));
+		return Convert.ToHexString(digest);
+	}
+
 	public LuoLiCoreSettings Read()
 	{
 		// 开关没显式配过时，环境变量给了地址与密钥就视为打开 —— 迁移期没有界面可点，
@@ -99,21 +119,43 @@ public sealed class LuoLiCoreSettingsStore(ConfigStore config, Func<string, stri
 				? envEnabled is "1" or "true" or "TRUE" or "True"
 				: baseUrl.Length > 0 && apiKey.Length > 0);
 
+		// 会话 id 绑在建它的那台服务端与那把密钥上。
+		//
+		// 换了 BaseUrl 或换了密钥之后，存量的会话 id 属于**另一个**服务端 —— 继续拿它发消息
+		// 只会一直 404，而且这个失败看起来像「服务端坏了」，不像「你改了配置」。指纹对不上
+		// 就当作没有会话，下一轮自然新建一个，旧的那条留在原服务端上不动。
+		//
+		// 环境变量直接给了会话 id 的情形不受此限：那是运维显式指定的，他知道自己在干什么。
+		string storedSession = _config.GetStringOr(KeySessionId, "").Trim();
+		string owner = _config.GetStringOr(KeySessionOwner, "").Trim();
+		string current = Fingerprint(baseUrl, apiKey);
+		if (storedSession.Length > 0 && owner.Length > 0 && owner != current) storedSession = "";
+
 		return new LuoLiCoreSettings
 		{
 			Enabled = enabled,
 			BaseUrl = baseUrl,
 			ApiKey = apiKey,
-			SessionId = ReadOr(KeySessionId, EnvSessionId),
+			SessionId = storedSession.Length > 0 ? storedSession : Env(EnvSessionId),
 			ModelAlias = ReadOr(KeyModelAlias, EnvModelAlias),
 		};
 	}
 
-	/// <summary>首次对话建好会话后写回，下次接着用同一个。</summary>
+	/// <summary>
+	/// 首次对话建好会话后写回，下次接着用同一个。
+	///
+	/// 同时记下它属于哪台服务端、哪把密钥（指纹）。没有这一项的话，运维换了地址或换了密钥
+	/// 之后旧 id 仍然会被拿去用，表现成持续 404。
+	/// </summary>
 	public void SaveSessionId(string sessionId)
 	{
 		string trimmed = (sessionId ?? string.Empty).Trim();
 		if (trimmed.Length == 0) return;
 		_config.Set(KeySessionId, new ConfigValue.Text(trimmed));
+
+		LuoLiCoreSettings current = Read();
+		_config.Set(
+			KeySessionOwner,
+			new ConfigValue.Text(Fingerprint(current.BaseUrl, current.ApiKey)));
 	}
 }

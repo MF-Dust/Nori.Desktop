@@ -143,4 +143,82 @@ public sealed class LuoLiCoreSettingsEnvTests : IDisposable
 
 		Assert.Equal("http://127.0.0.1:3000", settings.BaseUrl);
 	}
+
+	// ---- 会话 id 绑在建它的那台服务端与那把密钥上（codex review，P2）----
+
+	/// <summary>
+	/// 换了地址之后旧会话 id 属于另一台服务端，继续拿它发消息只会一直 404 —— 而那个失败看
+	/// 起来像「服务端坏了」，不像「你改了配置」。
+	/// </summary>
+	[Fact]
+	public void 换了地址之后旧会话作废()
+	{
+		LuoLiCoreSettingsStore first = Store(
+			(LuoLiCoreSettingsStore.EnvBaseUrl, "http://127.0.0.1:3000"),
+			(LuoLiCoreSettingsStore.EnvApiKey, "sk-env"));
+		first.SaveSessionId("sess_old");
+		Assert.Equal("sess_old", first.Read().SessionId);
+
+		LuoLiCoreSettingsStore moved = Store(
+			(LuoLiCoreSettingsStore.EnvBaseUrl, "http://127.0.0.1:4000"),
+			(LuoLiCoreSettingsStore.EnvApiKey, "sk-env"));
+
+		Assert.Equal("", moved.Read().SessionId);
+	}
+
+	[Fact]
+	public void 换了密钥之后旧会话同样作废()
+	{
+		LuoLiCoreSettingsStore first = Store(
+			(LuoLiCoreSettingsStore.EnvBaseUrl, "http://127.0.0.1:3000"),
+			(LuoLiCoreSettingsStore.EnvApiKey, "sk-old"));
+		first.SaveSessionId("sess_old");
+
+		LuoLiCoreSettingsStore rekeyed = Store(
+			(LuoLiCoreSettingsStore.EnvBaseUrl, "http://127.0.0.1:3000"),
+			(LuoLiCoreSettingsStore.EnvApiKey, "sk-new"));
+
+		Assert.Equal("", rekeyed.Read().SessionId);
+	}
+
+	[Fact]
+	public void 地址与密钥都没变时会话照旧()
+	{
+		(string, string)[] env =
+		[
+			(LuoLiCoreSettingsStore.EnvBaseUrl, "http://127.0.0.1:3000"),
+			(LuoLiCoreSettingsStore.EnvApiKey, "sk-env"),
+		];
+		Store(env).SaveSessionId("sess_old");
+
+		Assert.Equal("sess_old", Store(env).Read().SessionId);
+	}
+
+	/// <summary>指纹这一列不加密，把密钥原样写进去等于绕开 `_api_key` 那套加密存储。</summary>
+	[Fact]
+	public void 指纹里不含密钥原文()
+	{
+		LuoLiCoreSettingsStore store = Store(
+			(LuoLiCoreSettingsStore.EnvBaseUrl, "http://127.0.0.1:3000"),
+			(LuoLiCoreSettingsStore.EnvApiKey, "sk-super-secret"));
+		store.SaveSessionId("sess_old");
+
+		string stored = _config.GetStringOr(LuoLiCoreSettingsStore.KeySessionOwner, "");
+
+		Assert.DoesNotContain("sk-super-secret", stored, StringComparison.Ordinal);
+		Assert.DoesNotContain("127.0.0.1", stored, StringComparison.Ordinal);
+		Assert.Equal(64, stored.Length);
+	}
+
+	/// <summary>运维显式用环境变量指定会话 id 时不受指纹判据影响：那是他自己定的。</summary>
+	[Fact]
+	public void 环境变量指定的会话id不受指纹影响()
+	{
+		LuoLiCoreSettings settings = Store(
+			(LuoLiCoreSettingsStore.EnvBaseUrl, "http://127.0.0.1:3000"),
+			(LuoLiCoreSettingsStore.EnvApiKey, "sk-env"),
+			(LuoLiCoreSettingsStore.EnvSessionId, "sess_env")).Read();
+
+		Assert.Equal("sess_env", settings.SessionId);
+	}
 }

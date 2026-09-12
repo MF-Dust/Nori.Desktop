@@ -928,11 +928,37 @@ public sealed class BridgeCommands
 	private async Task<object?> ClearChatAsync(IBridgeSource source, CancellationToken cancellationToken) =>
 		await RequireMainAsync(source, async () =>
 		{
-			await Runtime.Engine.ResetRemoteContextAsync(cancellationToken);
+			// 安全模式禁用一切外部调用（AGENTS.md §1「Safe Mode」），重置远端会话是一次
+			// 真正的出网请求，所以这里跳过它。
+			//
+			// 不把 chat_clear 整条加进 IsNetworkCommand：清空本地聊天记录本身是纯本地操作，
+			// 安全模式没有理由连它一起禁掉 —— 那会让人在排障时连清个记录都做不到。
+			//
+			// 代价是两边会不一致：安全模式下对话本来就不走远端（chat_start 已被挡），远端的
+			// 上下文停在进入安全模式那一刻，清完本地它还记着。因此把这件事**报给调用方**，
+			// 由界面提示一句，而不是让用户以为清干净了 —— 这种不一致查起来比清不掉贵得多。
+			bool remoteReset = false;
+			if (!_services.SafeMode)
+			{
+				remoteReset = await Runtime.Engine.ResetRemoteContextAsync(cancellationToken);
+			}
+
 			_services.Chat.ClearHistory();
 			Runtime.InvalidateSnapshot("chat");
-			return null;
+			return new ClearChatResult(
+				remoteReset,
+				_services.SafeMode && Runtime.Engine.HasRemoteContext
+					? "安全模式下未重置外部会话，退出安全模式后再清空一次"
+					: null);
 		});
+
+	/// <summary>
+	/// 清空聊天记录的结果。
+	///
+	/// <paramref name="RemoteReset"/> 为 false 有两种原因：没接外部后端（无事可做），或者安全
+	/// 模式跳过了那次调用（<paramref name="Note"/> 会说明）。两者对界面的意义不同。
+	/// </summary>
+	private sealed record ClearChatResult(bool RemoteReset, string? Note);
 
 	private async Task<object?> MemoryAddAsync(IBridgeSource source, JsonElement args)
 	{

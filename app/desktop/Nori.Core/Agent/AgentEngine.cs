@@ -519,14 +519,23 @@ public sealed class AgentEngine
 
 			if (message.Text.Length == 0) throw new InvalidOperationException("LuoLiCore 未产出最终回复");
 
+			// **先落库，再挑表情。**
+			//
+			// 顺序反过来的话有一个真实的丢数据窗口：done 已经到了，对端那一轮**已经提交**，
+			// 界面上也已经有流式文本了，而挑表情是可取消的 —— 用户此刻按停止，取消会从那次
+			// await 抛出来，这一轮就永远不会落进本地历史。结果是远端记着、界面显示过、本地
+			// 没有，下一轮的远端上下文与用户看到的对不上。
+			//
+			// 落库只存文本，与表情无关，因此提前没有任何代价。
+			_chat.SaveMessage("user", userText);
+			_chat.SaveMessage("assistant", message.Text);
+
 			// 远端只给文本，表情动作在本地挑：合法名随当前 Live2D 模型变化，只有宿主知道。
-			// 挑不出来（没配本机模型、超时、返回的不是 JSON）就保持空值 —— 退化成没有表情，
-			// 不影响这一轮对话。
+			// 挑不出来（没配本机模型、超时、返回的不是 JSON、这一刻被取消）就保持空值 ——
+			// 退化成没有表情，不影响这一轮对话。
 			message = await AttachReactionAsync(message, runToken);
 
 			SetState(AgentRunState.Idle);
-			_chat.SaveMessage("user", userText);
-			_chat.SaveMessage("assistant", message.Text);
 			DispatchEffects(message);
 			callbacks.OnComplete?.Invoke(message);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "completed");
@@ -567,6 +576,13 @@ public sealed class AgentEngine
 		_luoLiCore is null ? Task.FromResult(false) : _luoLiCore.ResetAsync(cancellationToken);
 
 	/// <summary>
+	/// 对端那边是否有一段会话在记着东西。
+	///
+	/// 给调用方区分「没接外部后端」与「接了但这次没去重置」用 —— 后者需要提示用户，前者不用。
+	/// </summary>
+	public bool HasRemoteContext => _luoLiCore?.HasSession ?? false;
+
+	/// <summary>
 	/// 给一条只有文本的回复补上表情与动作。
 	///
 	/// 挑选本身绝不允许影响这一轮：服务内部已经把超时与故障吞成空反应，这里再兜一层，
@@ -596,12 +612,11 @@ public sealed class AgentEngine
 				Action = reaction.Motion,
 			};
 		}
-		catch (OperationCanceledException)
-		{
-			throw;
-		}
 		catch (Exception)
 		{
+			// 含取消：走到这里时对端那一轮已经提交、文本已经落库，没有什么还能「停下来」。
+			// 把取消当成「这次没挑出表情」，而不是让整轮失败 —— 后者会把一段已经发生过的
+			// 对话报成取消，界面与远端就此分叉。
 			return message;
 		}
 	}

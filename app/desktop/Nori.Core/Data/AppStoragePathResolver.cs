@@ -3,29 +3,6 @@ using System.Text.RegularExpressions;
 
 namespace Nori.Core.Data;
 
-/// <summary>只用于一次性迁移的旧 Tauri 数据目录解析器。</summary>
-public static class LegacyDataPathResolver
-{
-	/// <summary>返回旧版 app_data_dir()/data，不应被业务读写路径使用。</summary>
-	public static string Resolve()
-	{
-		if (OperatingSystem.IsMacOS())
-		{
-			string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-			return Path.Combine(home, "Library", "Application Support", AppPaths.Identifier, "data");
-		}
-		if (OperatingSystem.IsLinux())
-		{
-			string? xdg = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
-			string root = string.IsNullOrWhiteSpace(xdg) || !Path.IsPathFullyQualified(xdg)
-				? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share")
-				: xdg;
-			return Path.Combine(root, AppPaths.Identifier, "data");
-		}
-		return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppPaths.Identifier, "data");
-	}
-}
-
 /// <summary>启动阶段根据 launcher、开发环境或安全的槽目录推断包根。</summary>
 public static class AppStoragePathResolver
 {
@@ -33,11 +10,9 @@ public static class AppStoragePathResolver
 
 	public static AppStoragePaths Resolve(string? launcherPath = null, string? baseDirectory = null)
 	{
-		// Launcher 注入的完整路径链优先，Dev 发布包也不能被开发环境变量重定向。
 		string? trustedRoot = ResolveTrustedEnvironmentRoot();
 		if (trustedRoot is not null) return new AppStoragePaths(trustedRoot);
 
-		// 未注入版本的本地 apphost 进程名并不是 dotnet；所有 Dev 构建都明确留在开发包根。
 		if (string.Equals(ProductVersion.Current, "Dev", StringComparison.Ordinal))
 			return new AppStoragePaths(Environment.GetEnvironmentVariable("NORI_DEV_PACKAGE_ROOT") ?? Environment.CurrentDirectory);
 

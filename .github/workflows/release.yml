@@ -14,7 +14,7 @@ on:
         type: choice
         options: [patch, minor, major]
       codename:
-        description: "必填唯一 Codename；用于产品版本与发布标签"
+        description: "Codename；用于产品版本与发布标签"
         required: true
         default: ""
         type: string
@@ -80,7 +80,7 @@ jobs:
           codename_pattern='^[A-Za-z0-9][A-Za-z0-9.-]*$'
           codename="$CODENAME"
           if [ -z "$codename" ] || [[ ! "$codename" =~ $codename_pattern ]]; then
-            echo "Release 必须提供唯一 Codename，且只能包含字母、数字、点和连字符: $codename" >&2
+            echo "Release 必须提供 Codename，且只能包含字母、数字、点和连字符: $codename" >&2
             exit 1
           fi
 
@@ -112,14 +112,6 @@ jobs:
           if [ -n "$codename" ]; then
             tag="v$version-$codename"
             stable_version="$version-$codename"
-            while IFS= read -r historical_tag; do
-              historical_codename="${historical_tag#v}"
-              historical_codename="${historical_codename#*-}"
-              if [ "$historical_codename" = "$codename" ] && [ "$historical_tag" != "$tag" ]; then
-                echo "Codename 已在历史标签中使用: $historical_tag" >&2
-                exit 1
-              fi
-            done < <(git tag --list 'v[0-9]*-*')
           else
             tag="v$version"
             stable_version="$version"

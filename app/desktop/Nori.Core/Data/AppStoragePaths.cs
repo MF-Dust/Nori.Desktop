@@ -6,7 +6,6 @@ namespace Nori.Core.Data;
 public sealed class AppStoragePaths
 {
 	public const string MarkerFileName = ".nori-storage.json";
-	public const string CleanupReceiptFileName = ".legacy-cleanup-pending.json";
 
 	public AppStoragePaths(string packageRoot)
 	{
@@ -22,7 +21,6 @@ public sealed class AppStoragePaths
 		DatabasePath = Path.Combine(DatabaseDirectory, AppPaths.DatabaseFileName);
 		DatabaseWalPath = DatabasePath + "-wal";
 		DatabaseShmPath = DatabasePath + "-shm";
-		MigrationBackupDirectory = DatabaseDirectory;
 		SecretDirectory = Path.Combine(DataRoot, "core", "security");
 		SecretPath = Path.Combine(SecretDirectory, "secret.key");
 		KnowledgeDirectory = Path.Combine(DataRoot, "knowledge", "documents");
@@ -48,9 +46,7 @@ public sealed class AppStoragePaths
 		AutomationBrowserTempDirectory = Path.Combine(DataRoot, "automation", "temp", "browser");
 		LogsDirectory = Path.Combine(DataRoot, "diagnostics", "logs");
 		DiagnosticsDirectory = Path.Combine(DataRoot, "diagnostics");
-		LegacyUnclassifiedDirectory = Path.Combine(DataRoot, "legacy", "unclassified");
 		MarkerPath = Path.Combine(DataRoot, MarkerFileName);
-		CleanupReceiptPath = Path.Combine(DataRoot, CleanupReceiptFileName);
 	}
 
 	public string PackageRoot { get; }
@@ -59,7 +55,6 @@ public sealed class AppStoragePaths
 	public string DatabasePath { get; }
 	public string DatabaseWalPath { get; }
 	public string DatabaseShmPath { get; }
-	public string MigrationBackupDirectory { get; }
 	public string SecretDirectory { get; }
 	public string SecretPath { get; }
 	public string KnowledgeDirectory { get; }
@@ -85,9 +80,7 @@ public sealed class AppStoragePaths
 	public string AutomationBrowserTempDirectory { get; }
 	public string LogsDirectory { get; }
 	public string DiagnosticsDirectory { get; }
-	public string LegacyUnclassifiedDirectory { get; }
 	public string MarkerPath { get; }
-	public string CleanupReceiptPath { get; }
 
 	/// <summary>创建固定目录并检查数据目录确实可写，不回退到系统目录。</summary>
 	public void EnsureCreated()
@@ -113,7 +106,6 @@ public sealed class AppStoragePaths
 		EnsureDirectory(AutomationBrowserTempDirectory);
 		EnsureDirectory(LogsDirectory);
 		EnsureDirectory(DiagnosticsDirectory);
-		EnsureDirectory(LegacyUnclassifiedDirectory);
 		string probe = Path.Combine(DataRoot, $".write-test-{Guid.NewGuid():N}");
 		try
 		{

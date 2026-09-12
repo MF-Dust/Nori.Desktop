@@ -136,12 +136,7 @@ internal sealed class DesktopBootstrapper
 			CrashReporter.ReportStartupFatal("配置数据库版本过高", SensitiveDataRedactor.ExceptionSummary(exception));
 			return;
 		}
-		if (Program.StorageMigration is { Migrated: true, LegacyDataPath: not null } migration)
-		{
-			string oldKnowledgePath = Path.Combine(migration.LegacyDataPath, "knowledge", "Memory.md");
-			StorageBootstrapper.RelocateKnowledgeIdentifier(database, config, oldKnowledgePath, paths.KnowledgePath);
-		}
-		// 只有完成配置迁移并确认 consent=granted 后才允许初始化 Native Sentry。
+		// 只有完成配置初始化并确认 consent=granted 后才允许初始化 Native Sentry。
 		telemetry.Configure(config.GetTelemetryConsent() == TelemetryConsent.Granted);
 		using ITelemetryTransaction startupTransaction = telemetry.StartTransaction("app.startup");
 		logger.Write(LogSource.Backend, "info", "数据库已打开");
@@ -305,10 +300,6 @@ internal sealed class DesktopBootstrapper
 				SmokeTestRuntime.ScheduleBoundedExit(services.Windows);
 			}
 		});
-
-		// 数据库、assets、固定窗口与初始窗口 ready 后才清理旧源；失败保留收据，下次启动重试。
-		if (Program.StorageMigration is { } cleanupMigration && File.Exists(paths.CleanupReceiptPath))
-			CrashReporter.Forget(Task.Run(() => StorageBootstrapper.CleanupLegacy(cleanupMigration, paths, LegacyDataPathResolver.Resolve()), cancellationToken), "旧数据清理");
 
 		// 固定窗口与插件窗口宿主都就绪后再执行第三方入口。
 		// 单个插件失败只记录状态，不阻断桌面宿主启动。

@@ -17,7 +17,6 @@ internal static class Program
 
 	internal static StartupOptions? Options { get; private set; }
 	internal static AppStoragePaths? StoragePaths { get; private set; }
-	internal static StorageBootstrapResult? StorageMigration { get; private set; }
 
 	internal static bool ConsumePendingActivation() => Interlocked.Exchange(ref _activationPending, 0) == 1;
 
@@ -65,10 +64,7 @@ internal static class Program
 	[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = CharSet.Unicode)]
 	private static extern int MessageBox(nint hWnd, string text, string caption, uint type);
 
-	private static bool IsDevelopmentProcess() =>
-		string.Equals(ProductVersion.Current, "Dev", StringComparison.Ordinal);
-
-	private static void ActivateFirstInstance()
+		private static void ActivateFirstInstance()
 	{
 		if (Application.Current is App app) app.ActivateMainWindow();
 		else Interlocked.Exchange(ref _activationPending, 1);
@@ -139,14 +135,7 @@ internal static class Program
 		try
 		{
 			AppStoragePaths paths = StoragePaths ?? throw new InvalidOperationException("存储路径尚未初始化");
-			bool development = IsDevelopmentProcess();
-			string? legacy = development || smokeTest is not null ? null : LegacyDataPathResolver.Resolve();
-			StorageMigration = StorageBootstrapper.Bootstrap(
-				paths,
-				ProductVersion.Current,
-				RuntimeRid(),
-				legacy,
-				allowLegacyMigration: !development && smokeTest is null);
+			StorageBootstrapper.Bootstrap(paths, ProductVersion.Current, RuntimeRid());
 			BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 		}
 		catch (Exception exception)

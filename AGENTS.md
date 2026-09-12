@@ -26,7 +26,7 @@ Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12
 - **Storage Layout (`<PackageRoot>/data`)**:
   - Governed strictly by immutable `AppStoragePaths`. Subdirectories: `core/database` (`nori.db`), `core/security` (`secret.key`), `knowledge/documents` (`Memory.md`), `resources/installed`, `plugins`, `webview/cache/host`, and `diagnostics/logs`.
   - Zero fallback to OS system directories. If `<PackageRoot>/data` is unwritable, startup fails explicitly.
-  - Legacy Tauri app data directories are used solely as one-time migration sources via `LegacyDataPathResolver`.
+  - Runtime data resides only in `<PackageRoot>/data`; the package does not read legacy Tauri application-data directories.
 - **Plugin System (`Nori.PluginRuntime` & `Nori.PluginSDK`)**:
   - Plugins are in-process .NET 10 extensions loaded into collectible `AssemblyLoadContext` instances for isolation.
   - Third-party plugins reference the ref-only NuGet package `Nori.PluginSDK` (exposing `INoriPlugin`, `IPluginContext`, `ui.webview` capability).

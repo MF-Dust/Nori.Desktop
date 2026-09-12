@@ -10,12 +10,6 @@ public sealed class AppPathsTests : IDisposable
 	public AppPathsTests() => Directory.CreateDirectory(_root);
 
 	[Fact]
-	public void 应用标识保持兼容()
-	{
-		Assert.Equal("cn.erhio.noriDesktopPet", AppPaths.Identifier);
-	}
-
-	[Fact]
 	public void 所有业务路径位于包根data内()
 	{
 		AppStoragePaths paths = new(_root);

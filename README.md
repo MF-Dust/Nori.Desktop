@@ -273,7 +273,7 @@ publish.bat
 
 ## 当前稳定化口径
 
-- **版本规范**：普通构建产品版本精确为 `Dev`；GitHub Actions Release 必须手动输入全历史唯一 codename，数字版本也不得由另一个发布标签重用，并由数字版本与短提交 hash 派生稳定标签、Sentry release 与 informational version。`ProductVersion.Current` 保留完整 informational 版本号并进入 snapshot、readiness、诊断与 MCP `clientInfo`。
+- **版本规范**：普通构建产品版本精确为 `Dev`；GitHub Actions Release 使用手动 codename，数字版本也不得由另一个发布标签重用，并由数字版本与短提交 hash 派生稳定标签、Sentry release 与 informational version。`ProductVersion.Current` 保留完整 informational 版本号并进入 snapshot、readiness、诊断与 MCP `clientInfo`。
 - **平台矩阵**：Windows x64 为发布 blocker 和首要验收平台；Release workflow 当前发布 `win-x64`、`linux-x64`、`osx-arm64`，macOS/Linux 能力不支持时（如 Wayland 全局光标与穿透）由能力标志驱动优雅降级。
 - **发布产物**：三平台均为 framework-dependent 槽式归档（Windows ZIP、Linux tar.gz、macOS ZIP），完整归档 root；由于回环资源服务使用 Kestrel，目标机需具备 ASP.NET Core Runtime 10（Windows 另需 WebView2 Evergreen Runtime），不提供自包含安装包。
 - **模型管理**：仅支持本地模型（`arg-nori`、`nori`）与本地 ZIP/目录导入，不提供远程模型下载或 CDN 网关。

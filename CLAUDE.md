@@ -40,7 +40,7 @@ pnpm dev                                      # vite only; must be running for N
 
 ### Stabilization contracts
 
-- 产品版本由构建环境控制；未显式注入时唯一默认值是 `Dev`。Release 必须手动输入全历史唯一 codename，数字版本也不得由另一个发布标签重用；通过 `NORI_PRODUCT_VERSION` 注入稳定版本、通过 `NORI_PRODUCT_INFORMATIONAL_VERSION` 注入带 `NORI_COMMIT_SHA` 短 hash 的 informational version。CLR/File/NuGet 版本保持数字格式，`ProductVersion.Current` 保留完整 `v<version>-<codename>+<shortsha>` informational version。不要新增 `0.1.0` 回退。`ProductVersion.Current` 进入 snapshot、Smoke readiness、诊断、Crash 报告和 MCP clientInfo。
+- 产品版本由构建环境控制；未显式注入时默认值是 `Dev`。Release 通过手动 codename 生成稳定版本与标签，数字版本也不得由另一个发布标签重用；通过 `NORI_PRODUCT_VERSION` 注入稳定版本、通过 `NORI_PRODUCT_INFORMATIONAL_VERSION` 注入带 `NORI_COMMIT_SHA` 短 hash 的 informational version。CLR/File/NuGet 版本保持数字格式，`ProductVersion.Current` 保留完整 `v<version>-<codename>+<shortsha>` informational version。不要新增 `0.1.0` 回退。`ProductVersion.Current` 进入 snapshot、Smoke readiness、诊断、Crash 报告和 MCP clientInfo。
 - `--safe-mode` 只接受人工命令行启动，不自动恢复。它保留 UI、日志、诊断和本地手动修复，跳过 MCP 自动连接、Proactive/Reflection、知识与记忆后台维护、AI 伴侣交互及 Live2D 自动模型加载；Bridge 入口同时拒绝交互式联网、Provider/MCP/语音外部操作。
 - `readiness.json` schema v2 必须包含 `product_version`、`database_schema_version`、`config_schema_version` 和 `safe_mode`；Windows CI 覆盖 first-run、initialized 和 initialized safe-mode。
 - `export_diagnostics` 只生成大小受限、脱敏白名单 ZIP；不得包含数据库、聊天/记忆/提示词、工具参数/结果、请求正文、录音、资源、凭据或真实用户路径。Provider 连接测试发送固定探测且不持久化配置或内容。
@@ -112,7 +112,7 @@ App and assets are **same-origin**, so `assetUrl()` is a relative path and there
 
 ### Config: SQLite key/value with inferred types
 
-`nori.db` lives in `<PackageRoot>/data/core/database/` with two tables: `config(key TEXT PRIMARY KEY, value TEXT)` and `chat_messages`. Everything is stored as TEXT. The old Tauri `app_data_dir()/data` is used only as a one-time migration source; package data is never redirected to system AppData. `<PackageRoot>` must remain writable and the complete package must be movable.
+`nori.db` lives in `<PackageRoot>/data/core/database/` with two tables: `config(key TEXT PRIMARY KEY, value TEXT)` and `chat_messages`. Everything is stored as TEXT. Package data is never redirected to system AppData; `<PackageRoot>` must remain writable and the complete package must be movable.
 
 The trap: `ConfigValue.FromStorage` **re-infers the type on read**. `"1"`/`"true"` → Boolean, digit strings → Integer, `{…}`/`[…]` → Json, everything else → String. A config you wrote as a string comes back as a number if it happens to look like one, so `invoke<string | null>("get_config", …)` is a lie for numeric-looking values — `parseNumber()` in `services/live2d/config.ts` exists for exactly this. `"1.25"` stays a String (i64 parse fails, not a JSON container) — `Nori.Core.Tests` pins all of this.
 

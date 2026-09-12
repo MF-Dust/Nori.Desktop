@@ -12,9 +12,15 @@ if command -v mise >/dev/null 2>&1; then
 	NODE24_DIR="$(mise where node@24 2>/dev/null || true)"
 	if [[ -n "$NODE24_DIR" ]]; then
 		export PATH="$NODE24_DIR/bin:$PATH"
-		hash -r
 	fi
-	unset NODE24_DIR
+
+	PNPM11_BIN="$(mise which pnpm --tool=pnpm@11 2>/dev/null || true)"
+	if [[ -n "$PNPM11_BIN" ]]; then
+		export PATH="$(dirname "$PNPM11_BIN"):$PATH"
+	fi
+
+	hash -r
+	unset NODE24_DIR PNPM11_BIN
 fi
 
 if [[ -x "$HOME/.dotnet/dotnet" ]]; then
@@ -31,8 +37,8 @@ if ! command -v node >/dev/null 2>&1 || (( $(node -p 'process.versions.node.spli
 	exit 1
 fi
 
-if ! command -v pnpm >/dev/null 2>&1; then
-	echo "pnpm 不可用，Codex Cloud 缓存环境需要重建。" >&2
+if ! command -v pnpm >/dev/null 2>&1 || [[ "$(pnpm --version | cut -d. -f1)" != "11" ]]; then
+	echo "pnpm 11 不可用，Codex Cloud 缓存环境需要重建。" >&2
 	exit 1
 fi
 

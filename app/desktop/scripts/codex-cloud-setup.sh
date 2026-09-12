@@ -79,25 +79,57 @@ ensure_node() {
 	log "Node.js $(node --version) 可用。"
 }
 
-ensure_pnpm() {
-	if command -v pnpm >/dev/null 2>&1 && [[ "$(pnpm --version | cut -d. -f1)" == "11" ]]; then
-		log "pnpm $(pnpm --version) 可用。"
-		return
+activate_pnpm11() {
+	if ! command -v mise >/dev/null 2>&1; then
+		echo "Codex universal 环境中未找到 mise，无法准备 pnpm 11。" >&2
+		exit 1
 	fi
 
-	log "激活 pnpm 11。"
-	if command -v corepack >/dev/null 2>&1; then
-		corepack enable
-		corepack prepare pnpm@11 --activate
-	else
-		mkdir -p "$HOME/.local"
-		npm config set prefix "$HOME/.local"
-		export PATH="$HOME/.local/bin:$PATH"
-		if ! grep -Fq 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.bashrc" 2>/dev/null; then
-			printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$HOME/.bashrc"
-		fi
-		npm install --global pnpm@11
+	log "通过 mise 的 pnpm 后端准备 pnpm 11。"
+	mise install pnpm@11
+
+	local pnpm_bin
+	pnpm_bin="$(mise which pnpm --tool=pnpm@11 2>/dev/null || true)"
+	if [[ -z "$pnpm_bin" || ! -x "$pnpm_bin" ]]; then
+		echo "mise 已安装 pnpm 11，但无法定位 pnpm 可执行文件。" >&2
+		exit 1
 	fi
+
+	export PATH="$(dirname "$pnpm_bin"):$PATH"
+	hash -r
+
+	if ! grep -Fq '# Nori Codex Cloud pnpm 11' "$HOME/.bashrc" 2>/dev/null; then
+		cat >> "$HOME/.bashrc" <<'EOF'
+
+# Nori Codex Cloud pnpm 11
+if command -v mise >/dev/null 2>&1; then
+	NORI_PNPM11_BIN="$(mise which pnpm --tool=pnpm@11 2>/dev/null || true)"
+	if [[ -n "$NORI_PNPM11_BIN" ]]; then
+		export PATH="$(dirname "$NORI_PNPM11_BIN"):$PATH"
+	fi
+	unset NORI_PNPM11_BIN
+fi
+EOF
+	fi
+}
+
+ensure_pnpm() {
+	local pnpm_major=0
+	if command -v pnpm >/dev/null 2>&1; then
+		pnpm_major="$(pnpm --version 2>/dev/null | cut -d. -f1 || true)"
+	fi
+
+	if [[ "$pnpm_major" != "11" ]]; then
+		activate_pnpm11
+		pnpm_major="$(pnpm --version | cut -d. -f1)"
+	fi
+
+	if [[ "$pnpm_major" != "11" ]]; then
+		echo "Nori.Desktop 需要 pnpm 11，当前为 $(pnpm --version 2>/dev/null || echo unavailable)。" >&2
+		exit 1
+	fi
+
+	log "pnpm $(pnpm --version) 可用。"
 }
 
 ensure_dotnet() {

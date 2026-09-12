@@ -1745,6 +1745,22 @@ public class BridgeCommandsTests : IDisposable
 	});
 
 	[Fact]
+	public Task NativeMcpReadDoesNotTriggerAnotherRefresh() => WithSettingsUiAsync(async () =>
+	{
+		Window window = new();
+		using SettingsService settings = new(_services, window);
+		int changes = 0;
+		settings.StateChanged += () => changes++;
+		try
+		{
+			window.Show();
+			await settings.ExecuteAsync("mcp_get_servers");
+			Assert.Equal(0, changes);
+		}
+		finally { window.Close(); }
+	});
+
+	[Fact]
 	public Task NativeSettingsServiceRejectsCommandsOutsideSettingsPolicy() => WithSettingsUiAsync(async () =>
 	{
 		using SettingsService settings = new(_services, new Window());

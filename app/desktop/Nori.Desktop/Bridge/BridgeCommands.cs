@@ -267,6 +267,12 @@ public sealed class BridgeCommands
 		/// 开关读屏。
 		/// 前端调用：invoke("settings_update_screen", {enabled: boolean})
 		/// </summary>
+		/// <summary>
+		/// 开关一条情绪表达通道。
+		/// 前端调用：invoke("settings_update_expression", {channel: string, enabled: boolean})
+		/// </summary>
+		"settings_update_expression" => RequireMain(source, () => Run(() => UpdateExpressionChannel(args))),
+
 		"settings_update_screen" => RequireMain(source, () => Run(() =>
 		{
 			UpdateBoolConfig(args, "enabled", ConfigStore.KeyScreenReadingEnabled);
@@ -1845,6 +1851,29 @@ public sealed class BridgeCommands
 	/// 目录在此处即时校验是否存在。写入不存在的路径不会报错，但该组工具会静默不注册，表现为
 	/// 配置项有值而工具不可用，排查成本高。空串为合法取值，表示禁用该功能。
 	/// </summary>
+	/// <summary>
+	/// 开关一条情绪表达通道。
+	///
+	/// 通道键由前端给出而不是在此处枚举：通道清单在 AppRuntime，两处各维护一份必然漂。
+	/// 键必须带 expression_ 前缀，挡住拿这条命令去改任意配置项。
+	/// </summary>
+	private void UpdateExpressionChannel(JsonElement args)
+	{
+		if (args.ValueKind != JsonValueKind.Object
+			|| !args.TryGetProperty("channel", out JsonElement channel)
+			|| channel.GetString() is not {Length: > 0} key
+			|| !key.StartsWith(ConfigStore.KeyExpressionPrefix, StringComparison.Ordinal))
+		{
+			throw new InvalidOperationException("channel 必须是情绪表达通道的键");
+		}
+
+		UpdateBoolConfig(args, "enabled", key);
+
+		// 关掉会改桌面设置的通道时立刻还原，不等退出 —— 用户关它多半就是想让桌面变回去。
+		if (!_services.Config.GetBoolOr(key, false)) Runtime.RestoreDesktopState();
+		Runtime.InvalidateSnapshot("expression");
+	}
+
 	private void UpdateTaskSettings(JsonElement args)
 	{
 		if (args.ValueKind != JsonValueKind.Object

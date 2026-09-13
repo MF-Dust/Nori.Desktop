@@ -56,7 +56,6 @@ public sealed class MachineStateProvider : IMachineStateProvider
 		{
 			MemoryUsedMb = usedMb,
 			MemoryTotalMb = totalMb,
-			OwnMemoryMb = (int)(Environment.WorkingSet / 1024 / 1024),
 			CpuPercent = ReadCpuPercent(),
 			Gpu = ReadGpu(),
 			Uptime = TimeSpan.FromMilliseconds(Environment.TickCount64),

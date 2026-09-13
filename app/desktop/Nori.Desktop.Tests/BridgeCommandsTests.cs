@@ -886,6 +886,65 @@ public partial class BridgeCommandsTests : IDisposable
 		await Task.CompletedTask;
 	}
 
+	// ---- 情绪表达 ----
+
+	[Fact]
+	public async Task 设置窗口可以开关表达通道()
+	{
+		Assert.Contains("settings_update_expression", SettingsService.Commands);
+		await Task.CompletedTask;
+	}
+
+	/// <summary>
+	/// 通道键必须带前缀。
+	///
+	/// 这条命令拿键名直写配置，不挡的话它就成了「改任意配置项」的通用入口。
+	/// </summary>
+	[Theory]
+	[InlineData("agent_max_tool_iterations")]
+	[InlineData("workspace_root")]
+	[InlineData("")]
+	public async Task 非表达通道的键被拒绝(string key)
+	{
+		BridgeCommands commands = CreateCommands();
+
+		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
+			new FakeBridgeSource(WindowLabels.Main),
+			"settings_update_expression",
+			Args(new {channel = key, enabled = true})));
+	}
+
+	[Fact]
+	public async Task 开关表达通道会落库()
+	{
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+
+		await commands.InvokeAsync(
+			main, "settings_update_expression", Args(new {channel = "expression_tray_icon", enabled = false}));
+
+		Assert.False(_config.GetBoolOr("expression_tray_icon", true));
+	}
+
+	/// <summary>快照要同时给出「开没开」与「能不能用」—— 只给一个的话「开了没反应」无从排查。</summary>
+	[Fact]
+	public void 快照按通道报出开关与可用性()
+	{
+		JsonElement snapshot = JsonSerializer.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options);
+		JsonElement expression = snapshot.GetProperty("expression");
+
+		JsonElement tray = expression.GetProperty("expression_tray_icon");
+		Assert.True(tray.TryGetProperty("enabled", out _));
+		Assert.True(tray.TryGetProperty("available", out _));
+
+		// 改整个桌面的两条默认关。
+		Assert.False(expression.GetProperty("expression_accent_color").GetProperty("enabled").GetBoolean());
+		Assert.False(expression.GetProperty("expression_wallpaper").GetProperty("enabled").GetBoolean());
+
+		// 她自己身上那两条默认开。
+		Assert.True(expression.GetProperty("expression_tray_icon").GetProperty("enabled").GetBoolean());
+	}
+
 	// ---- 具名任务 ----
 
 	[Fact]

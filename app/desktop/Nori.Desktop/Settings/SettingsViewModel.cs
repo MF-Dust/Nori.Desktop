@@ -43,6 +43,7 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 		NavigateCommand = new SettingsCommand(parameter => Navigate(parameter as string));
 		AddPage(new AiSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new WorkspaceSettingsPage(_service, _lifetimeCts.Token));
+		AddPage(new ExpressionSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new VoiceSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new ProactiveSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new GeneralSettingsPage(_service, _lifetimeCts.Token));

@@ -124,6 +124,7 @@ export interface BridgeCommandMap {
 	settings_pick_workspace: {args: EmptyCommandArgs; result: WorkspacePickResult}
 	settings_update_tasks: {args: {tasks: WorkspaceTaskDto[]}; result: WorkspaceTasksResult}
 	settings_update_screen: {args: {enabled: boolean}; result: void}
+	settings_update_expression: {args: {channel: string; enabled: boolean}; result: void}
 	settings_update_automation: {args: Partial<{enabled: boolean; desktopEnabled: boolean; browserEnabled: boolean}>; result: AutomationSettingsDto}
 	automation_get_snapshot: {args: EmptyCommandArgs; result: UiSnapshot["automation"]}
 	automation_update_settings: {args: Partial<{enabled: boolean; allowPointer: boolean; allowKeyboard: boolean; allowScroll: boolean; browserEnabled: boolean}>; result: AutomationSettingsDto}

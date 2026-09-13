@@ -84,9 +84,6 @@ public sealed record MachineState
 	/// <summary>内存总量，MB。</summary>
 	public int? MemoryTotalMb { get; init; }
 
-	/// <summary>Nori 自己占用的内存，MB。</summary>
-	public int? OwnMemoryMb { get; init; }
-
 	/// <summary>系统整体 CPU 利用率百分比。</summary>
 	public int? CpuPercent { get; init; }
 

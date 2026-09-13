@@ -813,6 +813,7 @@ public sealed class AppRuntime : IAsyncDisposable
 		WorkspaceTools.RegisterAll(Tools, workspace);
 		RegisterTaskTools(Tools, workspace);
 		RegisterScreenTools(Tools);
+		DeviceTools.RegisterAll(Tools, RefreshDevices);
 	}
 
 	/// <summary>
@@ -1061,6 +1062,7 @@ public sealed class AppRuntime : IAsyncDisposable
 		WorkspaceTools.RegisterAll(registry, workspace);
 		RegisterTaskTools(registry, workspace);
 		RegisterScreenTools(registry);
+		DeviceTools.RegisterAll(registry, RefreshDevices);
 		return registry;
 	}
 
@@ -1506,6 +1508,17 @@ public sealed class AppRuntime : IAsyncDisposable
 				// 平台不支持或模型没配时，界面要说清是「开不了」而不是「没开」。
 				screenAvailable = ScreenCapture is {IsAvailable: true} && VisionAnalyzer.IsConfigured,
 			},
+			// 每条通道两项：开没开（用户的选择）与能不能用（环境是否具备）。界面要能说出差别，
+			// 否则「开了没反应」无从排查。
+			expression = ExpressionChannels.ToDictionary(
+				channel => channel.Key,
+				channel => (object)new
+				{
+					enabled = IsExpressionChannelEnabled(channel.Key),
+					available = channel.IsAvailable,
+					level = channel.Level.ToString().ToLowerInvariant(),
+				},
+				StringComparer.Ordinal),
 			telemetry = new
 			{
 				consent = ConfigValidation.TelemetryConsentStorage(config.GetTelemetryConsent()),

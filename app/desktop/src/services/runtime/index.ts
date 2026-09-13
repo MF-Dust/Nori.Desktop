@@ -434,6 +434,10 @@ export const RUNTIME = {
 	updateWorkspace(patch: Partial<{root: string; maxToolIterations: number}>): Promise<WorkspaceSettingsResult> {
 		return invoke("settings_update_workspace", patch)
 	},
+	/** 开关一条情绪表达通道。每条单独开关：改整个桌面的颜色和让托盘换个色，打扰程度差着量级。 */
+	updateExpressionChannel(channel: string, enabled: boolean): Promise<void> {
+		return invoke("settings_update_expression", {channel, enabled})
+	},
 	/** 开关读屏。与工作目录分开授权：屏幕上会出现什么，用户在授权那一刻无从预料。 */
 	updateScreenReading(enabled: boolean): Promise<void> {
 		return invoke("settings_update_screen", {enabled})

@@ -318,8 +318,6 @@ public partial class BridgeCommandsTests : IDisposable
 
 		public Nori.Core.Sandbox.SandboxIsolation Isolation => Nori.Core.Sandbox.SandboxIsolation.None;
 
-		public string Describe() => "测试用";
-
 		public Task<Nori.Core.Sandbox.SandboxResult> RunAsync(
 			string commandLine, Nori.Core.Sandbox.SandboxPolicy policy, CancellationToken cancellationToken) =>
 			Task.FromResult(new Nori.Core.Sandbox.SandboxResult
@@ -1025,6 +1023,21 @@ public partial class BridgeCommandsTests : IDisposable
 			new FakeBridgeSource(WindowLabels.Main), "settings_update_workspace", Args(new { root = folder }));
 
 		Assert.Equal([folder], _runtime.CurrentGrantPaths());
+	}
+
+	/// <summary>
+	/// 快照必须在启动器建立之前就报出本平台的隔离强度。
+	///
+	/// 界面要在用户配置命令**之前**说清「命令会跑在什么边界里」—— 无隔离时命令拥有用户的全部
+	/// 权限，与 AppContainer 下「只能读写工作文件夹、默认不联网」是两回事。报 unknown 等于没报。
+	/// </summary>
+	[Fact]
+	public void 快照报出执行边界()
+	{
+		JsonElement snapshot = JsonSerializer.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options);
+
+		// 测试注入的是无隔离实现，快照应当如实反映，而不是报平台的预期值。
+		Assert.Equal("none", snapshot.GetProperty("workspace").GetProperty("isolation").GetString());
 	}
 
 	[Fact]

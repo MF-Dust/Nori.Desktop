@@ -12,12 +12,10 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AiSetup: typeof import('./src/components/firstRun/AiSetup.vue')['default']
-    AppActionButton: typeof import('./src/components/ui/AppActionButton.vue')['default']
     AppButton: typeof import('./src/components/ui/AppButton.vue')['default']
     AppCard: typeof import('./src/components/ui/AppCard.vue')['default']
     AppChip: typeof import('./src/components/ui/AppChip.vue')['default']
     AppConfirm: typeof import('./src/components/ui/AppConfirm.vue')['default']
-    AppDangerZone: typeof import('./src/components/ui/AppDangerZone.vue')['default']
     AppEmpty: typeof import('./src/components/ui/AppEmpty.vue')['default']
     AppField: typeof import('./src/components/ui/AppField.vue')['default']
     AppModal: typeof import('./src/components/ui/AppModal.vue')['default']
@@ -41,7 +39,6 @@ declare module 'vue' {
     NMessageProvider: typeof import('naive-ui')['NMessageProvider']
     NNotificationProvider: typeof import('naive-ui')['NNotificationProvider']
     NSelect: typeof import('naive-ui')['NSelect']
-    NSlider: typeof import('naive-ui')['NSlider']
     OperationDrawer: typeof import('./src/components/automation/OperationDrawer.vue')['default']
     PluginWidgets: typeof import('./src/components/chat/PluginWidgets.vue')['default']
     Ready: typeof import('./src/components/firstRun/Ready.vue')['default']

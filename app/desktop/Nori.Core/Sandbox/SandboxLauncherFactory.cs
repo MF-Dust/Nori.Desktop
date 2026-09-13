@@ -21,6 +21,15 @@ public static class SandboxLauncherFactory
 	/// 其余平台目前只有无隔离执行；Linux 的 Landlock 与 macOS 的 Seatbelt 在此处接入。
 	/// </summary>
 	/// <summary>
+	/// 本平台预期会用的隔离强度。纯平台判断，不建立任何东西。
+	///
+	/// 界面要在用户配置命令之前就说清「命令会跑在什么边界里」，而那时启动器还没建。真正建起来
+	/// 之后以实例上报的为准 —— AppContainer 建不起来时会退回无隔离，两者可能不一致。
+	/// </summary>
+	public static SandboxIsolation PlannedIsolation =>
+		OperatingSystem.IsWindows() ? SandboxIsolation.AppContainer : SandboxIsolation.None;
+
+	/// <summary>
 	/// 建立一个**不创建任何持久状态**的启动器，专供释放授权使用。
 	///
 	/// <see cref="Create"/> 会顺手把容器配置文件建出来，而清理路径上那是反效果 —— 为了删掉

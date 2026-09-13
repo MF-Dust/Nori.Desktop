@@ -41,10 +41,6 @@ public sealed class AppContainerLauncher : ISandboxLauncher
 	/// <inheritdoc />
 	public SandboxIsolation Isolation => SandboxIsolation.AppContainer;
 
-	/// <inheritdoc />
-	public string Describe() =>
-		"AppContainer 隔离：命令只能读写你选定的工作文件夹，读取工具链目录，默认无法联网。";
-
 	/// <summary>本机能否使用 AppContainer。</summary>
 	public static bool IsSupported => OperatingSystem.IsWindows();
 

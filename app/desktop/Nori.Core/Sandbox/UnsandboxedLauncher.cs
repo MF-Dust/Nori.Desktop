@@ -16,9 +16,6 @@ public sealed class UnsandboxedLauncher : ISandboxLauncher
 	public SandboxIsolation Isolation => SandboxIsolation.None;
 
 	/// <inheritdoc />
-	public string Describe() => "无沙箱：命令以当前用户身份运行，可访问你的全部文件与网络。";
-
-	/// <inheritdoc />
 	public async Task<SandboxResult> RunAsync(
 		string commandLine, SandboxPolicy policy, CancellationToken cancellationToken)
 	{

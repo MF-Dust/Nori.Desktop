@@ -65,9 +65,6 @@ public interface ISandboxLauncher
 	/// <summary>本实现实际达到的隔离强度。</summary>
 	SandboxIsolation Isolation { get; }
 
-	/// <summary>给用户看的一句话说明，用于确认对话框。</summary>
-	string Describe();
-
 	/// <summary>按给定约束执行一条命令行。</summary>
 	Task<SandboxResult> RunAsync(string commandLine, SandboxPolicy policy, CancellationToken cancellationToken);
 

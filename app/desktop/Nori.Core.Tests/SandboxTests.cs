@@ -45,13 +45,6 @@ public sealed class SandboxTests : IDisposable
 			CommandLine.Split(@"""C:\Program Files\dotnet\dotnet.exe"" build -v q"));
 	}
 
-	[Fact]
-	public void 拼回去的命令行给含空格的路径加引号()
-	{
-		Assert.Equal(@"""C:\a b\x.exe"" run", CommandLine.Join(@"C:\a b\x.exe", "run"));
-		Assert.Equal("dotnet build", CommandLine.Join("dotnet", "build"));
-	}
-
 	// ---- 输出解码 ----
 
 	[Fact]
@@ -113,7 +106,6 @@ public sealed class SandboxTests : IDisposable
 		UnsandboxedLauncher launcher = new();
 
 		Assert.Equal(SandboxIsolation.None, launcher.Isolation);
-		Assert.Contains("无沙箱", launcher.Describe(), StringComparison.Ordinal);
 		await Task.CompletedTask;
 	}
 

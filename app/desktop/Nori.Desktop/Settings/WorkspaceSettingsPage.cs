@@ -50,6 +50,20 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 		SettingsSectionViewModel commands = AddSection(new("可运行的任务", "Runnable tasks"));
 		AddField(
 			commands,
+			"isolation",
+			new("执行边界", "Execution boundary"),
+			new(
+				"命令跑在什么范围里。由系统能力决定，不可配置。",
+				"What the command can reach. Determined by the platform; not configurable."),
+			SettingsEditorKind.Text,
+			IsolationText,
+			"",
+			(_, _) => Task.FromResult(default(JsonElement)),
+			readOnly: true);
+
+
+		AddField(
+			commands,
 			"tasks",
 			new("任务清单", "Task list"),
 			new(
@@ -87,6 +101,26 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			maximum: Core.Agent.AgentEngine.MaxToolIterationsLimit,
 			increment: 1);
 	}
+
+	/// <summary>
+	/// 把隔离强度翻成用户能判断的话。
+	///
+	/// 这条是安全信息而不是装饰：无隔离时命令拥有你的全部权限，与 AppContainer 下「只能读写
+	/// 工作文件夹、默认不联网」是两回事。界面上不说，用户在 Linux 与 macOS 上无从察觉这个差别。
+	///
+	/// 文案放在呈现层而不是 <c>ISandboxLauncher</c> 上：那是 Core 的契约，给不出双语。
+	/// </summary>
+	private string IsolationText(JsonElement snapshot) =>
+		SettingsSnapshotReader.String(snapshot, "", "workspace", "isolation") switch
+		{
+			"appcontainer" => IsEnglish
+				? "Sandboxed (AppContainer) — limited to the working folder, no network"
+				: "受限执行（AppContainer）—— 只能读写工作文件夹，默认无法联网",
+			"none" => IsEnglish
+				? "Not sandboxed — commands run with your full permissions; only configure commands you trust"
+				: "无隔离 —— 命令以你的身份运行，可访问全部文件与网络；只配置你信任的命令",
+			_ => IsEnglish ? "Unknown" : "未知",
+		};
 
 	/// <summary>
 	/// 把快照里的任务清单渲染成「名称 = 命令」的文本。

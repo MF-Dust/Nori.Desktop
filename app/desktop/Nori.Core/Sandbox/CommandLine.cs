@@ -28,15 +28,4 @@ public static class CommandLine
 		int space = trimmed.IndexOf(' ', StringComparison.Ordinal);
 		return space < 0 ? (trimmed, "") : (trimmed[..space], trimmed[(space + 1)..].TrimStart());
 	}
-
-	/// <summary>把可执行文件与参数拼回一条命令行，可执行文件段按需加引号。</summary>
-	public static string Join(string fileName, string arguments)
-	{
-		ArgumentNullException.ThrowIfNull(fileName);
-		ArgumentNullException.ThrowIfNull(arguments);
-		string head = fileName.Contains(' ', StringComparison.Ordinal) && !fileName.StartsWith('"')
-			? "\"" + fileName + "\""
-			: fileName;
-		return arguments.Length == 0 ? head : head + " " + arguments;
-	}
 }

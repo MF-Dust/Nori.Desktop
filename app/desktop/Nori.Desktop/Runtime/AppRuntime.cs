@@ -825,6 +825,14 @@ public sealed class AppRuntime : IAsyncDisposable
 	/// </summary>
 	private ISandboxLauncher Sandbox => _sandbox ??= Services.Sandbox ?? SandboxLauncherFactory.Create();
 
+	/// <summary>
+	/// 已经可用的启动器，**不触发创建**：已建好的优先，其次是注入的，都没有则为空。
+	///
+	/// 报告隔离强度与释放授权都不该把容器建出来，但都必须尊重注入 —— 这条规则写在一处，
+	/// 两边共用。分开写过一次，结果是两处各漏了一次注入。
+	/// </summary>
+	private ISandboxLauncher? ExistingSandbox => _sandbox ?? Services.Sandbox;
+
 	/// <summary>当前该给 runTask 哪些任务。安全模式下一条都不给，判据与文件工具一致。</summary>
 	/// <summary>
 	/// 当前授予过持久权限的路径集合：工作目录，加上各条任务的可执行文件所在目录。
@@ -864,9 +872,8 @@ public sealed class AppRuntime : IAsyncDisposable
 		string[] stale = [.. previous.Where(path => !keep.Contains(path))];
 		if (stale.Length == 0) return;
 
-		// 不走 Sandbox 属性：它会顺手把容器建出来，清理路径上是反效果。但注入的实现必须尊重，
-		// 否则释放走的是另一个启动器，注入口形同虚设。
-		ISandboxLauncher launcher = _sandbox ?? Services.Sandbox ?? SandboxLauncherFactory.CreateForRelease();
+		// 不走 Sandbox 属性：它会顺手把容器建出来，清理路径上是反效果。
+		ISandboxLauncher launcher = ExistingSandbox ?? SandboxLauncherFactory.CreateForRelease();
 		foreach (string path in stale)
 		{
 			try
@@ -1358,8 +1365,10 @@ public sealed class AppRuntime : IAsyncDisposable
 				maxToolIterations = Engine.ConfiguredToolIterations,
 				tasks = WorkspaceTaskList.Read(config.Get(ConfigStore.KeyWorkspaceTasks))
 					.Select(task => new { name = task.Name, command = task.Command }),
-				// 界面要能说清「命令跑在什么边界里」：无隔离与 AppContainer 的确认强度不同。
-				isolation = _sandbox is null ? "unknown" : _sandbox.Isolation.ToString().ToLowerInvariant(),
+				// 界面要能说清「命令跑在什么边界里」：无隔离与 AppContainer 的安全含义完全不同。
+				// 启动器尚未建立时报本平台的预期值，不报 unknown —— 用户在配置命令之前就该知道。
+				isolation = (ExistingSandbox?.Isolation ?? SandboxLauncherFactory.PlannedIsolation)
+					.ToString().ToLowerInvariant(),
 			},
 			telemetry = new
 			{

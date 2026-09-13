@@ -307,6 +307,110 @@ public sealed class LuoLiCoreConversationTests : IDisposable
 		Assert.Equal("在的", message.Text);
 	}
 
+	// ---- 够不到远端时本地会话必须作废（review 要求）----
+
+	/// <summary>
+	/// 关掉 LuoLiCore 之后清空聊天，旧会话不能被留下。
+	///
+	/// 留下的话是一个很隐蔽的状态：用户聊过一阵、关掉、清空，本地空了但会话 id 还在；等他
+	/// 再打开，那段「已经清掉」的上下文原样回来。
+	/// </summary>
+	[Fact]
+	public async Task 关闭状态下清空会作废本地会话()
+	{
+		Configure(sessionId: "sess_old");
+		Assert.Equal("sess_old", _settings.Read().SessionId);
+
+		// 用户关掉 LuoLiCore。
+		_config.Set(LuoLiCoreSettingsStore.KeyEnabled, new ConfigValue.Boolean(false));
+
+		List<string> paths = [];
+		LuoLiCoreConversation conversation = Build(request =>
+		{
+			paths.Add(request.RequestUri!.AbsolutePath);
+			return Json(HttpStatusCode.OK, "{\"ok\":true,\"commitId\":\"c1\"}");
+		});
+
+		Assert.False(await conversation.ResetAsync(CancellationToken.None));
+
+		// 关掉就该意味着不再产生外部调用。
+		Assert.Empty(paths);
+		Assert.Equal("", _settings.Read().SessionId);
+	}
+
+	/// <summary>
+	/// 会话 id 与身份指纹必须一起失效。
+	///
+	/// 只删 id 的话指纹留在库里；只删指纹更糟 —— 旧 id 会被当成「同一台服务端的会话」继续用。
+	/// </summary>
+	[Fact]
+	public async Task 会话id与身份指纹一起失效()
+	{
+		Configure();
+		_settings.SaveSessionId("sess_old");
+		Assert.NotEqual("", _config.GetStringOr(LuoLiCoreSettingsStore.KeySessionOwner, ""));
+
+		_config.Set(LuoLiCoreSettingsStore.KeyEnabled, new ConfigValue.Boolean(false));
+		await Build(_ => Json(HttpStatusCode.OK, "{}")).ResetAsync(CancellationToken.None);
+
+		Assert.Equal("", _config.GetStringOr(LuoLiCoreSettingsStore.KeySessionId, ""));
+		Assert.Equal("", _config.GetStringOr(LuoLiCoreSettingsStore.KeySessionOwner, ""));
+	}
+
+	/// <summary>重新启用之后建的是新会话，不是接着用旧的那条。</summary>
+	[Fact]
+	public async Task 重新启用后新建会话而不是复用旧的()
+	{
+		Configure(sessionId: "sess_old");
+		_config.Set(LuoLiCoreSettingsStore.KeyEnabled, new ConfigValue.Boolean(false));
+		await Build(_ => Json(HttpStatusCode.OK, "{}")).ResetAsync(CancellationToken.None);
+
+		// 用户又打开了。
+		_config.Set(LuoLiCoreSettingsStore.KeyEnabled, new ConfigValue.Boolean(true));
+		List<string> paths = [];
+		LuoLiCoreConversation conversation = Build(request =>
+		{
+			paths.Add(request.RequestUri!.AbsolutePath);
+			return request.RequestUri!.AbsolutePath.EndsWith("/sessions", StringComparison.Ordinal)
+				? Json(HttpStatusCode.OK, "{\"id\":\"sess_new\",\"label\":null,\"modelAlias\":null,\"outputFormat\":\"plain\",\"createdAt\":0,\"deletedAt\":null}")
+				: Sse("event: done\ndata: {\"text\":\"在的\"}\n\n");
+		});
+
+		await conversation.RunAsync("你在吗", null, CancellationToken.None);
+
+		Assert.Equal(["/sdk/v1/sessions", "/sdk/v1/sessions/sess_new/messages/stream"], paths);
+		Assert.Equal("sess_new", _settings.Read().SessionId);
+	}
+
+	/// <summary>启用着、但还没建过会话时同样不发请求，也不留下半截状态。</summary>
+	[Fact]
+	public async Task 启用但没有会话时也不发请求()
+	{
+		Configure();
+		List<string> paths = [];
+		LuoLiCoreConversation conversation = Build(request =>
+		{
+			paths.Add(request.RequestUri!.AbsolutePath);
+			return Json(HttpStatusCode.OK, "{}");
+		});
+
+		Assert.False(await conversation.ResetAsync(CancellationToken.None));
+		Assert.Empty(paths);
+	}
+
+	/// <summary>只作废本地、完全不联网的那条路。安全模式下的清空走它。</summary>
+	[Fact]
+	public void 只忘掉本地会话不联网()
+	{
+		Configure(sessionId: "sess_old");
+		LuoLiCoreConversation conversation = Build(_ => throw new InvalidOperationException("不该发请求"));
+
+		conversation.ForgetSession();
+
+		Assert.Equal("", _settings.Read().SessionId);
+		Assert.Equal("", _config.GetStringOr(LuoLiCoreSettingsStore.KeySessionOwner, ""));
+	}
+
 	private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
 	{
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>

@@ -576,6 +576,11 @@ public sealed class AgentEngine
 		_luoLiCore is null ? Task.FromResult(false) : _luoLiCore.ResetAsync(cancellationToken);
 
 	/// <summary>
+	/// 只作废本地记着的远端会话，不联网。安全模式下清空聊天记录走这条。
+	/// </summary>
+	public void ForgetRemoteSession() => _luoLiCore?.ForgetSession();
+
+	/// <summary>
 	/// 对端那边是否有一段会话在记着东西。
 	///
 	/// 给调用方区分「没接外部后端」与「接了但这次没去重置」用 —— 后者需要提示用户，前者不用。

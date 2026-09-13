@@ -107,11 +107,29 @@ public sealed class LuoLiCoreConversation(
 	public async Task<bool> ResetAsync(CancellationToken cancellationToken)
 	{
 		LuoLiCoreSettings settings = _settingsStore.Read();
-		if (!settings.IsActive || settings.SessionId.Length == 0) return false;
+		if (!settings.IsActive || settings.SessionId.Length == 0)
+		{
+			// 够不到远端的时候，至少把本地记着的会话作废。
+			//
+			// 不这么做会留下一个很隐蔽的状态：用户聊过一阵、关掉 LuoLiCore、清空聊天记录，
+			// 本地空了但会话 id 还在；等他再打开，那段「已经清掉」的上下文原样回来。
+			//
+			// 这条路径**不发任何请求** —— 关掉就该意味着不再产生外部调用。旧会话留在原服务端
+			// 不动，下次启用时新建一个。
+			ForgetSession();
+			return false;
+		}
 
 		await _clientFactory(settings.ToOptions()).ResetSessionAsync(settings.SessionId, cancellationToken);
 		return true;
 	}
+
+	/// <summary>
+	/// 只作废本地记着的会话，不联网。
+	///
+	/// 给「不该去碰远端但必须忘掉这段对话」的调用方用：安全模式下的清空聊天记录走的就是这条。
+	/// </summary>
+	public void ForgetSession() => _settingsStore.ClearSession();
 
 	/// <summary>
 	/// 队列满时退避重试。

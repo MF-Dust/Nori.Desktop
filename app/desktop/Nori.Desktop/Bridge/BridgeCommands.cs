@@ -937,8 +937,16 @@ public sealed class BridgeCommands
 			// 代价是两边会不一致：安全模式下对话本来就不走远端（chat_start 已被挡），远端的
 			// 上下文停在进入安全模式那一刻，清完本地它还记着。因此把这件事**报给调用方**，
 			// 由界面提示一句，而不是让用户以为清干净了 —— 这种不一致查起来比清不掉贵得多。
+			// 判据要在动手之前取：作废之后再问「有没有远端会话」恒为否。
+			bool hadRemoteSession = Runtime.Engine.HasRemoteContext;
 			bool remoteReset = false;
-			if (!_services.SafeMode)
+			if (_services.SafeMode)
+			{
+				// 安全模式不出网，但本地记着的会话必须作废 —— 否则退出安全模式之后那段「已经
+				// 清掉」的上下文会原样回来。这一步不联网。
+				Runtime.Engine.ForgetRemoteSession();
+			}
+			else
 			{
 				remoteReset = await Runtime.Engine.ResetRemoteContextAsync(cancellationToken);
 			}
@@ -947,8 +955,10 @@ public sealed class BridgeCommands
 			Runtime.InvalidateSnapshot("chat");
 			return new ClearChatResult(
 				remoteReset,
-				_services.SafeMode && Runtime.Engine.HasRemoteContext
-					? "安全模式下未重置外部会话，退出安全模式后再清空一次"
+				_services.SafeMode && hadRemoteSession
+					// 用户这一侧已经干净了：本地空了，那段会话也不会再被用到。留着说一句是因为
+					// 旧会话的内容仍留在对端服务器上 —— 删它需要联网，而安全模式的前提是不联网。
+					? "安全模式下未联系外部服务；本地会话已作废，重新启用后会开一段新的对话"
 					: null);
 		});
 

@@ -653,6 +653,26 @@ public class BridgeCommandsTests : IDisposable
 
 
 	/// <summary>
+	/// 安全模式跳过的是**出网那一步**，不是「什么都不做」。
+	///
+	/// 本地记着的会话必须作废，否则退出安全模式之后那段「已经清掉」的上下文会原样回来。
+	/// </summary>
+	[Fact]
+	public async Task 安全模式下清空同时作废本地会话()
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		fixture.ConfigureUnreachableLuoLiCore();
+		Assert.Equal("sess_fixed", fixture._config.GetStringOr(LuoLiCoreSettingsStore.KeySessionId, ""));
+
+		await fixture.CreateCommands().InvokeAsync(
+			new FakeBridgeSource(WindowLabels.Main), "chat_clear", Args(new { }));
+
+		// 连不上那个端口的话上面那一句会抛，能走到这里就说明没发请求。
+		Assert.Equal("", fixture._config.GetStringOr(LuoLiCoreSettingsStore.KeySessionId, ""));
+		Assert.Equal("", fixture._config.GetStringOr(LuoLiCoreSettingsStore.KeySessionOwner, ""));
+	}
+
+	/// <summary>
 	/// 把 LuoLiCore 配成「已启用、已有会话、地址指向一个没人监听的端口」。
 	///
 	/// 端口选 1 是因为它不会有人在听：非安全模式下真去调那个重置端点必然连接失败，安全模式下

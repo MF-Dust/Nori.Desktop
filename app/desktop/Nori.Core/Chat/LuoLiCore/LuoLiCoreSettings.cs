@@ -142,6 +142,24 @@ public sealed class LuoLiCoreSettingsStore(ConfigStore config, Func<string, stri
 	}
 
 	/// <summary>
+	/// 把本地记着的会话作废：id 与身份指纹一起删。
+	///
+	/// 用在「该忘掉这段对话、但不该（或不能）去碰远端」的时候 —— 用户关掉了 LuoLiCore，
+	/// 或者正处在安全模式。**不发任何请求。**
+	///
+	/// 两项必须一起删。只删 id 的话指纹留在库里，下次建了新会话再写回时两者短暂不一致；
+	/// 只删指纹更糟 —— 旧 id 会被当成「同一台服务端的会话」继续用。
+	///
+	/// 旧的那条会话留在原服务端不动：删它需要联网，而这条路径的前提正是不联网。它在对端
+	/// 会按自己的生命周期被清理。
+	/// </summary>
+	public void ClearSession()
+	{
+		_config.Delete(KeySessionId);
+		_config.Delete(KeySessionOwner);
+	}
+
+	/// <summary>
 	/// 首次对话建好会话后写回，下次接着用同一个。
 	///
 	/// 同时记下它属于哪台服务端、哪把密钥（指纹）。没有这一项的话，运维换了地址或换了密钥

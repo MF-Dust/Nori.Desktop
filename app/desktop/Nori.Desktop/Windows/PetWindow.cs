@@ -144,6 +144,9 @@ public sealed class PetWindow : Window
 	}
 
 	/// <summary>显示伴侣短句气泡。</summary>
+	/// <summary>语音气泡。情绪表达通道要改它的描边色。</summary>
+	public PetSpeechOverlay SpeechOverlay => _speechOverlay;
+
 	public void ShowSpeech(string text)
 	{
 		if (!Dispatcher.UIThread.CheckAccess())

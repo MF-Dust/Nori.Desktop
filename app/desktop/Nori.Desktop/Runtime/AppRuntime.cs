@@ -19,6 +19,8 @@ using Nori.Core.Sandbox;
 using Nori.Core.Security;
 using Nori.Core.Tools;
 using Nori.Core.Vision;
+using Nori.Core.Expression;
+using Nori.Desktop.Expression;
 using Nori.Desktop.Observation;
 using Nori.Desktop.Vision;
 using Nori.Core.Telemetry;
@@ -287,6 +289,8 @@ public sealed class AppRuntime : IAsyncDisposable
 		if (!Services.SafeMode)
 		{
 			Proactive.Message += message => Dispatcher.UIThread.Post(() => OnProactiveMessage(message));
+			// 情绪一变就扇出到各条表达通道；协调器自己做节流，这里不判。
+			Emotion.Changed += state => _ = Expression.ApplyAsync(state, Services.ShutdownToken);
 			Proactive.Start();
 
 			// 插件贡献动作 → AI 工具 (plugin 分类): 活跃插件变化时防抖刷新
@@ -854,6 +858,38 @@ public sealed class AppRuntime : IAsyncDisposable
 	private ISandboxLauncher Sandbox => _sandbox ??= Services.Sandbox ?? SandboxLauncherFactory.Create();
 
 	/// <summary>
+	/// 情绪表达的通道清单。
+	///
+	/// 与协调器分开持有，因为默认开关值要按通道的侵入等级取 —— 若经协调器去查，
+	/// 构造协调器时又要用到开关判定，就成了自引用。
+	/// </summary>
+	private IReadOnlyList<IExpressionChannel> ExpressionChannels => _expressionChannels ??=
+	[
+		new TrayIconChannel(() => Tray.TrayMenu.Current, RunOnUi),
+		new SpeechBorderChannel(() => Services.Windows.Pet?.SpeechOverlay, RunOnUi),
+	];
+
+	/// <summary>情绪表达的扇出协调器。通道自己判断可用性，协调器只负责过滤与节流。</summary>
+	private ExpressionCoordinator Expression => _expression ??= new ExpressionCoordinator(
+		ExpressionChannels,
+		IsExpressionChannelEnabled,
+		(key, exception) =>
+			Services.Logger.Write(LogSource.Backend, "warn", $"情绪表达通道失败 [{key}]: {exception.Message}"));
+
+	/// <summary>
+	/// 某条表达通道开没开。
+	///
+	/// 缺省值按侵入等级取：Global 档（系统强调色、壁纸）默认关，其余默认开 —— 用户没表过态时
+	/// 不该被改掉整个桌面的颜色。
+	/// </summary>
+	private bool IsExpressionChannelEnabled(string key) =>
+		Services.Config.GetBoolOr(
+			key,
+			ExpressionChannels.FirstOrDefault(channel => channel.Key == key)?.Level != Intrusiveness.Global);
+
+	private static void RunOnUi(Action action) => Dispatcher.UIThread.Post(action);
+
+	/// <summary>
 	/// 已经可用的启动器，**不触发创建**：已建好的优先，其次是注入的，都没有则为空。
 	///
 	/// 报告隔离强度与释放授权都不该把容器建出来，但都必须尊重注入 —— 这条规则写在一处，
@@ -916,6 +952,8 @@ public sealed class AppRuntime : IAsyncDisposable
 		}
 	}
 
+	private IReadOnlyList<IExpressionChannel>? _expressionChannels;
+	private ExpressionCoordinator? _expression;
 	private ISandboxLauncher? _sandbox;
 	private IScreenCapture? _screenCapture;
 	private IVisionAnalyzer? _visionAnalyzer;

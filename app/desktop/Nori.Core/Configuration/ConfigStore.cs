@@ -65,6 +65,14 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	public const string KeyScreenReadingEnabled = "screen_reading_enabled";
 
 	/// <summary>
+	/// 情绪表达通道的开关前缀，完整键名即通道自己的 Key。
+	///
+	/// 每条通道一个开关而不是一个总开关：改整个系统强调色和让托盘换个颜色，打扰程度差着
+	/// 量级。默认值按侵入等级取 —— Local 与 Peripheral 默认开，Global 默认关。
+	/// </summary>
+	public const string KeyExpressionPrefix = "expression_";
+
+	/// <summary>
 	/// 一轮对话里最多连续调用多少次工具。
 	///
 	/// 原先写死 5，而一个「先搜、再读、再改、再验」的任务在第五轮刚好卡在验证之前 —— 她做了

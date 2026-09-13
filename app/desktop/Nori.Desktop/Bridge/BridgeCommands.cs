@@ -247,10 +247,16 @@ public sealed class BridgeCommands
 				Runtime.InvalidateSnapshot("general", "telemetry");
 			})),
 
-		// invoke("settings_update_workspace", {root?, maxToolIterations?})
+		/// <summary>
+		/// 更新文件工具的工作目录与单轮工具次数上限。
+		/// 前端调用：invoke("settings_update_workspace", {root?: string, maxToolIterations?: number})
+		/// </summary>
 		"settings_update_workspace" => RequireMain(source, () => Run(() => UpdateWorkspaceSettings(args))),
 
-		// invoke("settings_pick_workspace") → {root} | null（用户取消时 null）
+		/// <summary>
+		/// 打开系统文件夹选择对话框，返回选中路径；用户取消时返回 null。
+		/// 前端调用：invoke("settings_pick_workspace")
+		/// </summary>
 		"settings_pick_workspace" => await PickWorkspaceAsync(source),
 
 		// ---- 自动更新 ----

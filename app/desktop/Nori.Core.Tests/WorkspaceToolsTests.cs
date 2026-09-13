@@ -131,6 +131,90 @@ public sealed class WorkspaceToolsTests : IDisposable
 		Assert.False(new WorkspaceAccess(Path.Combine(_root, "并不存在")).IsConfigured);
 	}
 
+	// ---- review 指出的两处越界 ----
+
+	/// <summary>
+	/// 遍历过程中的目录链接必须逐个复验。
+	///
+	/// `Resolve` 只覆盖调用方给出的相对路径；`Directory.GetDirectories` 返回的绝对路径不经过
+	/// 它，而其中可能有指向工作目录之外的链接。搜索是 `safe` 档、不经确认，这条路径上的越界
+	/// 等于无确认的任意文件读取。
+	/// </summary>
+	[Fact]
+	public async Task 搜索不跟随指向目录外的链接()
+	{
+		File.WriteAllText(Path.Combine(_outside, "leak.txt"), "越界内容 needle");
+		Write("inside.txt", "界内内容 needle");
+		try
+		{
+			Directory.CreateSymbolicLink(Path.Combine(_root, "escape"), _outside);
+		}
+		catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+		{
+			return; // 该环境不允许建符号链接
+		}
+
+		JsonElement found = await CallAsync(Registry(), "searchFiles", new { query = "needle" });
+		string[] paths = [.. found.GetProperty("hits").EnumerateArray().Select(e => e.GetProperty("path").GetString()!)];
+
+		Assert.Contains("inside.txt", paths);
+		Assert.DoesNotContain(paths, path => path.Contains("leak", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task 列目录不列出指向目录外的链接()
+	{
+		try
+		{
+			Directory.CreateSymbolicLink(Path.Combine(_root, "escape"), _outside);
+		}
+		catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+		{
+			return;
+		}
+
+		JsonElement listed = await CallAsync(Registry(), "listFiles", new { });
+		string[] names = [.. listed.GetProperty("entries").EnumerateArray().Select(e => e.GetProperty("name").GetString()!)];
+
+		Assert.DoesNotContain("escape", names);
+	}
+
+	/// <summary>
+	/// 大小写敏感的文件系统上，同级目录不能因为只有大小写差异就被当成界内。
+	///
+	/// 另有一处：`Path.Combine` 不做规范化，`<root>/..` 这个字符串仍以根为前缀，逐段校验时
+	/// 必须显式拒绝 `..` 与 `.`，不能交给前缀比较。
+	/// </summary>
+	[Fact]
+	public void 逐段校验拒绝点段()
+	{
+		WorkspaceAccess access = Access();
+
+		Assert.Null(access.Resolve("sub/../../outside.txt"));
+		Assert.Null(access.Resolve("./../escape"));
+		Assert.Null(access.Resolve("a/./../../b"));
+	}
+
+	[Fact]
+	public void 路径比较的大小写口径按平台取()
+	{
+		string sibling = _root.ToUpperInvariant();
+		WorkspaceAccess access = Access();
+
+		// Windows 上大小写不敏感，同一目录的大写形式仍是它自己；其余平台上是另一个目录。
+		Assert.Equal(OperatingSystem.IsWindows(), access.Inside(sibling));
+	}
+
+	/// <summary>遍历拿到的绝对路径与相对路径走同一道判据。</summary>
+	[Fact]
+	public void 界外的绝对路径不被接受()
+	{
+		WorkspaceAccess access = Access();
+
+		Assert.Null(access.Accept(Path.Combine(_outside, "secret.txt")));
+		Assert.NotNull(access.Accept(Path.Combine(_root, "a.txt")));
+	}
+
 	// ---- 权限档位 ----
 
 	/// <summary>

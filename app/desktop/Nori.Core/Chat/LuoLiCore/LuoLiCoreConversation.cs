@@ -136,7 +136,7 @@ public sealed class LuoLiCoreConversation(
 	///
 	/// 队列满在流式端点上不是 HTTP 429 —— 响应头在配额判定通过、流开始建立时就锁定成了
 	/// 200，之后只能以 SSE error 事件表达。所以这里只能读到终结事件才知道被拒，退避常量
-    /// 与对端客户端一致。
+	/// 与对端客户端一致。
 	/// </summary>
 	private static async Task<string> StreamWithQueueRetryAsync(
 		LuoLiCoreSdkClient client,

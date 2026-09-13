@@ -73,6 +73,8 @@ public static class WorkspaceTools
 		{
 			string name = Path.GetFileName(directory);
 			if (WorkspaceAccess.IsSkipped(name)) continue;
+			// 枚举的产物同样可能是指向外部的链接，列出来即等于告诉调用方那个路径可读。
+			if (workspace.Accept(directory) is null) continue;
 			if (entries.Count >= WorkspaceAccess.MaxEntries) { truncated = true; break; }
 			entries.Add(new { name, kind = "folder", path = workspace.Relative(directory) });
 		}
@@ -81,6 +83,7 @@ public static class WorkspaceTools
 		{
 			foreach (string file in Directory.EnumerateFiles(resolved).Order(StringComparer.Ordinal))
 			{
+				if (workspace.Accept(file) is null) continue;
 				if (entries.Count >= WorkspaceAccess.MaxEntries) { truncated = true; break; }
 				entries.Add(new
 				{
@@ -156,7 +159,7 @@ public static class WorkspaceTools
 
 		List<object> hits = [];
 		bool truncated = false;
-		foreach (string file in Walk(root, cancellationToken))
+		foreach (string file in Walk(workspace, root, cancellationToken))
 		{
 			if (hits.Count >= WorkspaceAccess.MaxEntries) { truncated = true; break; }
 			if (suffix is not null && !file.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) continue;
@@ -207,8 +210,18 @@ public static class WorkspaceTools
 		return new { path = workspace.Relative(resolved), bytes = bytes.Length, overwritten = existed };
 	}
 
-	/// <summary>递归遍历，跳过排除目录；无访问权限的目录跳过，不使整次搜索失败。</summary>
-	private static IEnumerable<string> Walk(string root, CancellationToken cancellationToken)
+	/// <summary>
+	/// 递归遍历，跳过排除目录；无访问权限的目录跳过，不使整次搜索失败。
+	///
+	/// **每一个目录与文件都要过一次 <see cref="WorkspaceAccess.Accept"/>。**
+	/// `Directory.GetDirectories` 会返回指向工作目录之外的链接，`GetFiles` 与后续读取都会跟随
+	/// 它。搜索是 `safe` 档、不经确认，因此这条路径上的越界等于无确认的任意文件读取。
+	/// `Resolve` 只覆盖调用方给出的相对路径，遍历拿到的绝对路径必须单独校验。
+	/// </summary>
+	private static IEnumerable<string> Walk(
+		WorkspaceAccess workspace,
+		string root,
+		CancellationToken cancellationToken)
 	{
 		Stack<string> pending = new();
 		pending.Push(root);
@@ -231,10 +244,16 @@ public static class WorkspaceTools
 
 			foreach (string directory in directories)
 			{
-				if (!WorkspaceAccess.IsSkipped(Path.GetFileName(directory))) pending.Push(directory);
+				if (WorkspaceAccess.IsSkipped(Path.GetFileName(directory))) continue;
+				if (workspace.Accept(directory) is null) continue;
+				pending.Push(directory);
 			}
 
-			foreach (string file in files.Order(StringComparer.Ordinal)) yield return file;
+			foreach (string file in files.Order(StringComparer.Ordinal))
+			{
+				if (workspace.Accept(file) is null) continue;
+				yield return file;
+			}
 		}
 	}
 

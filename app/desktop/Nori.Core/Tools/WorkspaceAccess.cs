@@ -88,6 +88,12 @@ public sealed class WorkspaceAccess
 		foreach (string segment in Path.GetRelativePath(Root, combined)
 			.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries))
 		{
+			// `..` 与 `.` 在此处一律拒绝，不交给后续的前缀比较。
+			//
+			// 大小写敏感的文件系统上，根为 `/tmp/work` 时 `../WORK/secret` 的规范化结果是
+			// `/tmp/WORK/secret`，`GetRelativePath` 会保留一个 `..` 段；而 `Path.Combine` 不做
+			// 规范化，`/tmp/work/..` 这个字符串仍以根为前缀，前缀比较会通过。
+			if (segment is ".." or ".") return null;
 			current = ResolveFinal(Path.Combine(current, segment));
 			if (!Inside(current)) return null;
 		}
@@ -134,11 +140,36 @@ public sealed class WorkspaceAccess
 		return (new UTF8Encoding(false, false).GetString(buffer), stream.Length > MaxReadBytes);
 	}
 
-	private bool Inside(string candidate)
+	/// <summary>
+	/// 路径比较的大小写口径按平台取，与 <c>ResourcePathSafety</c> 一致。
+	///
+	/// 恒用不区分大小写会在大小写敏感的文件系统上放行同级目录：根为 `/tmp/work` 时，
+	/// `/tmp/WORK` 是另一个目录，却会被判定为界内。
+	/// </summary>
+	private static StringComparison Comparison => OperatingSystem.IsWindows()
+		? StringComparison.OrdinalIgnoreCase
+		: StringComparison.Ordinal;
+
+	/// <summary>候选路径是否在工作目录之内。调用方须先保证它已规范化。</summary>
+	public bool Inside(string candidate)
 	{
-		if (candidate.Equals(Root, StringComparison.OrdinalIgnoreCase)) return true;
+		if (!IsConfigured) return false;
+		if (candidate.Equals(Root, Comparison)) return true;
 		string prefix = Root.EndsWith(Path.DirectorySeparatorChar) ? Root : Root + Path.DirectorySeparatorChar;
-		return candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+		return candidate.StartsWith(prefix, Comparison);
+	}
+
+	/// <summary>
+	/// 遍历时校验一个已经拿到手的绝对路径：解引用之后仍在界内才放行。
+	///
+	/// 与 <see cref="Resolve"/> 分开，是因为遍历拿到的是 `Directory.GetDirectories` 的产物，
+	/// 不经过相对路径拼接；但它同样可能是指向外部的链接，必须过同一道判据。
+	/// </summary>
+	public string? Accept(string absolute)
+	{
+		if (!IsConfigured) return null;
+		string resolved = ResolveFinal(Path.GetFullPath(absolute));
+		return Inside(resolved) ? resolved : null;
 	}
 
 	/// <summary>

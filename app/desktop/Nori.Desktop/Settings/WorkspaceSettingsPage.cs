@@ -27,7 +27,10 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			"pickWorkspace",
 			new("选择文件夹…", "Choose folder…"),
 			new("留空表示不授予本地文件访问权限。", "Leave empty to grant no local file access."),
-			new SettingsCommand(async _ => await PickAsync()));
+			// 不写成 `async _ => await ...`：那会被转成 Action<object?>，即 async void，
+			// 抛出的异常逃到 UI 线程成为未处理异常。与其余各页一致，交给一个返回 Task 的
+			// 方法并在其中 catch，失败走状态栏。
+			new SettingsCommand(_ => _ = PickAsync()));
 
 		AddField(
 			folder,
@@ -76,14 +79,31 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 	/// </summary>
 	private async Task PickAsync()
 	{
-		JsonElement picked = await ExecuteAsync("settings_pick_workspace");
-		if (picked.ValueKind != JsonValueKind.Object
-			|| !picked.TryGetProperty("root", out JsonElement root)
-			|| root.ValueKind != JsonValueKind.String)
+		try
 		{
-			return;
-		}
+			JsonElement picked = await ExecuteAsync(
+				"settings_pick_workspace", cancellationToken: LifetimeToken).ConfigureAwait(false);
+			if (picked.ValueKind != JsonValueKind.Object
+				|| !picked.TryGetProperty("root", out JsonElement root)
+				|| root.ValueKind != JsonValueKind.String)
+			{
+				return;
+			}
 
-		await ExecuteAsync("settings_update_workspace", new { root = root.GetString() ?? "" });
+			await ExecuteAsync(
+				"settings_update_workspace",
+				new { root = root.GetString() ?? "" },
+				LifetimeToken).ConfigureAwait(false);
+			// 不在此处刷新页面：`settings_update_workspace` 已经作废快照，
+			// 设置服务的 StateChanged 会驱动重新读取。
+		}
+		catch (OperationCanceledException)
+		{
+			// 设置窗口关闭时正常取消，不报错。
+		}
+		catch (Exception exception)
+		{
+			SetStatus(exception.Message);
+		}
 	}
 }

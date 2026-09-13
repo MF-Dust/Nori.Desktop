@@ -791,12 +791,18 @@ public sealed class AppRuntime : IAsyncDisposable
 	/// 文件工具在注册时将工作目录捕获进闭包，不重建则配置变更要到下次启动才生效，表现为保存
 	/// 未成功。MCP 与插件工具按各自分类原子替换，本方法不涉及。
 	/// </summary>
-	public void RebuildTools()
-	{
-		WorkspaceTools.RegisterAll(
-			Tools,
-			new WorkspaceAccess(Services.Config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")));
-	}
+	public void RebuildTools() => WorkspaceTools.RegisterAll(Tools, ResolveWorkspace());
+
+	/// <summary>
+	/// 当前该给文件工具哪个工作目录。构建与重建共用这一处判据。
+	///
+	/// 安全模式返回未配置：该组工具虽不产生网络请求，但具备对宿主文件系统的读写能力。只在
+	/// 构建时判、不在重建时判的话，安全模式下改一次设置就会把工具注册回来。
+	/// </summary>
+	private WorkspaceAccess ResolveWorkspace() =>
+		Services.SafeMode
+			? new WorkspaceAccess("")
+			: new WorkspaceAccess(Services.Config.GetStringOr(ConfigStore.KeyWorkspaceRoot, ""));
 
 	private ToolRegistry BuildToolRegistry(bool audioAvailable)
 	{
@@ -816,14 +822,8 @@ public sealed class AppRuntime : IAsyncDisposable
 		});
 
 		// 文件工具仅在配置了工作目录时注册。安全模式下一并跳过：该组工具虽不产生网络请求，
-		// 但具备对宿主文件系统的读写能力，属于安全模式要禁用的范围。
-		if (!Services.SafeMode)
-		{
-			WorkspaceTools.RegisterAll(
-				registry,
-				new WorkspaceAccess(Services.Config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")));
-		}
-
+		// 但具备对宿主文件系统的读写能力，属于安全模式要禁用的范围。判据与 RebuildTools 共用。
+		WorkspaceTools.RegisterAll(registry, ResolveWorkspace());
 		return registry;
 	}
 

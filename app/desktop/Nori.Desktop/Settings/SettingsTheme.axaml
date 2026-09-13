@@ -67,6 +67,7 @@
 		</ResourceDictionary>
 	</Styles.Resources>
 	<Style Selector="Window">
+		<Setter Property="FontFamily" Value="Microsoft YaHei UI, PingFang SC, Noto Sans CJK SC, sans-serif"/>
 		<Setter Property="Background" Value="{DynamicResource SettingsWindowBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
 	</Style>

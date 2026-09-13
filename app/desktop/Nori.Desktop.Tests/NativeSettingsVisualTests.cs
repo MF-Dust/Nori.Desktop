@@ -40,7 +40,7 @@ public partial class BridgeCommandsTests
 			});
 	}
 
-	/// <summary>用隔离数据库与停用的合成服务渲染设置页，保存最小尺寸与全高清明暗截图及布局清单。</summary>
+	/// <summary>用隔离数据库与停用的合成服务渲染设置页，保存最小尺寸与全高清深色截图及布局清单。</summary>
 	[NativeSettingsVisualFact]
 	public async Task NativeSettingsVisualCaptureProducesInspectableFrames()
 	{
@@ -60,11 +60,11 @@ public partial class BridgeCommandsTests
 				fixture._services.Logger.Write(LogSource.Backend, index % 3 == 0 ? "warn" : "info", $"Synthetic visual verification message {index + 1:D2}");
 
 			foreach ((int width, int height) in new[] {(720, 480), (1920, 1080)})
-			foreach (ThemeVariant theme in new[] {ThemeVariant.Light, ThemeVariant.Dark})
+			foreach (ThemeVariant theme in new[] {ThemeVariant.Dark})
 			foreach (string scenario in new[] {"ai", "voice", "proactive", "skills", "skills-marketplace", "mcp", "mcp-tools", "automation", "plugins", "general", "updates", "debug", "about"})
 			{
 				string page = scenario.Split('-')[0];
-				SettingsWindow window = new() {Width = width, Height = height, RequestedThemeVariant = theme};
+				SettingsWindow window = new() {Width = width, Height = height};
 				using SettingsService service = new(fixture._services, window);
 				using SettingsViewModel viewModel = new(service);
 				window.DataContext = viewModel;
@@ -154,7 +154,7 @@ public partial class BridgeCommandsTests
 			SettingsLocalization.SetLanguage("zh-CN");
 			return true;
 		}, CancellationToken.None);
-		Assert.Equal(52, manifest.Count);
+		Assert.Equal(26, manifest.Count);
 	}
 
 	private static int NativeSettingsSampledColors(WriteableBitmap frame)

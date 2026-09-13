@@ -13,7 +13,7 @@
 	CanResize="True"
 	WindowStartupLocation="CenterScreen"
 	WindowDecorations="Full"
-	RequestedThemeVariant="Default">
+	RequestedThemeVariant="Dark">
 	<Window.Styles>
 		<StyleInclude Source="avares://Nori.Desktop/Settings/SettingsTheme.axaml"/>
 	</Window.Styles>

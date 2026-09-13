@@ -117,6 +117,7 @@ internal static class NativeSettingsDialogs
 	{
 		Window dialog = new()
 		{
+		RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Dark,
 		Title = title,
 		Width = width,
 		MinWidth = 420,

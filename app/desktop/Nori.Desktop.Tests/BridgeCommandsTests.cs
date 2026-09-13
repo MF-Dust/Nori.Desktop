@@ -314,6 +314,29 @@ public partial class BridgeCommandsTests : IDisposable
 	private readonly HttpClient _http;
 	private readonly FakeWindowManager _windows = new();
 	private readonly AppServices _services;
+	/// <summary>
+	/// 记录释放调用的假启动器。
+	///
+	/// 隔离强度报 None，行为与 <c>UnsandboxedLauncher</c> 一致，只是把 <c>Release</c> 记下来 ——
+	/// 「授权释放有没有被接上」这件事只能从调用侧观察，而它恰恰是漏过一次的地方。
+	/// </summary>
+	private sealed class RecordingSandbox : Nori.Core.Sandbox.ISandboxLauncher
+	{
+		public List<string> Released { get; } = [];
+
+		public Nori.Core.Sandbox.SandboxIsolation Isolation => Nori.Core.Sandbox.SandboxIsolation.None;
+
+		public Task<Nori.Core.Sandbox.SandboxResult> RunAsync(
+			string commandLine, Nori.Core.Sandbox.SandboxPolicy policy, CancellationToken cancellationToken) =>
+			Task.FromResult(new Nori.Core.Sandbox.SandboxResult
+			{
+				ExitCode = 0, Output = "", TimedOut = false, Truncated = false,
+			});
+
+		public void Release(Nori.Core.Sandbox.SandboxPolicy policy) => Released.Add(policy.WorkspaceRoot);
+	}
+
+	private readonly RecordingSandbox _sandbox = new();
 	private readonly AppRuntime _runtime;
 
 	public BridgeCommandsTests() : this(false, null)
@@ -392,6 +415,8 @@ public partial class BridgeCommandsTests : IDisposable
 					browserTaskTimeout: browserTaskTimeout),
 			Windows = _windows,
 			SafeMode = safeMode,
+			// 不用自动挑选：Windows 上它会创建 AppContainer 配置文件，测试跑完会留在机器上。
+			Sandbox = _sandbox,
 			Update = new Nori.Core.Update.UpdateService(new AppStoragePaths(_tempDir), "win-x64", "0.1.0", safeMode, httpClient: _http),
 		};
 		_runtime = new AppRuntime(_services);
@@ -865,7 +890,242 @@ public partial class BridgeCommandsTests : IDisposable
 		// 的按钮点了会报「不允许执行」。
 		Assert.Contains("settings_update_workspace", SettingsService.Commands);
 		Assert.Contains("settings_pick_workspace", SettingsService.Commands);
+		Assert.Contains("settings_update_tasks", SettingsService.Commands);
 		await Task.CompletedTask;
+	}
+
+	// ---- 情绪表达 ----
+
+	[Fact]
+	public async Task 设置窗口可以开关表达通道()
+	{
+		Assert.Contains("settings_update_expression", SettingsService.Commands);
+		await Task.CompletedTask;
+	}
+
+	/// <summary>
+	/// 通道键必须带前缀。
+	///
+	/// 这条命令拿键名直写配置，不挡的话它就成了「改任意配置项」的通用入口。
+	/// </summary>
+	[Theory]
+	[InlineData("agent_max_tool_iterations")]
+	[InlineData("workspace_root")]
+	[InlineData("")]
+	public async Task 非表达通道的键被拒绝(string key)
+	{
+		BridgeCommands commands = CreateCommands();
+
+		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
+			new FakeBridgeSource(WindowLabels.Main),
+			"settings_update_expression",
+			Args(new {channel = key, enabled = true})));
+	}
+
+	[Fact]
+	public async Task 开关表达通道会落库()
+	{
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+
+		await commands.InvokeAsync(
+			main, "settings_update_expression", Args(new {channel = "expression_tray_icon", enabled = false}));
+
+		Assert.False(_config.GetBoolOr("expression_tray_icon", true));
+	}
+
+	/// <summary>快照要同时给出「开没开」与「能不能用」—— 只给一个的话「开了没反应」无从排查。</summary>
+	[Fact]
+	public void 快照按通道报出开关与可用性()
+	{
+		JsonElement snapshot = JsonSerializer.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options);
+		JsonElement expression = snapshot.GetProperty("expression");
+
+		JsonElement tray = expression.GetProperty("expression_tray_icon");
+		Assert.True(tray.TryGetProperty("enabled", out _));
+		Assert.True(tray.TryGetProperty("available", out _));
+
+		// 改整个桌面的两条默认关。
+		Assert.False(expression.GetProperty("expression_accent_color").GetProperty("enabled").GetBoolean());
+		Assert.False(expression.GetProperty("expression_wallpaper").GetProperty("enabled").GetBoolean());
+
+		// 她自己身上那两条默认开。
+		Assert.True(expression.GetProperty("expression_tray_icon").GetProperty("enabled").GetBoolean());
+	}
+
+	// ---- 具名任务 ----
+
+	[Fact]
+	public async Task 配了任务之后runTask才出现()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+
+		// 工作目录有了但一条任务也没配，此时不该有 runTask。
+		Assert.Null(_runtime.Tools.Get(TaskTools.RunTaskName));
+
+		await commands.InvokeAsync(
+			main,
+			"settings_update_tasks",
+			Args(new { tasks = new[] { new { name = "构建", command = "dotnet build" } } }));
+
+		Assert.NotNull(_runtime.Tools.Get(TaskTools.RunTaskName));
+		Assert.Contains("dotnet build", _runtime.Tools.Get(TaskTools.RunTaskName)!.Description, StringComparison.Ordinal);
+	}
+
+	/// <summary>清空清单之后工具必须真的消失，而不是留着持有旧清单的注册项。</summary>
+	[Fact]
+	public async Task 清空任务清单之后runTask消失()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+		await commands.InvokeAsync(
+			main, "settings_update_tasks", Args(new { tasks = new[] { new { name = "a", command = "echo hi" } } }));
+		Assert.NotNull(_runtime.Tools.Get(TaskTools.RunTaskName));
+
+		await commands.InvokeAsync(main, "settings_update_tasks", Args(new { tasks = Array.Empty<object>() }));
+
+		Assert.Null(_runtime.Tools.Get(TaskTools.RunTaskName));
+	}
+
+	/// <summary>
+	/// 重名当场拒绝。
+	///
+	/// 读取侧对非法条目是跳过的，写入侧不拦的话用户会看到保存成功而其中一条静默消失。
+	/// </summary>
+	[Fact]
+	public async Task 重复的任务名被就地拒绝()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+
+		InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			commands.InvokeAsync(
+				main,
+				"settings_update_tasks",
+				Args(new
+				{
+					tasks = new[]
+					{
+						new { name = "a", command = "echo 1" },
+						new { name = "A", command = "echo 2" },
+					},
+				})));
+
+		Assert.Contains("重复", error.Message, StringComparison.Ordinal);
+		Assert.Null(_runtime.Tools.Get(TaskTools.RunTaskName));
+	}
+
+	/// <summary>
+	/// 换工作目录必须释放旧目录上的授权。
+	///
+	/// 这是回归测试。原实现在类文档里写了「必须在工作目录变更时调用」，却没有任何生产调用点 ——
+	/// 用户换一个目录，旧目录上的 ACE 就永久残留，他看不见也无从清理。
+	/// </summary>
+	[Fact]
+	public async Task 换工作目录会释放旧目录上的授权()
+	{
+		string first = Path.Combine(_tempDir, "旧工作区");
+		string second = Path.Combine(_tempDir, "新工作区");
+		Directory.CreateDirectory(first);
+		Directory.CreateDirectory(second);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = first }));
+		Assert.Empty(_sandbox.Released);
+
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = second }));
+
+		Assert.Contains(first, _sandbox.Released);
+		Assert.DoesNotContain(second, _sandbox.Released);
+	}
+
+	[Fact]
+	public async Task 清空工作目录会释放授权()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = "" }));
+
+		Assert.Contains(folder, _sandbox.Released);
+	}
+
+	/// <summary>仍在用的路径不该被释放：撤了立刻还要加回来，反复增删 ACE 只会放大出错面。</summary>
+	[Fact]
+	public async Task 改任务清单不会释放仍在用的工作目录()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+
+		await commands.InvokeAsync(
+			main, "settings_update_tasks", Args(new { tasks = new[] { new { name = "a", command = "echo hi" } } }));
+		await commands.InvokeAsync(main, "settings_update_tasks", Args(new { tasks = Array.Empty<object>() }));
+
+		Assert.DoesNotContain(folder, _sandbox.Released);
+	}
+
+	[Fact]
+	public async Task 授权面包含工作目录与任务的可执行文件目录()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		await CreateCommands().InvokeAsync(
+			new FakeBridgeSource(WindowLabels.Main), "settings_update_workspace", Args(new { root = folder }));
+
+		Assert.Equal([folder], _runtime.CurrentGrantPaths());
+	}
+
+	/// <summary>
+	/// 快照必须在启动器建立之前就报出本平台的隔离强度。
+	///
+	/// 界面要在用户配置命令**之前**说清「命令会跑在什么边界里」—— 无隔离时命令拥有用户的全部
+	/// 权限，与 AppContainer 下「只能读写工作文件夹、默认不联网」是两回事。报 unknown 等于没报。
+	/// </summary>
+	[Fact]
+	public void 快照报出执行边界()
+	{
+		JsonElement snapshot = JsonSerializer.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options);
+
+		// 测试注入的是无隔离实现，快照应当如实反映，而不是报平台的预期值。
+		Assert.Equal("none", snapshot.GetProperty("workspace").GetProperty("isolation").GetString());
+	}
+
+	[Fact]
+	public async Task 快照把任务清单报给界面()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+		await commands.InvokeAsync(
+			main,
+			"settings_update_tasks",
+			Args(new { tasks = new[] { new { name = "构建", command = "dotnet build" } } }));
+
+		JsonElement snapshot = JsonSerializer.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options);
+		JsonElement tasks = snapshot.GetProperty("workspace").GetProperty("tasks");
+
+		Assert.Equal(1, tasks.GetArrayLength());
+		Assert.Equal("构建", tasks[0].GetProperty("name").GetString());
+		Assert.Equal("dotnet build", tasks[0].GetProperty("command").GetString());
 	}
 
 	/// <summary>

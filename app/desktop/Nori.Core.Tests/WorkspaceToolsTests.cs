@@ -68,6 +68,10 @@ public sealed class WorkspaceToolsTests : IDisposable
 		return result.Error ?? "";
 	}
 
+	/// <summary>取结果里某个数组字段的 path 列表。</summary>
+	private static string[] Paths(JsonElement result, string field) =>
+		[.. result.GetProperty(field).EnumerateArray().Select(entry => entry.GetProperty("path").GetString()!)];
+
 	// ---- 边界 ----
 
 	/// <summary>
@@ -137,6 +141,369 @@ public sealed class WorkspaceToolsTests : IDisposable
 	public void 目录不存在时同样视为未配置()
 	{
 		Assert.False(new WorkspaceAccess(Path.Combine(_root, "并不存在")).IsConfigured);
+	}
+
+
+
+	// ---- findFiles ----
+
+	[Fact]
+	public async Task 按扩展名找到深层文件()
+	{
+		Write("a.cs", "x");
+		Write("src/b.cs", "x");
+		Write("src/deep/c.cs", "x");
+		Write("src/readme.md", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "*.cs" });
+		string[] paths = Paths(result, "matches");
+
+		Assert.Equal(new[] { "a.cs", "src/b.cs", "src/deep/c.cs" }, paths.Order(StringComparer.Ordinal).ToArray());
+	}
+
+	/// <summary>
+	/// `**/*.cs` 必须有命中。
+	///
+	/// <see cref="FileSystemName.MatchesSimpleExpression"/> 只认 `*` 与 `?`，`**` 在它那里是
+	/// 两个连续的 `*`，语义与单个 `*` 相同但会使含 `/` 的判断走偏。模型普遍按 glob 习惯写这种
+	/// 形式，不归一的后果是零命中，而零命中与「确实没有」在返回值里无法区分。
+	/// </summary>
+	[Fact]
+	public async Task 归一glob风格的双星号()
+	{
+		Write("a.cs", "x");
+		Write("src/deep/c.cs", "x");
+		Write("src/deep/c.md", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "**/*.cs" });
+
+		// 根目录下的 a.cs 也必须命中：`**/` 表示任意层级，含零层。
+		Assert.Equal(
+			new[] { "a.cs", "src/deep/c.cs" },
+			Paths(result, "matches").Order(StringComparer.Ordinal).ToArray());
+	}
+
+	[Fact]
+	public async Task 模式含斜杠时按相对路径匹配()
+	{
+		Write("src/a.cs", "x");
+		Write("test/a.cs", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "src/*.cs" });
+
+		Assert.Equal(new[] { "src/a.cs" }, Paths(result, "matches"));
+	}
+
+	[Fact]
+	public async Task 不含斜杠时只匹配文件名()
+	{
+		Write("src/AgentEngine.cs", "x");
+		Write("src/other.cs", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "Agent*.cs" });
+
+		Assert.Equal(new[] { "src/AgentEngine.cs" }, Paths(result, "matches"));
+	}
+
+	[Fact]
+	public async Task 大小写不敏感与内容搜索口径一致()
+	{
+		Write("src/AgentEngine.cs", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "agentengine.CS" });
+
+		Assert.Equal(new[] { "src/AgentEngine.cs" }, Paths(result, "matches"));
+	}
+
+	[Fact]
+	public async Task 查找可以限定子目录()
+	{
+		Write("src/a.cs", "x");
+		Write("test/a.cs", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "*.cs", path = "test" });
+
+		Assert.Equal(new[] { "test/a.cs" }, Paths(result, "matches"));
+	}
+
+	/// <summary>查找与搜索共用 <c>Walk</c>，噪音目录的排除口径必须一致。</summary>
+	[Fact]
+	public async Task 查找跳过噪音目录()
+	{
+		Write("a.cs", "x");
+		Write("node_modules/b.cs", "x");
+		Write(".git/c.cs", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "*.cs" });
+
+		Assert.Equal(new[] { "a.cs" }, Paths(result, "matches"));
+	}
+
+	/// <summary>查找走的也是 <c>Walk</c>，指向目录外的链接同样不得跟随。</summary>
+	[Fact]
+	public async Task 查找不跟随指向目录外的链接()
+	{
+		File.WriteAllText(Path.Combine(_outside, "leak.cs"), "x");
+		Write("inside.cs", "x");
+		try
+		{
+			Directory.CreateSymbolicLink(Path.Combine(_root, "escape"), _outside);
+		}
+		catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+		{
+			return; // 该环境不允许建符号链接
+		}
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "*.cs" });
+
+		Assert.Equal(new[] { "inside.cs" }, Paths(result, "matches"));
+	}
+
+	[Fact]
+	public async Task 空模式被拒绝()
+	{
+		Assert.Contains(
+			"不能为空",
+			await FailAsync(Registry(), "findFiles", new { pattern = "  " }),
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task 查找同样受工作目录边界约束()
+	{
+		Assert.Contains(
+			"超出工作目录范围",
+			await FailAsync(Registry(), "findFiles", new { pattern = "*.txt", path = "../" }),
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task 命中数超过上限时截断并标注()
+	{
+		for (int index = 0; index < WorkspaceAccess.MaxEntries + 10; index++)
+		{
+			Write($"many/f{index}.cs", "x");
+		}
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "*.cs" });
+
+		Assert.True(result.GetProperty("truncated").GetBoolean());
+		Assert.Equal(WorkspaceAccess.MaxEntries, result.GetProperty("matches").GetArrayLength());
+	}
+
+	// ---- editFile ----
+
+	[Fact]
+	public async Task 定点替换只改命中的那一段()
+	{
+		Write("a.cs", "第一行\n中间要改\n第三行\n");
+
+		JsonElement result = await CallAsync(
+			Registry(), "editFile", new { path = "a.cs", oldText = "中间要改", newText = "已经改了" });
+
+		Assert.Equal("已经改了", File.ReadAllText(Path.Combine(_root, "a.cs")).Split('\n')[1]);
+		Assert.Equal("第一行\n已经改了\n第三行\n", File.ReadAllText(Path.Combine(_root, "a.cs")));
+		Assert.Equal(1, result.GetProperty("replaced").GetInt32());
+		Assert.Equal(2, result.GetProperty("line").GetInt32());
+		Assert.False(result.GetProperty("lineEndingAdjusted").GetBoolean());
+	}
+
+	/// <summary>
+	/// 出现多处时必须拒绝，而不是替换首处。
+	///
+	/// 模型给出的短片段在源码中普遍重复；改错的位置与改对的位置在返回值里无法区分，
+	/// 而文件已经被改掉了。错误信息要带出现次数，否则模型只能盲目加上下文重试。
+	/// </summary>
+	[Fact]
+	public async Task 原文出现多次时拒绝执行并报告次数()
+	{
+		Write("a.cs", "return null;\nreturn null;\nreturn null;\n");
+
+		string error = await FailAsync(
+			Registry(), "editFile", new { path = "a.cs", oldText = "return null;", newText = "return 0;" });
+
+		Assert.Contains("3 次", error, StringComparison.Ordinal);
+		Assert.Contains("replaceAll", error, StringComparison.Ordinal);
+		Assert.Equal("return null;\nreturn null;\nreturn null;\n", File.ReadAllText(Path.Combine(_root, "a.cs")));
+	}
+
+	[Fact]
+	public async Task 传了replaceAll就全部替换()
+	{
+		Write("a.cs", "x\nx\nx\n");
+
+		JsonElement result = await CallAsync(
+			Registry(), "editFile", new { path = "a.cs", oldText = "x", newText = "y", replaceAll = true });
+
+		Assert.Equal(3, result.GetProperty("replaced").GetInt32());
+		Assert.Equal("y\ny\ny\n", File.ReadAllText(Path.Combine(_root, "a.cs")));
+	}
+
+	/// <summary>模型常把布尔参数写成字符串，只认 JSON 布尔会使 replaceAll 静默失效。</summary>
+	[Fact]
+	public async Task 字符串形式的replaceAll也认()
+	{
+		Write("a.cs", "x\nx\n");
+
+		JsonElement result = await CallAsync(
+			Registry(), "editFile", new { path = "a.cs", oldText = "x", newText = "y", replaceAll = "true" });
+
+		Assert.Equal(2, result.GetProperty("replaced").GetInt32());
+	}
+
+	/// <summary>
+	/// 文件是 CRLF 而 oldText 是纯 LF 时做一次确定性转换。
+	///
+	/// 直接报错的话模型无从得知文件的行尾形式，同一处编辑会反复重试。转换只在精确匹配
+	/// 失败后尝试，并在返回值里报告。
+	/// </summary>
+	[Fact]
+	public async Task 行尾不一致时自动适配并报告()
+	{
+		Write("a.cs", "第一行\r\n要改的\r\n第三行\r\n");
+
+		JsonElement result = await CallAsync(
+			Registry(),
+			"editFile",
+			new { path = "a.cs", oldText = "要改的\n第三行", newText = "改过了\n新第三行" });
+
+		Assert.True(result.GetProperty("lineEndingAdjusted").GetBoolean());
+		// 转换后的新内容同样是 CRLF，不能在文件里混进 LF。
+		Assert.Equal("第一行\r\n改过了\r\n新第三行\r\n", File.ReadAllText(Path.Combine(_root, "a.cs")));
+	}
+
+	[Fact]
+	public async Task 未找到原文时报错且不动文件()
+	{
+		Write("a.cs", "原样");
+
+		string error = await FailAsync(
+			Registry(), "editFile", new { path = "a.cs", oldText = "并不存在", newText = "x" });
+
+		Assert.Contains("逐字符一致", error, StringComparison.Ordinal);
+		Assert.Equal("原样", File.ReadAllText(Path.Combine(_root, "a.cs")));
+	}
+
+	[Fact]
+	public async Task 空的oldText与原样替换都被拒绝()
+	{
+		Write("a.cs", "内容");
+		ToolRegistry registry = Registry();
+
+		Assert.Contains(
+			"不能为空",
+			await FailAsync(registry, "editFile", new { path = "a.cs", oldText = "", newText = "x" }),
+			StringComparison.Ordinal);
+		Assert.Contains(
+			"相同",
+			await FailAsync(registry, "editFile", new { path = "a.cs", oldText = "内容", newText = "内容" }),
+			StringComparison.Ordinal);
+	}
+
+	/// <summary>不存在的文件不隐式新建：那会把模型笔误的路径变成一个新文件。</summary>
+	[Fact]
+	public async Task 文件不存在时指向writeFile()
+	{
+		string error = await FailAsync(
+			Registry(), "editFile", new { path = "没有这个.cs", oldText = "a", newText = "b" });
+
+		Assert.Contains("writeFile", error, StringComparison.Ordinal);
+		Assert.False(File.Exists(Path.Combine(_root, "没有这个.cs")));
+	}
+
+	[Fact]
+	public async Task 替换同样受工作目录边界约束()
+	{
+		string error = await FailAsync(
+			Registry(), "editFile", new { path = "../secret.txt", oldText = "不该", newText = "x" });
+
+		Assert.Contains("超出工作目录范围", error, StringComparison.Ordinal);
+		Assert.Equal("不该被读到", File.ReadAllText(Path.Combine(_outside, "secret.txt")));
+	}
+
+	[Fact]
+	public async Task 二进制文件不做替换()
+	{
+		File.WriteAllBytes(Path.Combine(_root, "bin.dat"), [0x41, 0x00, 0x42]);
+
+		Assert.Contains(
+			"二进制",
+			await FailAsync(Registry(), "editFile", new { path = "bin.dat", oldText = "A", newText = "B" }),
+			StringComparison.Ordinal);
+	}
+
+	/// <summary>BOM 由解码保留为首位 U+FEFF、编码时原样写回，替换不得把它抹掉。</summary>
+	[Fact]
+	public async Task 替换保留文件原有的BOM()
+	{
+		string file = Path.Combine(_root, "bom.cs");
+		File.WriteAllBytes(file, [.. new byte[] { 0xEF, 0xBB, 0xBF }, .. Encoding.UTF8.GetBytes("旧值")]);
+
+		await CallAsync(Registry(), "editFile", new { path = "bom.cs", oldText = "旧值", newText = "新值" });
+
+		byte[] written = File.ReadAllBytes(file);
+		Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, written[..3]);
+		Assert.Equal("新值", Encoding.UTF8.GetString(written[3..]));
+	}
+
+	[Fact]
+	public async Task 空的newText等于删掉那一段()
+	{
+		Write("a.cs", "保留A删除B保留C");
+
+		await CallAsync(Registry(), "editFile", new { path = "a.cs", oldText = "删除B", newText = "" });
+
+		Assert.Equal("保留A保留C", File.ReadAllText(Path.Combine(_root, "a.cs")));
+	}
+
+	/// <summary>
+	/// 超过可改写上限的文件拒绝执行，不能按读取上限截断后整份写回。
+	///
+	/// <see cref="WorkspaceAccess.ReadText"/> 在 128 KB 处截断；用截断后的文本改写再写回，
+	/// 结果是尾部内容被删除。
+	/// </summary>
+	[Fact]
+	public async Task 超过改写上限的文件被拒绝()
+	{
+		Write("big.txt", new string('a', WorkspaceAccess.MaxWriteBytes + 16));
+
+		string error = await FailAsync(
+			Registry(), "editFile", new { path = "big.txt", oldText = "aaa", newText = "b" });
+
+		Assert.Contains("超出可改写范围", error, StringComparison.Ordinal);
+		Assert.Equal(WorkspaceAccess.MaxWriteBytes + 16, new FileInfo(Path.Combine(_root, "big.txt")).Length);
+	}
+
+	[Fact]
+	public void 替换工具随工作目录一起注册与注销()
+	{
+		ToolRegistry registry = Registry();
+		Assert.NotNull(registry.Get("editFile"));
+		Assert.Equal("confirm", registry.Get("editFile")!.PermissionLevel);
+
+		WorkspaceTools.RegisterAll(registry, new WorkspaceAccess(""));
+		Assert.Null(registry.Get("editFile"));
+	}
+
+	/// <summary>
+	/// 大于读取上限、小于改写上限的文件：替换必须保住尾部。
+	///
+	/// <see cref="WorkspaceAccess.ReadText"/> 在 128 KB 处截断。若替换沿用它读入再整份写回，
+	/// 128 KB 之后的内容会被删除，而返回值显示替换成功 —— 这类损坏只有打开文件才发现。
+	/// </summary>
+	[Fact]
+	public async Task 超过读取上限但可改写的文件不丢尾部()
+	{
+		string filler = new('x', WorkspaceAccess.MaxReadBytes);
+		Write("mid.txt", "开头标记\n" + filler + "\n结尾标记");
+		long before = new FileInfo(Path.Combine(_root, "mid.txt")).Length;
+
+		await CallAsync(Registry(), "editFile", new { path = "mid.txt", oldText = "开头标记", newText = "已改开头" });
+
+		string after = File.ReadAllText(Path.Combine(_root, "mid.txt"));
+		Assert.StartsWith("已改开头", after, StringComparison.Ordinal);
+		Assert.EndsWith("结尾标记", after, StringComparison.Ordinal);
+		Assert.Equal(before, new FileInfo(Path.Combine(_root, "mid.txt")).Length);
 	}
 
 	// ---- review 指出的两处越界 ----

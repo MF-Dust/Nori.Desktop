@@ -15,8 +15,8 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			service,
 			"workspace",
 			"core",
-			new("文件访问", "File access"),
-			new("选择她可以查看和修改的文件夹，并控制单轮工具次数。", "Choose the folder she may read and edit, and cap tool calls per turn."),
+			new("访问权限", "Access"),
+			new("她能碰到你哪些东西：文件夹、可运行的命令、屏幕。", "What she can reach: folders, runnable commands, and your screen."),
 			lifetimeToken)
 	{
 		SettingsSectionViewModel folder = AddSection(new("工作文件夹", "Working folder"));
@@ -47,6 +47,66 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 				new { root = Convert.ToString(value) ?? "" },
 				token));
 
+		SettingsSectionViewModel commands = AddSection(new("可运行的任务", "Runnable tasks"));
+		AddField(
+			commands,
+			"isolation",
+			new("执行边界", "Execution boundary"),
+			new(
+				"命令跑在什么范围里。由系统能力决定，不可配置。",
+				"What the command can reach. Determined by the platform; not configurable."),
+			SettingsEditorKind.Text,
+			IsolationText,
+			"",
+			(_, _) => Task.FromResult(default(JsonElement)),
+			readOnly: true);
+
+
+		AddField(
+			commands,
+			"tasks",
+			new("任务清单", "Task list"),
+			new(
+				"一行一条，写成「名称 = 命令」。她只能按名字触发这里配好的任务，不能自己拼命令行；"
+					+ "每次运行都会请求确认。命令在工作文件夹下执行，默认没有网络。",
+				"One per line, written as \"name = command\". She can only trigger tasks listed here "
+					+ "and cannot compose her own command line; each run asks for confirmation. "
+					+ "Commands run in the working folder with no network access."),
+			SettingsEditorKind.Multiline,
+			snapshot => FormatTasks(snapshot),
+			"",
+			(value, token) => ExecuteAsync("settings_update_tasks", new { tasks = ParseTasks(Convert.ToString(value)) }, token));
+
+		SettingsSectionViewModel screen = AddSection(new("屏幕", "Screen"));
+		AddField(
+			screen,
+			"screenReading",
+			new("允许查看屏幕", "Allow looking at your screen"),
+			new(
+				"开启后她可以在你问起时截取当前窗口交给模型分析。每次都会请求确认。"
+					+ "只看你正在用的那个窗口，看不了整个屏幕，也不会自己主动去看。",
+				"When on, she can capture the current window and have the model analyse it when you ask. "
+					+ "Each capture asks for confirmation. Only the window you are using, never the whole "
+					+ "screen, and never on her own initiative."),
+			SettingsEditorKind.Boolean,
+			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "workspace", "screenEnabled"),
+			false,
+			(value, token) => ExecuteAsync(
+				"settings_update_screen", new { enabled = Convert.ToBoolean(value) }, token));
+
+		AddField(
+			screen,
+			"screenAvailability",
+			new("可用性", "Availability"),
+			new(
+				"需要当前平台支持截屏，且已配置支持看图的模型。",
+				"Requires screen capture support on this platform and a configured model that accepts images."),
+			SettingsEditorKind.Text,
+			ScreenAvailabilityText,
+			"",
+			(_, _) => Task.FromResult(default(JsonElement)),
+			readOnly: true);
+
 		SettingsSectionViewModel limits = AddSection(new("工具次数", "Tool calls"));
 		AddField(
 			limits,
@@ -70,6 +130,87 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			minimum: Core.Agent.AgentEngine.MinToolIterations,
 			maximum: Core.Agent.AgentEngine.MaxToolIterationsLimit,
 			increment: 1);
+	}
+
+	/// <summary>
+	/// 读屏能不能用。
+	///
+	/// 与开关分开显示：开关是「要不要」，这一行是「能不能」。两者混在一起时，用户打开了开关
+	/// 却没反应，只能怀疑是坏了 —— 实际原因可能是当前模型不支持看图。
+	/// </summary>
+	private string ScreenAvailabilityText(JsonElement snapshot) =>
+		SettingsSnapshotReader.Boolean(snapshot, false, "workspace", "screenAvailable")
+			? IsEnglish ? "Ready" : "可用"
+			: IsEnglish
+				? "Unavailable — this platform has no capture support, or the current model cannot read images"
+				: "不可用 —— 当前平台不支持截屏，或当前模型不支持看图";
+
+	/// <summary>
+	/// 把隔离强度翻成用户能判断的话。
+	///
+	/// 这条是安全信息而不是装饰：无隔离时命令拥有你的全部权限，与 AppContainer 下「只能读写
+	/// 工作文件夹、默认不联网」是两回事。界面上不说，用户在 Linux 与 macOS 上无从察觉这个差别。
+	///
+	/// 文案放在呈现层而不是 <c>ISandboxLauncher</c> 上：那是 Core 的契约，给不出双语。
+	/// </summary>
+	private string IsolationText(JsonElement snapshot) =>
+		SettingsSnapshotReader.String(snapshot, "", "workspace", "isolation") switch
+		{
+			"appcontainer" => IsEnglish
+				? "Sandboxed (AppContainer) — limited to the working folder, no network"
+				: "受限执行（AppContainer）—— 只能读写工作文件夹，默认无法联网",
+			"none" => IsEnglish
+				? "Not sandboxed — commands run with your full permissions; only configure commands you trust"
+				: "无隔离 —— 命令以你的身份运行，可访问全部文件与网络；只配置你信任的命令",
+			_ => IsEnglish ? "Unknown" : "未知",
+		};
+
+	/// <summary>
+	/// 把快照里的任务清单渲染成「名称 = 命令」的文本。
+	///
+	/// 用多行文本而不是列表控件：任务是一组名值对，行文本的编辑成本低于增删行按钮，
+	/// 且改名与新增在整份替换的语义下本来就没有区别。
+	/// </summary>
+	private static string FormatTasks(JsonElement snapshot)
+	{
+		if (SettingsSnapshotReader.Get(snapshot, "workspace", "tasks") is not {ValueKind: JsonValueKind.Array} list)
+		{
+			return "";
+		}
+
+		return string.Join(
+			Environment.NewLine,
+			list.EnumerateArray().Select(entry =>
+				(entry.TryGetProperty("name", out JsonElement name) ? name.GetString() ?? "" : "")
+					+ " = "
+					+ (entry.TryGetProperty("command", out JsonElement command) ? command.GetString() ?? "" : "")));
+	}
+
+	/// <summary>
+	/// 解析「名称 = 命令」文本。
+	///
+	/// 按首个等号拆分：命令行里常含等号（`-p:Foo=Bar`），按最后一个或全部拆会把命令截断。
+	/// 空行与 `#` 开头的行跳过，便于用户临时注释掉一条而不必删除。
+	/// </summary>
+	private static IReadOnlyList<object> ParseTasks(string? text)
+	{
+		List<object> tasks = [];
+		foreach (string line in (text ?? "").Split('\n'))
+		{
+			string trimmed = line.Trim();
+			if (trimmed.Length == 0 || trimmed.StartsWith('#')) continue;
+
+			int separator = trimmed.IndexOf('=', StringComparison.Ordinal);
+			if (separator <= 0) continue;
+
+			tasks.Add(new
+			{
+				name = trimmed[..separator].Trim(),
+				command = trimmed[(separator + 1)..].Trim(),
+			});
+		}
+
+		return tasks;
 	}
 
 	/// <summary>

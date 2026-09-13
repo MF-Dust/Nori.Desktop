@@ -258,6 +258,30 @@ public sealed class BridgeCommands
 		"settings_update_workspace" => RequireMain(source, () => Run(() => UpdateWorkspaceSettings(args))),
 
 		/// <summary>
+		/// 更新 runTask 可运行的具名任务清单，整份替换。
+		/// 前端调用：invoke("settings_update_tasks", {tasks: {name: string, command: string}[]})
+		/// </summary>
+		"settings_update_tasks" => RequireMain(source, () => Run(() => UpdateTaskSettings(args))),
+
+		/// <summary>
+		/// 开关读屏。
+		/// 前端调用：invoke("settings_update_screen", {enabled: boolean})
+		/// </summary>
+		/// <summary>
+		/// 开关一条情绪表达通道。
+		/// 前端调用：invoke("settings_update_expression", {channel: string, enabled: boolean})
+		/// </summary>
+		"settings_update_expression" => RequireMain(source, () => Run(() => UpdateExpressionChannel(args))),
+
+		"settings_update_screen" => RequireMain(source, () => Run(() =>
+		{
+			UpdateBoolConfig(args, "enabled", ConfigStore.KeyScreenReadingEnabled);
+			// 工具注册表按开关构建，不重建则要到下次启动才生效。
+			Runtime.RebuildTools();
+			Runtime.InvalidateSnapshot("workspace", "tools");
+		})),
+
+		/// <summary>
 		/// 打开系统文件夹选择对话框，返回选中路径；用户取消时返回 null。
 		/// 前端调用：invoke("settings_pick_workspace")
 		/// </summary>
@@ -1860,8 +1884,71 @@ public sealed class BridgeCommands
 	/// 目录在此处即时校验是否存在。写入不存在的路径不会报错，但该组工具会静默不注册，表现为
 	/// 配置项有值而工具不可用，排查成本高。空串为合法取值，表示禁用该功能。
 	/// </summary>
+	/// <summary>
+	/// 开关一条情绪表达通道。
+	///
+	/// 通道键由前端给出而不是在此处枚举：通道清单在 AppRuntime，两处各维护一份必然漂。
+	/// 键必须带 expression_ 前缀，挡住拿这条命令去改任意配置项。
+	/// </summary>
+	private void UpdateExpressionChannel(JsonElement args)
+	{
+		if (args.ValueKind != JsonValueKind.Object
+			|| !args.TryGetProperty("channel", out JsonElement channel)
+			|| channel.GetString() is not {Length: > 0} key
+			|| !key.StartsWith(ConfigStore.KeyExpressionPrefix, StringComparison.Ordinal))
+		{
+			throw new InvalidOperationException("channel 必须是情绪表达通道的键");
+		}
+
+		UpdateBoolConfig(args, "enabled", key);
+
+		// 关掉会改桌面设置的通道时立刻还原，不等退出 —— 用户关它多半就是想让桌面变回去。
+		if (!_services.Config.GetBoolOr(key, false)) Runtime.RestoreDesktopState();
+		Runtime.InvalidateSnapshot("expression");
+	}
+
+	private void UpdateTaskSettings(JsonElement args)
+	{
+		if (args.ValueKind != JsonValueKind.Object
+			|| !args.TryGetProperty("tasks", out JsonElement list)
+			|| list.ValueKind != JsonValueKind.Array)
+		{
+			throw new InvalidOperationException("tasks 必须是数组");
+		}
+
+		List<WorkspaceTask> parsed = [];
+		foreach (JsonElement entry in list.EnumerateArray())
+		{
+			if (entry.ValueKind != JsonValueKind.Object) continue;
+			parsed.Add(new WorkspaceTask
+			{
+				Name = entry.TryGetProperty("name", out JsonElement name) ? name.GetString() ?? "" : "",
+				Command = entry.TryGetProperty("command", out JsonElement command) ? command.GetString() ?? "" : "",
+			});
+		}
+
+		// 改配置之前先记下当前的授权面，改完才能算出哪些已经不再需要。
+		IReadOnlyList<string> granted = Runtime.CurrentGrantPaths();
+
+		// 严格校验后再落库：非法条目在读取侧是被跳过的，静默丢一条比当场报错难查得多。
+		_services.Config.Set(ConfigStore.KeyWorkspaceTasks, WorkspaceTaskList.Write(WorkspaceTaskList.Validate(parsed)));
+
+		Runtime.RebuildTools();
+		Runtime.ReleaseStaleGrants(granted);
+		Runtime.InvalidateSnapshot("workspace", "tools");
+	}
+
+	/// <summary>
+	/// 整份替换 runTask 的任务清单。
+	///
+	/// 增量更新需要稳定标识，而任务只有名字这一个键，改名就无法与新增区分。整份替换让
+	/// 界面持有唯一真相，代价是并发编辑会互相覆盖 —— 设置窗口是单实例，不存在这种情形。
+	/// </summary>
 	private void UpdateWorkspaceSettings(JsonElement args)
 	{
+		// 同上：授权面要在改配置之前取。
+		IReadOnlyList<string> granted = Runtime.CurrentGrantPaths();
+
 		if (args.ValueKind == JsonValueKind.Object
 			&& args.TryGetProperty("root", out JsonElement rootValue)
 			&& rootValue.ValueKind == JsonValueKind.String)
@@ -1891,6 +1978,9 @@ public sealed class BridgeCommands
 
 		// 工具注册表依赖工作目录构建，变更后必须重建，否则要到下次启动才生效。
 		Runtime.RebuildTools();
+
+		// 沙箱授权是磁盘上的 ACL，换了工作目录不释放的话旧目录上的 ACE 会永久残留。
+		Runtime.ReleaseStaleGrants(granted);
 		Runtime.InvalidateSnapshot("workspace", "tools");
 	}
 

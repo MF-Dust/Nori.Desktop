@@ -26,6 +26,14 @@ public static class TrayMenu
 	/// 返回是否成功: 部分 Linux 桌面环境没有 StatusNotifier/AppIndicator, 托盘会静默不出现,
 	/// 此时把 SupportsTray 置 false, 由前端在主窗内提供常驻入口与退出按钮。
 	/// </summary>
+	/// <summary>
+	/// 当前托盘图标；托盘不可用或尚未安装时为 null。
+	///
+	/// 留引用是为了让情绪表达通道能换图标 —— 安装之后就再也拿不到它的话，托盘就只能是
+	/// 一张静态图。
+	/// </summary>
+	public static TrayIcon? Current { get; private set; }
+
 	public static bool Install(Application application, AppServices services)
 	{
 		services.Logger.Write(LogSource.Backend, "info", "初始化托盘菜单");
@@ -56,7 +64,7 @@ public static class TrayMenu
 			services.Windows.Shutdown();
 		};
 
-		TrayIcon tray = new()
+		TrayIcon tray = Current = new()
 		{
 			Icon = LoadIcon(),
 			ToolTipText = "Nori - 桌面伴侣（点击打开主界面）",
@@ -73,6 +81,7 @@ public static class TrayMenu
 		{
 			// 托盘不是必需品: 失败只记日志, 由前端补一个内建入口
 			services.Logger.Write(LogSource.Backend, "warn", $"托盘不可用, 将由主界面提供入口: {exception.Message}");
+			Current = null;
 			return false;
 		}
 		services.Logger.Write(LogSource.Backend, "info", "托盘菜单初始化完成");

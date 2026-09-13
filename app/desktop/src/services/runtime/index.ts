@@ -6,7 +6,7 @@
  */
 import {ref} from "vue"
 import {invoke} from "../host/invoke"
-import type {WorkspacePickResult, WorkspaceSettingsResult} from "../host/commands"
+import type {WorkspacePickResult, WorkspaceSettingsResult, WorkspaceTaskDto, WorkspaceTasksResult} from "../host/commands"
 import {listen, type UnlistenFn} from "../host/event"
 import {feedback} from "../feedback"
 import type {
@@ -437,6 +437,18 @@ export const RUNTIME = {
 	/** 更新文件工具的工作目录与单轮工具次数上限。传空串的 root 表示停用文件工具。 */
 	updateWorkspace(patch: Partial<{root: string; maxToolIterations: number}>): Promise<WorkspaceSettingsResult> {
 		return invoke("settings_update_workspace", patch)
+	},
+	/** 开关一条情绪表达通道。每条单独开关：改整个桌面的颜色和让托盘换个色，打扰程度差着量级。 */
+	updateExpressionChannel(channel: string, enabled: boolean): Promise<void> {
+		return invoke("settings_update_expression", {channel, enabled})
+	},
+	/** 开关读屏。与工作目录分开授权：屏幕上会出现什么，用户在授权那一刻无从预料。 */
+	updateScreenReading(enabled: boolean): Promise<void> {
+		return invoke("settings_update_screen", {enabled})
+	},
+	/** 整份替换 runTask 可运行的任务清单。任务只有名字这一个键，改名无法与新增区分，故不做增量。 */
+	updateTasks(tasks: WorkspaceTaskDto[]): Promise<WorkspaceTasksResult> {
+		return invoke("settings_update_tasks", {tasks})
 	},
 	/** 打开系统文件夹选择对话框；用户取消时返回 null，调用方应保持原有配置不变。 */
 	pickWorkspace(): Promise<WorkspacePickResult> {

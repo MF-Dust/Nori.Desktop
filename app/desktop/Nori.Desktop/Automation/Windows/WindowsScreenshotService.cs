@@ -21,7 +21,7 @@ public sealed class WindowsScreenshotService
 		screenshot = null; error = null;
 		if (!Availability.IsAvailable) { error = Availability.Reason; return false; }
 		if (request.Quality is < 1 or > 100) { error = "截图质量必须在 1 到 100 之间"; return false; }
-		WindowsTargetValidationResult validation = _windows.ValidateTarget(target);
+		WindowsTargetValidationResult validation = _windows.ValidateTarget(target, request.RequireForeground);
 		if (!validation.IsValid) { error = validation.Reason; return false; }
 		try
 		{

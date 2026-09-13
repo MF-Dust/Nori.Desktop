@@ -280,6 +280,41 @@ public class BackendRuntimeModuleTests : IDisposable
 		});
 	}
 
+	/// <summary>
+	/// 合并三份工具注册实现之后，既有工具的参数契约不得改变。
+	///
+	/// 旧的 schema 生成按参数名硬编码推断类型（importance / intensity / delayMinutes 算数字），
+	/// 现在由工厂方法显式给出。下面几条正是当初靠名字命中的那些，类型或必填性一旦漂了，
+	/// 模型的调用要到运行时才失败。
+	/// </summary>
+	[Theory]
+	[InlineData("setEmotion", "intensity", "number", false)]
+	[InlineData("setReminder", "delayMinutes", "number", true)]
+	[InlineData("remember", "importance", "number", false)]
+	[InlineData("remember", "content", "string", true)]
+	[InlineData("searchWeb", "tag", "string", false)]
+	public void 内置工具的参数契约不变(string tool, string parameter, string type, bool required)
+	{
+		ToolRegistry registry = new();
+		BuiltinTools.RegisterAll(registry, new BuiltinToolDeps
+		{
+			Memory = new MemoryService(new MemoryStore(_database), new EmbeddingStub(), _config),
+			Emotion = new EmotionManager(_config),
+			Proactive = new ProactiveScheduler(new ReminderStore(_database), _config,
+				new FileLogger(Path.Combine(_tempDir, "logs")), () => null),
+			SystemInfo = new StubSystemInfo(),
+			Fetcher = new StubFetcher(),
+			Http = new HttpClient(),
+			Config = _config,
+		});
+
+		System.Text.Json.Nodes.JsonObject schema = registry.Get(tool)!.Parameters.AsObject();
+		Assert.Equal(type, schema["properties"]![parameter]!["type"]!.GetValue<string>());
+		Assert.Equal(
+			required,
+			schema["required"]!.AsArray().Select(node => node!.GetValue<string>()).Contains(parameter));
+	}
+
 	[Fact]
 	public void 内置工具全部注册且别名生效()
 	{

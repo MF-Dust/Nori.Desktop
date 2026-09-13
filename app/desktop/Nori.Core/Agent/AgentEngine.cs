@@ -128,6 +128,7 @@ public sealed class AgentEngine
 	/// </summary>
 	private readonly ReplyReactionService? _replyReaction;
 
+	private readonly Observation.IMachineStateProvider? _machineState;
 	private readonly HttpClient _http;
 	private readonly ConfigStore _config;
 	private readonly ChatService _chat;
@@ -157,8 +158,10 @@ public sealed class AgentEngine
 		AgentTraceSink? trace = null,
 		Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null,
 		Chat.LuoLiCore.LuoLiCoreConversation? luoLiCore = null,
-		ReplyReactionService? replyReaction = null)
+		ReplyReactionService? replyReaction = null,
+		Observation.IMachineStateProvider? machineState = null)
 	{
+		_machineState = machineState;
 		_http = http;
 		_config = config;
 		_chat = chat;
@@ -270,7 +273,11 @@ public sealed class AgentEngine
 			AvailableMotions = motions,
 			AvailableExpressions = expressions,
 			SkillsPrompt = skillsPrompt,
+			// 机器状态按分档注入，与情绪同层。取不到时为 null，该分段不出现。
+			MachineState = _machineState?.Read(),
 			ToolsJson = _tools.BuildToolsPrompt(),
+			WorkspaceRoot = PromptBuilder.WorkspaceRootFor(
+				availableToolNames, _config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")),
 		};
 		ContextBudgetOptions budgetOptions = new()
 		{

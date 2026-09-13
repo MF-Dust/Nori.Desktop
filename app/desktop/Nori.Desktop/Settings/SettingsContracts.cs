@@ -175,6 +175,14 @@ public abstract class SettingsPageBase : SettingsObservableObject, ISettingsPage
 	private string _statusMessage = string.Empty;
 	private bool _prepared;
 
+	/// <summary>
+	/// 当前界面语言。
+	///
+	/// 面向子类：<see cref="SettingsText"/> 覆盖不了「取值本身随快照变化」的只读字段 ——
+	/// 那类文案要在读取时才能定，子类需要知道该出哪一种语言。
+	/// </summary>
+	protected bool IsEnglish => _language.StartsWith("en", StringComparison.OrdinalIgnoreCase);
+
 	/// <summary>创建设置页面。</summary>
 	protected SettingsPageBase(
 		SettingsService service,

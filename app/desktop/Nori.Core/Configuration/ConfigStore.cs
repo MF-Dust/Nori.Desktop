@@ -49,6 +49,30 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	public const string KeyWorkspaceRoot = "workspace_root";
 
 	/// <summary>
+	/// 具名任务清单（JSON 数组，`[{"name","command"}]`）。空 = runTask 不注册。
+	///
+	/// 模型只能按名触发这里配好的命令，不参与命令行的构造。让模型自由拼命令的话，一次
+	/// 提示注入就能得到任意执行，而用户在确认框里逐字审一条命令行实际上做不到。
+	/// </summary>
+	public const string KeyWorkspaceTasks = "workspace_tasks";
+
+	/// <summary>
+	/// 是否允许查看屏幕。默认关闭。
+	///
+	/// 与工作目录分开授权：文件访问的范围是用户挑的一个文件夹，而屏幕上会出现什么他在授权
+	/// 那一刻无从预料。两者的敏感度不是一回事，不能一次同意覆盖两件。
+	/// </summary>
+	public const string KeyScreenReadingEnabled = "screen_reading_enabled";
+
+	/// <summary>
+	/// 情绪表达通道的开关前缀，完整键名即通道自己的 Key。
+	///
+	/// 每条通道一个开关而不是一个总开关：改整个系统强调色和让托盘换个颜色，打扰程度差着
+	/// 量级。默认值按侵入等级取 —— Local 与 Peripheral 默认开，Global 默认关。
+	/// </summary>
+	public const string KeyExpressionPrefix = "expression_";
+
+	/// <summary>
 	/// 一轮对话里最多连续调用多少次工具。
 	///
 	/// 原先写死 5，而一个「先搜、再读、再改、再验」的任务在第五轮刚好卡在验证之前 —— 她做了

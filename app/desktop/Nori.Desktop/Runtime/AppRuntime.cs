@@ -12,10 +12,17 @@ using Nori.Core.Live2D;
 using Nori.Core.Memory;
 using Nori.Core.Mcp;
 using Nori.Core.Network;
+using Nori.Core.Observation;
 using Nori.Core.Proactive;
 using Nori.Core.Skills;
+using Nori.Core.Sandbox;
 using Nori.Core.Security;
 using Nori.Core.Tools;
+using Nori.Core.Vision;
+using Nori.Core.Expression;
+using Nori.Desktop.Expression;
+using Nori.Desktop.Observation;
+using Nori.Desktop.Vision;
 using Nori.Core.Telemetry;
 using Nori.Core.Voice;
 using Nori.PluginRuntime;
@@ -217,7 +224,10 @@ public sealed class AppRuntime : IAsyncDisposable
 				new Nori.Core.Chat.LuoLiCore.LuoLiCoreSettingsStore(config),
 				options => new Nori.Core.Chat.LuoLiCore.LuoLiCoreSdkClient(services.Http, options)),
 			// 走 LuoLiCore 时远端只给文本，表情动作在本地挑。
-			replyReaction: new ReplyReactionService(services.Http, config));
+			replyReaction: new ReplyReactionService(services.Http, config),
+			// 机器状态按分档进提示词，与情绪同层；采集器自己控制开销。
+			// 灯效设备数进硬件清单：它是稳定量，不像负载那样每轮都变。
+			machineState: new MachineStateProvider(rgbDeviceCount: () => RgbChannel.Devices.Count));
 
 		// 窗口显隐变化 (含托盘切换伴侣) 直接作废快照, 主界面的伴侣状态因此不会陈旧
 		if (services.Windows is not null)
@@ -281,6 +291,12 @@ public sealed class AppRuntime : IAsyncDisposable
 		if (!Services.SafeMode)
 		{
 			Proactive.Message += message => Dispatcher.UIThread.Post(() => OnProactiveMessage(message));
+			// 情绪一变就扇出到各条表达通道；协调器自己做节流，这里不判。
+			Emotion.Changed += state => _ = Expression.ApplyAsync(state, Services.ShutdownToken);
+
+			// 上一次若是崩溃或被强制结束，桌面会停在她改过的样子。原值存在配置库里，
+			// 启动时先还原一次；用户仍开着这些通道的话，下一次情绪变化会重新改回去。
+			RestoreDesktopState();
 			Proactive.Start();
 
 			// 插件贡献动作 → AI 工具 (plugin 分类): 活跃插件变化时防抖刷新
@@ -792,7 +808,226 @@ public sealed class AppRuntime : IAsyncDisposable
 	/// 文件工具在注册时将工作目录捕获进闭包，不重建则配置变更要到下次启动才生效，表现为保存
 	/// 未成功。MCP 与插件工具按各自分类原子替换，本方法不涉及。
 	/// </summary>
-	public void RebuildTools() => WorkspaceTools.RegisterAll(Tools, ResolveWorkspace());
+	public void RebuildTools()
+	{
+		WorkspaceAccess workspace = ResolveWorkspace();
+		WorkspaceTools.RegisterAll(Tools, workspace);
+		RegisterTaskTools(Tools, workspace);
+		RegisterScreenTools(Tools);
+		DeviceTools.RegisterAll(Tools, RefreshDevices);
+	}
+
+	/// <summary>
+	/// 注册读屏工具。用户未显式开启、或处于安全模式时不注册。
+	///
+	/// 授权与工作目录分开：文件访问的范围是用户挑的一个文件夹，屏幕上会出现什么他在授权那一刻
+	/// 无从预料。能力是否具备（平台支持、模型已配）由 ScreenTools 自己判断。
+	/// </summary>
+	private void RegisterScreenTools(ToolRegistry registry)
+	{
+		bool allowed = !Services.SafeMode
+			&& Services.Config.GetBoolOr(ConfigStore.KeyScreenReadingEnabled, false);
+		ScreenTools.RegisterAll(registry, allowed ? ScreenCapture : null, allowed ? VisionAnalyzer : null);
+	}
+
+	/// <summary>读屏实现；非 Windows 暂无实现，返回 null 即整组不注册。</summary>
+	private IScreenCapture? ScreenCapture =>
+		OperatingSystem.IsWindows() ? _screenCapture ??= new WindowsScreenCapture() : null;
+
+	/// <summary>截图分析器，走当前聊天 Provider 的多模态能力。</summary>
+	private IVisionAnalyzer VisionAnalyzer =>
+		_visionAnalyzer ??= new ChatVisionAnalyzer(Services.Chat, Services.AiSettings);
+
+	/// <summary>
+	/// 注册 runTask。没有任务时直接注销并返回，**不触碰 <see cref="Sandbox"/>**。
+	///
+	/// 建立启动器在 Windows 上会创建 AppContainer 配置文件，那是持久的机器状态。没配任务的
+	/// 用户不该平白多出这份东西。
+	/// </summary>
+	private void RegisterTaskTools(ToolRegistry registry, WorkspaceAccess workspace)
+	{
+		IReadOnlyList<WorkspaceTask> tasks = ResolveTasks();
+		if (!workspace.IsConfigured || tasks.Count == 0)
+		{
+			registry.Unregister(TaskTools.RunTaskName);
+			return;
+		}
+
+		TaskTools.RegisterAll(registry, workspace, tasks, Sandbox);
+	}
+
+	/// <summary>
+	/// 受限执行的启动器，首次使用时建立。
+	///
+	/// 延迟到首次使用：Windows 上建立它会创建 AppContainer 配置文件，没配任务的用户不该
+	/// 平白多出这份状态。
+	/// </summary>
+	private ISandboxLauncher Sandbox => _sandbox ??= Services.Sandbox ?? SandboxLauncherFactory.Create();
+
+	/// <summary>
+	/// 情绪表达的通道清单。
+	///
+	/// 与协调器分开持有，因为默认开关值要按通道的侵入等级取 —— 若经协调器去查，
+	/// 构造协调器时又要用到开关判定，就成了自引用。
+	/// </summary>
+	private IReadOnlyList<IExpressionChannel> ExpressionChannels => _expressionChannels ??=
+	[
+		new TrayIconChannel(() => Tray.TrayMenu.Current, RunOnUi),
+		new SpeechBorderChannel(() => Services.Windows.Pet?.SpeechOverlay, RunOnUi),
+		RgbChannel,
+		AmbientChannel,
+		AccentChannel,
+		WallpaperChannel,
+	];
+
+	/// <summary>灯效通道。设备探测与重连由它自己管。</summary>
+	private RgbLightingChannel RgbChannel => _rgbChannel ??= new RgbLightingChannel();
+
+	/// <summary>环境音通道。这一版只有壳：没有素材时恒为不可用。</summary>
+	private AmbientSoundChannel AmbientChannel => _ambientChannel ??=
+		new AmbientSoundChannel(Path.Combine(Services.Paths.DataRoot, "soundscapes"));
+
+	/// <summary>改持久系统设置前的原值备份。</summary>
+	private DesktopStateBackup DesktopBackup => _desktopBackup ??= new DesktopStateBackup(Services.Config);
+
+	private IDesktopAppearance Appearance => _appearance ??=
+		OperatingSystem.IsWindows() ? new WindowsDesktopAppearance() : new UnsupportedDesktopAppearance();
+
+	private AccentColorChannel AccentChannel => _accentChannel ??= new AccentColorChannel(Appearance, DesktopBackup);
+
+	private WallpaperChannel WallpaperChannel => _wallpaperChannel ??= new WallpaperChannel(
+		Appearance,
+		DesktopBackup,
+		Path.Combine(Services.Paths.DataRoot, "expression", "wallpaper.jpg"));
+
+	/// <summary>
+	/// 把改过的桌面设置还回去。
+	///
+	/// 三个时机都要调：关掉某条通道、退出应用、以及**启动时** —— 上一次若是崩溃或被强制结束，
+	/// 桌面会停在她改过的样子，而原值存在配置库里，下次启动仍然还得回来。
+	/// </summary>
+	/// <summary>丢掉设备探测缓存，下次访问时重新探测。用户刚开 OpenRGB、刚插新外设时用。</summary>
+	public IReadOnlyList<string> RefreshDevices()
+	{
+		RgbChannel.Invalidate();
+		return [.. RgbChannel.Devices.Select(device => device.Name)];
+	}
+
+	public void RestoreDesktopState()
+	{
+		foreach (Action restore in new Action[] {AccentChannel.Restore, WallpaperChannel.Restore})
+		{
+			try
+			{
+				restore();
+			}
+			catch (Exception exception) when (exception is InvalidOperationException or IOException
+				or UnauthorizedAccessException)
+			{
+				Services.Logger.Write(LogSource.Backend, "warn", $"还原桌面设置失败: {exception.Message}");
+			}
+		}
+	}
+
+	/// <summary>情绪表达的扇出协调器。通道自己判断可用性，协调器只负责过滤与节流。</summary>
+	private ExpressionCoordinator Expression => _expression ??= new ExpressionCoordinator(
+		ExpressionChannels,
+		IsExpressionChannelEnabled,
+		(key, exception) =>
+			Services.Logger.Write(LogSource.Backend, "warn", $"情绪表达通道失败 [{key}]: {exception.Message}"));
+
+	/// <summary>
+	/// 某条表达通道开没开。
+	///
+	/// 缺省值按侵入等级取：Global 档（系统强调色、壁纸）默认关，其余默认开 —— 用户没表过态时
+	/// 不该被改掉整个桌面的颜色。
+	/// </summary>
+	private bool IsExpressionChannelEnabled(string key) =>
+		Services.Config.GetBoolOr(
+			key,
+			ExpressionChannels.FirstOrDefault(channel => channel.Key == key)?.Level != Intrusiveness.Global);
+
+	private static void RunOnUi(Action action) => Dispatcher.UIThread.Post(action);
+
+	/// <summary>
+	/// 已经可用的启动器，**不触发创建**：已建好的优先，其次是注入的，都没有则为空。
+	///
+	/// 报告隔离强度与释放授权都不该把容器建出来，但都必须尊重注入 —— 这条规则写在一处，
+	/// 两边共用。分开写过一次，结果是两处各漏了一次注入。
+	/// </summary>
+	private ISandboxLauncher? ExistingSandbox => _sandbox ?? Services.Sandbox;
+
+	/// <summary>当前该给 runTask 哪些任务。安全模式下一条都不给，判据与文件工具一致。</summary>
+	/// <summary>
+	/// 当前授予过持久权限的路径集合：工作目录，加上各条任务的可执行文件所在目录。
+	///
+	/// 与 <see cref="RegisterTaskTools"/> 用的是同一套推导，两处必须一致 —— 授权面算少了会残留，
+	/// 算多了会去动没授权过的目录的 ACL。
+	/// </summary>
+	public IReadOnlyList<string> CurrentGrantPaths()
+	{
+		WorkspaceAccess workspace = ResolveWorkspace();
+		if (!workspace.IsConfigured) return [];
+
+		List<string> paths = [workspace.Root];
+		foreach (WorkspaceTask task in ResolveTasks())
+		{
+			paths.AddRange(TaskTools.ExecutableDirectories(task.Command));
+		}
+
+		return [.. paths.Distinct(StringComparer.OrdinalIgnoreCase)];
+	}
+
+	/// <summary>
+	/// 释放已经不再需要的持久授权。
+	///
+	/// Windows 上授权写进文件系统 ACL，不随进程结束消失。工作目录换掉、任务删掉之后不释放，
+	/// ACE 就永远留在用户的目录上 —— 用户看不见，也无从清理。
+	///
+	/// 只释放「旧的减新的」：仍在用的路径撤了还得立刻加回来，反复增删 ACE 只会放大出错面。
+	/// 调用方需要在改配置**之前**取一次 <see cref="CurrentGrantPaths"/> 作为 previous。
+	/// </summary>
+	public void ReleaseStaleGrants(IReadOnlyList<string> previous)
+	{
+		ArgumentNullException.ThrowIfNull(previous);
+		if (previous.Count == 0) return;
+
+		HashSet<string> keep = new(CurrentGrantPaths(), StringComparer.OrdinalIgnoreCase);
+		string[] stale = [.. previous.Where(path => !keep.Contains(path))];
+		if (stale.Length == 0) return;
+
+		// 不走 Sandbox 属性：它会顺手把容器建出来，清理路径上是反效果。
+		ISandboxLauncher launcher = ExistingSandbox ?? SandboxLauncherFactory.CreateForRelease();
+		foreach (string path in stale)
+		{
+			try
+			{
+				launcher.Release(new SandboxPolicy { WorkspaceRoot = path });
+			}
+			catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+			{
+				// 目录已被删除或权限不足；残留一条 ACE 不影响功能，记录即可。
+				Services.Logger.Write(LogSource.Backend, "warn", $"释放沙箱授权失败 [{path}]: {exception.Message}");
+			}
+		}
+	}
+
+	private IReadOnlyList<IExpressionChannel>? _expressionChannels;
+	private ExpressionCoordinator? _expression;
+	private DesktopStateBackup? _desktopBackup;
+	private IDesktopAppearance? _appearance;
+	private RgbLightingChannel? _rgbChannel;
+	private AmbientSoundChannel? _ambientChannel;
+	private AccentColorChannel? _accentChannel;
+	private WallpaperChannel? _wallpaperChannel;
+	private ISandboxLauncher? _sandbox;
+	private IScreenCapture? _screenCapture;
+	private IVisionAnalyzer? _visionAnalyzer;
+
+	private IReadOnlyList<WorkspaceTask> ResolveTasks() =>
+		Services.SafeMode
+			? []
+			: WorkspaceTaskList.Read(Services.Config.Get(ConfigStore.KeyWorkspaceTasks));
 
 	/// <summary>
 	/// 当前该给文件工具哪个工作目录。构建与重建共用这一处判据。
@@ -824,7 +1059,11 @@ public sealed class AppRuntime : IAsyncDisposable
 
 		// 文件工具仅在配置了工作目录时注册。安全模式下一并跳过：该组工具虽不产生网络请求，
 		// 但具备对宿主文件系统的读写能力，属于安全模式要禁用的范围。判据与 RebuildTools 共用。
-		WorkspaceTools.RegisterAll(registry, ResolveWorkspace());
+		WorkspaceAccess workspace = ResolveWorkspace();
+		WorkspaceTools.RegisterAll(registry, workspace);
+		RegisterTaskTools(registry, workspace);
+		RegisterScreenTools(registry);
+		DeviceTools.RegisterAll(registry, RefreshDevices);
 		return registry;
 	}
 
@@ -1298,7 +1537,27 @@ public sealed class AppRuntime : IAsyncDisposable
 				// 目录被删除或移动后配置仍在，但工具已不再注册，界面需要区分这两种状态。
 				available = new WorkspaceAccess(config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")).IsConfigured,
 				maxToolIterations = Engine.ConfiguredToolIterations,
+				tasks = WorkspaceTaskList.Read(config.Get(ConfigStore.KeyWorkspaceTasks))
+					.Select(task => new { name = task.Name, command = task.Command }),
+				// 界面要能说清「命令跑在什么边界里」：无隔离与 AppContainer 的安全含义完全不同。
+				// 启动器尚未建立时报本平台的预期值，不报 unknown —— 用户在配置命令之前就该知道。
+				isolation = (ExistingSandbox?.Isolation ?? SandboxLauncherFactory.PlannedIsolation)
+					.ToString().ToLowerInvariant(),
+				screenEnabled = config.GetBoolOr(ConfigStore.KeyScreenReadingEnabled, false),
+				// 平台不支持或模型没配时，界面要说清是「开不了」而不是「没开」。
+				screenAvailable = ScreenCapture is {IsAvailable: true} && VisionAnalyzer.IsConfigured,
 			},
+			// 每条通道两项：开没开（用户的选择）与能不能用（环境是否具备）。界面要能说出差别，
+			// 否则「开了没反应」无从排查。
+			expression = ExpressionChannels.ToDictionary(
+				channel => channel.Key,
+				channel => (object)new
+				{
+					enabled = IsExpressionChannelEnabled(channel.Key),
+					available = channel.IsAvailable,
+					level = channel.Level.ToString().ToLowerInvariant(),
+				},
+				StringComparer.Ordinal),
 			telemetry = new
 			{
 				consent = ConfigValidation.TelemetryConsentStorage(config.GetTelemetryConsent()),

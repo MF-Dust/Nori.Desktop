@@ -4,6 +4,8 @@ using Nori.Core.Emotion;
 using Nori.Core.Memory;
 using Nori.Core.Network;
 using Nori.Core.Proactive;
+using static Nori.Core.Tools.ToolProperty;
+using static Nori.Core.Tools.ToolRegistration;
 
 namespace Nori.Core.Tools;
 
@@ -21,7 +23,7 @@ public static class BuiltinTools
 	{
 		// 1. 获取当前时间
 		Register(registry, "getTime", "获取当前系统的本地时间 (时:分:秒) 与时区信息", "safe",
-			Schema([], []),
+			Schema(),
 			(_, _) =>
 			{
 				DateTimeOffset now = DateTimeOffset.Now;
@@ -35,7 +37,7 @@ public static class BuiltinTools
 
 		// 2. 获取当前日期
 		Register(registry, "getDate", "获取当前系统的公历日期与星期几", "safe",
-			Schema([], []),
+			Schema(),
 			(_, _) =>
 			{
 				string[] weekDays = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -52,13 +54,13 @@ public static class BuiltinTools
 
 		// 3. 获取系统运行环境
 		Register(registry, "getSystemInfo", "获取宿主计算机的操作系统类型、语言与运行状态", "safe",
-			Schema([], []),
+			Schema(),
 			async (_, _) => deps.SystemInfo.GetInfo());
 
 		// 4. 控制 Live2D 播放指定动作
 		Register(registry, "playMotion",
 			"让 Nori 做出指定的 Live2D 动作 (如打招呼、开心、思考等)", "safe",
-			Schema([("name", "动作名称 (motion3.json 文件名，如 smile, wave, think)")], ["name"]),
+			Schema(Text("name", "动作名称 (motion3.json 文件名，如 smile, wave, think)")),
 			(args, _) =>
 			{
 				string name = RequireString(args, "name");
@@ -70,7 +72,7 @@ public static class BuiltinTools
 		// 5. 控制 Live2D 切换表情
 		Register(registry, "setExpression",
 			"改变 Nori 的脸部表情", "safe",
-			Schema([("name", "表情名称 (如 Smile, Shy, Angry, Surprised)")], ["name"]),
+			Schema(Text("name", "表情名称 (如 Smile, Shy, Angry, Surprised)")),
 			(args, _) =>
 			{
 				string name = RequireString(args, "name");
@@ -87,7 +89,7 @@ public static class BuiltinTools
 		// 7. 搜索长期记忆
 		Register(registry, "searchMemory",
 			"在长期记忆库中通过语义向量和关键词搜索与特定内容相关的历史记忆条目", "safe",
-			Schema([("keyword", "搜索关键词或语义查询句")], ["keyword"]),
+			Schema(Text("keyword", "搜索关键词或语义查询句")),
 			async (args, _) =>
 			{
 				string keyword = RequireString(args, "keyword");
@@ -99,10 +101,8 @@ public static class BuiltinTools
 		Register(registry, "setEmotion",
 			"主动调整 Nori 当前的心情与情绪状态", "safe",
 			Schema(
-			[
-				("emotion", "情绪类型"),
-				("intensity", "情绪强烈程度 (0.0 ~ 1.0)"),
-			], ["emotion"]),
+				Text("emotion", "情绪类型"),
+				Number("intensity", "情绪强烈程度 (0.0 ~ 1.0)", required: false)),
 			(args, _) =>
 			{
 				string emotion = OptionalString(args, "emotion") ?? EmotionTypes.Neutral;
@@ -116,10 +116,8 @@ public static class BuiltinTools
 		Register(registry, "setReminder",
 			"设置一个定时提醒倒计时任务，到时间后 Nori 会主动发起提醒", "safe",
 			Schema(
-			[
-				("content", "提醒内容事项 (如: 喝水、站起来活动一下)"),
-				("delayMinutes", "多少分钟后触发提醒"),
-			], ["content", "delayMinutes"]),
+				Text("content", "提醒内容事项 (如: 喝水、站起来活动一下)"),
+				Number("delayMinutes", "多少分钟后触发提醒")),
 			(args, _) =>
 			{
 				string content = RequireString(args, "content");
@@ -131,12 +129,12 @@ public static class BuiltinTools
 
 		// 10. 列出所有正在生效的提醒
 		Register(registry, "listReminders", "查看当前所有排队中的定时提醒事项列表", "safe",
-			Schema([], []),
+			Schema(),
 			(_, _) => Task.FromResult<object?>(new {reminders = deps.Proactive.ListReminders()}));
 
 		// 11. 读取剪贴板文本
 		Register(registry, "getClipboardText", "读取操作系统当前剪贴板中的纯文本内容", "confirm",
-			Schema([], []),
+			Schema(),
 			async (_, ctx) =>
 			{
 				IClipboardOps clipboard = Require(deps.Clipboard, "当前环境不支持读取剪贴板");
@@ -146,7 +144,7 @@ public static class BuiltinTools
 
 		// 12. 写入剪贴板文本
 		Register(registry, "setClipboardText", "将指定文本写入操作系统剪贴板", "confirm",
-			Schema([("text", "要写入剪贴板的文本内容")], ["text"]),
+			Schema(Text("text", "要写入剪贴板的文本内容")),
 			async (args, ctx) =>
 			{
 				string text = RequireString(args, "text");
@@ -157,7 +155,7 @@ public static class BuiltinTools
 
 		// 13. 打开外部网页链接
 		Register(registry, "openUrl", "使用默认浏览器打开指定的网络链接", "confirm",
-			Schema([("url", "需要打开的完整网址 (如 https://...)")], ["url"]),
+			Schema(Text("url", "需要打开的完整网址 (如 https://...)")),
 			(args, _) =>
 			{
 				string url = RequireString(args, "url");
@@ -172,7 +170,7 @@ public static class BuiltinTools
 
 		// 14. 获取电池电量状态
 		Register(registry, "getBatteryStatus", "获取计算机当前电池电量百分比与充电状态", "safe",
-			Schema([], []),
+			Schema(),
 			(_, _) => Task.FromResult<object?>(
 				deps.SystemInfo.GetBatteryStatus() ?? new {supported = false, message = "设备不支持或为台式机电源"}));
 
@@ -183,7 +181,7 @@ public static class BuiltinTools
 		// 16. 天气查询
 		Register(registry, "getWeather",
 			"查询指定城市当天的实时天气、温度与天气状况", "safe",
-			Schema([("city", "城市名称 (如: 北京, 上海, 广州, 东京, 纽约)")], ["city"]),
+			Schema(Text("city", "城市名称 (如: 北京, 上海, 广州, 东京, 纽约)")),
 			async (args, ctx) =>
 			{
 				string city = OptionalString(args, "city")
@@ -218,7 +216,7 @@ public static class BuiltinTools
 		// 17. 数学表达式安全计算
 		Register(registry, "calculate",
 			"计算数学算式与数值计算 (支持加减乘除、乘方、三角函数、对数、常量与百分比)", "safe",
-			Schema([("expression", "数学表达式 (如: 128 * 64, sqrt(256), sin(pi/2), 15% * 200)")], ["expression"]),
+			Schema(Text("expression", "数学表达式 (如: 128 * 64, sqrt(256), sin(pi/2), 15% * 200)")),
 			(args, _) =>
 			{
 				string expression = RequireString(args, "expression");
@@ -235,38 +233,20 @@ public static class BuiltinTools
 
 		// 18. 获取网页内容摘要
 		Register(registry, "fetchWebPage", "抓取并提取指定公开网址的网页文本正文内容", "confirm",
-			Schema([("url", "网页完整 URL 地址")], ["url"]),
+			Schema(Text("url", "网页完整 URL 地址")),
 			async (args, ctx) => await deps.Fetcher.FetchAsync(RequireString(args, "url"), ctx.CancellationToken));
 	}
 
 	/// <summary>构造并注册工具的小助手</summary>
-	private static void Register(
-		ToolRegistry registry,
-		string name,
-		string description,
-		string permissionLevel,
-		JsonObject parameters,
-		Func<JsonNode?, ToolContext, Task<object?>> execute) =>
-		registry.Register(new RegisteredTool
-		{
-			Name = name,
-			Description = description,
-			Parameters = parameters,
-			PermissionLevel = permissionLevel,
-			Execute = execute,
-		});
-
 	private static void RegisterRemember(ToolRegistry registry, BuiltinToolDeps deps)
 	{
 		Register(registry, "remember",
 			"在对话中获知用户的个人信息、喜好、称呼、习惯或重要约定后，主动记录到长期记忆库中", "safe",
 			Schema(
-			[
-				("content", "记忆内容事实描述 (如: 最喜欢的咖啡是冰美式 / 生日是 8月20日)"),
-				("importance", "重要程度 (0.1 ~ 1.0, 默认为 0.8)"),
-				("tags", "标签分类 (可选, 如: 偏好, 姓名, 习惯, 约定)"),
-				("kind", "记忆类型 (可选: identity, preference, factual, relational, episodic, planned)"),
-			], ["content"]),
+				Text("content", "记忆内容事实描述 (如: 最喜欢的咖啡是冰美式 / 生日是 8月20日)"),
+				Number("importance", "重要程度 (0.1 ~ 1.0, 默认为 0.8)", required: false),
+				Text("tags", "标签分类 (可选, 如: 偏好, 姓名, 习惯, 约定)", required: false),
+				Text("kind", "记忆类型 (可选: identity, preference, factual, relational, episodic, planned)", required: false)),
 			async (args, _) =>
 			{
 				string content = RequireString(args, "content");
@@ -283,7 +263,7 @@ public static class BuiltinTools
 	{
 		Register(registry, "forgetMemory",
 			"在用户明确要求忘记某条长期记忆后，将它归档而不是永久删除", "confirm",
-			Schema([("memoryId", "要归档的记忆 id")], ["memoryId"]),
+			Schema(Text("memoryId", "要归档的记忆 id")),
 			(args, _) =>
 			{
 				long id = (long)(OptionalNumber(args, "memoryId") ?? throw new InvalidOperationException("缺少参数: memoryId"));
@@ -297,10 +277,8 @@ public static class BuiltinTools
 		Register(registry, "searchWeb",
 			"使用 AnySearch 搜索引擎在互联网上搜索特定关键词、技术文档、新闻与实时信息", "safe",
 			Schema(
-			[
-				("query", "搜索关键词或查询短句 (例如: 'Go 1.26 release notes')"),
-				("tag", "搜索分类标签 (可选，例如: 'code.doc', 'web', 'general', 'news')"),
-			], ["query"]),
+				Text("query", "搜索关键词或查询短句 (例如: 'Go 1.26 release notes')"),
+				Text("tag", "搜索分类标签 (可选，例如: 'code.doc', 'web', 'general', 'news')", required: false)),
 			async (args, ctx) =>
 			{
 				string query = RequireString(args, "query");
@@ -352,28 +330,6 @@ public static class BuiltinTools
 	}
 
 	/// <summary>构造对象参数 Schema</summary>
-	private static JsonObject Schema(IReadOnlyList<(string Name, string Description)> properties, IReadOnlyList<string> required)
-	{
-		JsonObject props = new();
-		foreach ((string name, string description) in properties)
-		{
-			props[name] = new JsonObject
-			{
-				["type"] = name == "importance" || name == "intensity" || name == "delayMinutes"
-					|| name == "params" ? (name == "params" ? "object" : "number") : "string",
-				["description"] = description,
-			};
-		}
-		JsonArray requiredArray = new();
-		foreach (string name in required) requiredArray.Add(name);
-		return new JsonObject
-		{
-			["type"] = "object",
-			["properties"] = props,
-			["required"] = requiredArray,
-		};
-	}
-
 	private static T Require<T>(T? value, string message) where T : class =>
 		value ?? throw new InvalidOperationException(message);
 

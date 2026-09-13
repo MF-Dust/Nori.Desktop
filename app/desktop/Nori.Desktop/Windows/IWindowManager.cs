@@ -29,6 +29,9 @@ public interface IWindowManager
 	/// <summary>打开原生设置窗口；可指定设置页，不指定时恢复上次页面。</summary>
 	void ShowSettings(string? page = null);
 
+	/// <summary>打开原生记忆窗口；不指定分区时恢复上次页面。</summary>
+	void ShowMemory(string? page = null);
+
 	/// <summary>隐藏窗口</summary>
 	void Hide(string label);
 

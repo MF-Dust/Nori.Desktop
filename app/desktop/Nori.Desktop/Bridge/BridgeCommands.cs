@@ -22,6 +22,7 @@ using Nori.Core.Tools;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Diagnostics;
 using Nori.Desktop.Runtime;
+using MemoryService = Nori.Desktop.Memory.MemoryService;
 using Nori.Desktop.Telemetry;
 using Nori.Desktop.Windows;
 
@@ -70,6 +71,7 @@ public sealed class BridgeCommands
 		CancellationToken cancellationToken = default)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
+		MemoryService.ValidateSourceCommand(source, cmd);
 		if (_services.SafeMode && cmd.StartsWith("automation_desktop_", StringComparison.Ordinal))
 		{
 			throw new InvalidOperationException("安全模式已禁用桌面视觉自动化，请退出安全模式后重试");
@@ -475,13 +477,13 @@ public sealed class BridgeCommands
 		"memory_knowledge_status" => RequireMain(source, () => Runtime.Knowledge.Status),
 
 		/// invoke("memory_knowledge_reindex")
-		"memory_knowledge_reindex" => await MemoryKnowledgeReindexAsync(source),
+		"memory_knowledge_reindex" => await MemoryKnowledgeReindexAsync(source, cancellationToken),
 
 		/// invoke("memory_knowledge_open")
 		"memory_knowledge_open" => RequireMain(source, () => OpenKnowledgeFolder()),
 
 		/// invoke("memory_recall_debug", {query})
-		"memory_recall_debug" => await MemoryRecallDebugAsync(source, args),
+		"memory_recall_debug" => await MemoryRecallDebugAsync(source, args, cancellationToken),
 
 		/// invoke("memory_get_settings")
 		"memory_get_settings" => RequireMain(source, () => Runtime.Memory.Settings),
@@ -490,10 +492,10 @@ public sealed class BridgeCommands
 		"memory_update_settings" => RequireMain(source, () => UpdateMemorySettings(args)),
 
 		/// invoke("memory_search_hybrid", {keyword, limit?})
-		"memory_search_hybrid" => await MemorySearchHybridAsync(source, args),
+		"memory_search_hybrid" => await MemorySearchHybridAsync(source, args, cancellationToken),
 
 		/// invoke("memory_reembed_all")
-		"memory_reembed_all" => await MemoryReembedAllAsync(source),
+		"memory_reembed_all" => await MemoryReembedAllAsync(source, cancellationToken),
 
 		/// invoke("memory_export")
 		"memory_export" => await RequireVisibleMainAsync(source, MemoryExport),
@@ -672,6 +674,11 @@ public sealed class BridgeCommands
 		/// 前端调用：invoke("window_open_settings", {page?: "ai"})
 		/// </summary>
 		"window_open_settings" => await OpenSettingsAsync(source, args),
+		/// <summary>
+		/// 打开原生记忆窗口。
+		/// 前端调用：invoke("window_open_memory", {page?: "overview"})
+		/// </summary>
+		"window_open_memory" => await OpenMemoryAsync(source, args),
 		"window_show" => await OnUi(() => ShowWindow(source, args)),
 		"window_hide" => await OnUi(() => HideWindow(source, args)),
 		"window_close" => await OnUi(() => CloseWindow(source, args)),
@@ -709,7 +716,9 @@ public sealed class BridgeCommands
 
 			_ => throw new InvalidOperationException($"未知的命令: {cmd}"),
 		};
-		cancellationToken.ThrowIfCancellationRequested();
+		// 原生记忆修改已经提交时返回真实成功，避免关闭期间的取消把已写入误报为失败。
+		if (source is not INativeMemorySource || !MemoryService.IsStateChangingCommand(cmd))
+			cancellationToken.ThrowIfCancellationRequested();
 		return result;
 	}
 
@@ -759,7 +768,7 @@ public sealed class BridgeCommands
 	{
 		// 设置窗口只能由可见的 main WebView 打开；原生设置上下文不能递归
 		// 调用此入口，避免把来源标记误用成主窗口身份。
-		if (source is INativeSettingsSource || source.Label != WindowLabels.Main)
+		if (source is INativeSettingsSource or INativeMemorySource || source.Label != WindowLabels.Main)
 			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
 		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
 		if (!visible) throw new InvalidOperationException("main 窗口不可见");
@@ -771,10 +780,26 @@ public sealed class BridgeCommands
 		}).ConfigureAwait(false);
 	}
 
-	/// <summary>main 窗口校验 (无返回值场景)</summary>
+	private async Task<object?> OpenMemoryAsync(IBridgeSource source, JsonElement args)
+	{
+		if (source is INativeSettingsSource or INativeMemorySource || source.Label != WindowLabels.Main)
+			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
+		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
+		if (!visible) throw new InvalidOperationException("main 窗口不可见");
+		string? page = OptionalStr(args, "page");
+		if (!string.IsNullOrWhiteSpace(page) && !WindowManager.IsMemoryPage(page))
+			throw new InvalidOperationException("未知的记忆页面");
+		return await OnUi(() =>
+		{
+			_services.Windows.ShowMemory(string.IsNullOrWhiteSpace(page) ? null : page);
+			return (object?)null;
+		}).ConfigureAwait(false);
+	}
+
+	/// <summary>main 或已通过领域白名单校验的原生窗口校验 (无返回值场景)</summary>
 	private static void RequireMainVoid(IBridgeSource source)
 	{
-		if (source is not INativeSettingsSource && source.Label != WindowLabels.Main)
+		if (source is not INativeSettingsSource and not INativeMemorySource && source.Label != WindowLabels.Main)
 		{
 			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
 		}
@@ -957,16 +982,16 @@ public sealed class BridgeCommands
 		return updated;
 	}
 
-	private async Task<object?> MemorySearchHybridAsync(IBridgeSource source, JsonElement args)
+	private async Task<object?> MemorySearchHybridAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
 	{
 		RequireMainVoid(source);
-		return await Runtime.Memory.SearchHybridAsync(Str(args, "keyword"), ClampLimit(OptionalInt(args, "limit"), 20));
+		return await Runtime.Memory.SearchHybridAsync(Str(args, "keyword"), ClampLimit(OptionalInt(args, "limit"), 20), cancellationToken);
 	}
 
-	private async Task<object?> MemoryReembedAllAsync(IBridgeSource source)
+	private async Task<object?> MemoryReembedAllAsync(IBridgeSource source, CancellationToken cancellationToken)
 	{
 		RequireMainVoid(source);
-		int count = await Runtime.Memory.ReembedAllAsync();
+		int count = await Runtime.Memory.ReembedAllAsync(cancellationToken);
 		Runtime.InvalidateSnapshot("memory");
 		return count;
 	}
@@ -1142,10 +1167,10 @@ public sealed class BridgeCommands
 		return Runtime.Memory.GetAtoms(memoryId, status, ClampLimit(OptionalInt(args, "limit"), 50), Math.Max(0, OptionalInt(args, "offset") ?? 0));
 	}
 
-	private async Task<object?> MemoryKnowledgeReindexAsync(IBridgeSource source)
+	private async Task<object?> MemoryKnowledgeReindexAsync(IBridgeSource source, CancellationToken cancellationToken)
 	{
 		RequireMainVoid(source);
-		MemoryIndexStatus status = await Runtime.Knowledge.ReindexAsync().ConfigureAwait(false);
+		MemoryIndexStatus status = await Runtime.Knowledge.ReindexAsync(cancellationToken).ConfigureAwait(false);
 		Runtime.InvalidateSnapshot("memory");
 		return status;
 	}
@@ -1157,12 +1182,12 @@ public sealed class BridgeCommands
 		return null;
 	}
 
-	private async Task<object?> MemoryRecallDebugAsync(IBridgeSource source, JsonElement args)
+	private async Task<object?> MemoryRecallDebugAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
 	{
 		RequireMainVoid(source);
 		string query = Str(args, "query");
 		IReadOnlyList<(string Role, string Content)> recent = AgentHistory.NormalizeRecent(_services.Chat.GetHistory(8, 0));
-		MemoryContext context = await Runtime.Memory.BuildContextAsync(query, recent, CancellationToken.None, true, false).ConfigureAwait(false);
+		MemoryContext context = await Runtime.Memory.BuildContextAsync(query, recent, cancellationToken, true, false).ConfigureAwait(false);
 		return new {trace = context.Debug, personal = context.Personal, atoms = context.Atoms, knowledge = context.Knowledge, echoes = context.Echoes};
 	}
 
@@ -1576,7 +1601,7 @@ public sealed class BridgeCommands
 	private static object? RequireMain(IBridgeSource source, Func<object?> factory) => RequireLabel(source, WindowLabels.Main, factory);
 
 	private static bool IsLabelAllowed(IBridgeSource source, string allowed) =>
-		source is INativeSettingsSource || source.Label == allowed;
+		source is INativeSettingsSource || (source is INativeMemorySource && allowed == WindowLabels.Main) || source.Label == allowed;
 
 	private static async Task<object?> RequireMainAsync(IBridgeSource source, Func<Task<object?>> factory)
 	{

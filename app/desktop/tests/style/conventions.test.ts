@@ -88,7 +88,8 @@ describe("样式规范静态检查", () => {
 		const SHELL = "w-full h-full flex flex-col gap-4 px-6 py-4 scroll-area"
 		const PAGES = listFiles(join(SRC, "components/settings"), ".vue")
 			.filter(file => readFileSync(file, "utf8").includes("<AppSectionHeader"))
-		expect(PAGES.length, "保留的 Vue 二级页都已迁移, 判定口径已失效").toBeGreaterThanOrEqual(2)
+		// 记忆已迁移到原生窗口；模型管理仍保留 Vue 外壳并继续接受相同检查。
+		expect(PAGES.map(relativeSrc)).toContain("components/settings/ModelManagement.vue")
 		const OFFENDERS = PAGES
 			.filter(file => !readFileSync(file, "utf8").includes(SHELL))
 			.map(file => `${relativeSrc(file)}: 外壳需为 class="${SHELL}"`)

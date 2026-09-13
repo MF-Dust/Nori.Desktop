@@ -4,6 +4,7 @@ using Nori.Desktop.Automation;
 using Nori.Desktop.Windows;
 using Nori.Desktop.Automation.Browser;
 using Nori.Desktop.Settings;
+using Nori.Desktop.Memory;
 using Nori.PluginRuntime;
 
 namespace Nori.Desktop.Bridge;
@@ -43,6 +44,7 @@ public sealed class BridgeCommandRouter(AppServices services)
 		CancellationToken cancellationToken = default)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
+		MemoryService.ValidateSourceCommand(source, command);
 		BridgeCommandDomain domain = Classify(command);
 
 		// 插件动作调用 (宿主聊天控制卡): 仅主窗口可调, 转发到活跃插件的 IPluginActionContribution。

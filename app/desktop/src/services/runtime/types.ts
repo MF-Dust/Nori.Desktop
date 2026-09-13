@@ -1018,3 +1018,5 @@ export interface ModelMeta {
 	motions: {group: string; names: string[]}[]
 	interactions: InteractionConfig
 }
+/** 原生记忆窗口的页面键。 */
+export type MemoryPage = "overview" | "memories" | "atoms" | "knowledge" | "archive" | "transfer" | "debugger" | "advanced"

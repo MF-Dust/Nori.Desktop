@@ -8,7 +8,6 @@ import Main from "../../src/views/Main.vue"
 import HomePanel from "../../src/components/home/HomePanel.vue"
 import ChatView from "../../src/components/ChatView.vue"
 import ModelManagement from "../../src/components/settings/ModelManagement.vue"
-import MemorySettings from "../../src/components/settings/MemorySettings.vue"
 
 describe("Views and Panels Mounting", () => {
 	let INVOKED: string[] = []
@@ -190,14 +189,14 @@ describe("Views and Panels Mounting", () => {
 
 	it("switches Main tabs without leaving a blank panel", async () => {
 		const MOUNT = mountComponent(Main)
-		// 「记忆」已从设置二级页提升为一级页, 侧栏共 5 项
-		const MAIN_TABS = ["home", "talk", "model", "memory"]
+		// 记忆和设置打开原生窗口，主面板保留当前内容。
+		const MAIN_TABS = ["home", "talk", "model"]
 		try {
 			await settleView()
 			expect(MOUNT.container.innerHTML).toBeTruthy()
 
 			const NAV_BUTTONS = Array.from(MOUNT.container.querySelectorAll("aside nav button"))
-			expect(NAV_BUTTONS).toHaveLength(MAIN_TABS.length + 1)
+			expect(NAV_BUTTONS).toHaveLength(MAIN_TABS.length + 2)
 			for (const [INDEX, TAB] of MAIN_TABS.entries()) {
 				click(NAV_BUTTONS[INDEX])
 				await settleView()
@@ -209,12 +208,15 @@ describe("Views and Panels Mounting", () => {
 
 			click(NAV_BUTTONS[1])
 			click(NAV_BUTTONS[2])
+			click(NAV_BUTTONS[3])
 			click(NAV_BUTTONS[4])
 			await settleView()
 			const PANELS = MOUNT.container.querySelectorAll("[data-main-panel]")
 			expect(PANELS).toHaveLength(1)
 			expect(PANELS[0].getAttribute("data-main-panel")).toBe("model")
 			expect(INVOKED).toContain("window_open_settings")
+			expect(INVOKED).toContain("window_open_memory")
+			expect(INVOKED).not.toContain("memory_list_page")
 		} finally {
 			MOUNT.app.unmount()
 			MOUNT.container.remove()
@@ -227,7 +229,6 @@ describe("Views and Panels Mounting", () => {
 			HomePanel,
 			ChatView,
 			ModelManagement,
-			MemorySettings,
 		]
 		for (const comp of panels) {
 			const MOUNT = mountComponent(comp)

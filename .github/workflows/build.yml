@@ -159,6 +159,21 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: 原生记忆 · 八分区深色真实渲染与布局验证
+        if: matrix.name == 'windows'
+        env:
+          NORI_CAPTURE_MEMORY: "1"
+        run: dotnet test Nori.Desktop.Tests/Nori.Desktop.Tests.csproj --configuration Release --no-build --no-restore --filter FullyQualifiedName~NativeMemoryVisual -m:1
+
+      - name: 上传原生记忆视觉产物
+        if: always() && matrix.name == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nori-native-memory-visuals
+          path: app/desktop/artifacts/native-memory
+          if-no-files-found: warn
+          retention-days: 7
+
       # 前面的 build/test 已准备好 Release 输出；覆盖率只重新收集，不重复还原/编译。
       - name: 后端门 · 覆盖率产物
         if: matrix.name == 'windows'

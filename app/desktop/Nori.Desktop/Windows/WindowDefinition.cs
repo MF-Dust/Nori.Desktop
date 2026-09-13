@@ -92,6 +92,9 @@ public static class WindowLabels
 	/// <summary>按需创建的原生设置窗口。</summary>
 	public const string Settings = "settings";
 
+	/// <summary>按需创建的原生记忆窗口。</summary>
+	public const string Memory = "memory";
+
 	/// <summary>首次运行向导</summary>
 	public const string FirstRun = "first-run";
 

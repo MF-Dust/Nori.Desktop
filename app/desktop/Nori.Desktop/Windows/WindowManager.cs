@@ -13,7 +13,7 @@ namespace Nori.Desktop.Windows;
 /// 窗口调度
 ///
 /// 承接原来 Rust 侧 lib.rs setup / tray.rs 与前端 services/window/index.ts 的窗口调度职责.
-/// 管理三个 WebView、原生伴侣视窗与按需创建的原生设置窗口。
+/// 管理三个 WebView、原生伴侣视窗与按需创建的原生设置和记忆窗口。
 /// </summary>
 public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleApplicationLifetime lifetime, AppStoragePaths storagePaths) : IWindowManager
 {
@@ -25,6 +25,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	private PetWindow? _petWindow;
 	private AppServices? _services;
 	private int _shutdownRequested;
+	private Task? _memoryCloseTask;
 
 	/// <inheritdoc />
 	public event Action<string, bool>? VisibilityChanged;
@@ -117,6 +118,11 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 			ShowSettings();
 			return;
 		}
+		if (label == WindowLabels.Memory)
+		{
+			ShowMemory();
+			return;
+		}
 		if (Get(label) is not { } window) return;
 		window.Show();
 		if (window is PetWindow pet)
@@ -149,6 +155,41 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 		settings.Activate();
 	}
 
+	/// <summary>检查原生记忆页面键，供窗口调度和桥接入口共同使用。</summary>
+	internal static bool IsMemoryPage(string page) => page is "overview" or "memories" or "atoms" or "knowledge" or "archive" or "transfer" or "debugger" or "advanced";
+
+	/// <inheritdoc />
+	public void ShowMemory(string? page = null)
+	{
+		Dispatcher.UIThread.VerifyAccess();
+		if (Volatile.Read(ref _shutdownRequested) != 0) return;
+		if (_memoryCloseTask is {IsCompleted: false}) return;
+		if (page is not null && !IsMemoryPage(page))
+			throw new ArgumentException("未知的记忆页面", nameof(page));
+		if (Get(WindowLabels.Memory) is not MemoryWindow memory)
+		{
+			AppServices services = _services ?? throw new InvalidOperationException("应用窗口尚未就绪");
+			memory = new MemoryWindow(services);
+			_windows[WindowLabels.Memory] = memory;
+			TrackVisibility(WindowLabels.Memory, memory);
+		}
+		memory.Navigate(page);
+		if (memory.WindowState == WindowState.Minimized) memory.WindowState = WindowState.Normal;
+		memory.Show();
+		memory.Activate();
+		_ = RefreshMemoryAsync(memory);
+	}
+
+	private async Task RefreshMemoryAsync(MemoryWindow memory)
+	{
+		try { await memory.RefreshAsync(); }
+		catch (OperationCanceledException) { }
+		catch (Exception exception)
+		{
+			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"记忆窗口刷新失败: {exception.GetType().Name}");
+		}
+	}
+
 	/// <summary>
 	/// 隐藏窗口
 	/// </summary>
@@ -160,6 +201,12 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	public void Close(string label)
 	{
 		if (Get(label) is not { } window) return;
+		if (window is MemoryWindow memory)
+		{
+			if (_memoryCloseTask is null || _memoryCloseTask.IsCompleted)
+				_memoryCloseTask = CloseMemoryAsync(memory);
+			return;
+		}
 		_windows.Remove(label);
 		if (window is NoriWindow nw) nw.AllowClose = true;
 		else if (window is SettingsWindow settings) settings.AllowClose = true;
@@ -170,6 +217,30 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 		}
 		window.Close();
 		if (_visible.TryUpdate(label, false, true)) VisibilityChanged?.Invoke(label, false);
+	}
+
+	private async Task CloseMemoryAsync(MemoryWindow memory)
+	{
+		try { await memory.PrepareShutdownAsync(); }
+		catch (Exception exception)
+		{
+			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"记忆窗口关闭前保存失败: {exception.GetType().Name}");
+			ShowMemoryFailure(memory, exception);
+			return;
+		}
+		if (!ReferenceEquals(Get(WindowLabels.Memory), memory)) return;
+		_windows.Remove(WindowLabels.Memory);
+		memory.AllowClose = true;
+		memory.Close();
+		if (_visible.TryUpdate(WindowLabels.Memory, false, true)) VisibilityChanged?.Invoke(WindowLabels.Memory, false);
+	}
+
+	private static void ShowMemoryFailure(MemoryWindow memory, Exception exception)
+	{
+		memory.ReportHostFailure(exception);
+		if (memory.WindowState == WindowState.Minimized) memory.WindowState = WindowState.Normal;
+		memory.Show();
+		memory.Activate();
 	}
 
 	/// <summary>
@@ -214,12 +285,31 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 
 		Dispatcher.UIThread.Post(async () =>
 		{
-			if (Get(WindowLabels.Settings) is SettingsWindow settings)
-				await settings.PrepareShutdownAsync();
+			try
+			{
+				if (_memoryCloseTask is { } closingMemory) await closingMemory;
+				MemoryWindow? memory = Get(WindowLabels.Memory) as MemoryWindow;
+				SettingsWindow? settings = Get(WindowLabels.Settings) as SettingsWindow;
+				// 先验证所有编辑能够保存，再开始不可逆的页面释放，保留失败重试机会。
+				if (settings is not null && !await settings.FlushPendingSavesAsync())
+					throw new InvalidOperationException("设置保存失败，请检查后重试");
+				if (memory is not null && !await memory.FlushPendingSavesAsync())
+					throw new InvalidOperationException("记忆保存失败，请检查后重试");
+				if (memory is not null) await memory.PrepareShutdownAsync();
+				if (settings is not null) await settings.PrepareShutdownAsync();
+			}
+			catch (Exception exception)
+			{
+				Interlocked.Exchange(ref _shutdownRequested, 0);
+				_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"窗口关闭前保存失败，已取消退出: {exception.GetType().Name}");
+				if (Get(WindowLabels.Memory) is MemoryWindow memory) ShowMemoryFailure(memory, exception);
+				return;
+			}
 			foreach (Window window in _windows.Values)
 			{
 				if (window is NoriWindow noriWindow) noriWindow.AllowClose = true;
 				else if (window is SettingsWindow settingsWindow) settingsWindow.AllowClose = true;
+				else if (window is MemoryWindow memoryWindow) memoryWindow.AllowClose = true;
 				else if (window is PetWindow petWindow) petWindow.AllowClose = true;
 			}
 

@@ -35,3 +35,8 @@ public interface IBridgeSource
 internal interface INativeSettingsSource : IBridgeSource
 {
 }
+
+/// <summary>原生记忆窗口的可信来源；服务及宿主入口共同限制固定的记忆命令白名单。</summary>
+internal interface INativeMemorySource : IBridgeSource
+{
+}

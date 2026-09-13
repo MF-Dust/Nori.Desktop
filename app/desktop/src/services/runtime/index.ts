@@ -40,6 +40,7 @@ import type {
 	MemoryIndexStatus,
 	MemoryListPage,
 	MemoryOverview,
+	MemoryPage,
 	MemoryRecallDebug,
 	MemorySettings,
 	MemorySource,
@@ -118,6 +119,7 @@ export type {
 	MemoryListPage,
 	MemoryOverview,
 	MemoryRecallDebug,
+	MemoryPage,
 	MemorySettings,
 	MemorySource,
 	MemoryState,
@@ -433,6 +435,10 @@ export const RUNTIME = {
 	/** 请求宿主显示独立的原生设置窗口，并可指定初始页面。 */
 	openSettings(page?: string): Promise<void> {
 		return invoke("window_open_settings", page ? {page} : undefined)
+	},
+	/** 请求宿主显示独立的原生记忆窗口。 */
+	openMemory(page?: MemoryPage): Promise<void> {
+		return invoke("window_open_memory", page ? {page} : undefined)
 	},
 	stopAutomationTask(taskId: string): Promise<boolean> {
 		return invoke("automation_stop_task", {taskId})

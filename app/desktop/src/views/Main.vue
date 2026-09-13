@@ -46,7 +46,6 @@ const PANEL_OPTIONS = {
 
 const HomePanel = defineAsyncComponent({loader: () => import("../components/home/HomePanel.vue"), ...PANEL_OPTIONS})
 const ModelManagement = defineAsyncComponent({loader: () => import("../components/settings/ModelManagement.vue"), ...PANEL_OPTIONS})
-const MemoryPanel = defineAsyncComponent({loader: () => import("../components/settings/MemorySettings.vue"), ...PANEL_OPTIONS})
 const ChatView = defineAsyncComponent({loader: () => import("../components/ChatView.vue"), ...PANEL_OPTIONS})
 
 // ---- 侧边导航 (「记忆」已从设置二级提升为一级页, 「关于」仍在设置的二级列表里) ----
@@ -100,6 +99,10 @@ const openNativeSettings = async (page?: string) => {
 }
 
 const navigateSidebar = (key: NavKey) => {
+	if (key === "memory") {
+		void RUNTIME.openMemory().catch(error => feedback.error(UI_I18N.value.loadFailed, error))
+		return
+	}
 	if (key === "settings") {
 		void openNativeSettings()
 		return
@@ -311,7 +314,6 @@ onBeforeUnmount(() => {
 						<ChatView v-if="activeNav === 'talk'" @go-settings="navigate('settings', 'talk')"/>
 					</KeepAlive>
 					<ModelManagement v-if="activeNav === 'model'"/>
-					<MemoryPanel v-if="activeNav === 'memory'"/>
 				</div>
 			</main>
 		</div>

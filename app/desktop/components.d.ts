@@ -39,7 +39,6 @@ declare module 'vue' {
     InteractionRegionOverlay: typeof import('./src/components/settings/InteractionRegionOverlay.vue')['default']
     LanguageSelect: typeof import('./src/components/firstRun/LanguageSelect.vue')['default']
     Live2dBehaviorControls: typeof import('./src/components/settings/Live2dBehaviorControls.vue')['default']
-    MemorySettings: typeof import('./src/components/settings/MemorySettings.vue')['default']
     ModelManagement: typeof import('./src/components/settings/ModelManagement.vue')['default']
     ModelSelect: typeof import('./src/components/firstRun/ModelSelect.vue')['default']
     NConfigProvider: typeof import('naive-ui')['NConfigProvider']

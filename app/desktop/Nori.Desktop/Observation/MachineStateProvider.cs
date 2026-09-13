@@ -33,14 +33,18 @@ public sealed class MachineStateProvider : IMachineStateProvider
 
 	private readonly Lock _gate = new();
 	private readonly Func<double?> _idleSeconds;
+	private readonly Func<int>? _rgbDeviceCount;
 	private (ulong Idle, ulong Total) _previousCpu;
 	private GpuState? _gpu;
 	private DateTimeOffset _gpuReadAt = DateTimeOffset.MinValue;
 	private bool _gpuUnavailable;
 
 	/// <summary>创建采集器。</summary>
-	public MachineStateProvider(Func<double?>? idleSeconds = null) =>
+	public MachineStateProvider(Func<double?>? idleSeconds = null, Func<int>? rgbDeviceCount = null)
+	{
 		_idleSeconds = idleSeconds ?? (() => OperatingSystem.IsWindows() ? SystemIdleTime.GetIdleSeconds() : null);
+		_rgbDeviceCount = rgbDeviceCount;
+	}
 
 	/// <inheritdoc />
 	public MachineState Read()
@@ -57,6 +61,7 @@ public sealed class MachineStateProvider : IMachineStateProvider
 			Gpu = ReadGpu(),
 			Uptime = TimeSpan.FromMilliseconds(Environment.TickCount64),
 			Idle = idle is {} seconds ? TimeSpan.FromSeconds(seconds) : null,
+			RgbDeviceCount = _rgbDeviceCount?.Invoke(),
 		};
 	}
 

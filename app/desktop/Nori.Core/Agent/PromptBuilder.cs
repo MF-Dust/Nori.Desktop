@@ -102,9 +102,12 @@ public static class PromptBuilder
 		// 放在 other 里与情绪、可用动作同层：它是环境事实，不是指令，也不是记忆。
 		// 只注入分档不注入读数，理由见 MachineStateText —— 精确数字每轮都变，会使整段系统
 		// 提示词的缓存前缀每轮失效。
-		if (options.MachineState is {} machine && Observation.MachineStateText.Render(machine) is {Length: > 0} rendered)
+		if (options.MachineState is {} machine)
 		{
-			other.Add(rendered);
+			// 硬件清单是稳定量，带具体型号；机器状态是易变量，只带分档。两段分开，
+			// 前者几乎不变因此不影响缓存前缀。
+			if (Observation.MachineStateText.RenderInventory(machine) is {Length: > 0} inventory) other.Add(inventory);
+			if (Observation.MachineStateText.Render(machine) is {Length: > 0} rendered) other.Add(rendered);
 		}
 
 		// 6. 工作目录。

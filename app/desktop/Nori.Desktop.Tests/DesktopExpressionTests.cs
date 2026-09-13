@@ -287,4 +287,103 @@ public sealed class DesktopExpressionTests : IDisposable
 
 		Assert.Empty(appearance.WallpaperWrites);
 	}
+
+	// ---- 灯效（A6）----
+
+	/// <summary>
+	/// 控制器数据解析必须防御式。
+	///
+	/// 协议实现未经真实服务端验证，因此任何字段不一致都要把设备判为不可用而不是拿错值去写
+	/// 硬件。最坏情况是「没检测到设备」，不是「发了乱七八糟的数据给键盘」。
+	/// </summary>
+	[Theory]
+	[InlineData(new byte[0])]
+	[InlineData(new byte[] {1, 2, 3})]
+	[InlineData(new byte[] {0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF})]   // 字符串长度远超载荷
+	public void 控制器数据损坏时判为不可用(byte[] payload)
+	{
+		Assert.Null(OpenRgbClient.TryParseDevice(payload, 0));
+	}
+
+	[Fact]
+	public void 连不上时通道不可用()
+	{
+		using RgbLightingChannel channel = new(() => null);
+
+		Assert.False(channel.IsAvailable);
+		Assert.Empty(channel.Devices);
+	}
+
+	/// <summary>
+	/// 灯效是 Peripheral 不是 Global：它不改屏幕上的任何东西，而装了 OpenRGB 的人本来就是
+	/// 主动要灯效的，默认开是合理的。
+	/// </summary>
+	[Fact]
+	public void 灯效是外围档()
+	{
+		using RgbLightingChannel channel = new(() => null);
+
+		Assert.Equal(Intrusiveness.Peripheral, channel.Level);
+	}
+
+	[Fact]
+	public async Task 没有设备时下发不抛()
+	{
+		using RgbLightingChannel channel = new(() => null);
+
+		await channel.ApplyAsync(Palette(), CancellationToken.None);
+	}
+
+	// ---- 环境音（A3 壳）----
+
+	[Fact]
+	public void 没有素材目录时环境音不可用()
+	{
+		AmbientSoundChannel channel = new(Path.Combine(Path.GetTempPath(), $"nori-none-{Guid.NewGuid():N}"));
+
+		Assert.False(channel.IsAvailable);
+		Assert.Empty(channel.Available());
+	}
+
+	[Fact]
+	public void 有素材时按音景名解析出文件()
+	{
+		string directory = Path.Combine(Path.GetTempPath(), $"nori-snd-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(directory);
+		File.WriteAllBytes(Path.Combine(directory, "calm.ogg"), [1]);
+		File.WriteAllBytes(Path.Combine(directory, "readme.txt"), [1]);
+		try
+		{
+			AmbientSoundChannel channel = new(directory);
+
+			Assert.True(channel.IsAvailable);
+			Assert.Equal(["calm"], channel.Available());       // 非音频扩展名不算
+			Assert.EndsWith("calm.ogg", channel.Resolve("calm")!, StringComparison.Ordinal);
+		}
+		finally
+		{
+			Directory.Delete(directory, recursive: true);
+		}
+	}
+
+	/// <summary>
+	/// 缺素材时不要拿别的音景顶上。
+	///
+	/// 随便挑一个比不放更糟：用户会听到与当下情绪不符的声音，而且无从判断是配错了还是缺文件。
+	/// </summary>
+	[Fact]
+	public void 缺这个音景时不退回到别的()
+	{
+		string directory = Path.Combine(Path.GetTempPath(), $"nori-snd-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(directory);
+		File.WriteAllBytes(Path.Combine(directory, "calm.ogg"), [1]);
+		try
+		{
+			Assert.Null(new AmbientSoundChannel(directory).Resolve("tense"));
+		}
+		finally
+		{
+			Directory.Delete(directory, recursive: true);
+		}
+	}
 }

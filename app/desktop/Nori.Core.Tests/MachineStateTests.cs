@@ -152,4 +152,70 @@ public sealed class MachineStateTests
 			PromptBuilder.Build(new PromptBuildOptions {MachineState = MachineState.Empty, ToolsJson = "[]"}),
 			StringComparison.Ordinal);
 	}
+
+	// ---- 硬件清单 ----
+
+	/// <summary>
+	/// 硬件清单带具体值，与只带分档的机器状态相反。
+	///
+	/// 型号、容量、设备数只在换硬件或插拔外设时才变，写具体值不影响缓存前缀；而负载每轮都变，
+	/// 所以那一段只能分档。两者分开渲染正是为了这个差别。
+	/// </summary>
+	[Fact]
+	public void 硬件清单带具体型号与容量()
+	{
+		string text = MachineStateText.RenderInventory(new MachineState
+		{
+			MemoryTotalMb = 32129,
+			Gpu = new GpuState
+			{
+				Name = "NVIDIA GeForce RTX 5080 Laptop GPU",
+				TemperatureCelsius = 50,
+				UtilizationPercent = 0,
+				MemoryUsedMb = 116,
+				MemoryTotalMb = 16303,
+			},
+			RgbDeviceCount = 2,
+		});
+
+		Assert.Contains("31 GB 内存", text, StringComparison.Ordinal);
+		Assert.Contains("RTX 5080", text, StringComparison.Ordinal);
+		Assert.Contains("15 GB 显存", text, StringComparison.Ordinal);
+		Assert.Contains("可控灯效设备 2 个", text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void 没有硬件读数时清单不渲染()
+	{
+		Assert.Equal("", MachineStateText.RenderInventory(MachineState.Empty));
+	}
+
+	/// <summary>没有灯效设备时不提这一项，而不是说「0 个」。</summary>
+	[Fact]
+	public void 没有灯效设备时不提()
+	{
+		string text = MachineStateText.RenderInventory(new MachineState {MemoryTotalMb = 32129, RgbDeviceCount = 0});
+
+		Assert.Contains("内存", text, StringComparison.Ordinal);
+		Assert.DoesNotContain("灯效", text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void 提示词里同时带清单与状态()
+	{
+		string prompt = PromptBuilder.Build(new PromptBuildOptions
+		{
+			MachineState = new MachineState
+			{
+				MemoryTotalMb = 32129,
+				MemoryUsedMb = 8000,
+				RgbDeviceCount = 2,
+				Uptime = TimeSpan.FromHours(3),
+			},
+			ToolsJson = "[]",
+		});
+
+		Assert.Contains("你住在这台机器里", prompt, StringComparison.Ordinal);
+		Assert.Contains("这台机器现在的状态", prompt, StringComparison.Ordinal);
+	}
 }

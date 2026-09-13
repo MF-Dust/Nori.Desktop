@@ -99,6 +99,14 @@ public sealed record MachineState
 	/// <summary>键鼠空闲时长。</summary>
 	public TimeSpan? Idle { get; init; }
 
+	/// <summary>
+	/// 可控灯效设备数；探测不到为 null。
+	///
+	/// 与负载不同，这是**稳定量** —— 只在插拔外设或开关 OpenRGB 时才变，所以硬件清单里
+	/// 可以带具体数字而不必分档，缓存不受影响。
+	/// </summary>
+	public int? RgbDeviceCount { get; init; }
+
 	/// <summary>什么都没取到的空状态。</summary>
 	public static MachineState Empty { get; } = new();
 
@@ -177,6 +185,37 @@ public static class MachineStateText
 		{} value when value >= AwayAfter => PresenceLevel.Away,
 		_ => PresenceLevel.Active,
 	};
+
+	/// <summary>
+	/// 渲染硬件清单：**稳定量用具体值**，与易变的机器状态分开。
+	///
+	/// 机器状态只能放分档，因为读数每轮都变会打掉整段提示词前缀的缓存。硬件清单反过来 ——
+	/// 型号、容量、设备数只在换硬件或插拔外设时才变，可以带具体名字而不影响缓存。
+	///
+	/// 这一段回答的是「你住在什么机器里」，那是身份而不是状态。
+	/// </summary>
+	public static string RenderInventory(MachineState state)
+	{
+		ArgumentNullException.ThrowIfNull(state);
+		List<string> parts = [];
+
+		if (state.MemoryTotalMb is > 0 and var total)
+		{
+			parts.Add((total / 1024).ToString(CultureInfo.InvariantCulture) + " GB 内存");
+		}
+
+		if (state.Gpu is {Name.Length: > 0} gpu)
+		{
+			parts.Add(gpu.Name + "（" + (gpu.MemoryTotalMb / 1024).ToString(CultureInfo.InvariantCulture) + " GB 显存）");
+		}
+
+		if (state.RgbDeviceCount is > 0 and var devices)
+		{
+			parts.Add("可控灯效设备 " + devices.ToString(CultureInfo.InvariantCulture) + " 个");
+		}
+
+		return parts.Count == 0 ? "" : "【你住在这台机器里】：" + string.Join("、", parts) + "。";
+	}
 
 	/// <summary>
 	/// 渲染注入用的一段文字；无任何读数时返回空串。

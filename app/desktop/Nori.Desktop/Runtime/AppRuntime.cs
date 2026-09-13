@@ -225,7 +225,8 @@ public sealed class AppRuntime : IAsyncDisposable
 			// 走 LuoLiCore 时远端只给文本，表情动作在本地挑。
 			replyReaction: new ReplyReactionService(services.Http, config),
 			// 机器状态按分档进提示词，与情绪同层；采集器自己控制开销。
-			machineState: new MachineStateProvider());
+			// 灯效设备数进硬件清单：它是稳定量，不像负载那样每轮都变。
+			machineState: new MachineStateProvider(rgbDeviceCount: () => RgbChannel.Devices.Count));
 
 		// 窗口显隐变化 (含托盘切换伴侣) 直接作废快照, 主界面的伴侣状态因此不会陈旧
 		if (services.Windows is not null)
@@ -871,9 +872,18 @@ public sealed class AppRuntime : IAsyncDisposable
 	[
 		new TrayIconChannel(() => Tray.TrayMenu.Current, RunOnUi),
 		new SpeechBorderChannel(() => Services.Windows.Pet?.SpeechOverlay, RunOnUi),
+		RgbChannel,
+		AmbientChannel,
 		AccentChannel,
 		WallpaperChannel,
 	];
+
+	/// <summary>灯效通道。设备探测与重连由它自己管。</summary>
+	private RgbLightingChannel RgbChannel => _rgbChannel ??= new RgbLightingChannel();
+
+	/// <summary>环境音通道。这一版只有壳：没有素材时恒为不可用。</summary>
+	private AmbientSoundChannel AmbientChannel => _ambientChannel ??=
+		new AmbientSoundChannel(Path.Combine(Services.Paths.DataRoot, "soundscapes"));
 
 	/// <summary>改持久系统设置前的原值备份。</summary>
 	private DesktopStateBackup DesktopBackup => _desktopBackup ??= new DesktopStateBackup(Services.Config);
@@ -894,6 +904,13 @@ public sealed class AppRuntime : IAsyncDisposable
 	/// 三个时机都要调：关掉某条通道、退出应用、以及**启动时** —— 上一次若是崩溃或被强制结束，
 	/// 桌面会停在她改过的样子，而原值存在配置库里，下次启动仍然还得回来。
 	/// </summary>
+	/// <summary>丢掉设备探测缓存，下次访问时重新探测。用户刚开 OpenRGB、刚插新外设时用。</summary>
+	public IReadOnlyList<string> RefreshDevices()
+	{
+		RgbChannel.Invalidate();
+		return [.. RgbChannel.Devices.Select(device => device.Name)];
+	}
+
 	public void RestoreDesktopState()
 	{
 		foreach (Action restore in new Action[] {AccentChannel.Restore, WallpaperChannel.Restore})
@@ -997,6 +1014,8 @@ public sealed class AppRuntime : IAsyncDisposable
 	private ExpressionCoordinator? _expression;
 	private DesktopStateBackup? _desktopBackup;
 	private IDesktopAppearance? _appearance;
+	private RgbLightingChannel? _rgbChannel;
+	private AmbientSoundChannel? _ambientChannel;
 	private AccentColorChannel? _accentChannel;
 	private WallpaperChannel? _wallpaperChannel;
 	private ISandboxLauncher? _sandbox;

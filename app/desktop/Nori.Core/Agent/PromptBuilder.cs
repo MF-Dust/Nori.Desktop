@@ -97,7 +97,17 @@ public static class PromptBuilder
 			other.Add($"【可用表情列表 (expression)】：{string.Join(", ", options.AvailableExpressions)}");
 		}
 
-		// 5. 工作目录。
+		// 5. 机器状态。
+		//
+		// 放在 other 里与情绪、可用动作同层：它是环境事实，不是指令，也不是记忆。
+		// 只注入分档不注入读数，理由见 MachineStateText —— 精确数字每轮都变，会使整段系统
+		// 提示词的缓存前缀每轮失效。
+		if (options.MachineState is {} machine && Observation.MachineStateText.Render(machine) is {Length: > 0} rendered)
+		{
+			other.Add(rendered);
+		}
+
+		// 6. 工作目录。
 		//
 		// 文件工具的描述里只写「工作目录」，不含具体路径。缺这一段时模型回答不了「你能看到哪个
 		// 文件夹」，也无法把用户贴来的绝对路径换算成工具要求的相对路径 —— 而绝对路径一律判越界，
@@ -195,4 +205,12 @@ public sealed record PromptBuildOptions
 	/// 此时注入目录会使模型去调用不存在的工具。
 	/// </summary>
 	public string WorkspaceRoot { get; init; } = "";
+
+	/// <summary>
+	/// 这台机器此刻的状态；为空则该分段不注入。
+	///
+	/// 传对象而不是渲染好的文本：分档口径属于提示词内容的一部分，应当和其余分段一样由
+	/// <see cref="PromptBuilder"/> 统一决定，调用方只负责采集。
+	/// </summary>
+	public Observation.MachineState? MachineState { get; init; }
 }

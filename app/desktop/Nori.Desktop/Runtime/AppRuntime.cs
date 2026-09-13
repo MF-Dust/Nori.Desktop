@@ -12,12 +12,14 @@ using Nori.Core.Live2D;
 using Nori.Core.Memory;
 using Nori.Core.Mcp;
 using Nori.Core.Network;
+using Nori.Core.Observation;
 using Nori.Core.Proactive;
 using Nori.Core.Skills;
 using Nori.Core.Sandbox;
 using Nori.Core.Security;
 using Nori.Core.Tools;
 using Nori.Core.Vision;
+using Nori.Desktop.Observation;
 using Nori.Desktop.Vision;
 using Nori.Core.Telemetry;
 using Nori.Core.Voice;
@@ -219,7 +221,9 @@ public sealed class AppRuntime : IAsyncDisposable
 				new Nori.Core.Chat.LuoLiCore.LuoLiCoreSettingsStore(config),
 				options => new Nori.Core.Chat.LuoLiCore.LuoLiCoreSdkClient(services.Http, options)),
 			// 走 LuoLiCore 时远端只给文本，表情动作在本地挑。
-			replyReaction: new ReplyReactionService(services.Http, config));
+			replyReaction: new ReplyReactionService(services.Http, config),
+			// 机器状态按分档进提示词，与情绪同层；采集器自己控制开销。
+			machineState: new MachineStateProvider());
 
 		// 窗口显隐变化 (含托盘切换伴侣) 直接作废快照, 主界面的伴侣状态因此不会陈旧
 		if (services.Windows is not null)

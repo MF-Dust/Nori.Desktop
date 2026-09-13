@@ -36,7 +36,7 @@ public partial class BridgeCommandsTests
 		string output = Path.Combine(Path.GetDirectoryName(NativeSettingsCaptureDirectory())!, "native-memory");
 		Directory.CreateDirectory(output);
 		List<object> manifest = [];
-		using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(NativeSettingsVisualApplicationBuilder));
+		HeadlessUnitTestSession session = VisualUiSession.Value;
 		await session.Dispatch(async () =>
 		{
 			using BridgeCommandsTests fixture = new(safeMode: true);

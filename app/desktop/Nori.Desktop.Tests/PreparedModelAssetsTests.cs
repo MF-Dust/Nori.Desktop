@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Avalonia.Headless;
 using Live2DCSharpSDK.App;
 using Live2DCSharpSDK.Framework;
 using Live2DCSharpSDK.Framework.Model;
@@ -280,16 +279,14 @@ public sealed class PreparedModelAssetsTests : IDisposable
 		long generation)
 	{
 		PreparedModel? prepared = null;
-		using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(BridgeCommandsTests));
-		await session.Dispatch(async () =>
+		await BridgeCommandsTests.WithSettingsUiAsync(async () =>
 		{
 			prepared = await Task.Run(() => ModelPreparation.PrepareAsync(
 				modelId,
 				modelDir,
 				generation,
 				CancellationToken.None));
-			return true;
-		}, CancellationToken.None);
+		});
 		return prepared ?? throw new InvalidOperationException("模型准备未返回结果");
 	}
 

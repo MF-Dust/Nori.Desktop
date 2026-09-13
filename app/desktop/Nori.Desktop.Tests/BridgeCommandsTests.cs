@@ -75,10 +75,15 @@ public partial class BridgeCommandsTests : IDisposable
 		finally { CultureInfo.CurrentUICulture = previous; }
 	});
 
-	private static async Task WithSettingsUiAsync(Func<Task> action)
+	// 会话线程保留到测试进程退出，避免 Avalonia 12.1.1 启停竞态；每次 Dispatch 仍独立创建和清理应用。
+	private static readonly Lazy<HeadlessUnitTestSession> SettingsUiSession = new(() =>
+		HeadlessUnitTestSession.StartNew(typeof(BridgeCommandsTests), AvaloniaTestIsolationLevel.PerTest));
+	private static readonly Lazy<HeadlessUnitTestSession> VisualUiSession = new(() =>
+		HeadlessUnitTestSession.StartNew(typeof(NativeSettingsVisualApplicationBuilder), AvaloniaTestIsolationLevel.PerTest));
+
+	internal static async Task WithSettingsUiAsync(Func<Task> action)
 	{
-		using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(BridgeCommandsTests));
-		await session.Dispatch(async () =>
+		await SettingsUiSession.Value.Dispatch(async () =>
 		{
 			await action();
 			return true;

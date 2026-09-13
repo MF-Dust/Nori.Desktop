@@ -69,6 +69,47 @@ public sealed class AgentEngine
 	private const int DefaultContextTokens = 12_000;
 	private const int DefaultReservedOutputTokens = 2_000;
 	private readonly int _maxToolIterations;
+
+
+	/// <summary>工具轮数上限的可配范围。上界用于约束异常情况下的无限重试。</summary>
+	public const int MinToolIterations = 1;
+	public const int MaxToolIterationsLimit = 32;
+
+	/// <summary>没配过时的取值。</summary>
+	public const int DefaultToolIterations = 12;
+
+	/// <summary>
+	/// 本轮允许的工具轮数。
+	///
+	/// 每轮读取一次配置而非在构造时固定：配置变更在下一轮生效，无需重启。开销为一次本地
+	/// SQLite 读取，与该路径上已有的配置读取同量级。
+	///
+	/// 构造函数显式传值时以该值为准，供测试与特定场景收窄，不受用户配置影响。
+	/// </summary>
+	private static int Clamp(long value) =>
+		(int)Math.Clamp(value, MinToolIterations, MaxToolIterationsLimit);
+
+	/// <summary>当前生效的工具轮数上限，供设置界面显示。与 <see cref="ToolIterations"/> 同一取数。</summary>
+	public int ConfiguredToolIterations => ToolIterations;
+
+	private int ToolIterations
+	{
+		get
+		{
+			if (_maxToolIterations != DefaultToolIterations) return _maxToolIterations;
+			// 直接读取 ConfigValue 而非 GetStringOr：后者路径上 "0" / "1" 会被解析为布尔并
+			// 渲染为 "false" / "true"，配置值 0 读回后解析失败并回退默认值，表现为配置未生效。
+			return _config.Get(ConfigStore.KeyAgentMaxToolIterations) switch
+			{
+				ConfigValue.Integer integer => Clamp(integer.Value),
+				// 布尔为上述解析的产物：true 对应 1，false 对应 0，均落在下界。
+				ConfigValue.Boolean boolean => Clamp(boolean.Value ? 1 : 0),
+				ConfigValue.Text text when long.TryParse(text.Value.Trim(), out long parsed) => Clamp(parsed),
+				// 非数值时回退默认值而不抛出：配置值书写错误不应使整条对话路径失败。
+				_ => DefaultToolIterations,
+			};
+		}
+	}
 	private readonly AgentSessionCoordinator _sessionCoordinator;
 	private readonly AgentTraceSink _trace;
 	private readonly Func<LlmProvider, HttpClient, ILlmAdapter> _adapterFactory;
@@ -111,7 +152,7 @@ public sealed class AgentEngine
 		IPetActions? pet,
 		Func<IReadOnlyList<string>> motionNames,
 		Func<IReadOnlyList<string>> expressionNames,
-		int maxToolIterations = 5,
+		int maxToolIterations = DefaultToolIterations,
 		AgentSessionCoordinator? sessionCoordinator = null,
 		AgentTraceSink? trace = null,
 		Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null,
@@ -281,7 +322,8 @@ public sealed class AgentEngine
 				}
 			}
 
-			for (int iteration = 0; iteration < _maxToolIterations; iteration++)
+			int iterationBudget = ToolIterations;
+			for (int iteration = 0; iteration < iterationBudget; iteration++)
 			{
 				currentIteration = iteration;
 				runToken.ThrowIfCancellationRequested();
@@ -422,9 +464,9 @@ public sealed class AgentEngine
 
 				// 若本轮没有触发新的工具调用，说明已产出最终回复，跳出循环
 				if (!hasToolCall) break;
-				if (iteration == _maxToolIterations - 1)
+				if (iteration == iterationBudget - 1)
 				{
-					throw new AgentToolRoundsExceededException(_maxToolIterations);
+					throw new AgentToolRoundsExceededException(iterationBudget);
 				}
 			}
 

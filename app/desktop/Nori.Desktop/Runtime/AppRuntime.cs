@@ -785,6 +785,19 @@ public sealed class AppRuntime : IAsyncDisposable
 		}
 	}
 
+	/// <summary>
+	/// 改完工作目录之后重建内建工具。
+	///
+	/// 文件工具在注册时将工作目录捕获进闭包，不重建则配置变更要到下次启动才生效，表现为保存
+	/// 未成功。MCP 与插件工具按各自分类原子替换，本方法不涉及。
+	/// </summary>
+	public void RebuildTools()
+	{
+		WorkspaceTools.RegisterAll(
+			Tools,
+			new WorkspaceAccess(Services.Config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")));
+	}
+
 	private ToolRegistry BuildToolRegistry(bool audioAvailable)
 	{
 		ToolRegistry registry = new();
@@ -801,6 +814,16 @@ public sealed class AppRuntime : IAsyncDisposable
 			Config = Services.Config,
 			OpenUrl = url => ShellOpen.OpenUrl(url),
 		});
+
+		// 文件工具仅在配置了工作目录时注册。安全模式下一并跳过：该组工具虽不产生网络请求，
+		// 但具备对宿主文件系统的读写能力，属于安全模式要禁用的范围。
+		if (!Services.SafeMode)
+		{
+			WorkspaceTools.RegisterAll(
+				registry,
+				new WorkspaceAccess(Services.Config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")));
+		}
+
 		return registry;
 	}
 
@@ -1228,6 +1251,14 @@ public sealed class AppRuntime : IAsyncDisposable
 				petAutoSummon = ParseBoolFlag(config.GetStringOr("pet_auto_summon", "true")) ?? true,
 				sidebarCollapsed = ParseBoolFlag(config.GetStringOr("ui_sidebar_collapsed", "")) ?? false,
 				autoCheckUpdates = config.GetBoolOr("auto_check_updates", true),
+			},
+			// 文件工具那一族的配置。`workspaceRoot` 为空即整族不注册，界面据此显示「未启用」。
+			workspace = new
+			{
+				root = config.GetStringOr(ConfigStore.KeyWorkspaceRoot, ""),
+				// 目录被删除或移动后配置仍在，但工具已不再注册，界面需要区分这两种状态。
+				available = new WorkspaceAccess(config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")).IsConfigured,
+				maxToolIterations = Engine.ConfiguredToolIterations,
 			},
 			telemetry = new
 			{

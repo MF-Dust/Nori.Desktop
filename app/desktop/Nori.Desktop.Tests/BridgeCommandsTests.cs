@@ -686,6 +686,132 @@ public class BridgeCommandsTests : IDisposable
 		_config.Set(LuoLiCoreSettingsStore.KeySessionId, new ConfigValue.Text("sess_fixed"));
 	}
 
+	// ---- 文件访问设置页（工作目录 + 工具轮数）----
+
+	[Fact]
+	public async Task 设置工作目录之后文件工具才出现()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+
+		// 没配之前一件都没有 —— 让模型看见一件永远失败的工具只会让它反复试。
+		Assert.Null(_runtime.Tools.Get("readFile"));
+
+		await commands.InvokeAsync(
+			new FakeBridgeSource(WindowLabels.Main), "settings_update_workspace", Args(new { root = folder }));
+
+		Assert.NotNull(_runtime.Tools.Get("readFile"));
+		Assert.NotNull(_runtime.Tools.Get("writeFile"));
+	}
+
+	/// <summary>
+	/// 清空之后必须真的消失。
+	///
+	/// 工具在注册时把工作目录焊进了闭包，只靠「不再注册」的话旧工具还挂着、还指着旧目录 ——
+	/// 用户在界面上清空了，她却照样读得到，这种不一致很难查。
+	/// </summary>
+	[Fact]
+	public async Task 清空工作目录之后文件工具消失()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+		Assert.NotNull(_runtime.Tools.Get("readFile"));
+
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = "" }));
+
+		Assert.Null(_runtime.Tools.Get("readFile"));
+		Assert.Null(_runtime.Tools.Get("writeFile"));
+	}
+
+	/// <summary>
+	/// 存一个不存在的路径不会报错，但那一族工具会静默不注册 —— 用户看到自己填了值、她却说
+	/// 「我看不到文件」。就地拒绝比事后排查便宜得多。
+	/// </summary>
+	[Fact]
+	public async Task 不存在的文件夹被就地拒绝()
+	{
+		BridgeCommands commands = CreateCommands();
+
+		InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			commands.InvokeAsync(
+				new FakeBridgeSource(WindowLabels.Main),
+				"settings_update_workspace",
+				Args(new { root = Path.Combine(_tempDir, "并不存在") })));
+
+		Assert.Contains("不存在", error.Message, StringComparison.Ordinal);
+		Assert.Equal("", _config.GetStringOr(ConfigStore.KeyWorkspaceRoot, ""));
+	}
+
+	[Fact]
+	public async Task 工具轮数存成整数并被夹回范围()
+	{
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { maxToolIterations = 20 }));
+		Assert.Equal(20, _runtime.Engine.ConfiguredToolIterations);
+
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { maxToolIterations = 999 }));
+		Assert.Equal(Nori.Core.Agent.AgentEngine.MaxToolIterationsLimit, _runtime.Engine.ConfiguredToolIterations);
+
+		// 存的是 Integer 而不是 Text：文本那条路上 "0"/"1" 会被解析成布尔再渲染成 "false"/"true"。
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { maxToolIterations = 1 }));
+		Assert.Equal(1, _runtime.Engine.ConfiguredToolIterations);
+	}
+
+	[Fact]
+	public async Task 快照把工作目录与轮数报给界面()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		await commands.InvokeAsync(
+			new FakeBridgeSource(WindowLabels.Main),
+			"settings_update_workspace",
+			Args(new { root = folder, maxToolIterations = 9 }));
+
+		JsonElement snapshot = JsonSerializer.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options);
+		JsonElement workspace = snapshot.GetProperty("workspace");
+
+		Assert.Equal(folder, workspace.GetProperty("root").GetString());
+		Assert.True(workspace.GetProperty("available").GetBoolean());
+		Assert.Equal(9, workspace.GetProperty("maxToolIterations").GetInt32());
+	}
+
+	/// <summary>目录被删掉之后配置还在，但工具已经不注册了 —— 界面要能说出这个差别。</summary>
+	[Fact]
+	public async Task 目录事后被删掉时快照报告不可用()
+	{
+		string folder = Path.Combine(_tempDir, "会被删掉");
+		Directory.CreateDirectory(folder);
+		await CreateCommands().InvokeAsync(
+			new FakeBridgeSource(WindowLabels.Main), "settings_update_workspace", Args(new { root = folder }));
+
+		Directory.Delete(folder);
+		_runtime.InvalidateSnapshot("workspace");
+
+		JsonElement snapshot = JsonSerializer.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options);
+		JsonElement workspace = snapshot.GetProperty("workspace");
+
+		Assert.Equal(folder, workspace.GetProperty("root").GetString());
+		Assert.False(workspace.GetProperty("available").GetBoolean());
+	}
+
+	[Fact]
+	public async Task 设置窗口可以执行这两条命令()
+	{
+		// 原生设置页不走 WebView invoke，命令必须在 SettingsService 的白名单里，否则界面上
+		// 的按钮点了会报「不允许执行」。
+		Assert.Contains("settings_update_workspace", SettingsService.Commands);
+		Assert.Contains("settings_pick_workspace", SettingsService.Commands);
+		await Task.CompletedTask;
+	}
+
 	/// <summary>
 	/// 安全模式禁用一切外部调用（AGENTS.md §1），重置远端会话是一次真正的出网请求。
 	///

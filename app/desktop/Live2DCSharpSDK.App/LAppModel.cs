@@ -1,9 +1,11 @@
 ﻿// [Nori Modification] Embedded Live2DCSharpSDK with customized Update hooks for desktop pet behaviors.
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Live2DCSharpSDK.Framework;
 using Live2DCSharpSDK.Framework.Math;
 using Live2DCSharpSDK.Framework.Model;
 using Live2DCSharpSDK.Framework.Motion;
+using Live2DCSharpSDK.Framework.Physics;
 
 namespace Live2DCSharpSDK.App;
 
@@ -13,10 +15,6 @@ public class LAppModel : CubismUserModel
     /// モデルセッティング情報
     /// </summary>
     private readonly ModelSettingObj _modelSetting;
-    /// <summary>
-    /// モデルセッティングが置かれたディレクトリ
-    /// </summary>
-    private readonly string _modelHomeDir;
     /// <summary>
     /// モデルに設定されたまばたき機能用パラメータID
     /// </summary>
@@ -106,150 +104,179 @@ public class LAppModel : CubismUserModel
     private readonly Random _random = new();
 
     public LAppModel(LAppDelegate lapp, string dir, string fileName)
+		: this(lapp, LoadAssets(lapp, dir, fileName))
     {
-        _lapp = lapp;
-
-        if (LAppDefine.MocConsistencyValidationEnable)
-        {
-            _mocConsistency = true;
-        }
-
-        IdParamAngleX = CubismFramework.CubismIdManager
-            .GetId(CubismDefaultParameterId.ParamAngleX);
-        IdParamAngleY = CubismFramework.CubismIdManager
-            .GetId(CubismDefaultParameterId.ParamAngleY);
-        IdParamAngleZ = CubismFramework.CubismIdManager.
-            GetId(CubismDefaultParameterId.ParamAngleZ);
-        IdParamBodyAngleX = CubismFramework.CubismIdManager
-            .GetId(CubismDefaultParameterId.ParamBodyAngleX);
-        IdParamEyeBallX = CubismFramework.CubismIdManager
-            .GetId(CubismDefaultParameterId.ParamEyeBallX);
-        IdParamEyeBallY = CubismFramework.CubismIdManager
-            .GetId(CubismDefaultParameterId.ParamEyeBallY);
-
-        _modelHomeDir = dir;
-
-        CubismLog.Debug($"[Live2D App]load model setting: {fileName}");
-
-        using var stream = File.Open(fileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-
-        _modelSetting = JsonSerializer.Deserialize(stream, ModelSettingObjContext.Default.ModelSettingObj)
-            ?? throw new Exception("model3.json error");
-
-        Updating = true;
-        Initialized = false;
-
-        //Cubism Model
-        var path = _modelSetting.FileReferences?.Moc;
-        if (!string.IsNullOrWhiteSpace(path))
-        {
-            path = Path.GetFullPath(_modelHomeDir + path);
-            if (!File.Exists(path))
-            {
-                throw new Exception("model is null");
-            }
-
-            CubismLog.Debug($"[Live2D App]create model: {path}");
-
-            LoadModel(File.ReadAllBytes(path), _mocConsistency);
-        }
-
-        //Physics
-        path = _modelSetting.FileReferences?.Physics;
-        if (!string.IsNullOrWhiteSpace(path))
-        {
-            path = Path.GetFullPath(_modelHomeDir + path);
-            if (File.Exists(path))
-            {
-                LoadPhysics(path);
-            }
-        }
-
-        //Pose
-        path = _modelSetting.FileReferences?.Pose;
-        if (!string.IsNullOrWhiteSpace(path))
-        {
-            path = Path.GetFullPath(_modelHomeDir + path);
-            if (File.Exists(path))
-            {
-                LoadPose(path);
-            }
-        }
-
-        LoadBreath();
-
-        if (_modelSetting.Groups is { } groups)
-        {
-            foreach (var group in groups)
-            {
-                if (group is null || group.Ids is null)
-                {
-                    continue;
-                }
-
-                if (group.Name == CubismModelSettingJson.EyeBlink)
-                {
-                    foreach (string? id in group.Ids)
-                    {
-                        if (!string.IsNullOrWhiteSpace(id))
-                        {
-                            _eyeBlinkIds.Add(CubismFramework.CubismIdManager.GetId(id));
-                        }
-                    }
-                }
-                else if (group.Name == CubismModelSettingJson.LipSync)
-                {
-                    foreach (string? id in group.Ids)
-                    {
-                        if (!string.IsNullOrWhiteSpace(id))
-                        {
-                            _lipSyncIds.Add(CubismFramework.CubismIdManager.GetId(id));
-                        }
-                    }
-                }
-            }
-        }
-
-        //Layout
-        Dictionary<string, float> layout = [];
-        _modelSetting.GetLayoutMap(layout);
-        ModelMatrix.SetupFromLayout(layout);
-
-        Model.SaveParameters();
-
-        if (_modelSetting.FileReferences?.Motions?.Count > 0)
-        {
-            foreach (var item in _modelSetting.FileReferences.Motions)
-            {
-                PreloadMotionGroup(item.Key);
-            }
-        }
-
-        StopAllMotions();
-
-        Updating = false;
-        Initialized = true;
-        if (Renderer != null)
-        {
-            DeleteRenderer();
-        }
-        Renderer = lapp.CreateRenderer(Model);
-
-        SetupTextures();
     }
 
-    public new void Dispose()
-    {
-        base.Dispose();
+	/// <summary>从后台准备好的资源创建模型；此入口不访问文件系统或解码纹理。</summary>
+	public LAppModel(LAppDelegate lapp, LAppModelAssets assets)
+	{
+		ArgumentNullException.ThrowIfNull(lapp);
+		ArgumentNullException.ThrowIfNull(assets);
+		_lapp = lapp;
 
-        _motions.Clear();
+		if (LAppDefine.MocConsistencyValidationEnable) _mocConsistency = true;
 
-        foreach (var item in Textures)
-        {
-            _lapp.TextureManager.ReleaseTexture(item);
-        }
-        Textures.Clear();
-    }
+		IdParamAngleX = CubismFramework.CubismIdManager.GetId(CubismDefaultParameterId.ParamAngleX);
+		IdParamAngleY = CubismFramework.CubismIdManager.GetId(CubismDefaultParameterId.ParamAngleY);
+		IdParamAngleZ = CubismFramework.CubismIdManager.GetId(CubismDefaultParameterId.ParamAngleZ);
+		IdParamBodyAngleX = CubismFramework.CubismIdManager.GetId(CubismDefaultParameterId.ParamBodyAngleX);
+		IdParamEyeBallX = CubismFramework.CubismIdManager.GetId(CubismDefaultParameterId.ParamEyeBallX);
+		IdParamEyeBallY = CubismFramework.CubismIdManager.GetId(CubismDefaultParameterId.ParamEyeBallY);
+
+		CubismLog.Debug($"[Live2D App]创建已准备模型：{assets.ModelName}");
+		_modelSetting = assets.ModelSetting;
+		Updating = true;
+		Initialized = false;
+
+		try
+		{
+			LoadModel(assets.MocBytes, _mocConsistency);
+			if (assets.Physics is { } physics) LoadPhysics(physics);
+			if (assets.Pose is { } pose) LoadPose(pose);
+			LoadBreath();
+
+			if (_modelSetting.Groups is { } groups)
+			{
+				foreach (var group in groups)
+				{
+					if (group is null || group.Ids is null) continue;
+					if (group.Name == CubismModelSettingJson.EyeBlink)
+					{
+						foreach (string? id in group.Ids)
+						{
+							if (!string.IsNullOrWhiteSpace(id))
+								_eyeBlinkIds.Add(CubismFramework.CubismIdManager.GetId(id));
+						}
+					}
+					else if (group.Name == CubismModelSettingJson.LipSync)
+					{
+						foreach (string? id in group.Ids)
+						{
+							if (!string.IsNullOrWhiteSpace(id))
+								_lipSyncIds.Add(CubismFramework.CubismIdManager.GetId(id));
+						}
+					}
+				}
+			}
+
+			Dictionary<string, float> layout = [];
+			_modelSetting.GetLayoutMap(layout);
+			ModelMatrix.SetupFromLayout(layout);
+			Model.SaveParameters();
+
+			if (_modelSetting.FileReferences?.Motions?.Count > 0)
+			{
+				foreach (var item in _modelSetting.FileReferences.Motions)
+					PreloadMotionGroup(item.Key, assets.Motions);
+			}
+
+			StopAllMotions();
+			Updating = false;
+			Initialized = true;
+			if (Renderer != null) DeleteRenderer();
+			Renderer = lapp.CreateRenderer(Model);
+			SetupTextures(assets.Textures);
+		}
+		catch
+		{
+			// 构造尚未完成，manager 还未接管；部分上传失败也必须回收已有资源。
+			try { Dispose(); }
+			catch { /* 清理异常不能掩盖本次加载的原始错误。 */ }
+			throw;
+		}
+	}
+
+	private static LAppModelAssets LoadAssets(LAppDelegate lapp, string dir, string fileName)
+	{
+		using FileStream modelStream = File.Open(fileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+		ModelSettingObj setting = JsonSerializer.Deserialize(modelStream, ModelSettingObjContext.Default.ModelSettingObj)
+			?? throw new Exception("model3.json error");
+		ModelSettingObj.FileReference references = setting.FileReferences
+			?? throw new Exception("model3.json FileReferences error");
+
+		string mocPath = ResolveLegacyPath(dir, references.Moc);
+		if (!File.Exists(mocPath)) throw new Exception("model is null");
+		byte[] mocBytes = File.ReadAllBytes(mocPath);
+
+		CubismPhysicsObj? physics = null;
+		if (!string.IsNullOrWhiteSpace(references.Physics))
+		{
+			string path = ResolveLegacyPath(dir, references.Physics);
+			if (File.Exists(path))
+			{
+				using FileStream stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+				physics = JsonSerializer.Deserialize(stream, CubismPhysicsObjContext.Default.CubismPhysicsObj)
+					?? throw new Exception("Load Physics error");
+			}
+		}
+
+		JsonObject? pose = null;
+		if (!string.IsNullOrWhiteSpace(references.Pose))
+		{
+			string path = ResolveLegacyPath(dir, references.Pose);
+			if (File.Exists(path))
+			{
+				using FileStream stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+				pose = JsonNode.Parse(stream)?.AsObject() ?? throw new Exception("Pose json is error");
+			}
+		}
+
+		Dictionary<string, CubismMotionObj> motions = new(StringComparer.Ordinal);
+		if (references.Motions is not null)
+		{
+			foreach ((string group, List<ModelSettingObj.FileReference.Motion> items) in references.Motions)
+			{
+				for (int index = 0; index < items.Count; index++)
+				{
+					string path = ResolveLegacyPath(dir, items[index].File);
+					using FileStream stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+					motions[$"{group}_{index}"] = JsonSerializer.Deserialize(
+						stream,
+						CubismMotionObjContext.Default.CubismMotionObj)
+						?? throw new Exception("Load Motion error");
+				}
+			}
+		}
+
+		List<LAppTextureAsset> textures = [];
+		if (references.Textures is not null)
+		{
+			for (int index = 0; index < references.Textures.Count; index++)
+			{
+				string reference = references.Textures[index];
+				if (string.IsNullOrWhiteSpace(reference)) continue;
+				string path = ResolveLegacyPath(dir, reference);
+				textures.Add(new LAppTextureAsset(index, path, lapp.DecodeTexture(path)));
+			}
+		}
+
+		return new LAppModelAssets(
+			Path.GetFileName(fileName),
+			setting,
+			mocBytes,
+			physics,
+			pose,
+			motions,
+			textures);
+	}
+
+	private static string ResolveLegacyPath(string dir, string reference) => Path.GetFullPath(dir + reference);
+
+	public new void Dispose()
+	{
+		Exception? failure = null;
+		try { base.Dispose(); }
+		catch (Exception exception) { failure = exception; }
+		_motions.Clear();
+		foreach (var item in Textures)
+		{
+			try { _lapp.TextureManager.ReleaseTexture(item); }
+			catch (Exception exception) { failure ??= exception; }
+		}
+		Textures.Clear();
+		if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+	}
 
     private void LoadBreath()
     {
@@ -394,56 +421,12 @@ public class LAppModel : CubismUserModel
         }
 
         var item = motionGroup[no];
-        if (item is null || string.IsNullOrWhiteSpace(item.File))
-        {
-            return null;
-        }
+		if (item is null || string.IsNullOrWhiteSpace(item.File)) return null;
 
-        string path;
-        try
-        {
-            path = Path.GetFullPath(_modelHomeDir + item.File);
-        }
-        catch
-        {
-            return null;
-        }
-        if (!File.Exists(path))
-        {
-            return null;
-        }
-
-        // 先确认动作文件可加载, 再预约优先级, 避免无效请求残留 PriorityForce。
-        CubismMotion motion;
-        string name = $"{resolvedGroup}_{no}";
-        try
-        {
-            if (!_motions.TryGetValue(name, out var value))
-            {
-                motion = new CubismMotion(path, onFinishedMotionHandler);
-                float fadeTime = item.FadeInTime;
-                if (fadeTime >= 0.0f)
-                {
-                    motion.FadeInSeconds = fadeTime;
-                }
-
-                fadeTime = item.FadeOutTime;
-                if (fadeTime >= 0.0f)
-                {
-                    motion.FadeOutSeconds = fadeTime;
-                }
-                motion.SetEffectIds(_eyeBlinkIds, _lipSyncIds);
-            }
-            else
-            {
-                motion = (value as CubismMotion)!;
-                motion.OnFinishedMotion = onFinishedMotionHandler;
-            }
-        }
-        catch
-        {
-            return null;
-        }
+		string name = $"{resolvedGroup}_{no}";
+		if (!_motions.TryGetValue(name, out ACubismMotion? value) || value is not CubismMotion motion)
+			return null;
+		motion.OnFinishedMotion = onFinishedMotionHandler;
 
         if (priority == MotionPriority.PriorityForce)
         {
@@ -576,69 +559,38 @@ public class LAppModel : CubismUserModel
         Renderer?.DrawModel();
     }
 
-    /// <summary>
-    /// OpenGLのテクスチャユニットにテクスチャをロードする
-    /// </summary>
-    private void SetupTextures()
-    {
-        if (_modelSetting.FileReferences?.Textures?.Count > 0)
-        {
-            for (int index = 0; index < _modelSetting.FileReferences.Textures.Count; index++)
-            {
-                var texturePath = _modelSetting.FileReferences.Textures[index];
-                if (string.IsNullOrWhiteSpace(texturePath))
-                    continue;
-                texturePath = Path.GetFullPath(_modelHomeDir + texturePath);
-                var texture = _lapp.TextureManager.CreateTextureFromPngFile(this, index, texturePath);
-                Textures.Add(texture);
-            }
-        }
-    }
+	/// <summary>把后台已解码的纹理上传到当前 GL 上下文。</summary>
+	private void SetupTextures(IReadOnlyList<LAppTextureAsset> textures)
+	{
+		foreach (LAppTextureAsset asset in textures)
+		{
+			TextureInfo texture = _lapp.TextureManager.CreateTextureFromPixels(
+				this,
+				asset.Index,
+				asset.FileName,
+				asset.Pixels);
+			Textures.Add(texture);
+		}
+	}
 
-    /// <summary>
-    /// モーションデータをグループ名から一括でロードする。
-    /// モーションデータの名前は内部でModelSettingから取得する。
-    /// </summary>
-    /// <param name="group">モーションデータのグループ名</param>
-    private void PreloadMotionGroup(string group)
-    {
-        // グループに登録されているモーション数を取得
-        var list = _modelSetting.FileReferences.Motions[group];
+	/// <summary>从后台已解析的数据创建一个动作组。</summary>
+	private void PreloadMotionGroup(
+		string group,
+		IReadOnlyDictionary<string, CubismMotionObj> preparedMotions)
+	{
+		List<ModelSettingObj.FileReference.Motion> list = _modelSetting.FileReferences.Motions[group];
+		for (int index = 0; index < list.Count; index++)
+		{
+			ModelSettingObj.FileReference.Motion item = list[index];
+			string name = $"{group}_{index}";
+			if (!preparedMotions.TryGetValue(name, out CubismMotionObj? data))
+				throw new InvalidOperationException($"缺少预加载动作: {name}");
 
-        for (int i = 0; i < list.Count; i++)
-        {
-            var item = list[i];
-            //ex) idle_0
-            // モーションのファイル名とパスの取得
-            string name = $"{group}_{i}";
-            var path = Path.GetFullPath(_modelHomeDir + item.File);
-
-            // モーションデータの読み込み
-            var tmpMotion = new CubismMotion(path);
-
-            // フェードインの時間を取得
-            float fadeTime = item.FadeInTime;
-            if (fadeTime >= 0.0f)
-            {
-                tmpMotion.FadeInSeconds = fadeTime;
-            }
-
-            // フェードアウトの時間を取得
-            fadeTime = item.FadeOutTime;
-            if (fadeTime >= 0.0f)
-            {
-                tmpMotion.FadeOutSeconds = fadeTime;
-            }
-            tmpMotion.SetEffectIds(_eyeBlinkIds, _lipSyncIds);
-
-            if (_motions.ContainsKey(name))
-            {
-                _motions[name] = tmpMotion;
-            }
-            else
-            {
-                _motions.Add(name, tmpMotion);
-            }
-        }
-    }
+			var motion = new CubismMotion(data);
+			if (item.FadeInTime >= 0.0f) motion.FadeInSeconds = item.FadeInTime;
+			if (item.FadeOutTime >= 0.0f) motion.FadeOutSeconds = item.FadeOutTime;
+			motion.SetEffectIds(_eyeBlinkIds, _lipSyncIds);
+			_motions[name] = motion;
+		}
+	}
 }

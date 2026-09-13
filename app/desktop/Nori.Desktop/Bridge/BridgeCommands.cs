@@ -23,6 +23,7 @@ using Nori.Desktop.Automation;
 using Nori.Desktop.Diagnostics;
 using Nori.Desktop.Runtime;
 using MemoryService = Nori.Desktop.Memory.MemoryService;
+using ModelService = Nori.Desktop.Models.ModelService;
 using Nori.Desktop.Telemetry;
 using Nori.Desktop.Windows;
 
@@ -72,6 +73,7 @@ public sealed class BridgeCommands
 	{
 		cancellationToken.ThrowIfCancellationRequested();
 		MemoryService.ValidateSourceCommand(source, cmd);
+		ModelService.ValidateSourceCommand(source, cmd);
 		if (_services.SafeMode && cmd.StartsWith("automation_desktop_", StringComparison.Ordinal))
 		{
 			throw new InvalidOperationException("安全模式已禁用桌面视觉自动化，请退出安全模式后重试");
@@ -393,6 +395,7 @@ public sealed class BridgeCommands
 				qualityMode,
 				maxFps,
 				shadow,
+				selectedExpressions = ReadSelectedExpressions(modelId),
 				expressions = meta.Expressions,
 				motions = meta.Motions.Select(group => new {group = group.Group, names = group.Names}),
 				interactions = ReadInteractionConfig(modelId),
@@ -679,6 +682,11 @@ public sealed class BridgeCommands
 		/// 前端调用：invoke("window_open_memory", {page?: "overview"})
 		/// </summary>
 		"window_open_memory" => await OpenMemoryAsync(source, args),
+		/// <summary>
+		/// 打开原生模型窗口；仅可由可见主 WebView 调用。
+		/// 前端调用：invoke("window_open_models")
+		/// </summary>
+		"window_open_models" => await OpenModelsAsync(source),
 		"window_show" => await OnUi(() => ShowWindow(source, args)),
 		"window_hide" => await OnUi(() => HideWindow(source, args)),
 		"window_close" => await OnUi(() => CloseWindow(source, args)),
@@ -716,9 +724,10 @@ public sealed class BridgeCommands
 
 			_ => throw new InvalidOperationException($"未知的命令: {cmd}"),
 		};
-		// 原生记忆修改已经提交时返回真实成功，避免关闭期间的取消把已写入误报为失败。
-		if (source is not INativeMemorySource || !MemoryService.IsStateChangingCommand(cmd))
-			cancellationToken.ThrowIfCancellationRequested();
+		// 原生窗口修改已经提交时返回真实成功，避免关闭期间的取消把已写入误报为失败。
+		bool committedNativeWrite = (source is INativeMemorySource && MemoryService.IsStateChangingCommand(cmd))
+			|| (source is INativeModelSource && ModelService.IsStateChangingCommand(cmd));
+		if (!committedNativeWrite) cancellationToken.ThrowIfCancellationRequested();
 		return result;
 	}
 
@@ -766,9 +775,9 @@ public sealed class BridgeCommands
 
 	private async Task<object?> OpenSettingsAsync(IBridgeSource source, JsonElement args)
 	{
-		// 设置窗口只能由可见的 main WebView 打开；原生设置上下文不能递归
+		// 设置窗口只能由可见的 main WebView 打开；原生窗口上下文不能递归
 		// 调用此入口，避免把来源标记误用成主窗口身份。
-		if (source is INativeSettingsSource or INativeMemorySource || source.Label != WindowLabels.Main)
+		if (source is INativeSettingsSource or INativeMemorySource or INativeModelSource || source.Label != WindowLabels.Main)
 			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
 		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
 		if (!visible) throw new InvalidOperationException("main 窗口不可见");
@@ -782,7 +791,7 @@ public sealed class BridgeCommands
 
 	private async Task<object?> OpenMemoryAsync(IBridgeSource source, JsonElement args)
 	{
-		if (source is INativeSettingsSource or INativeMemorySource || source.Label != WindowLabels.Main)
+		if (source is INativeSettingsSource or INativeMemorySource or INativeModelSource || source.Label != WindowLabels.Main)
 			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
 		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
 		if (!visible) throw new InvalidOperationException("main 窗口不可见");
@@ -796,10 +805,24 @@ public sealed class BridgeCommands
 		}).ConfigureAwait(false);
 	}
 
+	private async Task<object?> OpenModelsAsync(IBridgeSource source)
+	{
+		if (source is INativeSettingsSource or INativeMemorySource or INativeModelSource || source.Label != WindowLabels.Main)
+			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
+		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
+		if (!visible) throw new InvalidOperationException("main 窗口不可见");
+		return await OnUi(() =>
+		{
+			_services.Windows.ShowModels();
+			return (object?)null;
+		}).ConfigureAwait(false);
+	}
+
 	/// <summary>main 或已通过领域白名单校验的原生窗口校验 (无返回值场景)</summary>
 	private static void RequireMainVoid(IBridgeSource source)
 	{
-		if (source is not INativeSettingsSource and not INativeMemorySource && source.Label != WindowLabels.Main)
+		if (source is not INativeSettingsSource and not INativeMemorySource and not INativeModelSource
+			&& source.Label != WindowLabels.Main)
 		{
 			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
 		}
@@ -1415,7 +1438,32 @@ public sealed class BridgeCommands
 		CancellationToken cancellationToken)
 	{
 		RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () => (object?)true);
+		if (source is INativeModelSource) await RequireVisibleMainVoidAsync(source);
 		return await ImportLocalResourceAsync(source, args, cancellationToken);
+	}
+
+	/// <summary>读取已保存的模型表情选择，优先模型键并兼容旧全局键。</summary>
+	private IReadOnlyList<string> ReadSelectedExpressions(string modelId) =>
+		ReadExpressionConfig($"l2d_expression_{modelId}") ?? ReadExpressionConfig("l2d_expression") ?? [];
+
+	private string[]? ReadExpressionConfig(string key)
+	{
+		ConfigValue? value = _services.Config.Get(key);
+		if (value is null) return null;
+		try
+		{
+			string[]? expressions = value switch
+			{
+				ConfigValue.Json json => json.Value.Deserialize<string[]>(BridgeJson.Options),
+				ConfigValue.Text text => JsonSerializer.Deserialize<string[]>(text.Value, BridgeJson.Options),
+				_ => null,
+			};
+			return expressions?.Where(expression => !string.IsNullOrWhiteSpace(expression)).ToArray();
+		}
+		catch (JsonException)
+		{
+			return null;
+		}
 	}
 
 	/// <summary>读取指定模型的互动配置; 损坏配置按空配置处理并记录日志。</summary>
@@ -1601,7 +1649,9 @@ public sealed class BridgeCommands
 	private static object? RequireMain(IBridgeSource source, Func<object?> factory) => RequireLabel(source, WindowLabels.Main, factory);
 
 	private static bool IsLabelAllowed(IBridgeSource source, string allowed) =>
-		source is INativeSettingsSource || (source is INativeMemorySource && allowed == WindowLabels.Main) || source.Label == allowed;
+		source is INativeSettingsSource
+		|| ((source is INativeMemorySource or INativeModelSource) && allowed == WindowLabels.Main)
+		|| source.Label == allowed;
 
 	private static async Task<object?> RequireMainAsync(IBridgeSource source, Func<Task<object?>> factory)
 	{

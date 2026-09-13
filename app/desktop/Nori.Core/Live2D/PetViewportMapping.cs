@@ -140,6 +140,38 @@ public readonly record struct PetViewportMapping
 		return true;
 	}
 
+	/// <summary>把模型画布内的归一化矩形转换为窗口 DIP 矩形。</summary>
+	public bool TryMapNormalizedRectToClient(
+		double x,
+		double y,
+		double width,
+		double height,
+		out PetViewportRect clientRect)
+	{
+		clientRect = default;
+		if (!IsValid || !double.IsFinite(x) || !double.IsFinite(y)
+			|| !double.IsFinite(width) || !double.IsFinite(height)
+			|| width < 0 || height < 0
+			|| x < -CoordinateEpsilon || y < -CoordinateEpsilon
+			|| x + width > 1 + CoordinateEpsilon || y + height > 1 + CoordinateEpsilon)
+		{
+			return false;
+		}
+
+		double leftCanvas = (Math.Clamp(x, 0, 1) - 0.5) * CanvasWidth;
+		double rightCanvas = (Math.Clamp(x + width, 0, 1) - 0.5) * CanvasWidth;
+		double topCanvas = (0.5 - Math.Clamp(y, 0, 1)) * CanvasHeight;
+		double bottomCanvas = (0.5 - Math.Clamp(y + height, 0, 1)) * CanvasHeight;
+		(double firstX, double firstY) = ToClient(leftCanvas, topCanvas);
+		(double secondX, double secondY) = ToClient(rightCanvas, bottomCanvas);
+		clientRect = new PetViewportRect(
+			Math.Min(firstX, secondX),
+			Math.Min(firstY, secondY),
+			Math.Abs(secondX - firstX),
+			Math.Abs(secondY - firstY));
+		return true;
+	}
+
 	private (double X, double Y) ToClient(double canvasX, double canvasY)
 	{
 		double ndcX = FinalScaleX * canvasX + FinalTranslateX;

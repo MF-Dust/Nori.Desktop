@@ -5,7 +5,7 @@ import {describe, expect, it} from "vitest"
 /**
  * naive-ui 用量收敛门禁
  *
- * 这轮重构定下的约定是「保留但收敛」: 只留自建成本过高的下拉与滑块, 其余控件
+ * 这轮重构定下的约定是「保留但收敛」: 只留自建成本过高的下拉, 其余控件
  * 全部换成 src/components/ui 下的 App* 组件。naive 的外观是运行时 CSS-in-JS,
  * 注入顺序不受我们控制 —— 混用的直接后果是同一种控件在不同页面长得不一样,
  * 而且只能在 naiveOverrides.ts 里调。没有门禁, 下次顺手写个 n-switch 就把这条
@@ -18,7 +18,6 @@ const SRC = join(ROOT, "src")
 /** 允许保留的 naive 组件 → 保留理由 */
 const ALLOWED: Record<string, string> = {
 	"n-select": "下拉要处理浮层定位、键盘导航与选项虚拟滚动, 自建不划算",
-	"n-slider": "滑块要处理指针捕获与步进吸附, 自建不划算",
 }
 
 /** 已被自建实现取代的 naive 组件 → 该用什么 */

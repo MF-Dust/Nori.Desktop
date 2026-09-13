@@ -440,6 +440,10 @@ export const RUNTIME = {
 	openMemory(page?: MemoryPage): Promise<void> {
 		return invoke("window_open_memory", page ? {page} : undefined)
 	},
+	/** 请求宿主显示独立的原生模型窗口。 */
+	openModels(): Promise<void> {
+		return invoke("window_open_models")
+	},
 	stopAutomationTask(taskId: string): Promise<boolean> {
 		return invoke("automation_stop_task", {taskId})
 	},

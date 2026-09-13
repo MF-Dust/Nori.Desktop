@@ -16,16 +16,11 @@
 		"check:todo": "node scripts/check-first-party-todos.mjs"
 	},
 	"dependencies": {
-		"@pixi/app": "^6.5.10",
-		"@pixi/extensions": "^6.5.10",
-		"@pixi/ticker": "^6.5.10",
 		"@sentry/vue": "10.70.0",
 		"@vueuse/core": "14.4.0",
 		"dompurify": "3.4.14",
 		"markdown-it": "15.0.0",
 		"naive-ui": "^2.45.1",
-		"pixi-filters": "^4.2.0",
-		"pixi-live2d-display": "^0.4.0",
 		"vue": "^3.5.13",
 		"vue-i18n": "^11.4.8",
 		"vue-router": "^4.6.4"

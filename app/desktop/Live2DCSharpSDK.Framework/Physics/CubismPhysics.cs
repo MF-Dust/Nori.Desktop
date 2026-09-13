@@ -69,18 +69,21 @@ public class CubismPhysics
     /// インスタンスを作成する。
     /// </summary>
     /// <param name="buffer">physics3.jsonが読み込まれいるバッファ</param>
-    public CubismPhysics(string buffer)
-    {
+	public CubismPhysics(string buffer) : this(ReadPhysics(buffer))
+	{
+	}
+
+	/// <summary>后台已解析 JSON 时直接创建物理对象。</summary>
+	public CubismPhysics(CubismPhysicsObj obj)
+	{
+		ArgumentNullException.ThrowIfNull(obj);
+
         // set default options.
         Gravity.Y = -1.0f;
         Gravity.X = 0;
         Wind.X = 0;
         Wind.Y = 0;
         _currentRemainTime = 0.0f;
-
-        using var stream = File.Open(buffer, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        var obj = JsonSerializer.Deserialize(stream, CubismPhysicsObjContext.Default.CubismPhysicsObj)
-            ?? throw new Exception("Load Physics error");
 
         _physicsRig = new CubismPhysicsRig
         {
@@ -224,6 +227,13 @@ public class CubismPhysics
 
         _physicsRig.Gravity.Y = 0;
     }
+
+	private static CubismPhysicsObj ReadPhysics(string path)
+	{
+		using FileStream stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+		return JsonSerializer.Deserialize(stream, CubismPhysicsObjContext.Default.CubismPhysicsObj)
+			?? throw new Exception("Load Physics error");
+	}
 
     /// <summary>
     /// 物理演算を評価する。

@@ -72,10 +72,6 @@ export default defineConfig(async () => {
 						if (!id.includes("node_modules")) return undefined
 						if (id.includes("@sentry") || id.includes("rrweb")) return "sentry"
 						if (id.includes("naive-ui")) return "naive-ui"
-						if (id.includes("pixi-live2d-display")) return "live2d"
-						if (id.includes("pixi-filters")) return "pixi-filters"
-						if (id.includes("@pixi")) return "pixi"
-						if (id.includes("live2d")) return "live2d"
 						return undefined
 					},
 				},

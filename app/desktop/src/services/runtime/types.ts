@@ -1014,6 +1014,8 @@ export interface ModelMeta {
 	renderScale: number
 	qualityMode: "adaptive" | "quality" | "eco"
 	maxFps: number
+	/** 已保存的表情选择，与模型可用表情列表分开。 */
+	selectedExpressions: string[]
 	expressions: string[]
 	motions: {group: string; names: string[]}[]
 	interactions: InteractionConfig

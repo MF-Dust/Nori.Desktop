@@ -114,13 +114,13 @@ App and assets are **same-origin**, so `assetUrl()` is a relative path and there
 
 `nori.db` lives in `<PackageRoot>/data/core/database/` with two tables: `config(key TEXT PRIMARY KEY, value TEXT)` and `chat_messages`. Everything is stored as TEXT. Package data is never redirected to system AppData; `<PackageRoot>` must remain writable and the complete package must be movable.
 
-The trap: `ConfigValue.FromStorage` **re-infers the type on read**. `"1"`/`"true"` → Boolean, digit strings → Integer, `{…}`/`[…]` → Json, everything else → String. A config you wrote as a string comes back as a number if it happens to look like one, so `invoke<string | null>("get_config", …)` is a lie for numeric-looking values — `parseNumber()` in `services/live2d/config.ts` exists for exactly this. `"1.25"` stays a String (i64 parse fails, not a JSON container) — `Nori.Core.Tests` pins all of this.
+The trap: `ConfigValue.FromStorage` **re-infers the type on read**. `"1"`/`"true"` → Boolean, digit strings → Integer, `{…}`/`[…]` → Json, everything else → String. A config you wrote as a string comes back as a number if it happens to look like one, so `invoke<string | null>("get_config", …)` is a lie for numeric-looking values. 原生模型读取同样必须兼容这些推断类型。 `"1.25"` stays a String (i64 parse fails, not a JSON container) — `Nori.Core.Tests` pins all of this.
 
 `set_config` broadcasts `nori:config-changed` app-wide, which is how the pet window live-updates. Schema evolution goes through `config_schema_version` + `MigrateSchema()`; a DB newer than the binary is rejected outright.
 
 Secrets (`*_api_key`, `*_secret`, `*_token`, `*_password`) are encrypted with **AES-256-GCM** (`nsec2:` prefix) — no longer raw DPAPI. The master key lives in the platform keystore (`SecretKeyStore`): DPAPI-wrapped file on Windows, Keychain on macOS, libsecret on Linux, 0600 file as fallback. Old `enc:dpapi:` values still decrypt **on Windows only**; elsewhere `ConfigStore.IsUnreadableSecret` flags them so the UI asks the user to re-enter that one key — never silently wiping other config.
 
-Live2D display settings are stored **per model** as `<base>_<modelId>` (e.g. `l2d_scale_arg-nori`) with fallback to the legacy global key — see `l2dModelKey()` / `readModelConfig()`. Keep both lookups when adding keys.
+Live2D display settings are stored **per model** as `<base>_<modelId>` (e.g. `l2d_scale_arg-nori`) with fallback to the legacy global key — see `PetRuntime` and `BridgeCommands.model_get_meta`. Keep both lookups when adding keys.
 
 ### Resource management (local only)
 
@@ -128,7 +128,7 @@ Models are local resources under `<PackageRoot>/data/resources/installed/live2d/
 
 `ZipExtractor` is hardened — rejects absolute paths, UNC, drive letters, `..`, control chars and symlink entries, and re-canonicalizes each parent against the target. It also strips a single common top-level directory. Don't loosen it.
 
-### Live2D: Native OpenGL Desk Pet + PixiJS Setting Preview
+### Live2D: 原生 OpenGL 桌宠与独立模型预览
 
 Desktop Pet rendering is implemented natively in Avalonia (`PetWindow.cs` + `PetGlControl.cs`) using `Live2DCSharpSDK` and Cubism Native Core:
 - Direct OpenGL ES 2.0 rendering in a transparent Avalonia window (`OpenGlControlBase`).
@@ -136,11 +136,11 @@ Desktop Pet rendering is implemented natively in Avalonia (`PetWindow.cs` + `Pet
 - Alpha mask sampling (~10Hz) derives one contiguous bounding rectangle around the visible model, preventing fragmented head/body hit regions. **Per platform**: Windows queries that rectangle from a `WM_NCHITTEST` hook; Linux/X11 sends it to `XShapeCombineRectangles(ShapeInput)`; macOS toggles `setIgnoresMouseEvents:` based on whether the cursor is inside it. Wayland has neither — `supportsHitThrough` goes false and the pet degrades to a fully clickable window.
 - 1:1 C# behavioral pipeline (`AutoBlink`, `EyeFocus`, `IdleDisable`, `BeatSync`, `LipSync`, `ExpressionStore`, `ExpressionBehavior`). Lip-sync amplitude now comes from the frontend's `audio_level` reports, not NAudio.
 - Native mouse drag (4px threshold + position persistence), tap actions/expressions, global cursor tracking, and deep sea glow themed context menu.
-- Settings page preview retains PixiJS + `pixi-live2d-display` with texture mipmapping (`baseTexture.mipmap = 1`), 2048 mask buffer, and `devicePixelRatio` DPI super-sampling.
+- 模型预览位于仅深色的独立 Avalonia `ModelsWindow`，使用独立 `ModelPreviewControl` / `PetRuntime` 与 `PetGlControl`。预览不改写当前桌宠、不接入 AI 或音频；SDK 全局状态串行访问并按渲染实例计数，模型纹理独立持有。
 
 ### Local model management
 
-Model management lives in `src/components/settings/ModelManagement.vue`: import local Live2D ZIP/folder, enable an installed model, adjust per-model display settings, and preview. First-run `ModelSelect.vue` only records the chosen model id; the app never downloads it.
+模型管理位于 `Nori.Desktop/Windows/ModelsWindow*.cs`：导入本地 Live2D ZIP/文件夹、启用模型、调整每模型显示、全局行为和互动区域，并进行隔离的原生预览。入口为 `RUNTIME.openModels()` → `window_open_models`，独立 `models` 来源只允许固定模型领域命令。关闭先保存再隐藏，失败保留草稿。`src/services/live2d/models.ts` 与缩略图仍供首次运行和主页复用；浏览器 Pixi/Cubism 预览已移除。功能与验证清单见 `docs/native-models-parity.md`。
 
 ## Conventions (from `docs/规范.md` — follow these, they're enforced by review)
 

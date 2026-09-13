@@ -4,11 +4,3 @@ packages:
 allowBuilds:
   '@sentry/cli': true
   esbuild: true
-
-# 安全覆盖: pixi-live2d-display 错误地把 gh-pages 声明为依赖,
-# 其依赖链上的 gh-pages@4 / semver@6.0.0 触发 Dependabot critical/high 告警;
-# 两者均为构建期工具, 不参与运行时打包。
-overrides:
-  gh-pages: "^5.0.0"
-  # 只修复 gh-pages 旧依赖声明的 6.x, 不覆盖 coverage 工具所需的 7.x。
-  "semver@6.0.0": "^6.3.1"

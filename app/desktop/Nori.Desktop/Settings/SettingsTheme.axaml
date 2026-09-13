@@ -1,5 +1,5 @@
 <Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-	<!-- 只定制 Nori 外壳与导航；基础控件保留 Devolutions 的阴影、焦点与交互状态。 -->
+	<!-- 复用 Devolutions 控件模板、阴影与键盘焦点；统一 Nori 外壳及深色选项状态。 -->
 	<Styles.Resources>
 		<ResourceDictionary>
 			<SolidColorBrush x:Key="SettingsIconForegroundBrush" Color="#FFFFFF"/>
@@ -59,17 +59,55 @@
 					<StaticResource x:Key="ButtonDisabledBackgroundBrush" ResourceKey="SettingsCardBrush"/>
 					<StaticResource x:Key="ButtonBorderBrush" ResourceKey="SettingsBorderBrush"/>
 					<StaticResource x:Key="ComboBoxBackgroundBrush" ResourceKey="SettingsInputBrush"/>
+					<StaticResource x:Key="ComboBoxPressedBackgroundBrush" ResourceKey="SettingsHoverBrush"/>
+					<StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="SettingsBorderBrush"/>
+					<StaticResource x:Key="ControlBackgroundDisabledHighBrush" ResourceKey="SettingsCardBrush"/>
+					<!-- 弹层与非活动选项同样需要深色底，不能只修复收起时的输入框。 -->
+					<StaticResource x:Key="PopupBackgroundBrush" ResourceKey="SettingsCardBrush"/>
+					<StaticResource x:Key="PopupBorderBrush" ResourceKey="SettingsBorderBrush"/>
+					<StaticResource x:Key="PopupInnerBorderHighlightBrush" ResourceKey="SettingsBorderBrush"/>
+					<StaticResource x:Key="LayoutBackgroundMidBrush" ResourceKey="SettingsSelectionBrush"/>
+					<StaticResource x:Key="ComboBoxItemPointerOverBackgroundBrush" ResourceKey="SettingsHoverBrush"/>
 					<StaticResource x:Key="TextBoxBackgroundBrush" ResourceKey="SettingsInputBrush"/>
 					<StaticResource x:Key="TextBoxBorderBrush" ResourceKey="SettingsBorderBrush"/>
 					<StaticResource x:Key="TextBoxMultiLineBackgroundBrush" ResourceKey="SettingsInputBrush"/>
 				</ResourceDictionary>
 			</ResourceDictionary.ThemeDictionaries>
+			<!-- 保留 ToggleButton 的选中语义，复用设置按钮模板及键盘焦点，不混用浅色回退模板。 -->
+			<ControlTheme x:Key="SettingsChoiceTheme" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type Button}}">
+				<Setter Property="Background" Value="{DynamicResource SettingsInputBrush}"/>
+				<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+				<Setter Property="BorderBrush" Value="{DynamicResource SettingsBorderBrush}"/>
+				<Setter Property="BorderThickness" Value="1"/>
+				<Setter Property="CornerRadius" Value="7"/>
+				<Style Selector="^:pointerover, ^:pressed">
+					<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
+				</Style>
+				<Style Selector="^:checked">
+					<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
+					<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
+					<Setter Property="BorderBrush" Value="{DynamicResource SettingsAccentBrush}"/>
+					<Setter Property="FontWeight" Value="SemiBold"/>
+				</Style>
+				<Style Selector="^:disabled">
+					<Setter Property="Background" Value="{DynamicResource SettingsCardBrush}"/>
+					<Setter Property="Foreground" Value="{DynamicResource SettingsSecondaryBrush}"/>
+					<Setter Property="BorderBrush" Value="{DynamicResource SettingsBorderBrush}"/>
+				</Style>
+			</ControlTheme>
 		</ResourceDictionary>
 	</Styles.Resources>
 	<Style Selector="Window">
 		<Setter Property="FontFamily" Value="Microsoft YaHei UI, PingFang SC, Noto Sans CJK SC, sans-serif"/>
 		<Setter Property="Background" Value="{DynamicResource SettingsWindowBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="ToggleButton.settings-choice">
+		<Setter Property="Theme" Value="{StaticResource SettingsChoiceTheme}"/>
+	</Style>
+	<Style Selector="Window.models-window ComboBox, Window.models-window TextBox">
+		<Setter Property="MinHeight" Value="34"/>
+		<Setter Property="FontSize" Value="13"/>
 	</Style>
 	<Style Selector="Button.danger:not(:disabled)">
 		<Setter Property="Foreground" Value="{DynamicResource SettingsErrorBrush}"/>
@@ -107,7 +145,7 @@
 		<Setter Property="BorderBrush" Value="{DynamicResource SettingsIconHighlightBrush}"/>
 		<Setter Property="BorderThickness" Value="0.5"/>
 	</Style>
-	<Style Selector="Button.settings-nav[Tag=ai] Border.settings-nav-symbol, Button.settings-nav[Tag=skills] Border.settings-nav-symbol">
+	<Style Selector="Button.settings-nav[Tag=ai] Border.settings-nav-symbol, Button.settings-nav[Tag=skills] Border.settings-nav-symbol, Button.settings-nav[Tag=behaviors] Border.settings-nav-symbol">
 		<Setter Property="Background" Value="{DynamicResource SettingsIconPurpleBrush}"/>
 	</Style>
 	<Style Selector="Button.settings-nav[Tag=proactive] Border.settings-nav-symbol">
@@ -140,7 +178,7 @@
 	<Style Selector="Button.settings-nav[Tag=proactive] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 5,17 Q 7,14 7,9 A 5,5 0 0 1 17,9 Q 17,14 19,17 Z M 10,20 Q 12,22 14,20 M 12,2 L 12,4"/>
 	</Style>
-	<Style Selector="Button.settings-nav[Tag=general] Path.settings-nav-icon">
+	<Style Selector="Button.settings-nav[Tag=general] Path.settings-nav-icon, Button.settings-nav[Tag=behaviors] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 4,6 L 12,6 M 16,6 L 20,6 M 4,12 L 7,12 M 11,12 L 20,12 M 4,18 L 13,18 M 17,18 L 20,18 M 16,6 A 2,2 0 1 1 12,6 A 2,2 0 1 1 16,6 M 11,12 A 2,2 0 1 1 7,12 A 2,2 0 1 1 11,12 M 17,18 A 2,2 0 1 1 13,18 A 2,2 0 1 1 17,18"/>
 	</Style>
 	<Style Selector="Button.settings-nav[Tag=updates] Path.settings-nav-icon">
@@ -149,7 +187,7 @@
 	<Style Selector="Button.settings-nav[Tag=about] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 21,12 A 9,9 0 1 1 3,12 A 9,9 0 1 1 21,12 M 12,7 L 12,7.2 M 11,11 L 12,11 12,17 M 10,17 L 14,17"/>
 	</Style>
-	<Style Selector="Button.settings-nav[Tag=skills] Path.settings-nav-icon">
+	<Style Selector="Button.settings-nav[Tag=skills] Path.settings-nav-icon, Button.settings-nav[Tag=library] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 4,5 Q 8,3 12,6 Q 16,3 20,5 L 20,19 Q 16,17 12,20 Q 8,17 4,19 Z M 12,6 L 12,20 M 7,8 L 9,9 M 7,12 L 9,13 M 15,9 L 17,8 M 15,13 L 17,12"/>
 	</Style>
 	<Style Selector="Button.settings-nav[Tag=mcp] Path.settings-nav-icon">

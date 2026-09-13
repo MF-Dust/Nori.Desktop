@@ -82,18 +82,12 @@ describe("样式规范静态检查", () => {
 		expect(OFFENDERS).toEqual([])
 	})
 
-	it("设置二级页共用同一套外壳 (内边距与滚动容器)", () => {
-		// 侧栏切页时外壳必须逐像素对齐, 不然每次切换都能看到标题与内容轻微跳动。
-		// 判定口径: 带 AppSectionHeader 的 Vue 页面仍保留统一外壳；技能等复杂设置页已迁移到原生 Avalonia。
-		const SHELL = "w-full h-full flex flex-col gap-4 px-6 py-4 scroll-area"
-		const PAGES = listFiles(join(SRC, "components/settings"), ".vue")
-			.filter(file => readFileSync(file, "utf8").includes("<AppSectionHeader"))
-		// 记忆已迁移到原生窗口；模型管理仍保留 Vue 外壳并继续接受相同检查。
-		expect(PAGES.map(relativeSrc)).toContain("components/settings/ModelManagement.vue")
-		const OFFENDERS = PAGES
-			.filter(file => !readFileSync(file, "utf8").includes(SHELL))
-			.map(file => `${relativeSrc(file)}: 外壳需为 class="${SHELL}"`)
-		expect(OFFENDERS).toEqual([])
+	it("模型、记忆和设置使用原生窗口，不保留并行 Vue 编辑页", () => {
+		const MAIN = readFileSync(join(SRC, "views/Main.vue"), "utf8")
+		expect(MAIN).toContain("RUNTIME.openModels")
+		expect(MAIN).toContain("RUNTIME.openMemory")
+		expect(MAIN).toContain("RUNTIME.openSettings")
+		expect(MAIN).not.toMatch(/<(?:ModelManagement|MemoryPanel|SettingsPanel)\b/)
 	})
 
 	it("窗口级页面保留纵向滚动兜底", () => {

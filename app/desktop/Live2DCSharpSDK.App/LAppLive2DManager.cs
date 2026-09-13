@@ -57,6 +57,16 @@ public class LAppLive2DManager(LAppDelegate lapp) : IDisposable
         return model;
     }
 
+	/// <summary>从后台准备好的资源创建模型，不访问文件系统或解码纹理。</summary>
+	public LAppModel LoadModel(LAppModelAssets assets)
+	{
+		ArgumentNullException.ThrowIfNull(assets);
+		CubismLog.Debug($"[Live2D App]加载已准备模型：{assets.ModelName}");
+		var model = new LAppModel(lapp, assets);
+		_models.Add(model);
+		return model;
+	}
+
     public void RemoveModel(LAppModel model)
     {
         _models.Remove(model);

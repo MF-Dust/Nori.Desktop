@@ -1,4 +1,5 @@
-﻿using Live2DCSharpSDK.Framework.Effect;
+﻿using System.Text.Json.Nodes;
+using Live2DCSharpSDK.Framework.Effect;
 using Live2DCSharpSDK.Framework.Math;
 using Live2DCSharpSDK.Framework.Motion;
 using Live2DCSharpSDK.Framework.Physics;
@@ -101,12 +102,12 @@ public abstract class CubismUserModel : IDisposable
         _dragManager = new();
     }
 
-    public void Dispose()
-    {
-        _moc.Dispose();
-
-        DeleteRenderer();
-    }
+	public void Dispose()
+	{
+		// 构造失败时 moc 可能尚未创建；渲染器清理失败仍须释放原生模型。
+		try { DeleteRenderer(); }
+		finally { _moc?.Dispose(); }
+	}
 
     /// <summary>
     /// マウスドラッグの情報を設定する。
@@ -139,6 +140,12 @@ public abstract class CubismUserModel : IDisposable
         _pose = new CubismPose(buffer);
     }
 
+	/// <summary>从后台已解析的 JSON 创建姿势对象。</summary>
+	protected void LoadPose(JsonObject pose)
+	{
+		_pose = new CubismPose(pose);
+	}
+
     /// <summary>
     /// 物理演算データを読み込む。
     /// </summary>
@@ -147,6 +154,12 @@ public abstract class CubismUserModel : IDisposable
     {
         _physics = new CubismPhysics(buffer);
     }
+
+	/// <summary>从后台已解析的数据创建物理对象。</summary>
+	protected void LoadPhysics(CubismPhysicsObj physics)
+	{
+		_physics = new CubismPhysics(physics);
+	}
 
     /// <summary>
     /// 指定した位置にDrawableがヒットしているかどうかを取得する。

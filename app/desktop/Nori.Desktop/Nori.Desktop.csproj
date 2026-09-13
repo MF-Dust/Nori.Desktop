@@ -64,6 +64,8 @@
 
 	<ItemGroup>
 		<AvaloniaResource Include="Assets/**" />
+		<AvaloniaResource Include="../src/assets/images/live2D/Nori.webp" Link="Assets/Models/Nori.webp" />
+		<AvaloniaResource Include="../src/assets/images/live2D/ARGNori.webp" Link="Assets/Models/ARGNori.webp" />
 	</ItemGroup>
 
 	<ItemGroup>

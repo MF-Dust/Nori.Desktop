@@ -19,7 +19,8 @@ describe("页面与宿主资源生命周期", () => {
 		expect(KEEP_ALIVE).not.toContain("<ModelManagement")
 		expect(KEEP_ALIVE).not.toContain("<MemoryPanel")
 		expect(KEEP_ALIVE).not.toContain("<SettingsPanel")
-		expect(MAIN).toContain("<ModelManagement v-if=\"activeNav === 'model'\"")
+		expect(MAIN).not.toContain("ModelManagement")
+		expect(MAIN).toContain("RUNTIME.openModels")
 		expect(MAIN).toContain("RUNTIME.openSettings")
 		expect(MAIN).not.toContain("<SettingsPanel")
 	})
@@ -41,13 +42,13 @@ describe("页面与宿主资源生命周期", () => {
 		expect(AUDIO).toContain("stopStream(acquiredStream)")
 	})
 
-	it("Live2D 销毁会递归释放模型子资源但保留共享纹理", () => {
-		const LIVE2D = read("services/live2d/index.ts")
-		const DESTROY = "destroy(true, {children: true, texture: false, baseTexture: false})"
-
-		expect(LIVE2D.split(DESTROY).length - 1).toBe(2)
-		expect(LIVE2D).not.toContain("app.destroy(true)\n")
-		expect(LIVE2D).not.toContain("inner.app.destroy(true)\n")
+	it("WebView 不再装载浏览器 Live2D 引擎，资产前缀仍保持相对路径", () => {
+		const HTML = readProject("index.html")
+		const PACKAGE = JSON.parse(readProject("package.json"))
+		expect(HTML).not.toContain("live2dcubismcore")
+		expect(PACKAGE.dependencies).not.toHaveProperty("pixi-live2d-display")
+		expect(Object.keys(PACKAGE.dependencies).filter(name => name.startsWith("@pixi/") || name === "pixi-filters")).toEqual([])
+		expect(readProject("vite.config.ts")).toContain("base: \"./\"")
 	})
 
 	it("真正关闭伴侣窗口时断开运行时事件与 WindowManager 强引用", () => {

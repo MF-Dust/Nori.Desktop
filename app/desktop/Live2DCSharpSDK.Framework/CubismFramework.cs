@@ -25,69 +25,105 @@ public static class CubismFramework
 
     public static bool IsStarted { get; private set; }
 
-    private static ICubismAllocator? s_allocator;
-    private static CubismOption? s_option;
+	private static readonly object s_runtimeGate = new();
+	private static ICubismAllocator? s_allocator;
+	private static CubismOption? s_option;
+	private static int s_startupCount;
 
-    /// <summary>
-    /// Cubism FrameworkのAPIを使用可能にする。
-    /// APIを実行する前に必ずこの関数を実行すること。
-    /// 引数に必ずメモリアロケータを渡してください。
-    /// 一度準備が完了して以降は、再び実行しても内部処理がスキップされます。
-    /// </summary>
-    /// <param name="allocator">ICubismAllocatorクラスのインスタンス</param>
-    /// <param name="option">Optionクラスのインスタンス</param>
-    /// <returns>準備処理が完了したらtrueが返ります。</returns>
-    public static bool StartUp(ICubismAllocator allocator, CubismOption option)
-    {
-        if (IsStarted)
-        {
-            CubismLog.Info("[Live2D SDK]CubismFramework.StartUp() is already done.");
-            return IsStarted;
-        }
+	/// <summary>
+	/// 当前持有 Cubism Framework 的渲染控件数量。
+	/// </summary>
+	public static int ActiveLeaseCount
+	{
+		get
+		{
+			lock (s_runtimeGate) return s_startupCount;
+		}
+	}
 
-        s_option = option;
-        if (s_option != null)
-        {
-            CubismCore.SetLogFunction(s_option.LogFunction);
-        }
+	/// <summary>
+	/// 串行执行会访问 Cubism 全局状态的操作。
+	/// OpenGL 调用仍由调用方在当前 GL 上下文回调内执行。
+	/// </summary>
+	public static void RunSynchronized(Action action)
+	{
+		ArgumentNullException.ThrowIfNull(action);
+		lock (s_runtimeGate) action();
+	}
 
-        if (allocator == null)
-        {
-            CubismLog.Warning("[Live2D SDK]CubismFramework.StartUp() failed, need allocator instance.");
-            IsStarted = false;
-        }
-        else
-        {
-            s_allocator = allocator;
-            IsStarted = true;
-        }
+	/// <summary>
+	/// 串行执行会访问 Cubism 全局状态并返回结果的操作。
+	/// </summary>
+	public static T RunSynchronized<T>(Func<T> action)
+	{
+		ArgumentNullException.ThrowIfNull(action);
+		lock (s_runtimeGate) return action();
+	}
 
-        //Live2D Cubism Coreバージョン情報を表示
-        if (IsStarted)
-        {
-            var version = CubismCore.GetVersion();
+	/// <summary>
+	/// 首次调用完成初始化；后续调用增加共享租约，每次都必须匹配一次 CleanUp()。
+	/// </summary>
+	/// <param name="allocator">非托管内存分配器。</param>
+	/// <param name="option">日志等框架选项。</param>
+	/// <returns>框架已可用时返回 true。</returns>
+	public static bool StartUp(ICubismAllocator allocator, CubismOption option)
+	{
+		lock (s_runtimeGate)
+		{
+			if (IsStarted)
+			{
+				s_startupCount++;
+				CubismLog.Info("[Live2D SDK]框架已初始化，增加共享租约。");
+				return true;
+			}
 
-            uint major = (version & 0xFF000000) >> 24;
-            uint minor = (version & 0x00FF0000) >> 16;
-            uint patch = version & 0x0000FFFF;
-            uint versionNumber = version;
+			s_option = option;
+			if (s_option != null)
+			{
+				CubismCore.SetLogFunction(s_option.LogFunction);
+			}
 
-            CubismLog.Info($"[Live2D SDK]Cubism Core version: {major:#0}.{minor:0}.{patch:0000} ({versionNumber})");
-        }
+			if (allocator == null)
+			{
+				CubismLog.Warning("[Live2D SDK]框架初始化失败，缺少内存分配器。");
+				IsStarted = false;
+				return false;
+			}
 
-        CubismLog.Info("[Live2D SDK]CubismFramework.StartUp() is complete.");
+			s_allocator = allocator;
+			IsStarted = true;
+			s_startupCount = 1;
 
-        return IsStarted;
-    }
+			// 显示 Live2D Cubism Core 版本信息。
+			var version = CubismCore.GetVersion();
 
-    /// <summary>
-    /// StartUp()で初期化したCubismFrameworkの各パラメータをクリアします。
-    /// Dispose()したCubismFrameworkを再利用する際に利用してください。
-    /// </summary>
-    public static void CleanUp()
-    {
-        IsStarted = false;
-    }
+			uint major = (version & 0xFF000000) >> 24;
+			uint minor = (version & 0x00FF0000) >> 16;
+			uint patch = version & 0x0000FFFF;
+			uint versionNumber = version;
+
+			CubismLog.Info($"[Live2D SDK]Cubism Core 版本：{major:#0}.{minor:0}.{patch:0000} ({versionNumber})");
+			CubismLog.Info("[Live2D SDK]框架初始化完成。");
+			return true;
+		}
+	}
+
+	/// <summary>
+	/// 释放一次 StartUp() 租约；只有最后一个渲染控件释放后才清理全局状态。
+	/// </summary>
+	public static void CleanUp()
+	{
+		lock (s_runtimeGate)
+		{
+			if (s_startupCount == 0) return;
+			s_startupCount--;
+			if (s_startupCount > 0) return;
+
+			IsStarted = false;
+			s_allocator = null;
+			s_option = null;
+		}
+	}
 
     /// <summary>
     /// Core APIにバインドしたログ関数を実行する

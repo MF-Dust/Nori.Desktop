@@ -26,6 +26,7 @@ namespace Nori.Desktop.Live2D;
 public sealed class PetRuntime
 {
 	private readonly AppServices _services;
+	private readonly bool _previewMode;
 	private readonly BehaviorPipeline _pipeline = new();
 	private readonly ExpressionStore _expressionStore = new();
 	private readonly ExpressionBehavior _expressionBehavior;
@@ -133,9 +134,14 @@ public sealed class PetRuntime
 	/// <summary>缩放变化: 伴侣视窗据此重算窗口尺寸</summary>
 	public event Action? LayoutChanged;
 
-	public PetRuntime(AppServices services)
+	public PetRuntime(AppServices services) : this(services, previewMode: false)
+	{
+	}
+
+	internal PetRuntime(AppServices services, bool previewMode)
 	{
 		_services = services;
+		_previewMode = previewMode;
 		_expressionBehavior = new ExpressionBehavior(_expressionStore);
 
 		// 注册行为插件（pre / post / final）
@@ -146,6 +152,8 @@ public sealed class PetRuntime
 		_pipeline.Register(_autoBlink, PipelineStage.Final);
 		_pipeline.Register(_lipSync, PipelineStage.Final);
 	}
+
+	internal bool IsPreviewMode => _previewMode;
 
 	public LAppModel? CurrentModel => _currentModel;
 	public string CurrentModelId => _currentModelId;
@@ -248,6 +256,9 @@ public sealed class PetRuntime
 		_app = app;
 		_gl = gl;
 		_services.Logger.Write(LogSource.Backend, "info", "Live2D OpenGL 初始化完成");
+		// 预览实例只响应显式 LoadModelAsync，不读取或改写全局模型选择。
+		if (_previewMode) return;
+
 		string savedModel = _services.Config.GetStringOr("selected_model", "arg-nori");
 		if (!string.IsNullOrWhiteSpace(savedModel)) _currentModelId = savedModel.Trim();
 		LoadConfigs();
@@ -395,13 +406,25 @@ public sealed class PetRuntime
 	///
 	/// 上一份准备任务的 CTS 立即取消; 渲染帧只消费当前操作的完成结果。
 	/// </summary>
-	public void RequestModelLoad(string modelId) => RequestModelLoad(modelId, reloadCurrent: true);
+	public void RequestModelLoad(string modelId)
+	{
+		Task completion = RequestModelLoad(modelId, reloadCurrent: true);
+		ObserveCompletionTask(completion);
+	}
 
-	private void RequestModelLoad(string modelId, bool reloadCurrent)
+	/// <summary>预览实例显式加载模型；任务在 GL 线程提交模型后完成。</summary>
+	internal Task LoadPreviewModelAsync(string modelId)
+	{
+		if (!_previewMode) throw new InvalidOperationException("只有预览运行时可以调用预览加载入口");
+		return RequestModelLoad(modelId, reloadCurrent: true);
+	}
+
+	private Task RequestModelLoad(string modelId, bool reloadCurrent)
 	{
 		string requestedModelId = modelId?.Trim() ?? "";
 		string? normalized = SupportedModelIds.Normalize(requestedModelId);
 		bool notifyRequested = false;
+		Task completion = Task.CompletedTask;
 
 		lock (_prepareGate)
 		{
@@ -410,9 +433,9 @@ public sealed class PetRuntime
 				&& string.Equals(normalized, _currentModelId, StringComparison.Ordinal);
 			if (sameCurrentModel && _pendingModelLoad is null && !reloadCurrent)
 			{
-				return;
+				return completion;
 			}
-			if (sameCurrentModel && _pendingModelLoad is not null)
+			if (sameCurrentModel && _pendingModelLoad is not null && !reloadCurrent)
 			{
 				// 重新选中当前模型只取消待处理切换, 不把已经显示的模型再加载一遍。
 				_modelGeneration++;
@@ -443,18 +466,31 @@ public sealed class PetRuntime
 						CancellationToken.None);
 				}
 
-				_pendingModelLoad = new ModelLoadOperation(
+				ModelLoadOperation operation = new(
 					generation,
 					normalized ?? requestedModelId,
 					fallbackModelId,
 					cancellation,
 					preparationTask);
+				_pendingModelLoad = operation;
+				completion = operation.Completion;
 				ObservePreparationTask(preparationTask);
 				notifyRequested = true;
 			}
 		}
 
 		if (notifyRequested) NotifyModelLoadRequested();
+		return completion;
+	}
+
+	/// <summary>取消当前后台准备并使其结果失效。</summary>
+	internal void CancelPendingModelLoad()
+	{
+		lock (_prepareGate)
+		{
+			_modelGeneration++;
+			CancelPendingModelLoadLocked();
+		}
 	}
 
 	private static async Task<ModelLoadOutcome> PrepareModelOutcomeAsync(
@@ -492,6 +528,15 @@ public sealed class PetRuntime
 			TaskScheduler.Default);
 	}
 
+	private static void ObserveCompletionTask(Task task)
+	{
+		_ = task.ContinueWith(
+			completed => _ = completed.Exception,
+			CancellationToken.None,
+			TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+			TaskScheduler.Default);
+	}
+
 	/// <summary>
 	/// 在渲染帧观察准备任务; 只有当前操作完成后才在 GL 区消费结果。
 	/// </summary>
@@ -519,7 +564,7 @@ public sealed class PetRuntime
 		{
 			lock (_prepareGate)
 			{
-				if (ReferenceEquals(_pendingModelLoad, operation)) CompletePendingModelLoadLocked(operation);
+				if (ReferenceEquals(_pendingModelLoad, operation)) CancelPendingModelLoadLocked();
 			}
 			return;
 		}
@@ -563,9 +608,9 @@ public sealed class PetRuntime
 	private bool CommitModelLoadFailureLocked(ModelLoadOperation operation, Exception error)
 	{
 		if (!IsCurrentOperationLocked(operation)) return false;
-		CompletePendingModelLoadLocked(operation);
 
-		if (!string.IsNullOrWhiteSpace(operation.FallbackModelId)
+		if (!_previewMode
+			&& !string.IsNullOrWhiteSpace(operation.FallbackModelId)
 			&& !string.Equals(operation.ModelId, operation.FallbackModelId, StringComparison.Ordinal))
 		{
 			try
@@ -583,6 +628,9 @@ public sealed class PetRuntime
 		LastModelLoadError = error is ResourceException
 			? $"模型 {operation.ModelId} 加载失败: {error.Message}"
 			: $"模型 {operation.ModelId} 加载失败, 请重新导入";
+		FailPendingModelLoadLocked(
+			operation,
+			new InvalidOperationException(LastModelLoadError, error));
 		return true;
 	}
 
@@ -616,6 +664,14 @@ public sealed class PetRuntime
 		operation.Cancellation.Dispose();
 	}
 
+	private void FailPendingModelLoadLocked(ModelLoadOperation operation, Exception error)
+	{
+		if (!ReferenceEquals(_pendingModelLoad, operation)) return;
+		operation.Fail(error);
+		_pendingModelLoad = null;
+		operation.Cancellation.Dispose();
+	}
+
 	private bool IsCurrentOperationLocked(ModelLoadOperation operation) =>
 		ReferenceEquals(_pendingModelLoad, operation) && operation.IsCurrent(_modelGeneration);
 
@@ -632,17 +688,12 @@ public sealed class PetRuntime
 			if (!IsCurrentOperationLocked(operation)) return;
 		}
 
-		if (!Directory.Exists(prepared.ModelDir))
-		{
-			CommitModelLoadFailure(operation, new ResourceException($"模型目录不存在: {prepared.ModelDir}"));
-			return;
-		}
-
 		LAppModel candidate;
 		try
 		{
-			// LoadModel 仅在构造完全成功后才加入 manager; 旧模型在此期间继续存活。
-			candidate = app.Live2dManager.LoadModel(prepared.ModelDir, prepared.Model3FileName);
+			// 文件读取、JSON 解析与纹理解码已由当前世代的后台准备完成。
+			// 此处只创建 Cubism 原生对象、renderer 并上传模型独占纹理。
+			candidate = app.Live2dManager.LoadModel(prepared.Assets);
 		}
 		catch (Exception exception)
 		{
@@ -705,7 +756,7 @@ public sealed class PetRuntime
 					ApplyRenderQualityOnGlThread();
 					_expressionBehavior.ApplyPrepared(prepared, candidate.Model);
 					_motionGroups = [.. prepared.MotionGroups];
-					if (firstLoadOfModel) LoadConfigs();
+					if (firstLoadOfModel && !_previewMode) LoadConfigs();
 
 					// 候选模型已经可用后才释放旧对象; 旧对象清理异常不能反向销毁新模型。
 					if (previousModel is not null)
@@ -857,7 +908,18 @@ public sealed class PetRuntime
 		_pipeline.RunFinal(_behaviorContext);
 	}
 
-	public void RenderFrame(float deltaTime, int viewportWidth, int viewportHeight)
+	public void RenderFrame(float deltaTime, int viewportWidth, int viewportHeight) =>
+		RenderFrame(deltaTime, viewportWidth, viewportHeight, viewportWidth, viewportHeight);
+
+	/// <summary>
+	/// 在物理像素视口渲染，并用逻辑像素视口保存输入与区域叠加映射。
+	/// </summary>
+	public void RenderFrame(
+		float deltaTime,
+		int viewportWidth,
+		int viewportHeight,
+		double clientViewportWidth,
+		double clientViewportHeight)
 	{
 		if (_gl is null) return;
 
@@ -865,7 +927,8 @@ public sealed class PetRuntime
 		// 未完成或失败时继续渲染现有模型
 		ConsumePreparedIfReady();
 
-		if (_currentModel is null) return;
+		if (_currentModel is null || viewportWidth <= 0 || viewportHeight <= 0
+			|| clientViewportWidth <= 0 || clientViewportHeight <= 0) return;
 		ApplyRenderQualityOnGlThread();
 
 		// LAppModel.Update() 读的是 LAppPal.DeltaTime。这里没有走 LAppDelegate.Run(),
@@ -899,19 +962,25 @@ public sealed class PetRuntime
 			scaleX *= fit;
 			scaleY *= fit;
 		}
+		if (_previewMode)
+		{
+			scaleX *= UserScale;
+			scaleY *= UserScale;
+		}
 
 		_projectionMatrix.Scale(scaleX, scaleY);
-		PetViewportMapping mapping = PetViewportMapping.Create(
-			viewportWidth,
-			viewportHeight,
-			// ModelMatrix 由 Cubism 的 Unit 画布尺寸构造；这里必须使用同一单位，
-			// 不能传 Pixel 尺寸，否则 PixelsPerUnit 会把归一化点击压缩到画布中心。
+		// 绘制使用物理像素，但 Avalonia 指针和叠加层使用 DIP；最终变换相同，
+		// 映射视口必须保存逻辑尺寸，否则高 DPI 下点击区域会缩到左上角。
+		PetViewportMapping mapping = PetViewportMapping.FromFinalTransform(
+			clientViewportWidth,
+			clientViewportHeight,
+			// ModelMatrix 由 Cubism 的 Unit 画布尺寸构造；这里必须使用同一单位。
 			canvasUnitW,
 			canvasUnitH,
-			_currentModel.ModelMatrix.GetScaleX(),
-			_currentModel.ModelMatrix.GetScaleY(),
-			_currentModel.ModelMatrix.GetTranslateX(),
-			_currentModel.ModelMatrix.GetTranslateY());
+			scaleX * _currentModel.ModelMatrix.GetScaleX(),
+			scaleY * _currentModel.ModelMatrix.GetScaleY(),
+			scaleX * _currentModel.ModelMatrix.GetTranslateX(),
+			scaleY * _currentModel.ModelMatrix.GetTranslateY());
 		lock (_interactionGate) _viewportMapping = mapping;
 
 		_currentModel.RandomMotion = IdleAnimationEnabled;
@@ -920,7 +989,34 @@ public sealed class PetRuntime
 		FrameRendered?.Invoke();
 	}
 
-	public void LookAt(float clientX, float clientY, float windowW, float windowH)
+	/// <summary>获取最新一帧完整模型画布的 Avalonia 逻辑像素矩形。</summary>
+	internal bool TryGetModelViewport(out PetViewportRect clientRect)
+	{
+		PetViewportMapping? mapping;
+		lock (_interactionGate) mapping = _viewportMapping;
+		clientRect = mapping?.ModelRect ?? default;
+		return mapping is {IsValid: true};
+	}
+
+	/// <summary>把预览互动区域映射到最新一帧的 Avalonia 逻辑像素视口。</summary>
+	internal bool TryMapNormalizedRegion(PetInteractionRegion region, out PetViewportRect clientRect)
+	{
+		clientRect = default;
+		PetViewportMapping? mapping;
+		lock (_interactionGate) mapping = _viewportMapping;
+		return mapping is { } current
+			&& current.TryMapNormalizedRectToClient(
+				region.Rect.X,
+				region.Rect.Y,
+				region.Rect.Width,
+				region.Rect.Height,
+				out clientRect);
+	}
+
+	public void LookAt(float clientX, float clientY, float windowW, float windowH) =>
+		CubismFramework.RunSynchronized(() => LookAtCore(clientX, clientY, windowW, windowH));
+
+	private void LookAtCore(float clientX, float clientY, float windowW, float windowH)
 	{
 		if (_currentModel is null || !EyeTrackingEnabled || windowW <= 0 || windowH <= 0) return;
 		float normX = Math.Clamp((clientX / windowW) * 2.0f - 1.0f, -1.0f, 1.0f);
@@ -928,7 +1024,10 @@ public sealed class PetRuntime
 		_currentModel.SetDragging(normX, normY);
 	}
 
-	public void HandleTap(float clientX, float clientY, float windowW, float windowH)
+	public void HandleTap(float clientX, float clientY, float windowW, float windowH) =>
+		CubismFramework.RunSynchronized(() => HandleTapCore(clientX, clientY, windowW, windowH));
+
+	private void HandleTapCore(float clientX, float clientY, float windowW, float windowH)
 	{
 		if (_currentModel is null || !ClickInteraction || windowW <= 0 || windowH <= 0) return;
 
@@ -944,12 +1043,15 @@ public sealed class PetRuntime
 			interactions = _interactionConfig;
 		}
 
-		if (mapping is { } currentMapping
-			&& currentMapping.TryMapClientToModel(clientX, clientY, out double modelX, out double modelY)
+		double modelX = 0;
+		double modelY = 0;
+		bool mappedToModel = mapping is { } currentMapping
+			&& currentMapping.TryMapClientToModel(clientX, clientY, out modelX, out modelY);
+		if (mappedToModel
 			&& PetInteractionResolver.TryResolve(interactions, modelX, modelY, out PetInteractionHit? hit)
 			&& hit is not null)
 		{
-			if (hit.Region.ReactionMode == PetInteractionReactionMode.Ai)
+			if (!_previewMode && hit.Region.ReactionMode == PetInteractionReactionMode.Ai)
 			{
 				PetInteractionTrigger trigger = new(_currentModelId, ModelGeneration, hit);
 				Action<PetInteractionTrigger>? handler = InteractionTriggered;
@@ -974,10 +1076,23 @@ public sealed class PetRuntime
 			return;
 		}
 
-		// 没有 HitAreas 的模型也会走这里: PetWindow 已经用 alpha 掩码确认点击的是模型像素。
-		float normX = (clientX / windowW) * 2.0f - 1.0f;
-		float normY = -((clientY / windowH) * 2.0f - 1.0f);
-		if (_currentModel.HitTest(LAppDefine.HitAreaNameHead, normX, normY)
+		// HitTest 会自行逆 ModelMatrix，但不会逆投影；优先由同一份视口映射还原画布点，
+		// 避免宽高比、预览缩放或高 DPI 让头部点击偏移。
+		float hitX;
+		float hitY;
+		if (mappedToModel)
+		{
+			float canvasX = ((float)modelX - 0.5f) * _currentModel.Model.GetCanvasWidth();
+			float canvasY = (0.5f - (float)modelY) * _currentModel.Model.GetCanvasHeight();
+			hitX = canvasX * _currentModel.ModelMatrix.GetScaleX() + _currentModel.ModelMatrix.GetTranslateX();
+			hitY = canvasY * _currentModel.ModelMatrix.GetScaleY() + _currentModel.ModelMatrix.GetTranslateY();
+		}
+		else
+		{
+			hitX = (clientX / windowW) * 2.0f - 1.0f;
+			hitY = -((clientY / windowH) * 2.0f - 1.0f);
+		}
+		if (_currentModel.HitTest(LAppDefine.HitAreaNameHead, hitX, hitY)
 			&& ExpressionEnabled
 			&& ToggleRandomExpression())
 		{
@@ -987,7 +1102,10 @@ public sealed class PetRuntime
 	}
 
 	/// <summary>执行一个区域配置的本地 Motion/Expression 反应。</summary>
-	public void ApplyLocalInteraction(PetInteractionRegion region)
+	public void ApplyLocalInteraction(PetInteractionRegion region) =>
+		CubismFramework.RunSynchronized(() => ApplyLocalInteractionCore(region));
+
+	private void ApplyLocalInteractionCore(PetInteractionRegion region)
 	{
 		switch (region.Motion.Mode)
 		{
@@ -1022,14 +1140,14 @@ public sealed class PetRuntime
 	/// <summary>
 	/// 播放点击互动动作。动作组按语义优先级选择，同组从随机位置开始逐项尝试。
 	/// </summary>
-	public bool PlayTapBodyOrRandomMotion()
+	public bool PlayTapBodyOrRandomMotion() => CubismFramework.RunSynchronized(() =>
 	{
 		foreach (MotionGroupInfo group in MotionSelector.GetInteractionCandidates(_motionGroups))
 		{
 			if (TryPlayGroup(group)) return true;
 		}
 		return false;
-	}
+	});
 
 	private bool TryPlayGroup(MotionGroupInfo group)
 	{
@@ -1064,7 +1182,7 @@ public sealed class PetRuntime
 		return _motionGroups.FirstOrDefault(item => item.Group.Equals(group, StringComparison.OrdinalIgnoreCase));
 	}
 
-	public bool PlayMotionByName(string name)
+	public bool PlayMotionByName(string name) => CubismFramework.RunSynchronized(() =>
 	{
 		if (_currentModel is null || string.IsNullOrWhiteSpace(name)) return false;
 		string? resolved = PetActionResolver.ResolveMotion(_motionGroups, name);
@@ -1075,16 +1193,16 @@ public sealed class PetRuntime
 			if (index >= 0) return TryStartMotion(group.Group, index) is not null;
 		}
 		return false;
-	}
+	});
 
-	public bool PlayMotionByIndex(string group, int no)
+	public bool PlayMotionByIndex(string group, int no) => CubismFramework.RunSynchronized(() =>
 	{
 		MotionGroupInfo? matched = FindMotionGroup(group);
 		if (matched is null || no < 0 || no >= matched.Names.Count) return false;
 		return TryStartMotion(matched.Group, no) is not null;
-	}
+	});
 
-	public bool PlayRandomMotion()
+	public bool PlayRandomMotion() => CubismFramework.RunSynchronized(() =>
 	{
 		IReadOnlyList<MotionGroupInfo> candidates = MotionSelector.GetInteractionCandidates(_motionGroups);
 		if (candidates.Count == 0) return false;
@@ -1096,17 +1214,20 @@ public sealed class PetRuntime
 			if (TryPlayGroup(group)) return true;
 		}
 		return false;
-	}
+	});
 
-	public bool PlayExpression(string name)
+	public bool PlayExpression(string name) => CubismFramework.RunSynchronized(() =>
 	{
 		string? resolved = PetActionResolver.ResolveExpression(Expressions, name);
 		return resolved is not null && _expressionStore.Play(resolved);
-	}
-	public void StopExpression() => _expressionStore.Stop();
-	public void ToggleExpression(string name) => _expressionStore.Toggle(name);
+	});
 
-	public bool ToggleRandomExpression()
+	public void StopExpression() => CubismFramework.RunSynchronized(_expressionStore.Stop);
+
+	public void ToggleExpression(string name) =>
+		CubismFramework.RunSynchronized(() => _expressionStore.Toggle(name));
+
+	public bool ToggleRandomExpression() => CubismFramework.RunSynchronized(() =>
 	{
 		IReadOnlyList<string> names = _expressionStore.AllGroupNames();
 		if (names.Count == 0) names = _expressionStore.AllNames();
@@ -1114,7 +1235,7 @@ public sealed class PetRuntime
 
 		string randomName = names[_random.Next(names.Count)];
 		return _expressionStore.Toggle(randomName);
-	}
+	});
 
 	public void SetMouthOpen(float value, bool speaking)
 	{
@@ -1134,7 +1255,8 @@ public sealed class PetRuntime
 	{
 		if (key == "selected_model")
 		{
-			RequestModelLoad(ConfigStore.DefaultModel, reloadCurrent: false);
+			if (_previewMode) return;
+			ObserveCompletionTask(RequestModelLoad(ConfigStore.DefaultModel, reloadCurrent: false));
 			return;
 		}
 		if (key is "l2d_opacity" or "l2d_quality_mode" or "l2d_render_scale" or "l2d_max_fps" or "l2d_shadow"
@@ -1180,7 +1302,8 @@ public sealed class PetRuntime
 	{
 		if (key == "selected_model" && !string.IsNullOrWhiteSpace(value))
 		{
-			RequestModelLoad(value, reloadCurrent: false);
+			if (_previewMode) return;
+			ObserveCompletionTask(RequestModelLoad(value, reloadCurrent: false));
 			return;
 		}
 
@@ -1253,6 +1376,26 @@ public sealed class PetRuntime
 			case "l2d_click_through" when ParseBool(value) is { } v: ClickThroughEnabled = v; break;
 			default: break;
 		}
+	}
+
+	/// <summary>应用不落盘的预览显示设置。</summary>
+	internal void SetPreviewRenderSettings(
+		float scale,
+		Live2DQualityMode qualityMode,
+		float renderScale,
+		bool shadowEnabled,
+		int maxFps)
+	{
+		if (!_previewMode) throw new InvalidOperationException("只有预览运行时可以应用预览设置");
+		UserScale = float.IsFinite(scale) ? Math.Clamp(scale, 0.1f, 4.0f) : 1.0f;
+		QualityMode = Live2DRenderSettings.QualityModeToStorage(
+			Enum.IsDefined(qualityMode) ? qualityMode : Live2DQualityMode.Adaptive);
+		RenderScale = float.IsFinite(renderScale)
+			? Math.Clamp(renderScale, Live2DRenderSettings.MinRenderScale, Live2DRenderSettings.MaxRenderScale)
+			: Live2DRenderSettings.DefaultRenderScale;
+		ShadowEnabled = shadowEnabled;
+		MaxFps = Math.Clamp(maxFps, 0, Live2DRenderSettings.MaxExplicitFps);
+		RefreshRenderSettings();
 	}
 
 	private void RefreshRenderSettings()

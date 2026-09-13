@@ -94,7 +94,6 @@ export default defineConfig({
 		["surface-card", "bg-bg-card border border-line-subtle rounded-md shadow-elev-1 backdrop-blur-[1.2rem] transition-all duration-200 hover:(border-line-strong bg-bg-card-hover shadow-elev-2)"],
 		// 卡片里再套卡片时用这一档, 与外层拉开层次
 		["surface-inset", "bg-overlay-4 border border-line-subtle rounded-sm backdrop-blur-[0.8rem]"],
-		["glow-card", "bg-bg-card/85 border border-nori-teal-bright/30 rounded-md shadow-elev-2 backdrop-blur-[1.6rem]"],
 		["scroll-area", "min-h-0 overflow-y-auto overflow-x-hidden"],
 
 		// ---- 文字 ----
@@ -175,18 +174,6 @@ export default defineConfig({
 		["chip-success", "chip bg-success/10 border-success/35 text-success"],
 		["chip-warning", "chip bg-warning/10 border-warning/35 text-warning"],
 		["chip-danger", "chip bg-danger/10 border-danger/35 text-danger-text"],
-
-		// ---- 单选药丸组 (语言 / 空闲时长 / 日志级别 / TTS 协议 / 表情开关) ----
-		// 这些组以前各页手抄三串: 外形、选中态、未选中态。尺寸与内部结构仍由调用方定,
-		// 只把这三串收进来 —— 选中态的描边与光晕一旦漂移, 同一个页面里就能一眼看出两套观感。
-		// 焦点环由使用方通过 focus-ring 补充。
-		["pill-choice", "inline-flex items-center rounded-pill border font-inherit cursor-pointer transition-all duration-200"],
-		["pill-choice-on", "border-nori-teal-bright bg-nori-teal-bright/14 text-nori-teal-bright font-600 shadow-glow"],
-		[
-			"pill-choice-off",
-			"border-line-subtle bg-overlay-4 text-text-muted "
-			+ "hover:(text-text-primary bg-overlay-8 border-nori-teal-soft/60)",
-		],
 
 		// ---- 表单 ----
 		["field", "flex flex-col gap-1.5"],

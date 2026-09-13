@@ -32,6 +32,9 @@ public interface IWindowManager
 	/// <summary>打开原生记忆窗口；不指定分区时恢复上次页面。</summary>
 	void ShowMemory(string? page = null);
 
+	/// <summary>打开原生模型窗口。</summary>
+	void ShowModels();
+
 	/// <summary>隐藏窗口</summary>
 	void Hide(string label);
 

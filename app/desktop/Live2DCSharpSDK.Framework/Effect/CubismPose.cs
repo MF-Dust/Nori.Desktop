@@ -38,11 +38,14 @@ public class CubismPose
     /// インスタンスを作成する。
     /// </summary>
     /// <param name="pose3json">pose3.jsonのデータ</param>
-    public CubismPose(string pose3json)
-    {
-        using var stream = File.Open(pose3json, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        var json = JsonNode.Parse(stream)?.AsObject()
-            ?? throw new Exception("Pose json is error");
+	public CubismPose(string pose3json) : this(ReadPose(pose3json))
+	{
+	}
+
+	/// <summary>后台已解析 JSON 时直接创建姿势对象。</summary>
+	public CubismPose(JsonObject json)
+	{
+		ArgumentNullException.ThrowIfNull(json);
 
         // フェード時間の指定
         if (json.ContainsKey(FadeIn))
@@ -96,6 +99,13 @@ public class CubismPose
             _partGroupCounts.Add(groupCount);
         }
     }
+
+	private static JsonObject ReadPose(string path)
+	{
+		using FileStream stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+		return JsonNode.Parse(stream)?.AsObject()
+			?? throw new Exception("Pose json is error");
+	}
 
     /// <summary>
     /// モデルのパラメータを更新する。

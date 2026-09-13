@@ -176,14 +176,18 @@ public class CubismMotion : ACubismMotion
     /// <param name="buffer">motion3.jsonが読み込まれているバッファ</param>
     /// <param name="onFinishedMotionHandler">モーション再生終了時に呼び出されるコールバック関数。NULLの場合、呼び出されない。</param>
     public CubismMotion(string buffer, FinishedMotionCallback? onFinishedMotionHandler = null)
+		: this(ReadMotion(buffer), onFinishedMotionHandler)
     {
+    }
+
+	/// <summary>后台已解析 JSON 时直接创建动作对象。</summary>
+	public CubismMotion(CubismMotionObj obj, FinishedMotionCallback? onFinishedMotionHandler = null)
+	{
+		ArgumentNullException.ThrowIfNull(obj);
+
         _loopDurationSeconds = -1.0f;
         IsLoopFadeIn = true;       // ループ時にフェードインが有効かどうかのフラグ
         _modelOpacity = 1.0f;
-
-        using var stream = File.Open(buffer, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        var obj = JsonSerializer.Deserialize(stream, CubismMotionObjContext.Default.CubismMotionObj)
-            ?? throw new Exception("Load Motion error");
 
         _motionData = new()
         {
@@ -374,6 +378,13 @@ public class CubismMotion : ACubismMotion
         _loopDurationSeconds = _motionData.Duration;
         OnFinishedMotion = onFinishedMotionHandler;
     }
+
+	private static CubismMotionObj ReadMotion(string path)
+	{
+		using FileStream stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+		return JsonSerializer.Deserialize(stream, CubismMotionObjContext.Default.CubismMotionObj)
+			?? throw new Exception("Load Motion error");
+	}
 
     /// <summary>
     /// モデルのパラメータ更新を実行する。

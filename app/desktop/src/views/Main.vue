@@ -45,7 +45,6 @@ const PANEL_OPTIONS = {
 } as const
 
 const HomePanel = defineAsyncComponent({loader: () => import("../components/home/HomePanel.vue"), ...PANEL_OPTIONS})
-const ModelManagement = defineAsyncComponent({loader: () => import("../components/settings/ModelManagement.vue"), ...PANEL_OPTIONS})
 const ChatView = defineAsyncComponent({loader: () => import("../components/ChatView.vue"), ...PANEL_OPTIONS})
 
 // ---- 侧边导航 (「记忆」已从设置二级提升为一级页, 「关于」仍在设置的二级列表里) ----
@@ -98,7 +97,15 @@ const openNativeSettings = async (page?: string) => {
 	}
 }
 
+const openNativeModels = () => {
+	void RUNTIME.openModels().catch(error => feedback.error(UI_I18N.value.loadFailed, error))
+}
+
 const navigateSidebar = (key: NavKey) => {
+	if (key === "model") {
+		openNativeModels()
+		return
+	}
 	if (key === "memory") {
 		void RUNTIME.openMemory().catch(error => feedback.error(UI_I18N.value.loadFailed, error))
 		return
@@ -160,6 +167,10 @@ const togglePet = async () => {
 
 // 主页磁贴跳转
 const navigate = (tab: "talk" | "model" | "settings", origin: NavKey = "home") => {
+	if (tab === "model") {
+		openNativeModels()
+		return
+	}
 	if (tab === "settings") {
 		void openNativeSettings("ai")
 		return
@@ -298,10 +309,8 @@ onBeforeUnmount(() => {
 				</button>
 
 				<!--
-					一级页依次是: 主页看板 / 对话 / 模型管理 / 长期记忆 / 全功能设置 (含关于)。
-
+					主工作区保留主页与对话；模型、记忆和设置由宿主打开独立原生窗口。
 					只有对话面板需要 KeepAlive: 它卸载会取消进行中的会话并自动拒掉所有待审批工具调用。
-					模型/记忆/设置页切走后必须正常卸载，以释放 Live2D/WebGL、全局监听器和页面级计时器。
 				-->
 				<div class="flex-1 min-h-0 flex flex-col scroll-area">
 					<HomePanel
@@ -313,7 +322,6 @@ onBeforeUnmount(() => {
 					<KeepAlive>
 						<ChatView v-if="activeNav === 'talk'" @go-settings="navigate('settings', 'talk')"/>
 					</KeepAlive>
-					<ModelManagement v-if="activeNav === 'model'"/>
 				</div>
 			</main>
 		</div>

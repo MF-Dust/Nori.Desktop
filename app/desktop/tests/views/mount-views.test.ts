@@ -7,7 +7,6 @@ import {RUNTIME} from "../../src/services/runtime"
 import Main from "../../src/views/Main.vue"
 import HomePanel from "../../src/components/home/HomePanel.vue"
 import ChatView from "../../src/components/ChatView.vue"
-import ModelManagement from "../../src/components/settings/ModelManagement.vue"
 
 describe("Views and Panels Mounting", () => {
 	let INVOKED: string[] = []
@@ -189,14 +188,14 @@ describe("Views and Panels Mounting", () => {
 
 	it("switches Main tabs without leaving a blank panel", async () => {
 		const MOUNT = mountComponent(Main)
-		// 记忆和设置打开原生窗口，主面板保留当前内容。
-		const MAIN_TABS = ["home", "talk", "model"]
+		// 模型、记忆和设置打开原生窗口，主面板保留当前内容。
+		const MAIN_TABS = ["home", "talk"]
 		try {
 			await settleView()
 			expect(MOUNT.container.innerHTML).toBeTruthy()
 
 			const NAV_BUTTONS = Array.from(MOUNT.container.querySelectorAll("aside nav button"))
-			expect(NAV_BUTTONS).toHaveLength(MAIN_TABS.length + 2)
+			expect(NAV_BUTTONS).toHaveLength(MAIN_TABS.length + 3)
 			for (const [INDEX, TAB] of MAIN_TABS.entries()) {
 				click(NAV_BUTTONS[INDEX])
 				await settleView()
@@ -213,10 +212,30 @@ describe("Views and Panels Mounting", () => {
 			await settleView()
 			const PANELS = MOUNT.container.querySelectorAll("[data-main-panel]")
 			expect(PANELS).toHaveLength(1)
-			expect(PANELS[0].getAttribute("data-main-panel")).toBe("model")
+			expect(PANELS[0].getAttribute("data-main-panel")).toBe("talk")
+			expect(INVOKED).toContain("window_open_models")
+			expect(INVOKED).not.toContain("model_get_meta")
 			expect(INVOKED).toContain("window_open_settings")
 			expect(INVOKED).toContain("window_open_memory")
 			expect(INVOKED).not.toContain("memory_list_page")
+		} finally {
+			MOUNT.app.unmount()
+			MOUNT.container.remove()
+		}
+	})
+
+	it("主页换装入口打开原生模型窗口且不替换主面板", async () => {
+		const MOUNT = mountComponent(Main)
+		try {
+			await settleView()
+			const BUTTON = Array.from(MOUNT.container.querySelectorAll("main button"))
+				.find(button => button.textContent?.includes(ZH.views.main.home.cards.model.title))
+			expect(BUTTON).toBeDefined()
+			click(BUTTON!)
+			await settleView()
+			expect(INVOKED).toContain("window_open_models")
+			expect(INVOKED).not.toContain("model_get_meta")
+			expect(MOUNT.container.querySelector("[data-main-panel]")?.getAttribute("data-main-panel")).toBe("home")
 		} finally {
 			MOUNT.app.unmount()
 			MOUNT.container.remove()
@@ -228,7 +247,6 @@ describe("Views and Panels Mounting", () => {
 		const panels = [
 			HomePanel,
 			ChatView,
-			ModelManagement,
 		]
 		for (const comp of panels) {
 			const MOUNT = mountComponent(comp)

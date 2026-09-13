@@ -1,9 +1,6 @@
 ﻿using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Avalonia;
-using Avalonia.Media.Imaging;
 using Avalonia.OpenGL.Controls;
-using Avalonia.Platform;
 using Avalonia.OpenGL;
 using Avalonia.Threading;
 using Live2DCSharpSDK.App;
@@ -30,6 +27,7 @@ public sealed class PetGlControl : OpenGlControlBase
 	private readonly PetRuntime _runtime;
 	private LAppDelegateOpenGL? _lapp;
 	private AvaloniaGlApi? _glApi;
+	private bool _sdkLeaseAcquired;
 	private DateTime _lastRenderTime;
 	private OpenGLTextureQuad? _textureQuad;
 	private CubismOffscreenSurface_OpenGLES2? _sceneSurface;
@@ -65,75 +63,102 @@ public sealed class PetGlControl : OpenGlControlBase
 	{
 		base.OnOpenGlInit(gl);
 
-		// Cubism 的日志绝不能走 Console.WriteLine: Nori.Desktop 是 WinExe, 没有控制台,
-		// Console.WriteLine 会抛 IOException(句柄无效), 而它是在渲染回调里被调用的,
-		// 未捕获会直接把整个进程带走。统一转到应用自己的文件日志。
-		var cubismAllocator = new LAppAllocator();
-		var cubismOption = new CubismOption
+		// CubismIdManager 与 LAppPal.DeltaTime 是进程级静态状态；双 GL 控件必须
+		// 在各自上下文仍为 current 的回调内串行进入 SDK，而不是把 GL 工作搬到别的线程。
+		CubismFramework.RunSynchronized(() =>
 		{
-			LogFunction = _runtime.WriteCubismLog,
-			LoggingLevel = LogLevel.Warning,
-		};
-		CubismFramework.StartUp(cubismAllocator, cubismOption);
+			// Cubism 的日志绝不能走 Console.WriteLine: Nori.Desktop 是 WinExe, 没有控制台,
+			// Console.WriteLine 会抛 IOException(句柄无效), 而它是在渲染回调里被调用的,
+			// 未捕获会直接把整个进程带走。统一转到应用自己的文件日志。
+			var cubismAllocator = new LAppAllocator();
+			var cubismOption = new CubismOption
+			{
+				LogFunction = _runtime.WriteCubismLog,
+				LoggingLevel = LogLevel.Warning,
+			};
+			if (!CubismFramework.StartUp(cubismAllocator, cubismOption))
+			{
+				throw new InvalidOperationException("Live2D Cubism Framework 初始化失败");
+			}
+			_sdkLeaseAcquired = true;
 
-		_glApi = new AvaloniaGlApi(gl);
-		_lapp = new LAppDelegateOpenGL(_glApi, DecodeTexture)
-		{
-			BGColor = new(0, 0, 0, 0),
-		};
+			try
+			{
+				_glApi = new AvaloniaGlApi(gl);
+				_lapp = new LAppDelegateOpenGL(
+					_glApi,
+					_ => throw new InvalidOperationException("GL 线程禁止同步解码模型纹理"))
+				{
+					BGColor = new(0, 0, 0, 0),
+				};
 
-		_textureQuad = new OpenGLTextureQuad(_glApi);
-		_sceneSurface = new CubismOffscreenSurface_OpenGLES2(_glApi);
-		_hitMaskSurface = new CubismOffscreenSurface_OpenGLES2(_glApi);
-		_runtime.OnGlInit(_lapp, _glApi);
-		_runtime.SetRenderSurfaceState(false, false, _renderActive);
-		StartRenderLoop();
-	}
-
-	private static TexturePixels DecodeTexture(string fileName)
-	{
-		using Bitmap bitmap = new(fileName);
-		PixelSize size = bitmap.PixelSize;
-		using WriteableBitmap rgba = new(size, bitmap.Dpi, PixelFormat.Rgba8888, AlphaFormat.Unpremul);
-		using ILockedFramebuffer framebuffer = rgba.Lock();
-		bitmap.CopyPixels(framebuffer);
-
-		int rowBytes = checked(size.Width * 4);
-		byte[] data = new byte[checked(rowBytes * size.Height)];
-		for (int row = 0; row < size.Height; row++)
-		{
-			Marshal.Copy(framebuffer.Address + row * framebuffer.RowBytes, data, row * rowBytes, rowBytes);
-		}
-
-		return new TexturePixels(size.Width, size.Height, data);
+				_textureQuad = new OpenGLTextureQuad(_glApi);
+				_sceneSurface = new CubismOffscreenSurface_OpenGLES2(_glApi);
+				_hitMaskSurface = new CubismOffscreenSurface_OpenGLES2(_glApi);
+				_runtime.OnGlInit(_lapp, _glApi);
+				_runtime.SetRenderSurfaceState(false, false, _renderActive);
+				StartRenderLoop();
+			}
+			catch
+			{
+				try { _runtime.OnGlDeinit(); } catch { }
+				try { _lapp?.Dispose(); } catch { }
+				_lapp = null;
+				DisposeRenderTargets();
+				try { _textureQuad?.Dispose(); } catch { }
+				_textureQuad = null;
+				_glApi = null;
+				CubismFramework.CleanUp();
+				_sdkLeaseAcquired = false;
+				throw;
+			}
+		});
 	}
 
 	protected override void OnOpenGlDeinit(GlInterface gl)
 	{
 		StopRenderLoop();
-		_runtime.OnGlDeinit();
-		_lapp?.Dispose();
-		_lapp = null;
-		DisposeRenderTargets();
-		_textureQuad?.Dispose();
-		_textureQuad = null;
-		_glApi = null;
-		CubismFramework.CleanUp();
-
-		base.OnOpenGlDeinit(gl);
+		try
+		{
+			CubismFramework.RunSynchronized(() =>
+			{
+				try { _runtime.OnGlDeinit(); }
+				catch (Exception exception) { _runtime.WriteCubismLog($"释放 Live2D 运行时失败: {exception.Message}"); }
+				try { _lapp?.Dispose(); }
+				catch (Exception exception) { _runtime.WriteCubismLog($"释放 Live2D 模型失败: {exception.Message}"); }
+				_lapp = null;
+				DisposeRenderTargets();
+				try { _textureQuad?.Dispose(); }
+				catch (Exception exception) { _runtime.WriteCubismLog($"释放 Live2D 合成器失败: {exception.Message}"); }
+				_textureQuad = null;
+				_glApi = null;
+				if (_sdkLeaseAcquired)
+				{
+					CubismFramework.CleanUp();
+					_sdkLeaseAcquired = false;
+				}
+			});
+		}
+		finally
+		{
+			base.OnOpenGlDeinit(gl);
+		}
 	}
 
 	protected override unsafe void OnOpenGlRender(GlInterface gl, int fb)
 	{
-		try
+		CubismFramework.RunSynchronized(() =>
 		{
-			RenderCore(gl, fb);
-		}
-		catch (Exception exception)
-		{
-			// 渲染回调跑在合成器提交路径上, 抛出去就是进程级崩溃
-			_runtime.WriteCubismLog($"伴侣渲染帧异常: {exception}");
-		}
+			try
+			{
+				RenderCore(gl, fb);
+			}
+			catch (Exception exception)
+			{
+				// 渲染回调跑在合成器提交路径上, 抛出去就是进程级崩溃
+				_runtime.WriteCubismLog($"伴侣渲染帧异常: {exception}");
+			}
+		});
 	}
 
 	private unsafe void RenderCore(GlInterface gl, int fb)
@@ -166,7 +191,7 @@ public sealed class PetGlControl : OpenGlControlBase
 			gl.Viewport(0, 0, _sceneWidth, _sceneHeight);
 			gl.ClearColor(0, 0, 0, 0);
 			gl.Clear(GlConsts.GL_COLOR_BUFFER_BIT | GlConsts.GL_DEPTH_BUFFER_BIT);
-			_runtime.RenderFrame(span, viewportW, viewportH);
+			_runtime.RenderFrame(span, viewportW, viewportH, Bounds.Width, Bounds.Height);
 			scene.EndDraw();
 
 			gl.BindFramebuffer(_glApi.GL_FRAMEBUFFER, fb);
@@ -182,7 +207,7 @@ public sealed class PetGlControl : OpenGlControlBase
 			gl.Viewport(0, 0, viewportW, viewportH);
 			gl.ClearColor(0, 0, 0, 0);
 			gl.Clear(GlConsts.GL_COLOR_BUFFER_BIT | GlConsts.GL_DEPTH_BUFFER_BIT);
-			_runtime.RenderFrame(span, viewportW, viewportH);
+			_runtime.RenderFrame(span, viewportW, viewportH, Bounds.Width, Bounds.Height);
 		}
 
 		_runtime.SetRenderSurfaceState(offscreen, shadowApplied, true);

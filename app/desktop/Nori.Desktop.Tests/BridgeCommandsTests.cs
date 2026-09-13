@@ -213,6 +213,7 @@ public partial class BridgeCommandsTests : IDisposable
 		public List<(string Name, object? Payload)> Broadcasts { get; } = [];
 		public List<string?> SettingsPages { get; } = [];
 		public List<string?> MemoryPages { get; } = [];
+		public int ModelsShowCount { get; private set; }
 		private readonly Dictionary<string, bool> _visible = [];
 
 		public event Action<string, bool>? VisibilityChanged;
@@ -229,6 +230,8 @@ public partial class BridgeCommandsTests : IDisposable
 		public void ShowSettings(string? page = null) => SettingsPages.Add(page);
 
 		public void ShowMemory(string? page = null) => MemoryPages.Add(page);
+
+		public void ShowModels() => ModelsShowCount++;
 
 		public void Hide(string label) => SetVisible(label, false);
 

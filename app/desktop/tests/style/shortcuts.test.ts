@@ -38,17 +38,6 @@ const HAND_ROLL_GUARDS: {shortcut: string, signature: string[], threshold: numbe
 		exclude: /focus-within:/,
 	},
 	{
-		// 单选药丸的选中/未选中态: 两串各自被四处抄过, 描边与光晕最容易先漂
-		shortcut: "pill-choice-on",
-		signature: ["border-nori-teal-bright", "bg-nori-teal-bright/14", "text-nori-teal-bright", "font-600"],
-		threshold: 4,
-	},
-	{
-		shortcut: "pill-choice-off",
-		signature: ["border-line-subtle", "bg-overlay-4", "text-text-muted", "border-nori-teal-soft/60"],
-		threshold: 4,
-	},
-	{
 		shortcut: "scroll-area",
 		signature: ["min-h-0", "overflow-y-auto", "overflow-x-hidden"],
 		threshold: 3,

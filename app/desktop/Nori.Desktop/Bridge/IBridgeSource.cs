@@ -40,3 +40,8 @@ internal interface INativeSettingsSource : IBridgeSource
 internal interface INativeMemorySource : IBridgeSource
 {
 }
+
+/// <summary>原生模型窗口的可信来源；服务及宿主入口共同限制固定的模型命令白名单。</summary>
+internal interface INativeModelSource : IBridgeSource
+{
+}

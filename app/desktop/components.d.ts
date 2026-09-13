@@ -11,7 +11,6 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
-    AdjustControls: typeof import('./src/components/settings/AdjustControls.vue')['default']
     AiSetup: typeof import('./src/components/firstRun/AiSetup.vue')['default']
     AppActionButton: typeof import('./src/components/ui/AppActionButton.vue')['default']
     AppButton: typeof import('./src/components/ui/AppButton.vue')['default']
@@ -35,11 +34,7 @@ declare module 'vue' {
     FeedbackHost: typeof import('./src/components/ui/FeedbackHost.vue')['default']
     HomePanel: typeof import('./src/components/home/HomePanel.vue')['default']
     Icon: typeof import('./src/components/Icon.vue')['default']
-    InteractionControls: typeof import('./src/components/settings/InteractionControls.vue')['default']
-    InteractionRegionOverlay: typeof import('./src/components/settings/InteractionRegionOverlay.vue')['default']
     LanguageSelect: typeof import('./src/components/firstRun/LanguageSelect.vue')['default']
-    Live2dBehaviorControls: typeof import('./src/components/settings/Live2dBehaviorControls.vue')['default']
-    ModelManagement: typeof import('./src/components/settings/ModelManagement.vue')['default']
     ModelSelect: typeof import('./src/components/firstRun/ModelSelect.vue')['default']
     NConfigProvider: typeof import('naive-ui')['NConfigProvider']
     NDialogProvider: typeof import('naive-ui')['NDialogProvider']

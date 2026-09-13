@@ -63,13 +63,6 @@ export default tseslint.config(
 		},
 	},
 	{
-		files: ["src/services/live2d/plugins/beat-sync.ts"],
-		rules: {
-			// 该已有赋值用于触发 Vue ref setter，保留现有运行时语义。
-			"no-self-assign": "off",
-		},
-	},
-	{
 		files: ["src/**/*.vue"],
 		languageOptions: {
 			parserOptions: {

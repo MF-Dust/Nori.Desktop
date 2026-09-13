@@ -178,16 +178,26 @@ public sealed class AgentEngine
 		_replyReaction = replyReaction;
 	}
 
+	/// <summary>同步保留唯一会话；清空历史也必须持有同一闸门，避免迟到落库。</summary>
+	public AgentSessionLease ReserveSession(string sessionId, CancellationToken cancellationToken = default)
+	{
+		cancellationToken.ThrowIfCancellationRequested();
+		return _sessionCoordinator.Start(sessionId, cancellationToken);
+	}
+
 	/// <summary>
 	/// 执行一次 Agent 对话回路
 	///
 	/// 返回最终文本消息; 会话取消时抛出 OperationCanceledException。
 	/// </summary>
-	public async Task<ProtocolMessage> RunAsync(string userText, string sessionId, AgentCallbacks callbacks, CancellationToken cancellationToken)
+	public async Task<ProtocolMessage> RunAsync(string userText, string sessionId, AgentCallbacks callbacks, CancellationToken cancellationToken,
+		AgentSessionLease? reservedSession = null)
 	{
+		using AgentSessionLease session = reservedSession ?? ReserveSession(sessionId, cancellationToken);
+		if (!session.IsOwnedBy(_sessionCoordinator) || session.SessionId != sessionId)
+			throw new InvalidOperationException("会话预留与当前引擎不匹配");
 		if (string.IsNullOrWhiteSpace(userText)) throw new InvalidOperationException("消息内容不能为空");
 		ArgumentNullException.ThrowIfNull(callbacks);
-		using AgentSessionLease session = _sessionCoordinator.Start(sessionId, cancellationToken);
 		CancellationToken runToken = session.CancellationToken;
 		Stopwatch runClock = Stopwatch.StartNew();
 		WriteTrace(sessionId, "run", 0, null, null, "started");
@@ -281,6 +291,7 @@ public sealed class AgentEngine
 		ToolExecutionTracker executionTracker = new();
 		ProtocolMessage finalMessage = new("", null, null, null);
 		int currentIteration = -1;
+		DateTimeOffset? callDeadlineUtc = null;
 		try
 		{
 			ILlmAdapter adapter = _adapterFactory(providerKind, _http);
@@ -304,6 +315,7 @@ public sealed class AgentEngine
 					{
 						SessionId = sessionId,
 						CancellationToken = token,
+						DeadlineUtc = callDeadlineUtc,
 						Approve = callbacks.RequestApproval is { } approve
 							? request => approve(request)
 							: null,
@@ -342,6 +354,7 @@ public sealed class AgentEngine
 				}
 
 				using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(runToken);
+				callDeadlineUtc = DateTimeOffset.UtcNow.AddSeconds(CallTimeoutSeconds);
 				timeout.CancelAfter(TimeSpan.FromSeconds(CallTimeoutSeconds));
 
 				SetState(AgentRunState.Streaming);

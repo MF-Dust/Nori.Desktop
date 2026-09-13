@@ -27,8 +27,6 @@ declare module 'vue' {
     AppSwitch: typeof import('./src/components/ui/AppSwitch.vue')['default']
     AppSwitchRow: typeof import('./src/components/ui/AppSwitchRow.vue')['default']
     AutomationTaskCard: typeof import('./src/components/automation/AutomationTaskCard.vue')['default']
-    ChatMessageBubble: typeof import('./src/components/chat/ChatMessageBubble.vue')['default']
-    ChatView: typeof import('./src/components/ChatView.vue')['default']
     FeedbackHost: typeof import('./src/components/ui/FeedbackHost.vue')['default']
     HomePanel: typeof import('./src/components/home/HomePanel.vue')['default']
     Icon: typeof import('./src/components/Icon.vue')['default']

@@ -190,10 +190,12 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 	/// chat_messages 随使用无限增长, 界面加载必须带 limit, 否则每次打开都全量拉取.
 	/// beforeId <= 0 表示从最新一条开始; limit <= 0 视为不限制 (兼容旧的全量读取).
 	/// </summary>
-	public IReadOnlyList<ChatMessage> GetHistory(int limit, long beforeId) => _database.Locked(connection =>
+	public IReadOnlyList<ChatMessage> GetHistory(int limit, long beforeId, bool excludeToolFeedback = false) => _database.Locked(connection =>
 	{
-		string sql = "SELECT id, role, content, created_at FROM chat_messages";
-		if (beforeId > 0) sql += " WHERE id < $before";
+		string sql = "SELECT id, role, content, created_at FROM chat_messages WHERE 1 = 1";
+		if (beforeId > 0) sql += " AND id < $before";
+		// 先筛选再分页，避免一页旧工具反馈使界面误判已经没有更早消息。
+		if (excludeToolFeedback) sql += " AND NOT (role = 'user' AND content LIKE $feedbackPrefix)";
 		// 倒序取最新的 limit 条, 读完后反转回时间正序
 		sql += " ORDER BY id DESC";
 		if (limit > 0) sql += " LIMIT $limit";
@@ -201,6 +203,7 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 		using SqliteCommand command = connection.CreateCommand();
 		command.CommandText = sql;
 		if (beforeId > 0) command.Parameters.AddWithValue("$before", beforeId);
+		if (excludeToolFeedback) command.Parameters.AddWithValue("$feedbackPrefix", "【系统工具执行反馈 -%");
 		if (limit > 0) command.Parameters.AddWithValue("$limit", limit);
 		using SqliteDataReader reader = command.ExecuteReader();
 		List<ChatMessage> messages = [];

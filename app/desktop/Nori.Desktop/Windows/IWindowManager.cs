@@ -35,6 +35,9 @@ public interface IWindowManager
 	/// <summary>打开原生模型窗口。</summary>
 	void ShowModels();
 
+	/// <summary>打开并复用原生对话窗口。</summary>
+	void ShowChat();
+
 	/// <summary>隐藏窗口</summary>
 	void Hide(string label);
 

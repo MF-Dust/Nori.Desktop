@@ -11,6 +11,7 @@ import Icon from "../Icon.vue"
 import AppChip from "../ui/AppChip.vue"
 import AppButton from "../ui/AppButton.vue"
 import AppStatTile from "../ui/AppStatTile.vue"
+import PluginWidgets from "../chat/PluginWidgets.vue"
 import type {IconMode, IconName} from "../../services/icon"
 import {MODEL_LIST} from "../../services/live2d/models"
 import {RUNTIME} from "../../services/runtime"
@@ -362,6 +363,9 @@ onMounted(() => {
 				</button>
 			</div>
 		</section>
+
+		<!-- 插件挂件（聊天入口迁移前保留，先在主页承接原入口） -->
+		<PluginWidgets />
 
 		<!-- 生态社区 -->
 		<section class="flex flex-col gap-2 pt-2 border-t border-line-subtle">

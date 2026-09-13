@@ -83,6 +83,8 @@ Envelopes are double-encoded: the host serializes the JSON envelope, then serial
 
 Privileged commands allowlist their caller by window label — `complete_first_run` rejects anything but a visible `first-run` webview. Follow that pattern for anything state-changing.
 
+> 对话迁移阶段：`window_open_chat` 打开独立原生 `ChatWindow`（深色、缓存窗口上下文）；`main` 继续承接音频宿主与 `OperationDrawer`，`PluginWidgets` 与其他聊天入口保持在主界面/首页，Vue 其余页面先不移除。
+
 Host→frontend events:
 
 | Event | Emitted by | Consumed by |

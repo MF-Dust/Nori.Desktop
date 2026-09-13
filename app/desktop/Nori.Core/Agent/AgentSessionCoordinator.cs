@@ -89,6 +89,8 @@ public sealed class AgentSessionLease : IDisposable
 		_active = active;
 	}
 
+	internal bool IsOwnedBy(AgentSessionCoordinator owner) => ReferenceEquals(_owner, owner) && Volatile.Read(ref _disposed) == 0;
+
 	/// <summary>包含调用方取消信号的会话 token。</summary>
 	public CancellationToken CancellationToken => _active.Cancellation.Token;
 

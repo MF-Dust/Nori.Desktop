@@ -45,7 +45,6 @@ const PANEL_OPTIONS = {
 } as const
 
 const HomePanel = defineAsyncComponent({loader: () => import("../components/home/HomePanel.vue"), ...PANEL_OPTIONS})
-const ChatView = defineAsyncComponent({loader: () => import("../components/ChatView.vue"), ...PANEL_OPTIONS})
 
 // ---- 侧边导航 (「记忆」已从设置二级提升为一级页, 「关于」仍在设置的二级列表里) ----
 type NavKey = "home" | "talk" | "model" | "memory" | "settings"
@@ -101,7 +100,15 @@ const openNativeModels = () => {
 	void RUNTIME.openModels().catch(error => feedback.error(UI_I18N.value.loadFailed, error))
 }
 
+const openNativeChat = () => {
+	void RUNTIME.openChat().catch(error => feedback.error(UI_I18N.value.loadFailed, error))
+}
+
 const navigateSidebar = (key: NavKey) => {
+	if (key === "talk") {
+		openNativeChat()
+		return
+	}
 	if (key === "model") {
 		openNativeModels()
 		return
@@ -167,6 +174,10 @@ const togglePet = async () => {
 
 // 主页磁贴跳转
 const navigate = (tab: "talk" | "model" | "settings", origin: NavKey = "home") => {
+	if (tab === "talk") {
+		openNativeChat()
+		return
+	}
 	if (tab === "model") {
 		openNativeModels()
 		return
@@ -308,10 +319,7 @@ onBeforeUnmount(() => {
 					<span class="text-text-faint">{{ ORIGIN_LABEL }}</span>
 				</button>
 
-				<!--
-					主工作区保留主页与对话；模型、记忆和设置由宿主打开独立原生窗口。
-					只有对话面板需要 KeepAlive: 它卸载会取消进行中的会话并自动拒掉所有待审批工具调用。
-				-->
+				<!-- 主工作区保留主页：对话窗口交给宿主原生窗口打开。 -->
 				<div class="flex-1 min-h-0 flex flex-col scroll-area">
 					<HomePanel
 						v-if="activeNav === 'home'"
@@ -319,9 +327,6 @@ onBeforeUnmount(() => {
 						@toggle-pet="togglePet"
 						@navigate="navigate"
 					/>
-					<KeepAlive>
-						<ChatView v-if="activeNav === 'talk'" @go-settings="navigate('settings', 'talk')"/>
-					</KeepAlive>
 				</div>
 			</main>
 		</div>

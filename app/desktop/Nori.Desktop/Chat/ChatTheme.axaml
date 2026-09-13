@@ -1,0 +1,42 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+	<!-- 保留现有原生控件模板、键盘焦点；对话按钮的所有交互态使用同一套深色令牌。 -->
+	<StyleInclude Source="avares://Nori.Desktop/Settings/SettingsTheme.axaml"/>
+	<Style Selector="Button.chat-button">
+		<Setter Property="Background" Value="{DynamicResource ChatDeepBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource ChatBodyBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource ChatLineBrush}"/>
+		<Setter Property="BorderThickness" Value="1"/>
+		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="FontSize" Value="12"/>
+	</Style>
+	<Style Selector="Button.chat-button:pointerover, Button.chat-button:pressed">
+		<Setter Property="Background" Value="{DynamicResource ChatPanelBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource ChatPrimaryBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource ChatAccentBrush}"/>
+	</Style>
+	<Style Selector="Button.chat-button.primary, Button.chat-button.primary:pointerover, Button.chat-button.primary:pressed">
+		<Setter Property="Background" Value="{DynamicResource ChatAccentBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource ChatAccentBrush}"/>
+	</Style>
+	<Style Selector="Button.chat-button.stop, Button.chat-button.stop:pointerover, Button.chat-button.stop:pressed">
+		<Setter Property="Background" Value="{DynamicResource ChatDangerBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource ChatDangerBrush}"/>
+	</Style>
+	<Style Selector="Button.chat-button:disabled">
+		<Setter Property="Background" Value="{DynamicResource ChatDeepBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource ChatMutedBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource ChatLineBrush}"/>
+	</Style>
+	<Style Selector="Button.chat-button /template/ Border#BackgroundElement">
+		<Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+	</Style>
+	<Style Selector="TextBox.chat-composer">
+		<Setter Property="Background" Value="{DynamicResource ChatDeepBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource ChatPrimaryBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource ChatLineBrush}"/>
+		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="FontSize" Value="13"/>
+	</Style>
+</Styles>

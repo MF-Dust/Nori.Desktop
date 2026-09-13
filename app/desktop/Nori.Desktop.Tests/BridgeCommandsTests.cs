@@ -255,6 +255,7 @@ public partial class BridgeCommandsTests : IDisposable
 		public List<string?> SettingsPages { get; } = [];
 		public List<string?> MemoryPages { get; } = [];
 		public int ModelsShowCount { get; private set; }
+		public int ChatShowCount { get; private set; }
 		private readonly Dictionary<string, bool> _visible = [];
 
 		public event Action<string, bool>? VisibilityChanged;
@@ -273,6 +274,8 @@ public partial class BridgeCommandsTests : IDisposable
 		public void ShowMemory(string? page = null) => MemoryPages.Add(page);
 
 		public void ShowModels() => ModelsShowCount++;
+
+		public void ShowChat() => ChatShowCount++;
 
 		public void Hide(string label) => SetVisible(label, false);
 

@@ -13,7 +13,7 @@ namespace Nori.Desktop.Windows;
 /// 窗口调度
 ///
 /// 承接原来 Rust 侧 lib.rs setup / tray.rs 与前端 services/window/index.ts 的窗口调度职责.
-/// 管理三个 WebView、原生伴侣视窗与按需创建的原生设置、记忆和模型窗口。
+/// 管理三个 WebView、原生伴侣视窗与按需创建的原生设置、记忆、模型和对话窗口。
 /// </summary>
 public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleApplicationLifetime lifetime, AppStoragePaths storagePaths) : IWindowManager
 {
@@ -27,6 +27,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	private int _shutdownRequested;
 	private Task? _memoryCloseTask;
 	private Task? _modelsCloseTask;
+	private Task? _chatCloseTask;
 
 	/// <inheritdoc />
 	public event Action<string, bool>? VisibilityChanged;
@@ -129,6 +130,11 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 			ShowModels();
 			return;
 		}
+		if (label == WindowLabels.Chat)
+		{
+			ShowChat();
+			return;
+		}
 		if (Get(label) is not { } window) return;
 		window.Show();
 		if (window is PetWindow pet)
@@ -215,6 +221,23 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 		_ = RefreshModelsAsync(models);
 	}
 
+	/// <inheritdoc />
+	public void ShowChat()
+	{
+		Dispatcher.UIThread.VerifyAccess();
+		if (Volatile.Read(ref _shutdownRequested) != 0 || _chatCloseTask is { IsCompleted: false }) return;
+		if (Get(WindowLabels.Chat) is not ChatWindow chat)
+		{
+			AppServices services = _services ?? throw new InvalidOperationException("应用窗口尚未就绪");
+			chat = new ChatWindow(services);
+			_windows[WindowLabels.Chat] = chat;
+			TrackVisibility(WindowLabels.Chat, chat);
+		}
+		if (chat.WindowState == WindowState.Minimized) chat.WindowState = WindowState.Normal;
+		chat.Show();
+		chat.Activate();
+	}
+
 	private async Task RefreshModelsAsync(ModelsWindow models)
 	{
 		try { await models.RefreshAsync(); }
@@ -248,6 +271,12 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 				_modelsCloseTask = CloseModelsAsync(models);
 			return;
 		}
+		if (window is ChatWindow chat)
+		{
+			if (_chatCloseTask is null || _chatCloseTask.IsCompleted)
+				_chatCloseTask = CloseChatAsync(chat);
+			return;
+		}
 		_windows.Remove(label);
 		if (window is NoriWindow nw) nw.AllowClose = true;
 		else if (window is SettingsWindow settings) settings.AllowClose = true;
@@ -258,6 +287,22 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 		}
 		window.Close();
 		if (_visible.TryUpdate(label, false, true)) VisibilityChanged?.Invoke(label, false);
+	}
+
+	private async Task CloseChatAsync(ChatWindow chat)
+	{
+		try { await chat.PrepareShutdownAsync(); }
+		catch (Exception exception)
+		{
+			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"对话窗口关闭失败: {exception.GetType().Name}");
+			chat.ReportHostFailure(exception);
+			return;
+		}
+		if (!ReferenceEquals(Get(WindowLabels.Chat), chat)) return;
+		_windows.Remove(WindowLabels.Chat);
+		chat.AllowClose = true;
+		chat.Close();
+		if (_visible.TryUpdate(WindowLabels.Chat, false, true)) VisibilityChanged?.Invoke(WindowLabels.Chat, false);
 	}
 
 	private async Task CloseMemoryAsync(MemoryWindow memory)
@@ -355,6 +400,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 			{
 				if (_memoryCloseTask is { } closingMemory) await closingMemory;
 				if (_modelsCloseTask is { } closingModels) await closingModels;
+				if (_chatCloseTask is { } closingChat) await closingChat;
 				MemoryWindow? memory = Get(WindowLabels.Memory) as MemoryWindow;
 				ModelsWindow? models = Get(WindowLabels.Models) as ModelsWindow;
 				SettingsWindow? settings = Get(WindowLabels.Settings) as SettingsWindow;
@@ -368,6 +414,9 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 				failureOwner = models;
 				if (models is not null && !await models.FlushPendingSavesAsync())
 					throw new InvalidOperationException("模型保存失败，请检查后重试");
+				// 录音停止可能失败；先预检，避免失败时其他原生页面已被释放。
+				failureOwner = Get(WindowLabels.Chat);
+				if (failureOwner is ChatWindow recordingChat) await recordingChat.Body.PrepareHideAsync();
 				failureOwner = memory;
 				if (memory is not null) await memory.PrepareShutdownAsync();
 				failureOwner = settings;
@@ -375,12 +424,15 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 				// 模型窗口最后释放；此前任一窗口失败时，模型编辑上下文仍可复用。
 				failureOwner = models;
 				if (models is not null) await models.PrepareShutdownAsync();
+				failureOwner = Get(WindowLabels.Chat);
+				if (failureOwner is ChatWindow chat) await chat.PrepareShutdownAsync();
 			}
 			catch (Exception exception)
 			{
 				Interlocked.Exchange(ref _shutdownRequested, 0);
 				_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"窗口关闭前保存失败，已取消退出: {exception.GetType().Name}");
-				if (failureOwner is ModelsWindow models) ShowModelsFailure(models, exception);
+				if (failureOwner is ChatWindow chat) chat.ReportHostFailure(exception);
+				else if (failureOwner is ModelsWindow models) ShowModelsFailure(models, exception);
 				else if (Get(WindowLabels.Memory) is MemoryWindow memory) ShowMemoryFailure(memory, exception);
 				return;
 			}
@@ -390,6 +442,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 				else if (window is SettingsWindow settingsWindow) settingsWindow.AllowClose = true;
 				else if (window is MemoryWindow memoryWindow) memoryWindow.AllowClose = true;
 				else if (window is ModelsWindow modelsWindow) modelsWindow.AllowClose = true;
+				else if (window is ChatWindow chatWindow) chatWindow.AllowClose = true;
 				else if (window is PetWindow petWindow) petWindow.AllowClose = true;
 			}
 

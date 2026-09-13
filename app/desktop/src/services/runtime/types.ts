@@ -672,6 +672,8 @@ export interface UiSnapshot {
 	general: GeneralState
 	telemetry: TelemetryState
 	secretIssues: SecretIssueDto[]
+	/** 实际启用的对话后端就绪状态，独立于本地 AI 配置。 */
+	chat: {configured: boolean; backend: "local" | "luolicore"}
 	ai: AiState
 	models: ModelsState
 	pet: PetState
@@ -726,6 +728,8 @@ export interface ApprovalRequestDto {
 	arguments?: Record<string, unknown>
 	description?: string
 	permissionLevel: "confirm" | "dangerous"
+	/** 宿主确认的授权截止时间，不能由界面自行延长。 */
+	deadlineUtc: string
 	category?: string
 }
 
@@ -740,6 +744,7 @@ export type AgentEventPayload =
 	| {type: "cancelled"; sessionId: string}
 	| {type: "error"; sessionId: string; error: string}
 	| ApprovalRequestDto
+	| {type: "approval-extended"; sessionId: string; requestId: string; deadlineUtc: string}
 	| {type: "approval-result"; sessionId: string; requestId: string; approved: boolean; reason: string}
 
 // ===================================================================

@@ -90,7 +90,6 @@ export default defineConfig({
 			+ "radial-gradient(36rem_24rem_at_50%_60%,var(--line-glow),transparent_65%),"
 			+ "linear-gradient(165deg,var(--bg-panel)_0%,var(--bg-deep)_50%,var(--bg-abyss)_100%)]",
 		],
-		["glass-panel", "bg-bg-card border border-line-subtle rounded-md backdrop-blur-[1.4rem] transition-all duration-200 hover:(border-line-strong shadow-elev-1)"],
 		["surface-card", "bg-bg-card border border-line-subtle rounded-md shadow-elev-1 backdrop-blur-[1.2rem] transition-all duration-200 hover:(border-line-strong bg-bg-card-hover shadow-elev-2)"],
 		// 卡片里再套卡片时用这一档, 与外层拉开层次
 		["surface-inset", "bg-overlay-4 border border-line-subtle rounded-sm backdrop-blur-[0.8rem]"],

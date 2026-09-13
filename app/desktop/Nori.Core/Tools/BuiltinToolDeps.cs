@@ -23,6 +23,9 @@ public sealed class ToolContext
 	/// <summary>逐调用授权回调; confirm/dangerous 工具缺少该回调时 fail-closed 拒绝执行</summary>
 	public ToolApprovalHandler? Approve { get; init; }
 
+	/// <summary>外层工具调用实际截止时间，用于限制授权延期。</summary>
+	public DateTimeOffset? DeadlineUtc { get; init; }
+
 	/// <summary>授权回调最长等待时间；超时按拒绝处理。</summary>
 	public TimeSpan ApprovalTimeout { get; init; } = TimeSpan.FromMinutes(2);
 }

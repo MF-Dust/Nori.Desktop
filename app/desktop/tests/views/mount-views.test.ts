@@ -6,7 +6,6 @@ import {mergePluginMessages} from "../../src/services/i18n/pluginMessages"
 import {RUNTIME} from "../../src/services/runtime"
 import Main from "../../src/views/Main.vue"
 import HomePanel from "../../src/components/home/HomePanel.vue"
-import ChatView from "../../src/components/ChatView.vue"
 
 describe("Views and Panels Mounting", () => {
 	let INVOKED: string[] = []
@@ -186,33 +185,33 @@ describe("Views and Panels Mounting", () => {
 		element.dispatchEvent(new MouseEvent("click", {bubbles: true}))
 	}
 
-	it("switches Main tabs without leaving a blank panel", async () => {
+	it("main 侧边导航主面板不切换对话页，原生窗口在主界面外打开", async () => {
 		const MOUNT = mountComponent(Main)
-		// 模型、记忆和设置打开原生窗口，主面板保留当前内容。
-		const MAIN_TABS = ["home", "talk"]
 		try {
 			await settleView()
 			expect(MOUNT.container.innerHTML).toBeTruthy()
 
 			const NAV_BUTTONS = Array.from(MOUNT.container.querySelectorAll("aside nav button"))
-			expect(NAV_BUTTONS).toHaveLength(MAIN_TABS.length + 3)
-			for (const [INDEX, TAB] of MAIN_TABS.entries()) {
-				click(NAV_BUTTONS[INDEX])
-				await settleView()
-				const PANELS = MOUNT.container.querySelectorAll("[data-main-panel]")
-				expect(PANELS).toHaveLength(1)
-				expect(PANELS[0].getAttribute("data-main-panel")).toBe(TAB)
-				expect(PANELS[0].textContent?.trim()).not.toBe("")
-			}
+			expect(NAV_BUTTONS).toHaveLength(5)
 
-			click(NAV_BUTTONS[1])
-			click(NAV_BUTTONS[2])
-			click(NAV_BUTTONS[3])
-			click(NAV_BUTTONS[4])
+			click(NAV_BUTTONS[0]) // home
 			await settleView()
 			const PANELS = MOUNT.container.querySelectorAll("[data-main-panel]")
 			expect(PANELS).toHaveLength(1)
-			expect(PANELS[0].getAttribute("data-main-panel")).toBe("talk")
+			expect(PANELS[0].getAttribute("data-main-panel")).toBe("home")
+
+			click(NAV_BUTTONS[1]) // talk
+			await settleView()
+			expect(INVOKED).toContain("window_open_chat")
+			expect(PANELS[0].getAttribute("data-main-panel")).toBe("home")
+
+			click(NAV_BUTTONS[2]) // model
+			await settleView()
+			click(NAV_BUTTONS[3]) // memory
+			await settleView()
+			click(NAV_BUTTONS[4]) // settings
+			await settleView()
+
 			expect(INVOKED).toContain("window_open_models")
 			expect(INVOKED).not.toContain("model_get_meta")
 			expect(INVOKED).toContain("window_open_settings")
@@ -224,7 +223,7 @@ describe("Views and Panels Mounting", () => {
 		}
 	})
 
-	it("主页换装入口打开原生模型窗口且不替换主面板", async () => {
+	it("主页快速卡片打开原生模型窗口且不替换主面板", async () => {
 		const MOUNT = mountComponent(Main)
 		try {
 			await settleView()
@@ -242,20 +241,32 @@ describe("Views and Panels Mounting", () => {
 		}
 	})
 
+	it("主页对话卡片打开原生对话窗口且不替换主面板", async () => {
+		const MOUNT = mountComponent(Main)
+		try {
+			await settleView()
+			const BUTTON = Array.from(MOUNT.container.querySelectorAll("main button"))
+				.find(button => button.textContent?.includes(ZH.views.main.home.cards.chat.title))
+			expect(BUTTON).toBeDefined()
+			click(BUTTON!)
+			await settleView()
+			expect(INVOKED).toContain("window_open_chat")
+			expect(INVOKED).not.toContain("model_get_meta")
+			expect(MOUNT.container.querySelector("[data-main-panel]")?.getAttribute("data-main-panel")).toBe("home")
+		} finally {
+			MOUNT.app.unmount()
+			MOUNT.container.remove()
+		}
+	})
+
 	it("handles empty / null snapshot gracefully in all panels", () => {
 		RUNTIME.snapshot.value = null
-		const panels = [
-			HomePanel,
-			ChatView,
-		]
-		for (const comp of panels) {
-			const MOUNT = mountComponent(comp)
-			try {
-				expect(MOUNT.container.innerHTML).toBeTruthy()
-			} finally {
-				MOUNT.app.unmount()
-				MOUNT.container.remove()
-			}
+		const MOUNT = mountComponent(HomePanel)
+		try {
+			expect(MOUNT.container.innerHTML).toBeTruthy()
+		} finally {
+			MOUNT.app.unmount()
+			MOUNT.container.remove()
 		}
 	})
 })

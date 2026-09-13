@@ -85,6 +85,7 @@ export interface BridgeCommandMap {
 	window_open_settings: {args: {page?: string}; result: void}
 	window_open_memory: {args: {page?: MemoryPage}; result: void}
 	window_open_models: {args: EmptyCommandArgs; result: void}
+	window_open_chat: {args: EmptyCommandArgs; result: void}
 
 	updater_check: {args: EmptyCommandArgs; result: UpdaterCheckResultDto}
 	updater_install: {args: EmptyCommandArgs; result: UpdaterInstallResultDto}
@@ -130,8 +131,9 @@ export interface BridgeCommandMap {
 	chat_start: {args: {text: string}; result: string}
 	chat_cancel: {args: {sessionId: string}; result: boolean}
 	approval_respond: {args: {requestId: string; approved: boolean}; result: boolean}
+	approval_extend: {args: {requestId: string}; result: {deadlineUtc: string}}
 	chat_history_page: {args: {limit?: number; beforeId?: number}; result: HistoryMessage[]}
-	chat_clear: {args: EmptyCommandArgs; result: void}
+	chat_clear: {args: EmptyCommandArgs; result: {remoteReset: boolean; note: string | null}}
 
 	model_select: {args: {modelId: string}; result: void}
 	complete_first_run: {args: {modelId: string; telemetryEnabled: boolean}; result: void}

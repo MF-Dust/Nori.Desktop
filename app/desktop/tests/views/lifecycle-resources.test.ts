@@ -10,18 +10,17 @@ const read = (path: string): string => normalizeEol(readFileSync(join(SRC, path)
 const readProject = (path: string): string => normalizeEol(readFileSync(join(ROOT, path), "utf8"))
 
 describe("页面与宿主资源生命周期", () => {
-	it("主工作区只缓存对话页，其他重资源页面切走后正常卸载", () => {
+	it("主工作区不再内置对话页并持有原生入口", () => {
 		const MAIN = read("views/Main.vue")
-		const KEEP_ALIVE = MAIN.match(/<KeepAlive>([\s\S]*?)<\/KeepAlive>/)?.[1] ?? ""
 
-		expect(KEEP_ALIVE).toContain("<ChatView")
-		expect(KEEP_ALIVE).not.toContain("<HomePanel")
-		expect(KEEP_ALIVE).not.toContain("<ModelManagement")
-		expect(KEEP_ALIVE).not.toContain("<MemoryPanel")
-		expect(KEEP_ALIVE).not.toContain("<SettingsPanel")
-		expect(MAIN).not.toContain("ModelManagement")
+		expect(MAIN).not.toContain("<ChatView")
+		expect(MAIN).not.toContain("<KeepAlive>")
+		expect(MAIN).toContain("RUNTIME.openChat")
 		expect(MAIN).toContain("RUNTIME.openModels")
 		expect(MAIN).toContain("RUNTIME.openSettings")
+		expect(MAIN).toContain("RUNTIME.openMemory")
+		expect(MAIN).not.toContain("<ModelManagement")
+		expect(MAIN).not.toContain("<MemoryPanel")
 		expect(MAIN).not.toContain("<SettingsPanel")
 	})
 

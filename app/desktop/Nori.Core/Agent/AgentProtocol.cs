@@ -68,4 +68,11 @@ public sealed record ToolApprovalRequest
 
 	/// <summary>工具分类</summary>
 	public string? Category { get; init; }
+
+	/// <summary>本次工具实际等待上限；界面延期不能越过该时刻。</summary>
+	public DateTimeOffset? DeadlineUtc { get; init; }
+
+	/// <summary>授权已被上游放弃的信号，不向 UI 序列化。</summary>
+	[System.Text.Json.Serialization.JsonIgnore]
+	public CancellationToken CancellationToken { get; init; }
 }

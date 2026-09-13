@@ -53,6 +53,7 @@ public sealed class AppRuntime : IAsyncDisposable
 
 	private readonly ConcurrentDictionary<string, AgentSessionState> _sessions = new();
 	private readonly ConcurrentDictionary<string, PendingApproval> _approvals = new();
+	private readonly Lock _approvalGate = new();
 	private readonly ConcurrentDictionary<string, PendingDesktopApproval> _desktopApprovals = new();
 	private readonly ConcurrentDictionary<Task, byte> _backgroundTasks = new();
 	private readonly CancellationTokenSource _lifetimeCts = new();
@@ -843,103 +844,100 @@ public sealed class AppRuntime : IAsyncDisposable
 	/// </summary>
 	public string StartChat(IBridgeSource source, string text)
 	{
-		if (Volatile.Read(ref _disposed) != 0) throw new InvalidOperationException("Application is shutting down");
+		if (Volatile.Read(ref _disposed) != 0) throw new InvalidOperationException("应用正在退出");
+		if (Services.SafeMode) throw new InvalidOperationException("安全模式已禁用联网和外部服务");
+		Nori.Desktop.Chat.NativeChatService.ValidateSourceCommand(source, "chat_start");
+		if (source is not INativeChatSource && source.Label != WindowLabels.Main)
+			throw new InvalidOperationException("来源窗口无权发起对话");
+		if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("消息内容不能为空");
 		string sessionId = $"agent-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x}-{Interlocked.Increment(ref _sessionCounter):x}";
-		AgentSessionState session = new(source.Label);
+		CancellationToken lifetimeToken = _lifetimeCts.Token;
+		AgentSessionState session = new(source, lifetimeToken);
+		AgentSessionLease lease;
+		try
+		{
+			session.Cts.Token.ThrowIfCancellationRequested();
+			// 在返回 sessionId 前预留引擎闸门，消除后台线程尚未启动时的清空/重入窗口。
+			lease = Engine.ReserveSession(sessionId, session.Cts.Token);
+		}
+		catch { session.Dispose(); throw; }
 		_sessions[sessionId] = session;
-		// 聊天请求优先于伴侣轻量请求与其语音；旧 AI 请求改走该区域的本地兜底。
-		CancelPetInteractionRequest(true);
-		CancelPetInteractionPresentation();
 
 		AgentCallbacks callbacks = new()
 		{
-			OnState = state => PostAgentEvent(session.SourceLabel, new {type = "state", sessionId, state = state.ToString().ToLowerInvariant()}),
-			OnTextChunk = chunk => PostAgentEvent(session.SourceLabel, new {type = "chunk", sessionId, chunk}),
-			OnToolExecuting = (name, args) => PostAgentEvent(session.SourceLabel, new {type = "tool-executing", sessionId, toolName = name, arguments = args}),
-			OnToolExecuted = (name, result, error) => PostAgentEvent(session.SourceLabel, new
+			OnState = state => PostAgentEvent(session.Source, new {type = "state", sessionId, state = state.ToString().ToLowerInvariant()}),
+			OnTextChunk = chunk => PostAgentEvent(session.Source, new {type = "chunk", sessionId, chunk}),
+			OnToolExecuting = (name, args) => PostAgentEvent(session.Source, new {type = "tool-executing", sessionId, toolName = name, arguments = args}),
+			OnToolExecuted = (name, result, error) => PostAgentEvent(session.Source, new
 			{
 				type = "tool-executed",
 				sessionId,
 				toolName = name,
 				result = ToJsonNode(result),
 				success = error is null,
-				error,
+				error = error is null ? null : SensitiveDataRedactor.Redact(error),
 			}),
-			OnUsage = usage => PostAgentEvent(session.SourceLabel, new
+			OnUsage = usage => PostAgentEvent(session.Source, new
 			{
-				type = "usage",
-				sessionId,
-				promptTokens = usage.PromptTokens,
-				completionTokens = usage.CompletionTokens,
-				totalTokens = usage.TotalTokens,
-				cachedTokens = usage.CachedTokens,
-				cacheHitRate = usage.CacheHitRate,
-				durationMs = usage.DurationMs,
-				model = usage.Model,
+				type = "usage", sessionId,
+				promptTokens = usage.PromptTokens, completionTokens = usage.CompletionTokens,
+				totalTokens = usage.TotalTokens, cachedTokens = usage.CachedTokens,
+				cacheHitRate = usage.CacheHitRate, durationMs = usage.DurationMs, model = usage.Model,
 			}),
-			RequestApproval = request => RequestApprovalAsync(session, sessionId, request),
-			OnComplete = _ =>
-			{
-				/* complete 事件在 RunAsync 正常返回后统一发出 */
-			},
+			RequestApproval = request => RequestApprovalAsync(session.Source, sessionId, request, session.Cts.Token),
 		};
 
 		Task worker = Task.Run(async () =>
 		{
-			using ITelemetryTransaction operation = Services.Telemetry.StartTransaction("agent.run");
+			object terminal;
+			ProtocolMessage? final = null;
 			try
 			{
+				using ITelemetryTransaction operation = Services.Telemetry.StartTransaction("agent.run");
+				// 聊天优先于伴侣轻量互动，但两者不共用聊天历史。
+				CancelPetInteractionRequest(true);
+				CancelPetInteractionPresentation();
 				await RefreshMcpToolsAsync(session.Cts.Token);
-				ProtocolMessage final = await Engine.RunAsync(text, sessionId, callbacks, session.Cts.Token);
-				_reflectionWorker.TryEnqueue();
-				PostAgentEvent(session.SourceLabel, new
+				final = await Engine.RunAsync(text, sessionId, callbacks, session.Cts.Token, lease);
+				if (!Services.SafeMode) _reflectionWorker.TryEnqueue();
+				terminal = new
 				{
-					type = "complete",
-					sessionId,
-					message = new
-					{
-						text = final.Text,
-						emotion = final.Emotion,
-						expression = final.Expression,
-						action = final.Action,
-					},
-				});
-
-				await AutoSpeakAsync(final.Text, final.Emotion, session.SourceLabel, session.Cts.Token);
+					type = "complete", sessionId,
+					message = new {text = final.Text, emotion = final.Emotion, expression = final.Expression, action = final.Action},
+				};
 			}
-			catch (OperationCanceledException)
-			{
-				PostAgentEvent(session.SourceLabel, new {type = "cancelled", sessionId});
-			}
+			catch (OperationCanceledException) { terminal = new {type = "cancelled", sessionId}; }
 			catch (Exception exception)
 			{
-				PostAgentEvent(session.SourceLabel, new {type = "error", sessionId, error = SensitiveDataRedactor.Redact(exception.Message)});
+				terminal = new {type = "error", sessionId, error = SensitiveDataRedactor.Redact(exception.Message)};
 			}
 			finally
 			{
+				lease.Dispose();
 				_sessions.TryRemove(sessionId, out _);
 				session.Dispose();
 			}
+			// 终结事件意味着引擎与落库已结束，清空/下一轮不再被自动朗读占用。
+			PostAgentEvent(session.Source, terminal);
+			if (final is not null) await AutoSpeakAsync(final.Text, final.Emotion, lifetimeToken);
 		});
 		session.Worker = worker;
 		TrackTask(worker);
-
 		return sessionId;
 	}
 
 	private int _sessionCounter;
 
-	private async Task AutoSpeakAsync(string text, string? messageEmotion, string sourceLabel, CancellationToken ct)
+	private async Task AutoSpeakAsync(string text, string? messageEmotion, CancellationToken ct)
 	{
 		if (string.IsNullOrWhiteSpace(text)) return;
 		bool autoTts = ParseBoolFlag(Services.Config.GetStringOr("tts_auto_play", "")) ?? false;
-		if (!autoTts) return;
+		if (!autoTts || Services.SafeMode || ct.IsCancellationRequested) return;
 
 		// 情绪自动推断：优先本条 AI 回复自带情绪，否则用全局情绪状态机当前值；
 		// 都没有 (或为 neutral) 时不传情绪，让 TTS 用音色自带情绪。
 		string? emotion = string.IsNullOrWhiteSpace(messageEmotion) ? Emotion.CurrentType : messageEmotion.Trim();
 		TtsSynthesizeOptions speechOptions = new() {EmotionText = emotion};
-		PostAgentEvent(sourceLabel, new {type = "state", state = AgentRunState.Speaking.ToString().ToLowerInvariant()});
 		try
 		{
 			await Voice.SpeakAsync(text, speechOptions, ct);
@@ -948,33 +946,21 @@ public sealed class AppRuntime : IAsyncDisposable
 		{
 			/* 自动朗读失败不阻断完成事件 */
 		}
-		finally
-		{
-			PostAgentEvent(sourceLabel, new {type = "state", state = AgentRunState.Idle.ToString().ToLowerInvariant()});
-		}
 	}
 
 	/// <summary>取消指定来源窗口的会话</summary>
-	public bool CancelChat(string sourceLabel, string sessionId)
+	public bool CancelChat(IBridgeSource source, string sessionId)
 	{
-		if (!_sessions.TryGetValue(sessionId, out AgentSessionState? session) || session.SourceLabel != sourceLabel)
-		{
-			return false;
-		}
-		session.Cts.Cancel();
-		// 取消所有该会话挂起的授权 (fail-closed)
-		foreach ((string requestId, PendingApproval approval) in _approvals)
-		{
-			if (approval.SessionId != sessionId) continue;
-			if (_approvals.TryRemove(new KeyValuePair<string, PendingApproval>(requestId, approval)))
-			{
-				approval.Tcs.TrySetResult(false);
-				approval.Dispose();
-				PostAgentEvent(approval.SourceLabel, new {type = "approval-result", sessionId, requestId, approved = false, reason = "cancelled"});
-			}
-		}
+		if (!_sessions.TryGetValue(sessionId, out AgentSessionState? session) || !IsSameSource(source, session.Source)) return false;
+		try { session.Cts.Cancel(); }
+		catch (ObjectDisposedException) { return false; }
 		return true;
 	}
+
+	private static bool IsSameSource(IBridgeSource source, IBridgeSource owner) =>
+		source is INativeChatSource || owner is INativeChatSource
+			? ReferenceEquals(source, owner)
+			: source.Label == owner.Label;
 
 	/// <summary>会话是否仍在运行</summary>
 	public bool IsSessionActive(string sessionId) => _sessions.ContainsKey(sessionId);
@@ -983,39 +969,83 @@ public sealed class AppRuntime : IAsyncDisposable
 	// 工具授权
 	// ===================================================================
 
-	private async Task<bool> RequestApprovalAsync(AgentSessionState session, string sessionId, ToolApprovalRequest request)
+	internal async Task<bool> RequestApprovalAsync(IBridgeSource source, string sessionId, ToolApprovalRequest request, CancellationToken cancellationToken)
 	{
-		TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-		PendingApproval approval = new(request.RequestId, session.SourceLabel, sessionId, tcs);
-
-		if (!_approvals.TryAdd(request.RequestId, approval))
+		if (Services.SafeMode) return false;
+		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
+			cancellationToken, request.CancellationToken, _lifetimeCts.Token,
+			source is INativeChatSource native ? native.LifetimeToken : CancellationToken.None);
+		PendingApproval approval = new(request.RequestId, source, sessionId,
+			request.DeadlineUtc ?? DateTimeOffset.UtcNow.AddSeconds(AgentEngine.CallTimeoutSeconds), linked.Token);
+		lock (_approvalGate)
 		{
-			return false;
-		}
-
-		approval.ArmTimeout(ApprovalTimeoutSeconds, () =>
-		{
-			if (_approvals.TryRemove(request.RequestId, out PendingApproval? expired))
+			if (linked.IsCancellationRequested || approval.DeadlineUtc <= DateTimeOffset.UtcNow
+				|| !_approvals.TryAdd(request.RequestId, approval)) return false;
+			approval.ArmTimeout(() => ExpireApproval(approval));
+			PostAgentEvent(source, new
 			{
-				expired.Tcs.TrySetResult(false);
-				expired.Dispose();
-				PostAgentEvent(expired.SourceLabel, new {type = "approval-result", sessionId, requestId = request.RequestId, approved = false, reason = "timeout"});
-			}
-		});
-
-		PostAgentEvent(session.SourceLabel, new
+				type = "approval-request", sessionId, requestId = request.RequestId,
+				toolName = request.ToolName, arguments = request.Arguments,
+				description = request.Description, permissionLevel = request.PermissionLevel,
+				category = request.Category, deadlineUtc = approval.DeadlineUtc,
+			});
+		}
+		// 工具轮次自身先超时或退出时，立即撤销授权卡，而不是留下一张已失效的可批准卡片。
+		using CancellationTokenRegistration cancelled = linked.Token.Register(() =>
 		{
-			type = "approval-request",
-			sessionId,
-			requestId = request.RequestId,
-			toolName = request.ToolName,
-			arguments = request.Arguments,
-			description = request.Description,
-			permissionLevel = request.PermissionLevel,
-			category = request.Category,
+			lock (_approvalGate) FinishApproval(approval, false, "cancelled");
 		});
+		return await approval.Tcs.Task.ConfigureAwait(false);
+	}
 
-		return await tcs.Task;
+	private void ExpireApproval(PendingApproval approval)
+	{
+		lock (_approvalGate)
+		{
+			if (!_approvals.TryGetValue(approval.RequestId, out PendingApproval? current) || !ReferenceEquals(current, approval)) return;
+			// 延期前已排队的旧定时器回调不能让新期限提前失效。
+			if (approval.DeadlineUtc > DateTimeOffset.UtcNow) { approval.RearmTimeout(); return; }
+			FinishApproval(approval, false, "timeout");
+		}
+	}
+
+	private bool FinishApproval(PendingApproval approval, bool approved, string reason)
+	{
+		if (!_approvals.TryRemove(new KeyValuePair<string, PendingApproval>(approval.RequestId, approval))) return false;
+		approval.Dispose();
+		PostAgentEvent(approval.Source, new
+		{
+			type = "approval-result", sessionId = approval.SessionId, requestId = approval.RequestId, approved, reason,
+		});
+		return approval.Tcs.TrySetResult(approved);
+	}
+
+	/// <summary>延长原始来源的待决授权，返回不超过工具实际期限的服务端截止时间。</summary>
+	public DateTimeOffset ExtendApproval(IBridgeSource source, string requestId)
+	{
+		lock (_approvalGate)
+		{
+			if (!_approvals.TryGetValue(requestId, out PendingApproval? approval) || !IsSameSource(source, approval.Source))
+				throw new InvalidOperationException("授权请求不存在或不属于当前窗口");
+			if (approval.DeadlineUtc <= DateTimeOffset.UtcNow)
+			{
+				FinishApproval(approval, false, "timeout");
+				throw new InvalidOperationException("授权请求已超时");
+			}
+			if (approval.CancellationToken.IsCancellationRequested)
+			{
+				FinishApproval(approval, false, "cancelled");
+				throw new InvalidOperationException("授权请求已取消");
+			}
+			if (source is INativeChatSource && !source.IsVisible)
+				throw new InvalidOperationException("对话窗口不可见，无法延长工具授权");
+			approval.Extend();
+			PostAgentEvent(approval.Source, new
+			{
+				type = "approval-extended", sessionId = approval.SessionId, requestId, deadlineUtc = approval.DeadlineUtc,
+			});
+			return approval.DeadlineUtc;
+		}
 	}
 
 	/// <summary>等待桌面或浏览器高风险动作的用户决定；未装配或取消时一律不自动放行。</summary>
@@ -1062,6 +1092,7 @@ public sealed class AppRuntime : IAsyncDisposable
 			actionKinds = request.ActionKinds,
 			permissionLevel = "confirm",
 			category = "automation",
+			deadlineUtc = approval.DeadlineUtc,
 		});
 
 		try
@@ -1091,26 +1122,33 @@ public sealed class AppRuntime : IAsyncDisposable
 	/// 回传授权决定; 只允许原始窗口响应。原生设置窗口可在明确可信上下文中
 	/// 响应主窗口发起的自动化审批，未匹配的请求 fail-closed 忽略。
 	/// </summary>
-	public bool RespondApproval(string sourceLabel, string requestId, bool approved, bool allowNativeSettings = false)
+	public bool RespondApproval(IBridgeSource source, string requestId, bool approved)
 	{
-		if (_approvals.TryGetValue(requestId, out PendingApproval? approval)
-			&& (approval.SourceLabel == sourceLabel
-				|| (allowNativeSettings && approval.SourceLabel == WindowLabels.Main)))
+		bool allowNativeSettings = source is INativeSettingsSource;
+		lock (_approvalGate)
 		{
-			if (!_approvals.TryRemove(new KeyValuePair<string, PendingApproval>(requestId, approval))) return false;
-			approval.Dispose(); // 停掉超时定时器
-			PostAgentEvent(approval.SourceLabel, new
+			if (_approvals.TryGetValue(requestId, out PendingApproval? approval)
+				&& (IsSameSource(source, approval.Source)
+					|| (allowNativeSettings && approval.Source is not INativeChatSource && approval.Source.Label == WindowLabels.Main)))
 			{
-				type = "approval-result",
-				sessionId = approval.SessionId,
-				requestId,
-				approved,
-				reason = approved ? "approved" : "denied",
-			});
-			return approval.Tcs.TrySetResult(approved);
+				if (approval.DeadlineUtc <= DateTimeOffset.UtcNow)
+				{
+					FinishApproval(approval, false, "timeout");
+					return false;
+				}
+				// 可见性及取消信号可能在命令入口校验后、等待授权锁期间改变。
+				if (approval.CancellationToken.IsCancellationRequested)
+				{
+					FinishApproval(approval, false, "cancelled");
+					return false;
+				}
+				if (approved && source is INativeChatSource && !source.IsVisible)
+					throw new InvalidOperationException("对话窗口不可见，无法批准工具执行");
+				return FinishApproval(approval, approved, approved ? "approved" : "denied");
+			}
 		}
 
-		if (sourceLabel != WindowLabels.Main && !allowNativeSettings
+		if (source.Label != WindowLabels.Main && !allowNativeSettings
 			|| !_desktopApprovals.TryGetValue(requestId, out PendingDesktopApproval? desktopApproval)) return false;
 		if (!_desktopApprovals.TryRemove(new KeyValuePair<string, PendingDesktopApproval>(requestId, desktopApproval))) return false;
 		desktopApproval.Dispose();
@@ -1213,6 +1251,7 @@ public sealed class AppRuntime : IAsyncDisposable
 		var updateStatus = Services.Update?.CurrentStatus;
 		AiProviderSettings aiSettings = Services.AiSettings.Read();
 		AiChatSettingsSnapshot chatSnapshot = AiChatSettingsSnapshot.From(aiSettings.Chat);
+		bool remoteChat = new Nori.Core.Chat.LuoLiCore.LuoLiCoreSettingsStore(config).Read().IsActive;
 		AiEmbeddingSettingsSnapshot embeddingSnapshot = AiEmbeddingSettingsSnapshot.From(aiSettings.Embedding);
 
 		var models = ModelCatalogIds().Select(id => new
@@ -1289,6 +1328,11 @@ public sealed class AppRuntime : IAsyncDisposable
 				category = issue.Code,
 				requiresUserAction = issue.RequiresUserAction,
 			}).ToArray(),
+			chat = new
+			{
+				configured = !Services.SafeMode && (remoteChat || chatSnapshot.Configured),
+				backend = remoteChat ? "luolicore" : "local",
+			},
 			ai = new
 			{
 				// 保留旧版扁平字段, 同时提供统一的 chat/embedding DTO。
@@ -1486,7 +1530,21 @@ public sealed class AppRuntime : IAsyncDisposable
 	// 事件出口
 	// ===================================================================
 
-	/// <summary>向指定窗口推送 Agent 事件</summary>
+	/// <summary>原生会话只回推最初的可信对象，旧会话不会流入同标签的新窗口。</summary>
+	private void PostAgentEvent(IBridgeSource source, object payload)
+	{
+		if (Volatile.Read(ref _disposed) != 0) return;
+		if (source is not INativeChatSource native)
+		{
+			PostAgentEvent(source.Label, payload);
+			return;
+		}
+		if (native.Label != WindowLabels.Chat || native.LifetimeToken.IsCancellationRequested) return;
+		try { source.PostEvent(AgentEventName, payload); }
+		catch { /* 窗口退出不影响会话收尾。 */ }
+	}
+
+	/// <summary>向指定 WebView 推送 Agent 事件，不解析原生窗口标签。</summary>
 	private void PostAgentEvent(string label, object payload)
 	{
 		if (Volatile.Read(ref _disposed) != 0) return;
@@ -1696,11 +1754,12 @@ public sealed class AppRuntime : IAsyncDisposable
 	}
 
 	/// <summary>活动 Agent 会话状态</summary>
-	private sealed class AgentSessionState(string sourceLabel) : IDisposable
+	private sealed class AgentSessionState(IBridgeSource source, CancellationToken lifetimeToken) : IDisposable
 	{
-		public string SourceLabel { get; } = sourceLabel;
+		public IBridgeSource Source { get; } = source;
 
-		public CancellationTokenSource Cts { get; } = new();
+		public CancellationTokenSource Cts { get; } = CancellationTokenSource.CreateLinkedTokenSource(
+			lifetimeToken, source is INativeChatSource native ? native.LifetimeToken : CancellationToken.None);
 
 		public Task? Worker { get; set; }
 
@@ -1715,11 +1774,13 @@ public sealed class AppRuntime : IAsyncDisposable
 	{
 		public AutomationApprovalRequest Request { get; } = request;
 		public TaskCompletionSource<bool> Tcs { get; } = tcs;
+		public DateTimeOffset DeadlineUtc { get; private set; }
 
 		private System.Threading.Timer? _timeout;
 
 		public void ArmTimeout(int seconds, Action onExpired)
 		{
+			DeadlineUtc = DateTimeOffset.UtcNow.AddSeconds(seconds);
 			_timeout = new System.Threading.Timer(_ => onExpired(), null, seconds * 1000, Timeout.Infinite);
 		}
 
@@ -1731,20 +1792,35 @@ public sealed class AppRuntime : IAsyncDisposable
 	}
 
 	/// <summary>待决授权请求</summary>
-	private sealed class PendingApproval(string requestId, string sourceLabel, string sessionId, TaskCompletionSource<bool> tcs) : IDisposable
+	private sealed class PendingApproval(string requestId, IBridgeSource source, string sessionId, DateTimeOffset maximumDeadlineUtc, CancellationToken cancellationToken) : IDisposable
 	{
 		public string RequestId { get; } = requestId;
-		public string SourceLabel { get; } = sourceLabel;
+		public IBridgeSource Source { get; } = source;
 		public string SessionId { get; } = sessionId;
-		public TaskCompletionSource<bool> Tcs { get; } = tcs;
+		public CancellationToken CancellationToken { get; } = cancellationToken;
+		public TaskCompletionSource<bool> Tcs { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		public DateTimeOffset DeadlineUtc { get; private set; } = Cap(DateTimeOffset.UtcNow.AddSeconds(ApprovalTimeoutSeconds), maximumDeadlineUtc);
+		private Timer? _timeout;
 
-		private System.Threading.Timer? _timeout;
-
-		/// <summary>启动超时定时器; 触发时执行回调 (fail-closed)</summary>
-		public void ArmTimeout(int seconds, Action onExpired)
+		public void ArmTimeout(Action onExpired)
 		{
-			_timeout = new System.Threading.Timer(_ => onExpired(), null, seconds * 1000, Timeout.Infinite);
+			_timeout = new Timer(_ => onExpired(), null, Timeout.Infinite, Timeout.Infinite);
+			RearmTimeout();
 		}
+
+		public void Extend()
+		{
+			DeadlineUtc = Cap(DeadlineUtc.AddSeconds(ApprovalTimeoutSeconds), maximumDeadlineUtc);
+			RearmTimeout();
+		}
+
+		public void RearmTimeout()
+		{
+			TimeSpan remaining = DeadlineUtc - DateTimeOffset.UtcNow;
+			_timeout?.Change(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+		}
+
+		private static DateTimeOffset Cap(DateTimeOffset deadline, DateTimeOffset maximum) => deadline < maximum ? deadline : maximum;
 
 		public void Dispose()
 		{

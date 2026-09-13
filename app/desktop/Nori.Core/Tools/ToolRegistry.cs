@@ -268,6 +268,14 @@ public sealed class ToolRegistry
 			bool approved;
 			try
 			{
+				TimeSpan approvalTimeout = effectiveContext.ApprovalTimeout <= TimeSpan.Zero
+					? TimeSpan.FromMinutes(2)
+					: effectiveContext.ApprovalTimeout;
+				DateTimeOffset deadlineUtc = DateTimeOffset.UtcNow.Add(approvalTimeout);
+				if (effectiveContext.DeadlineUtc is { } outerDeadline && outerDeadline < deadlineUtc) deadlineUtc = outerDeadline;
+				using CancellationTokenSource approvalLifetime = CancellationTokenSource.CreateLinkedTokenSource(effectiveContext.CancellationToken);
+				TimeSpan remaining = deadlineUtc - DateTimeOffset.UtcNow;
+				approvalLifetime.CancelAfter(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
 				Task<bool> approvalTask = approve(new ToolApprovalRequest
 				{
 					RequestId = $"approval-{Guid.NewGuid():N}",
@@ -276,11 +284,10 @@ public sealed class ToolRegistry
 					Description = ToolLimits.CapText(tool.Description, ToolLimits.MaxDescriptionCharacters),
 					PermissionLevel = tool.PermissionLevel,
 					Category = tool.Category,
+					DeadlineUtc = deadlineUtc,
+					CancellationToken = approvalLifetime.Token,
 				});
-				TimeSpan approvalTimeout = effectiveContext.ApprovalTimeout <= TimeSpan.Zero
-					? TimeSpan.FromMinutes(2)
-					: effectiveContext.ApprovalTimeout;
-				approved = await approvalTask.WaitAsync(approvalTimeout, effectiveContext.CancellationToken);
+				approved = await approvalTask.WaitAsync(approvalLifetime.Token);
 			}
 			catch
 			{

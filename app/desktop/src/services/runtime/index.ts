@@ -345,10 +345,14 @@ export const RUNTIME = {
 	respondApproval(requestId: string, approved: boolean): Promise<boolean> {
 		return invoke("approval_respond", {requestId, approved})
 	},
+	/** 延期由宿主确认，返回真正的授权截止时间。 */
+	extendApproval(requestId: string): Promise<{deadlineUtc: string}> {
+		return invoke("approval_extend", {requestId})
+	},
 	historyPage(limit = 50, beforeId = 0): Promise<HistoryMessage[]> {
 		return invoke("chat_history_page", {limit, beforeId})
 	},
-	clearChat(): Promise<void> {
+	clearChat(): Promise<{remoteReset: boolean; note: string | null}> {
 		return invoke("chat_clear")
 	},
 
@@ -452,6 +456,10 @@ export const RUNTIME = {
 	/** 请求宿主显示独立的原生模型窗口。 */
 	openModels(): Promise<void> {
 		return invoke("window_open_models")
+	},
+	/** 请求宿主显示独立的原生对话窗口。 */
+	openChat(): Promise<void> {
+		return invoke("window_open_chat")
 	},
 	stopAutomationTask(taskId: string): Promise<boolean> {
 		return invoke("automation_stop_task", {taskId})

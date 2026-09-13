@@ -19,6 +19,7 @@ using Nori.Core.Skills;
 using Nori.Core.Tools;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Diagnostics;
+using Nori.Desktop.Chat;
 using Nori.Desktop.Runtime;
 using MemoryService = Nori.Desktop.Memory.MemoryService;
 using ModelService = Nori.Desktop.Models.ModelService;
@@ -72,6 +73,7 @@ public sealed class BridgeCommands
 		cancellationToken.ThrowIfCancellationRequested();
 		MemoryService.ValidateSourceCommand(source, cmd);
 		ModelService.ValidateSourceCommand(source, cmd);
+		NativeChatService.ValidateSourceCommand(source, cmd);
 		if (_services.SafeMode && cmd.StartsWith("automation_desktop_", StringComparison.Ordinal))
 		{
 			throw new InvalidOperationException("安全模式已禁用桌面视觉自动化，请退出安全模式后重试");
@@ -431,14 +433,19 @@ public sealed class BridgeCommands
 		}),
 
 		// invoke("chat_cancel", {sessionId: "..."})
-		"chat_cancel" => RequireMain(source, () => Runtime.CancelChat(source.Label, Str(args, "sessionId"))),
+		"chat_cancel" => RequireMain(source, () => Runtime.CancelChat(source, Str(args, "sessionId"))),
 
 		// invoke("approval_respond", {requestId: "...", approved: true})
-		"approval_respond" => RequireMain(source, () => Runtime.RespondApproval(
-			source.Label,
-			Str(args, "requestId"),
-			OptionalBool(args, "approved") ?? false,
-			source is INativeSettingsSource)),
+		"approval_respond" => RequireMain(source, () => RespondApproval(source, args)),
+
+		/// <summary>
+		/// 延长本来源的待决工具授权，不能超过工具调用的实际截止时间。
+		/// 前端调用：invoke("approval_extend", {requestId: "..."})
+		/// </summary>
+		"approval_extend" => RequireMain(source, () => new
+		{
+			deadlineUtc = Runtime.ExtendApproval(source, Str(args, "requestId")),
+		}),
 
 		// invoke("chat_history_page", {limit?: 50, beforeId?: 0})
 		"chat_history_page" => RequireMain(source, () => GetHistoryPage(
@@ -636,10 +643,10 @@ public sealed class BridgeCommands
 		"tts_stop" => RequireMain(source, () => Run(Runtime.Voice.Stop)),
 
 		// invoke("stt_start")
-		"stt_start" => await SttStartAsync(source),
+		"stt_start" => await SttStartAsync(source, cancellationToken),
 
 		// invoke("stt_stop") → {text}
-		"stt_stop" => await SttStopAsync(source),
+		"stt_stop" => await SttStopAsync(source, cancellationToken),
 
 		// ---- 前端音频宿主回报 (WebAudio / MediaRecorder 下沉后的反向通道) ----
 		// invoke("audio_host_ready")
@@ -693,6 +700,11 @@ public sealed class BridgeCommands
 		/// 前端调用：invoke("window_open_models")
 		/// </summary>
 		"window_open_models" => await OpenModelsAsync(source),
+		/// <summary>
+		/// 打开原生对话窗口；仅允许可见主 WebView 调用。
+		/// 前端调用：invoke("window_open_chat")
+		/// </summary>
+		"window_open_chat" => await OpenChatAsync(source),
 		"window_show" => await OnUi(() => ShowWindow(source, args)),
 		"window_hide" => await OnUi(() => HideWindow(source, args)),
 		"window_close" => await OnUi(() => CloseWindow(source, args)),
@@ -732,7 +744,8 @@ public sealed class BridgeCommands
 		};
 		// 原生窗口修改已经提交时返回真实成功，避免关闭期间的取消把已写入误报为失败。
 		bool committedNativeWrite = (source is INativeMemorySource && MemoryService.IsStateChangingCommand(cmd))
-			|| (source is INativeModelSource && ModelService.IsStateChangingCommand(cmd));
+			|| (source is INativeModelSource && ModelService.IsStateChangingCommand(cmd))
+			|| (source is INativeChatSource && cmd is "chat_start" or "chat_clear" or "approval_respond" or "approval_extend");
 		if (!committedNativeWrite) cancellationToken.ThrowIfCancellationRequested();
 		return result;
 	}
@@ -824,10 +837,22 @@ public sealed class BridgeCommands
 		}).ConfigureAwait(false);
 	}
 
+	private async Task<object?> OpenChatAsync(IBridgeSource source)
+	{
+		if (source is INativeSettingsSource or INativeMemorySource or INativeModelSource or INativeChatSource || source.Label != WindowLabels.Main)
+			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
+		return await OnUi(() =>
+		{
+			if (!source.IsVisible) throw new InvalidOperationException("main 窗口不可见");
+			_services.Windows.ShowChat();
+			return (object?)null;
+		}).ConfigureAwait(false);
+	}
+
 	/// <summary>main 或已通过领域白名单校验的原生窗口校验 (无返回值场景)</summary>
 	private static void RequireMainVoid(IBridgeSource source)
 	{
-		if (source is not INativeSettingsSource and not INativeMemorySource and not INativeModelSource
+		if (source is not INativeSettingsSource and not INativeMemorySource and not INativeModelSource and not INativeChatSource
 			&& source.Label != WindowLabels.Main)
 		{
 			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
@@ -973,6 +998,14 @@ public sealed class BridgeCommands
 		return await Automation.StopAllAsync(cancellationToken).ConfigureAwait(false);
 	}
 
+	private bool RespondApproval(IBridgeSource source, JsonElement args)
+	{
+		bool approved = OptionalBool(args, "approved") ?? false;
+		if (source is INativeChatSource && approved && !source.IsVisible)
+			throw new InvalidOperationException("对话窗口不可见，无法批准工具执行");
+		return Runtime.RespondApproval(source, Str(args, "requestId"), approved);
+	}
+
 	/// <summary>
 	/// 清空聊天记录。
 	///
@@ -986,6 +1019,8 @@ public sealed class BridgeCommands
 	private async Task<object?> ClearChatAsync(IBridgeSource source, CancellationToken cancellationToken) =>
 		await RequireMainAsync(source, async () =>
 		{
+			// 与 AgentEngine 的生成及最终落库共用闸门，含尚未进入后台执行的已接受请求。
+			using AgentSessionLease lease = Runtime.Engine.ReserveSession("chat-clear", cancellationToken);
 			// 安全模式禁用一切外部调用（AGENTS.md §1「Safe Mode」），重置远端会话是一次
 			// 真正的出网请求，所以这里跳过它。
 			//
@@ -1479,17 +1514,17 @@ public sealed class BridgeCommands
 		return null;
 	}
 
-	private async Task<object?> SttStartAsync(IBridgeSource source)
+	private async Task<object?> SttStartAsync(IBridgeSource source, CancellationToken cancellationToken)
 	{
 		RequireMainVoid(source);
-		await Runtime.Voice.StartListeningAsync();
+		await Runtime.Voice.StartListeningAsync(cancellationToken);
 		return null;
 	}
 
-	private async Task<object?> SttStopAsync(IBridgeSource source)
+	private async Task<object?> SttStopAsync(IBridgeSource source, CancellationToken cancellationToken)
 	{
 		RequireMainVoid(source);
-		string text = await Runtime.Voice.StopListeningAndTranscribeAsync();
+		string text = await Runtime.Voice.StopListeningAndTranscribeAsync(cancellationToken);
 		return new {text};
 	}
 
@@ -1711,7 +1746,7 @@ public sealed class BridgeCommands
 
 	private static bool IsLabelAllowed(IBridgeSource source, string allowed) =>
 		source is INativeSettingsSource
-		|| ((source is INativeMemorySource or INativeModelSource) && allowed == WindowLabels.Main)
+		|| ((source is INativeMemorySource or INativeModelSource or INativeChatSource) && allowed == WindowLabels.Main)
 		|| source.Label == allowed;
 
 	private static async Task<object?> RequireMainAsync(IBridgeSource source, Func<Task<object?>> factory)
@@ -2055,8 +2090,7 @@ public sealed class BridgeCommands
 	/// 分页读取聊天历史 (服务端规范化旧协议 JSON, 前端不再解析业务内容)
 	/// </summary>
 	private object GetHistoryPage(int limit, long beforeId) => _services.Chat
-		.GetHistory(limit, beforeId)
-		.Where(row => row.Role != "user" || !row.Content.StartsWith("【系统工具执行反馈 -", StringComparison.Ordinal))
+		.GetHistory(limit, beforeId, excludeToolFeedback: true)
 		.Select(row => new
 		{
 			id = row.Id,

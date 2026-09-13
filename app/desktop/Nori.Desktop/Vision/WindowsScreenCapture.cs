@@ -44,7 +44,7 @@ public sealed class WindowsScreenCapture : IScreenCapture
 	{
 		if (!IsAvailable) return ScreenCaptureResult.Fail(_windows.Availability.Reason);
 
-		WindowsTopLevelWindow? target = PickTarget(_windows, Environment.ProcessId);
+		WindowsTopLevelWindow? target = ScreenTargetPicker.Pick(_windows.EnumerateTopLevelWindows(), Environment.ProcessId);
 		if (target is null) return ScreenCaptureResult.Fail("没找到可以查看的窗口");
 
 		// 目标是被 Nori 挡住的那个窗口，按定义不是前台，所以不能要求前台。
@@ -67,18 +67,6 @@ public sealed class WindowsScreenCapture : IScreenCapture
 		}
 	}
 
-	/// <summary>
-	/// z 序上第一个不属于本进程、且有标题的可见窗口。
-	///
-	/// <c>EnumWindows</c> 按 z 序从上到下返回，服务层的过滤保持了这个顺序，因此第一个符合
-	/// 条件的就是最靠前的那个。无标题窗口跳过：那多是工具提示、输入法候选框一类的浮层。
-	///
-	/// 做成静态并接收进程号，是为了能不依赖真实窗口句柄地测 —— 「不能截到自己」这条判据
-	/// 最容易写错，而它单独拿出来是纯粹的选择逻辑。
-	/// </summary>
-	internal static WindowsTopLevelWindow? PickTarget(WindowsWindowService windows, int selfProcessId) =>
-		windows.EnumerateTopLevelWindows()
-			.FirstOrDefault(window => window.ProcessId != selfProcessId && window.Title.Trim().Length > 0);
 
 	/// <summary>
 	/// 缩到 <see cref="MaxWidth"/> 之内并转成 JPEG。

@@ -51,6 +51,14 @@ public sealed class AppContainerLauncher : ISandboxLauncher
 	/// <summary>提前建立容器配置文件，用于在选型阶段判断 AppContainer 是否真的可用。</summary>
 	public void EnsureReady() => EnsureProfile();
 
+	/// <summary>
+	/// 本容器的 SID。
+	///
+	/// 只推导不创建。授权就是往目录 ACL 里加这个 SID 的 ACE，暴露出来才能核对某个目录上到底
+	/// 还留没留授权 —— 这是唯一能从外部验证释放是否生效的判据。
+	/// </summary>
+	public string ContainerSid => DeriveSid();
+
 	/// <inheritdoc />
 	public Task<SandboxResult> RunAsync(
 		string commandLine, SandboxPolicy policy, CancellationToken cancellationToken)
@@ -63,16 +71,16 @@ public sealed class AppContainerLauncher : ISandboxLauncher
 		return Task.Run(() => Execute(commandLine, policy, sid, cancellationToken), cancellationToken);
 	}
 
-	/// <summary>
-	/// 撤销为本容器加在工作目录与只读路径上的 ACE。
-	///
-	/// 工作目录变更或文件访问功能关闭时必须调用：授权是磁盘上的持久状态，不随进程结束消失。
-	/// </summary>
-	public void RevokeAccess(SandboxPolicy policy)
+	/// <inheritdoc />
+	/// <remarks>
+	/// 走 <see cref="DeriveSid"/> 而非 <see cref="EnsureProfile"/>：释放不该顺手把容器建出来。
+	/// 容器 SID 是容器名的确定性推导，配置文件不存在时同样能算出来，因此本方法对「从未授权过」
+	/// 的情形安全，也可以重复调用。
+	/// </remarks>
+	public void Release(SandboxPolicy policy)
 	{
 		ArgumentNullException.ThrowIfNull(policy);
-		string sid = EnsureProfile();
-		SecurityIdentifier identity = new(sid);
+		SecurityIdentifier identity = new(DeriveSid());
 		foreach (string path in Paths(policy))
 		{
 			RemoveRule(path, identity);
@@ -101,6 +109,7 @@ public sealed class AppContainerLauncher : ISandboxLauncher
 	private static IEnumerable<string> Paths(SandboxPolicy policy) =>
 		new[] { policy.WorkspaceRoot }.Concat(policy.ReadOnlyPaths).Where(path => path.Length > 0);
 
+	/// <summary>确保容器配置文件存在，并返回它的 SID。会创建。</summary>
 	private string EnsureProfile()
 	{
 		lock (_gate)
@@ -120,6 +129,32 @@ public sealed class AppContainerLauncher : ISandboxLauncher
 			{
 				_sidText = SidToString(sid);
 				return _sidText;
+			}
+			finally
+			{
+				FreeSid(sid);
+			}
+		}
+	}
+
+	/// <summary>
+	/// 只推导容器 SID，不创建配置文件。
+	///
+	/// SID 是容器名的确定性推导，与配置文件是否存在无关。释放授权走这条路，避免「为了清理反而
+	/// 建出一个容器」。
+	/// </summary>
+	private string DeriveSid()
+	{
+		lock (_gate)
+		{
+			if (_sidText is not null) return _sidText;
+
+			int derived = DeriveAppContainerSidFromAppContainerName(_containerName, out IntPtr sid);
+			if (derived != 0) throw new Win32Exception(derived, $"推导容器 SID 失败 0x{derived:X8}");
+
+			try
+			{
+				return SidToString(sid);
 			}
 			finally
 			{

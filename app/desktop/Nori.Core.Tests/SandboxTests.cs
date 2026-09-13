@@ -205,11 +205,85 @@ public sealed class SandboxTests : IDisposable
 		}
 		finally
 		{
-			if (launcher is AppContainerLauncher container) container.DeleteProfile();
+			if (OperatingSystem.IsWindows() && launcher is AppContainerLauncher container) container.DeleteProfile();
 		}
 	}
 
 	// ---- AppContainer 实机 ----
+
+	/// <summary>
+	/// 目录的 ACL 里有没有这个容器的 ACE。
+	///
+	/// 授权就是往 DACL 里加一条该 SID 的 ACE，所以这是判断「授权还在不在」的直接判据。
+	/// </summary>
+	private static bool HasGrant(string path, string containerSid)
+	{
+		if (!OperatingSystem.IsWindows()) return false;
+		System.Security.AccessControl.AuthorizationRuleCollection rules =
+			new DirectoryInfo(path).GetAccessControl(System.Security.AccessControl.AccessControlSections.Access)
+				.GetAccessRules(true, false, typeof(System.Security.Principal.SecurityIdentifier));
+
+		return rules.Cast<System.Security.AccessControl.FileSystemAccessRule>().Any(
+			rule => rule.IdentityReference.Value.Equals(containerSid, StringComparison.OrdinalIgnoreCase));
+	}
+
+	/// <summary>
+	/// 释放之后目录上的授权必须真的消失。
+	///
+	/// 这条是回归测试。原实现写了「必须在工作目录变更时调用」的文档，却没有任何生产调用点 ——
+	/// 用户换一个工作目录，旧目录上的 ACE 就永久残留，他看不见也无从清理。
+	/// </summary>
+	[Fact]
+	public async Task 释放之后工作目录上的授权真的消失()
+	{
+		if (!OperatingSystem.IsWindows()) return;
+
+		AppContainerLauncher launcher = new("Nori.Desktop.Test." + Guid.NewGuid().ToString("N")[..8]);
+		SandboxPolicy policy = new() { WorkspaceRoot = _root, Timeout = TimeSpan.FromSeconds(30) };
+		try
+		{
+			launcher.EnsureReady();
+			Assert.False(HasGrant(_root, launcher.ContainerSid), "还没跑过任何命令，不该有授权");
+
+			await launcher.RunAsync("cmd.exe /c echo inside> probe.txt", policy, CancellationToken.None);
+			Assert.True(HasGrant(_root, launcher.ContainerSid), "跑过之后应当有授权");
+
+			launcher.Release(policy);
+
+			Assert.False(HasGrant(_root, launcher.ContainerSid), "释放之后授权必须消失");
+		}
+		finally
+		{
+			launcher.DeleteProfile();
+		}
+	}
+
+	/// <summary>释放必须可重复调用，且对从未授权过的路径安全 —— 清理路径上的异常会掩盖真正的问题。</summary>
+	[Fact]
+	public void 释放从未授权过的路径不报错()
+	{
+		if (!OperatingSystem.IsWindows()) return;
+
+		AppContainerLauncher launcher = new("Nori.Desktop.Test." + Guid.NewGuid().ToString("N")[..8]);
+		SandboxPolicy policy = new() { WorkspaceRoot = _root };
+
+		launcher.Release(policy);
+		launcher.Release(policy);
+
+		// 释放不该把容器建出来：为了清理残留反而新增一份残留。
+		Assert.False(
+			Directory.Exists(Path.Combine(
+				Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Nori.Desktop.Test")),
+			"释放不应创建容器配置文件");
+	}
+
+	/// <summary>无隔离实现不产生持久授权，释放是空操作但必须存在 —— 调用方不该做平台判断。</summary>
+	[Fact]
+	public void 无隔离实现的释放是空操作()
+	{
+		new UnsandboxedLauncher().Release(new SandboxPolicy { WorkspaceRoot = _root });
+		Assert.True(Directory.Exists(_root));
+	}
 
 	/// <summary>
 	/// 在真实容器里跑一条命令，并验证围栏成立。
@@ -241,7 +315,7 @@ public sealed class SandboxTests : IDisposable
 		}
 		finally
 		{
-			try { launcher.RevokeAccess(policy); } catch (UnauthorizedAccessException) { /* 清理失败不影响断言 */ }
+			try { launcher.Release(policy); } catch (UnauthorizedAccessException) { /* 清理失败不影响断言 */ }
 			launcher.DeleteProfile();
 			try { File.Delete(outside); } catch (IOException) { /* 同上 */ }
 		}

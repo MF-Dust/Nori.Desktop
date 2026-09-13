@@ -78,6 +78,12 @@ public sealed class UnsandboxedLauncher : ISandboxLauncher
 		};
 	}
 
+	/// <inheritdoc />
+	/// <remarks>无隔离执行不产生任何持久授权，无需释放。</remarks>
+	public void Release(SandboxPolicy policy)
+	{
+	}
+
 	private static void Terminate(Process process)
 	{
 		try

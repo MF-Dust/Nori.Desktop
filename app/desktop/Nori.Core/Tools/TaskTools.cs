@@ -137,7 +137,7 @@ public static class TaskTools
 	/// **系统目录一律排除**。`C:\Windows` 下的程序对 AppContainer 本就可读，而去改 System32
 	/// 的 ACL 既无必要也不该做。
 	/// </summary>
-	internal static IReadOnlyList<string> ExecutableDirectories(string commandLine)
+	public static IReadOnlyList<string> ExecutableDirectories(string commandLine)
 	{
 		string executable = Locate(CommandLine.Split(commandLine).FileName);
 		if (executable.Length == 0) return [];

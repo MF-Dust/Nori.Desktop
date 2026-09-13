@@ -32,7 +32,11 @@ public sealed class TaskToolsTests : IDisposable
 
 		public SandboxIsolation Isolation { get; init; } = SandboxIsolation.AppContainer;
 
+		public List<SandboxPolicy> Released { get; } = [];
+
 		public string Describe() => "测试用";
+
+		public void Release(SandboxPolicy policy) => Released.Add(policy);
 
 		public Task<SandboxResult> RunAsync(string commandLine, SandboxPolicy policy, CancellationToken cancellationToken)
 		{

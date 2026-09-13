@@ -826,6 +826,61 @@ public sealed class AppRuntime : IAsyncDisposable
 	private ISandboxLauncher Sandbox => _sandbox ??= Services.Sandbox ?? SandboxLauncherFactory.Create();
 
 	/// <summary>当前该给 runTask 哪些任务。安全模式下一条都不给，判据与文件工具一致。</summary>
+	/// <summary>
+	/// 当前授予过持久权限的路径集合：工作目录，加上各条任务的可执行文件所在目录。
+	///
+	/// 与 <see cref="RegisterTaskTools"/> 用的是同一套推导，两处必须一致 —— 授权面算少了会残留，
+	/// 算多了会去动没授权过的目录的 ACL。
+	/// </summary>
+	public IReadOnlyList<string> CurrentGrantPaths()
+	{
+		WorkspaceAccess workspace = ResolveWorkspace();
+		if (!workspace.IsConfigured) return [];
+
+		List<string> paths = [workspace.Root];
+		foreach (WorkspaceTask task in ResolveTasks())
+		{
+			paths.AddRange(TaskTools.ExecutableDirectories(task.Command));
+		}
+
+		return [.. paths.Distinct(StringComparer.OrdinalIgnoreCase)];
+	}
+
+	/// <summary>
+	/// 释放已经不再需要的持久授权。
+	///
+	/// Windows 上授权写进文件系统 ACL，不随进程结束消失。工作目录换掉、任务删掉之后不释放，
+	/// ACE 就永远留在用户的目录上 —— 用户看不见，也无从清理。
+	///
+	/// 只释放「旧的减新的」：仍在用的路径撤了还得立刻加回来，反复增删 ACE 只会放大出错面。
+	/// 调用方需要在改配置**之前**取一次 <see cref="CurrentGrantPaths"/> 作为 previous。
+	/// </summary>
+	public void ReleaseStaleGrants(IReadOnlyList<string> previous)
+	{
+		ArgumentNullException.ThrowIfNull(previous);
+		if (previous.Count == 0) return;
+
+		HashSet<string> keep = new(CurrentGrantPaths(), StringComparer.OrdinalIgnoreCase);
+		string[] stale = [.. previous.Where(path => !keep.Contains(path))];
+		if (stale.Length == 0) return;
+
+		// 不走 Sandbox 属性：它会顺手把容器建出来，清理路径上是反效果。但注入的实现必须尊重，
+		// 否则释放走的是另一个启动器，注入口形同虚设。
+		ISandboxLauncher launcher = _sandbox ?? Services.Sandbox ?? SandboxLauncherFactory.CreateForRelease();
+		foreach (string path in stale)
+		{
+			try
+			{
+				launcher.Release(new SandboxPolicy { WorkspaceRoot = path });
+			}
+			catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+			{
+				// 目录已被删除或权限不足；残留一条 ACE 不影响功能，记录即可。
+				Services.Logger.Write(LogSource.Backend, "warn", $"释放沙箱授权失败 [{path}]: {exception.Message}");
+			}
+		}
+	}
+
 	private ISandboxLauncher? _sandbox;
 
 	private IReadOnlyList<WorkspaceTask> ResolveTasks() =>

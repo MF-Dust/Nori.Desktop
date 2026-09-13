@@ -306,6 +306,31 @@ public partial class BridgeCommandsTests : IDisposable
 	private readonly HttpClient _http;
 	private readonly FakeWindowManager _windows = new();
 	private readonly AppServices _services;
+	/// <summary>
+	/// 记录释放调用的假启动器。
+	///
+	/// 隔离强度报 None，行为与 <c>UnsandboxedLauncher</c> 一致，只是把 <c>Release</c> 记下来 ——
+	/// 「授权释放有没有被接上」这件事只能从调用侧观察，而它恰恰是漏过一次的地方。
+	/// </summary>
+	private sealed class RecordingSandbox : Nori.Core.Sandbox.ISandboxLauncher
+	{
+		public List<string> Released { get; } = [];
+
+		public Nori.Core.Sandbox.SandboxIsolation Isolation => Nori.Core.Sandbox.SandboxIsolation.None;
+
+		public string Describe() => "测试用";
+
+		public Task<Nori.Core.Sandbox.SandboxResult> RunAsync(
+			string commandLine, Nori.Core.Sandbox.SandboxPolicy policy, CancellationToken cancellationToken) =>
+			Task.FromResult(new Nori.Core.Sandbox.SandboxResult
+			{
+				ExitCode = 0, Output = "", TimedOut = false, Truncated = false,
+			});
+
+		public void Release(Nori.Core.Sandbox.SandboxPolicy policy) => Released.Add(policy.WorkspaceRoot);
+	}
+
+	private readonly RecordingSandbox _sandbox = new();
 	private readonly AppRuntime _runtime;
 
 	public BridgeCommandsTests() : this(false, null)
@@ -385,7 +410,7 @@ public partial class BridgeCommandsTests : IDisposable
 			Windows = _windows,
 			SafeMode = safeMode,
 			// 不用自动挑选：Windows 上它会创建 AppContainer 配置文件，测试跑完会留在机器上。
-			Sandbox = new Nori.Core.Sandbox.UnsandboxedLauncher(),
+			Sandbox = _sandbox,
 			Update = new Nori.Core.Update.UpdateService(new AppStoragePaths(_tempDir), "win-x64", "0.1.0", safeMode, httpClient: _http),
 		};
 		_runtime = new AppRuntime(_services);
@@ -933,6 +958,73 @@ public partial class BridgeCommandsTests : IDisposable
 
 		Assert.Contains("重复", error.Message, StringComparison.Ordinal);
 		Assert.Null(_runtime.Tools.Get(TaskTools.RunTaskName));
+	}
+
+	/// <summary>
+	/// 换工作目录必须释放旧目录上的授权。
+	///
+	/// 这是回归测试。原实现在类文档里写了「必须在工作目录变更时调用」，却没有任何生产调用点 ——
+	/// 用户换一个目录，旧目录上的 ACE 就永久残留，他看不见也无从清理。
+	/// </summary>
+	[Fact]
+	public async Task 换工作目录会释放旧目录上的授权()
+	{
+		string first = Path.Combine(_tempDir, "旧工作区");
+		string second = Path.Combine(_tempDir, "新工作区");
+		Directory.CreateDirectory(first);
+		Directory.CreateDirectory(second);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = first }));
+		Assert.Empty(_sandbox.Released);
+
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = second }));
+
+		Assert.Contains(first, _sandbox.Released);
+		Assert.DoesNotContain(second, _sandbox.Released);
+	}
+
+	[Fact]
+	public async Task 清空工作目录会释放授权()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = "" }));
+
+		Assert.Contains(folder, _sandbox.Released);
+	}
+
+	/// <summary>仍在用的路径不该被释放：撤了立刻还要加回来，反复增删 ACE 只会放大出错面。</summary>
+	[Fact]
+	public async Task 改任务清单不会释放仍在用的工作目录()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+
+		await commands.InvokeAsync(
+			main, "settings_update_tasks", Args(new { tasks = new[] { new { name = "a", command = "echo hi" } } }));
+		await commands.InvokeAsync(main, "settings_update_tasks", Args(new { tasks = Array.Empty<object>() }));
+
+		Assert.DoesNotContain(folder, _sandbox.Released);
+	}
+
+	[Fact]
+	public async Task 授权面包含工作目录与任务的可执行文件目录()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		await CreateCommands().InvokeAsync(
+			new FakeBridgeSource(WindowLabels.Main), "settings_update_workspace", Args(new { root = folder }));
+
+		Assert.Equal([folder], _runtime.CurrentGrantPaths());
 	}
 
 	[Fact]

@@ -1853,10 +1853,14 @@ public sealed class BridgeCommands
 			});
 		}
 
+		// 改配置之前先记下当前的授权面，改完才能算出哪些已经不再需要。
+		IReadOnlyList<string> granted = Runtime.CurrentGrantPaths();
+
 		// 严格校验后再落库：非法条目在读取侧是被跳过的，静默丢一条比当场报错难查得多。
 		_services.Config.Set(ConfigStore.KeyWorkspaceTasks, WorkspaceTaskList.Write(WorkspaceTaskList.Validate(parsed)));
 
 		Runtime.RebuildTools();
+		Runtime.ReleaseStaleGrants(granted);
 		Runtime.InvalidateSnapshot("workspace", "tools");
 	}
 
@@ -1868,6 +1872,9 @@ public sealed class BridgeCommands
 	/// </summary>
 	private void UpdateWorkspaceSettings(JsonElement args)
 	{
+		// 同上：授权面要在改配置之前取。
+		IReadOnlyList<string> granted = Runtime.CurrentGrantPaths();
+
 		if (args.ValueKind == JsonValueKind.Object
 			&& args.TryGetProperty("root", out JsonElement rootValue)
 			&& rootValue.ValueKind == JsonValueKind.String)
@@ -1897,6 +1904,9 @@ public sealed class BridgeCommands
 
 		// 工具注册表依赖工作目录构建，变更后必须重建，否则要到下次启动才生效。
 		Runtime.RebuildTools();
+
+		// 沙箱授权是磁盘上的 ACL，换了工作目录不释放的话旧目录上的 ACE 会永久残留。
+		Runtime.ReleaseStaleGrants(granted);
 		Runtime.InvalidateSnapshot("workspace", "tools");
 	}
 

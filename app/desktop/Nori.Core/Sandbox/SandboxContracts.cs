@@ -70,4 +70,15 @@ public interface ISandboxLauncher
 
 	/// <summary>按给定约束执行一条命令行。</summary>
 	Task<SandboxResult> RunAsync(string commandLine, SandboxPolicy policy, CancellationToken cancellationToken);
+
+	/// <summary>
+	/// 释放此前为该约束授予的**持久**权限。
+	///
+	/// 放在接口上而不是某个实现上，是因为调用方无法、也不应该判断某个平台的授权是不是持久的。
+	/// Windows 的 AppContainer 把授权写进文件系统 ACL，不释放就会残留在用户目录上；Landlock
+	/// 与 Seatbelt 是进程级规则集，进程一退就没了，实现为空操作即可。
+	///
+	/// 必须可重复调用、且对从未授权过的路径安全。
+	/// </summary>
+	void Release(SandboxPolicy policy);
 }

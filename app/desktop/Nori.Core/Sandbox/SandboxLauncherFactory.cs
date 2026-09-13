@@ -20,6 +20,17 @@ public static class SandboxLauncherFactory
 	/// 隔离强度由 <see cref="ISandboxLauncher.Isolation"/> 如实报告，调用方据此决定确认强度。
 	/// 其余平台目前只有无隔离执行；Linux 的 Landlock 与 macOS 的 Seatbelt 在此处接入。
 	/// </summary>
+	/// <summary>
+	/// 建立一个**不创建任何持久状态**的启动器，专供释放授权使用。
+	///
+	/// <see cref="Create"/> 会顺手把容器配置文件建出来，而清理路径上那是反效果 —— 为了删掉
+	/// 残留反而新增一份残留。释放只需要容器 SID，那是容器名的确定性推导，不依赖配置文件。
+	/// </summary>
+	public static ISandboxLauncher CreateForRelease(string? containerName = null) =>
+		OperatingSystem.IsWindows()
+			? new AppContainerLauncher(containerName ?? DefaultContainerName)
+			: new UnsandboxedLauncher();
+
 	public static ISandboxLauncher Create(bool preferIsolation = true, string? containerName = null)
 	{
 		if (!preferIsolation || !OperatingSystem.IsWindows()) return new UnsandboxedLauncher();

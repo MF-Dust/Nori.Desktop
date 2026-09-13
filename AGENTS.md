@@ -66,7 +66,6 @@ Nori-Desktop-Pet/
 │   ├── src/                    # Vue 3 SPA frontend
 │   │   ├── assets/style/       # tokens.ts (single source of color truth), theme.less
 │   │   ├── components/         # UI components (ui/ atomic kit, chat/, settings/, etc.)
-│   │   ├── composables/        # useDebouncedSave.ts, useSnapshotField.ts, useSnapshotSave.ts
 │   │   ├── services/           # runtime/, host/, i18n/, icon/, router/, window/, audio/, telemetry/
 │   │   ├── views/              # FirstRunView.vue, InitView.vue, Main.vue, ChatView.vue
 │   │   ├── App.vue             # Window routing coordinator
@@ -173,8 +172,8 @@ publish.bat
   - Adding text requires updating **three locations**: `locales/zh-CN.ts`, `locales/en-US.ts`, and the accessor tree in `useLanguages.ts`.
 - **State & Data Management**:
   - Interact with host backend exclusively through `src/services/runtime/` typed APIs. Do not access `window.__nori` directly.
-  - Debounce user input saves with `useDebouncedSave.ts` (~400ms, distinct timer per field).
-  - Use `useSnapshotField.ts` to read runtime snapshots without clobbering active user edits.
+  - Debounce user input saves (~400ms, distinct timer per field) and flush pending writes on unmount.
+  - Synchronize runtime snapshots without clobbering active user edits.
   - User-facing failures must be routed to `feedback.error(可读中文, error)`.
 
 ### Backend (.NET 10, C#)

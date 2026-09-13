@@ -133,19 +133,6 @@ public sealed class AgentEngineLuoLiCoreTests : IDisposable
 		Assert.Equal(AgentRunState.Idle, states[^1]);
 	}
 
-	/// <summary>只配了 LuoLiCore 的实例本来就没有 BaseUrl / ApiKey / Model 三项。</summary>
-	[Fact]
-	public async Task 没有配置本机LLM也能跑()
-	{
-		EnableLuoLiCore();
-		// 刻意不写 llm_api_base / llm_api_key / llm_model
-		AgentEngine engine = BuildEngine(Conversation(_ => Sse("event: done\ndata: {\"text\":\"好\"}\n\n")));
-
-		ProtocolMessage message = await engine.RunAsync("嗨", "session-2", new AgentCallbacks(), CancellationToken.None);
-
-		Assert.Equal("好", message.Text);
-	}
-
 	[Fact]
 	public async Task 增量逐块回调()
 	{

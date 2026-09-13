@@ -9,14 +9,12 @@ using Nori.Core.Agent;
 using Nori.Core.Automation;
 using Nori.Core.Chat;
 using Nori.Core.Configuration;
-using Nori.Core.Data;
 using Nori.Core.Logging;
 using Nori.Core.Live2D;
 using Nori.Core.Memory;
 using Nori.Core.Mcp;
 using Nori.Core.Platform;
 using Nori.Core.Resources;
-using Nori.Core.Security;
 using Nori.Core.Skills;
 using Nori.Core.Tools;
 using Nori.Desktop.Automation;
@@ -2676,9 +2674,6 @@ public sealed class BridgeCommands
 		if (raw.Equals("false", StringComparison.OrdinalIgnoreCase)) return 0f;
 		return float.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float value) ? value : null;
 	}
-
-	private static ResourceType ParseResourceType(string value) =>
-		ResourceTypeExtensions.Parse(value) ?? throw new InvalidOperationException($"未知的资源类型: {value}");
 
 	private static string Str(JsonElement args, string name) =>
 		args.ValueKind == JsonValueKind.Object && args.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String

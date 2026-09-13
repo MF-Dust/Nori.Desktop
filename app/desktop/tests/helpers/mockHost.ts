@@ -50,8 +50,4 @@ export class MockHost {
 		window.__nori = this.previous
 		this.previous = undefined
 	}
-
-	dispatch(event: string, payload: unknown): void {
-		this.host.dispatch(JSON.stringify({kind: "event", event, payload}))
-	}
 }

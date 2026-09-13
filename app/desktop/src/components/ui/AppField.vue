@@ -12,7 +12,7 @@ const props = withDefaults(defineProps<{
 	label: string
 	hint?: string
 	error?: string
-	/** 保存状态: 由 useDebouncedSave 提供 */
+	/** 保存状态 */
 	state?: "idle" | "saving" | "saved" | "error"
 }>(), {
 	state: "idle",

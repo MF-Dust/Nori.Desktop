@@ -16,14 +16,6 @@ public sealed partial class MemoryWindow
 
 	internal string CurrentSection => _section;
 	internal Control PageContent => _pages[_section];
-	internal void ApplySnapshotForTesting(JsonElement snapshot)
-	{
-		_snapshot = snapshot;
-		_applying = true;
-		try { foreach (var bind in _snapshotBindings) bind(P(snapshot, "memory")); }
-		finally { _applying = false; }
-	}
-
 	private void BuildPages()
 	{
 		var overview = Stack();

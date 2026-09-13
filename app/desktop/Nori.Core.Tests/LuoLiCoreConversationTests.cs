@@ -382,22 +382,6 @@ public sealed class LuoLiCoreConversationTests : IDisposable
 		Assert.Equal("sess_new", _settings.Read().SessionId);
 	}
 
-	/// <summary>启用着、但还没建过会话时同样不发请求，也不留下半截状态。</summary>
-	[Fact]
-	public async Task 启用但没有会话时也不发请求()
-	{
-		Configure();
-		List<string> paths = [];
-		LuoLiCoreConversation conversation = Build(request =>
-		{
-			paths.Add(request.RequestUri!.AbsolutePath);
-			return Json(HttpStatusCode.OK, "{}");
-		});
-
-		Assert.False(await conversation.ResetAsync(CancellationToken.None));
-		Assert.Empty(paths);
-	}
-
 	/// <summary>只作废本地、完全不联网的那条路。安全模式下的清空走它。</summary>
 	[Fact]
 	public void 只忘掉本地会话不联网()

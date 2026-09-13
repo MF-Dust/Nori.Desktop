@@ -21,8 +21,6 @@ declare module 'vue' {
     AppEmpty: typeof import('./src/components/ui/AppEmpty.vue')['default']
     AppField: typeof import('./src/components/ui/AppField.vue')['default']
     AppModal: typeof import('./src/components/ui/AppModal.vue')['default']
-    AppSearchField: typeof import('./src/components/ui/AppSearchField.vue')['default']
-    AppSectionHeader: typeof import('./src/components/ui/AppSectionHeader.vue')['default']
     AppSegmented: typeof import('./src/components/ui/AppSegmented.vue')['default']
     AppSkeleton: typeof import('./src/components/ui/AppSkeleton.vue')['default']
     AppStatTile: typeof import('./src/components/ui/AppStatTile.vue')['default']

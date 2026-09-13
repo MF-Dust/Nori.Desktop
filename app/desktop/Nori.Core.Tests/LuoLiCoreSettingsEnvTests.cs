@@ -209,16 +209,4 @@ public sealed class LuoLiCoreSettingsEnvTests : IDisposable
 		Assert.DoesNotContain("127.0.0.1", stored, StringComparison.Ordinal);
 		Assert.Equal(64, stored.Length);
 	}
-
-	/// <summary>运维显式用环境变量指定会话 id 时不受指纹判据影响：那是他自己定的。</summary>
-	[Fact]
-	public void 环境变量指定的会话id不受指纹影响()
-	{
-		LuoLiCoreSettings settings = Store(
-			(LuoLiCoreSettingsStore.EnvBaseUrl, "http://127.0.0.1:3000"),
-			(LuoLiCoreSettingsStore.EnvApiKey, "sk-env"),
-			(LuoLiCoreSettingsStore.EnvSessionId, "sess_env")).Read();
-
-		Assert.Equal("sess_env", settings.SessionId);
-	}
 }

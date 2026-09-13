@@ -291,6 +291,10 @@ public sealed class AppRuntime : IAsyncDisposable
 			Proactive.Message += message => Dispatcher.UIThread.Post(() => OnProactiveMessage(message));
 			// 情绪一变就扇出到各条表达通道；协调器自己做节流，这里不判。
 			Emotion.Changed += state => _ = Expression.ApplyAsync(state, Services.ShutdownToken);
+
+			// 上一次若是崩溃或被强制结束，桌面会停在她改过的样子。原值存在配置库里，
+			// 启动时先还原一次；用户仍开着这些通道的话，下一次情绪变化会重新改回去。
+			RestoreDesktopState();
 			Proactive.Start();
 
 			// 插件贡献动作 → AI 工具 (plugin 分类): 活跃插件变化时防抖刷新
@@ -867,7 +871,44 @@ public sealed class AppRuntime : IAsyncDisposable
 	[
 		new TrayIconChannel(() => Tray.TrayMenu.Current, RunOnUi),
 		new SpeechBorderChannel(() => Services.Windows.Pet?.SpeechOverlay, RunOnUi),
+		AccentChannel,
+		WallpaperChannel,
 	];
+
+	/// <summary>改持久系统设置前的原值备份。</summary>
+	private DesktopStateBackup DesktopBackup => _desktopBackup ??= new DesktopStateBackup(Services.Config);
+
+	private IDesktopAppearance Appearance => _appearance ??=
+		OperatingSystem.IsWindows() ? new WindowsDesktopAppearance() : new UnsupportedDesktopAppearance();
+
+	private AccentColorChannel AccentChannel => _accentChannel ??= new AccentColorChannel(Appearance, DesktopBackup);
+
+	private WallpaperChannel WallpaperChannel => _wallpaperChannel ??= new WallpaperChannel(
+		Appearance,
+		DesktopBackup,
+		Path.Combine(Services.Paths.DataRoot, "expression", "wallpaper.jpg"));
+
+	/// <summary>
+	/// 把改过的桌面设置还回去。
+	///
+	/// 三个时机都要调：关掉某条通道、退出应用、以及**启动时** —— 上一次若是崩溃或被强制结束，
+	/// 桌面会停在她改过的样子，而原值存在配置库里，下次启动仍然还得回来。
+	/// </summary>
+	public void RestoreDesktopState()
+	{
+		foreach (Action restore in new Action[] {AccentChannel.Restore, WallpaperChannel.Restore})
+		{
+			try
+			{
+				restore();
+			}
+			catch (Exception exception) when (exception is InvalidOperationException or IOException
+				or UnauthorizedAccessException)
+			{
+				Services.Logger.Write(LogSource.Backend, "warn", $"还原桌面设置失败: {exception.Message}");
+			}
+		}
+	}
 
 	/// <summary>情绪表达的扇出协调器。通道自己判断可用性，协调器只负责过滤与节流。</summary>
 	private ExpressionCoordinator Expression => _expression ??= new ExpressionCoordinator(
@@ -954,6 +995,10 @@ public sealed class AppRuntime : IAsyncDisposable
 
 	private IReadOnlyList<IExpressionChannel>? _expressionChannels;
 	private ExpressionCoordinator? _expression;
+	private DesktopStateBackup? _desktopBackup;
+	private IDesktopAppearance? _appearance;
+	private AccentColorChannel? _accentChannel;
+	private WallpaperChannel? _wallpaperChannel;
 	private ISandboxLauncher? _sandbox;
 	private IScreenCapture? _screenCapture;
 	private IVisionAnalyzer? _visionAnalyzer;

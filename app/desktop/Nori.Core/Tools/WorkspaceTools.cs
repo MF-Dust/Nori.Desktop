@@ -5,11 +5,11 @@ using System.Text.Json.Nodes;
 namespace Nori.Core.Tools;
 
 /// <summary>
-/// 工作目录文件工具：看、找、读、写。
+/// 工作目录文件工具：列目录、搜索、读取、写入、定点替换。
 ///
 /// 此前 19 件内建工具均不具备本地文件访问能力，模型无法读取用户当前处理的文件。
 ///
-/// 权限分档：读取、列目录、搜索为 `safe`，写入为 `confirm`。工作目录由用户显式配置，该配置
+/// 权限分档：读取、列目录、搜索为 `safe`，写入与替换为 `confirm`。工作目录由用户显式配置，该配置
 /// 动作即为授权；若每次读取都触发授权对话框，一次代码浏览会产生数十次确认，实际效果是用户
 /// 关闭该功能。写入修改用户数据，逐次确认。
 ///
@@ -18,7 +18,7 @@ namespace Nori.Core.Tools;
 public static class WorkspaceTools
 {
 	/// <summary>本组工具名。变更工作目录时据此先注销，避免残留持有旧目录的注册项。</summary>
-	public static readonly IReadOnlyList<string> ToolNames = ["listFiles", "readFile", "searchFiles", "writeFile"];
+	public static readonly IReadOnlyList<string> ToolNames = ["listFiles", "readFile", "searchFiles", "writeFile", "editFile"];
 
 	/// <summary>
 	/// 注册本组工具，注册前先注销同名项。工作目录被清空时必须真正移除：仅跳过注册的话，旧注册
@@ -53,11 +53,24 @@ public static class WorkspaceTools
 				workspace, Str(args, "query"), Str(args, "path"), Str(args, "extension"), token.CancellationToken)));
 
 		Register(registry, "writeFile",
-			"把内容写入工作目录中的文件，覆盖原有内容。父文件夹不存在时会创建。", "confirm",
+			"新建文件或整份覆盖写入。父文件夹不存在时会创建。修改已有文件请改用 editFile。", "confirm",
 			Schema(
 				("path", "相对工作目录的文件路径", true),
 				("content", "要写入的完整文本内容", true)),
 			(args, _) => Task.FromResult<object?>(WriteFile(workspace, Str(args, "path"), Str(args, "content"))));
+
+		Register(registry, "editFile",
+			"替换工作目录中某个文件里的一段文本。oldText 必须与文件中的内容逐字符一致且唯一；"
+				+ "修改已有文件用本工具，不要用 writeFile 整份回传。", "confirm",
+			WithBoolean(
+				Schema(
+					("path", "相对工作目录的文件路径", true),
+					("oldText", "要被替换掉的原文，需包含足够上下文以在文件中唯一", true),
+					("newText", "替换成的新内容，留空表示删除这一段", true)),
+				"replaceAll",
+				"原文出现多次时是否全部替换，默认 false（此时出现多次会拒绝执行）"),
+			(args, _) => Task.FromResult<object?>(EditFile(
+				workspace, Str(args, "path"), Str(args, "oldText"), Str(args, "newText"), Bool(args, "replaceAll"))));
 	}
 
 	// ---- 实现 ----
@@ -211,6 +224,135 @@ public static class WorkspaceTools
 	}
 
 	/// <summary>
+	/// 定点替换文件中的一段文本。
+	///
+	/// 与 <c>writeFile</c> 的分工：新建文件用写入，修改已有文件用本工具。两点原因：
+	///
+	/// 1. <see cref="ToolLimits.MaxArgumentsCharacters"/> 为 32,000 字符，而单文件读取上限是
+	///    128 KB。整份回传的写入方式无法改写超过参数上限的文件，定点替换不受文件大小约束；
+	/// 2. 整份回传会把未被提及的部分一并覆盖，模型少输出一段即造成静默删除。
+	///
+	/// **`oldText` 必须在文件中唯一**，否则拒绝执行并报告出现次数。命中多处时替换首处是错误的
+	/// 默认行为：模型给出的短片段（`return null;`、`}`）在源码中普遍重复，改错的位置与改对的
+	/// 位置在结果里无法区分。需要全部替换时由调用方显式传 `replaceAll`。
+	/// </summary>
+	private static object EditFile(
+		WorkspaceAccess workspace,
+		string? path,
+		string? oldText,
+		string? newText,
+		bool replaceAll)
+	{
+		string resolved = workspace.Resolve(path) ?? throw OutOfBounds(path);
+		if (Directory.Exists(resolved)) throw new InvalidOperationException($"这是一个文件夹，不能改: {Show(path)}");
+		if (!File.Exists(resolved)) throw new InvalidOperationException($"文件不存在，新建请用 writeFile: {Show(path)}");
+
+		string target = oldText ?? string.Empty;
+		string replacement = newText ?? string.Empty;
+		if (target.Length == 0) throw new InvalidOperationException("oldText 不能为空");
+		if (target == replacement) throw new InvalidOperationException("oldText 与 newText 相同，无需替换");
+
+		string text = ReadForEdit(resolved, path);
+		bool adjusted = false;
+
+		// 行尾适配：文件为 CRLF 而 oldText 为纯 LF 时，逐字符匹配必然失败。
+		//
+		// 此处做一次确定性转换而非直接报错：模型难以从错误信息中推断出文件的行尾形式，
+		// 报错的结果是同一处编辑反复重试。转换只在精确匹配失败后尝试，且结果在返回值的
+		// `lineEndingAdjusted` 中报告，不是静默行为。
+		if (Count(text, target) == 0
+			&& text.Contains("\r\n", StringComparison.Ordinal)
+			&& target.Contains('\n')
+			&& !target.Contains("\r\n", StringComparison.Ordinal)
+			&& !replacement.Contains("\r\n", StringComparison.Ordinal))
+		{
+			string candidate = target.Replace("\n", "\r\n", StringComparison.Ordinal);
+			if (Count(text, candidate) > 0)
+			{
+				target = candidate;
+				replacement = replacement.Replace("\n", "\r\n", StringComparison.Ordinal);
+				adjusted = true;
+			}
+		}
+
+		int occurrences = Count(text, target);
+		if (occurrences == 0)
+		{
+			throw new InvalidOperationException(
+				$"未找到 oldText，它必须与文件中的文本逐字符一致（含缩进与空格）: {Show(path)}");
+		}
+
+		if (occurrences > 1 && !replaceAll)
+		{
+			throw new InvalidOperationException(
+				$"oldText 在文件中出现 {occurrences} 次，无法确定改哪一处。" +
+				"请在 oldText 前后补充上下文使其唯一，或传 replaceAll 替换全部");
+		}
+
+		int first = text.IndexOf(target, StringComparison.Ordinal);
+		string updated = replaceAll
+			? text.Replace(target, replacement, StringComparison.Ordinal)
+			: string.Concat(text.AsSpan(0, first), replacement, text.AsSpan(first + target.Length));
+
+		byte[] bytes = new UTF8Encoding(false).GetBytes(updated);
+		if (bytes.Length > WorkspaceAccess.MaxWriteBytes)
+		{
+			throw new InvalidOperationException(
+				$"替换后内容超过 {WorkspaceAccess.MaxWriteBytes / 1024} KB 上限，拒绝写入");
+		}
+
+		File.WriteAllBytes(resolved, bytes);
+		return new
+		{
+			path = workspace.Relative(resolved),
+			replaced = replaceAll ? occurrences : 1,
+			line = text.AsSpan(0, first).Count('\n') + 1,
+			bytes = bytes.Length,
+			lineEndingAdjusted = adjusted,
+		};
+	}
+
+	/// <summary>
+	/// 读出整份文件供改写使用。
+	///
+	/// 不复用 <see cref="WorkspaceAccess.ReadText"/>：后者在 <see cref="WorkspaceAccess.MaxReadBytes"/>
+	/// 处截断，用截断后的文本改写并整份写回会删除尾部内容。此处超限即拒绝。
+	///
+	/// 解码与编码均使用无 BOM 的 <see cref="UTF8Encoding"/>。文件原有的 BOM 会被解码成首位的
+	/// U+FEFF 字符并在编码时原样写回，故 BOM 得以保留。
+	/// </summary>
+	private static string ReadForEdit(string resolved, string? path)
+	{
+		if (new FileInfo(resolved).Length > WorkspaceAccess.MaxWriteBytes)
+		{
+			throw new InvalidOperationException(
+				$"文件超过 {WorkspaceAccess.MaxWriteBytes / 1024} KB，超出可改写范围: {Show(path)}");
+		}
+
+		byte[] bytes = File.ReadAllBytes(resolved);
+		if (WorkspaceAccess.LooksBinary(bytes))
+		{
+			throw new InvalidOperationException($"这是二进制文件，改不了: {Show(path)}");
+		}
+
+		return new UTF8Encoding(false, false).GetString(bytes);
+	}
+
+	/// <summary>不重叠地统计子串出现次数。</summary>
+	private static int Count(string text, string needle)
+	{
+		int count = 0;
+		int index = 0;
+		while ((index = text.IndexOf(needle, index, StringComparison.Ordinal)) >= 0)
+		{
+			count++;
+			index += needle.Length;
+		}
+
+		return count;
+	}
+
+	/// <summary>
 	/// 递归遍历，跳过排除目录；无访问权限的目录跳过，不使整次搜索失败。
 	///
 	/// **每一个目录与文件都要过一次 <see cref="WorkspaceAccess.Accept"/>。**
@@ -295,6 +437,30 @@ public static class WorkspaceTools
 
 	private static string? Str(JsonNode? args, string name) =>
 		args?[name]?.GetValue<string>();
+
+	/// <summary>
+	/// 读一个布尔参数，缺省为 false。
+	///
+	/// 同时接受 JSON 布尔与 `"true"` 这种字符串形式：多数模型在工具参数里混用两者，
+	/// 只认布尔会使 `replaceAll` 被静默当成 false，替换范围与调用方的意图不一致。
+	/// </summary>
+	private static bool Bool(JsonNode? args, string name)
+	{
+		JsonNode? node = args?[name];
+		if (node is null) return false;
+		if (node.GetValueKind() == JsonValueKind.True) return true;
+		if (node.GetValueKind() == JsonValueKind.False) return false;
+		return node.GetValueKind() == JsonValueKind.String
+			&& string.Equals(node.GetValue<string>().Trim(), "true", StringComparison.OrdinalIgnoreCase);
+	}
+
+	/// <summary>给 <see cref="Schema"/> 产出的对象补一个布尔属性（非必填）。</summary>
+	private static JsonObject WithBoolean(JsonObject schema, string name, string description)
+	{
+		((JsonObject)schema["properties"]!)[name] =
+			new JsonObject { ["type"] = "boolean", ["description"] = description };
+		return schema;
+	}
 
 	private static JsonObject Schema(params (string Name, string Description, bool Required)[] properties)
 	{

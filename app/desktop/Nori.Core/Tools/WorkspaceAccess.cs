@@ -64,7 +64,7 @@ public sealed class WorkspaceAccess
 	/// 把模型给的相对路径解析成工作目录内的绝对路径。越界返回 null。
 	///
 	/// 三层判据缺一不可：
-	/// 1. 拒绝绝对路径：工具契约要求相对路径，绝对路径一律视为越界；
+	/// 1. 拒绝绝对路径与盘符限定路径：工具契约要求相对路径，其余形式一律视为越界；
 	/// 2. `GetFullPath` 规范化后做前缀比较：拦截 `../` 形式的回溯；
 	/// 3. 逐段解引用符号链接后再比较：工作目录内指向外部的链接，前两层均无法拦截。
 	/// </summary>
@@ -74,6 +74,7 @@ public sealed class WorkspaceAccess
 		string path = (relative ?? string.Empty).Trim().Replace('\\', '/');
 		if (path.Length == 0 || path == ".") return Root;
 		if (Path.IsPathRooted(path)) return null;
+		if (IsDriveQualified(path)) return null;
 		if (path.Contains('\0')) return null;
 
 		string combined = Path.GetFullPath(Path.Combine(Root, path));
@@ -100,6 +101,18 @@ public sealed class WorkspaceAccess
 
 		return current;
 	}
+
+	/// <summary>
+	/// 盘符限定的路径（`C:/Windows`、`C:report.txt`）在所有平台上一律拒绝。
+	///
+	/// <see cref="Path.IsPathRooted"/> 的判定随平台变化：Windows 上 `C:/Windows` 是绝对路径，
+	/// 非 Windows 上盘符不成立，该串被当作名为 `C:` 的相对目录，拼接后落在工作目录之内并通过
+	/// 全部校验。判据在此统一，使同一个输入在两个平台上得到同一个结论。
+	///
+	/// 代价是非 Windows 上无法访问名为 `C:` 这种形式的目录。相对于判据分叉，该代价可接受。
+	/// </summary>
+	private static bool IsDriveQualified(string path) =>
+		path.Length >= 2 && path[1] == ':' && char.IsAsciiLetter(path[0]);
 
 	/// <summary>相对工作目录的路径，统一使用正斜杠：该值会被调用方在后续请求中原样回传。</summary>
 	public string Relative(string absolute)

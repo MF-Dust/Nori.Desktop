@@ -70,11 +70,19 @@ public sealed class WorkspaceToolsTests : IDisposable
 
 	// ---- 边界 ----
 
+	/// <summary>
+	/// 这些形式在 Windows 与非 Windows 上必须得到同一个结论。
+	///
+	/// 盘符那三条不能交给 <c>Path.IsPathRooted</c>：非 Windows 上它对 `C:/x` 返回 false，
+	/// 该串会被当作名为 `C:` 的相对目录落进工作目录。判据由 <c>IsDriveQualified</c> 补齐。
+	/// </summary>
 	[Theory]
 	[InlineData("../secret.txt")]
 	[InlineData("../../etc/passwd")]
 	[InlineData("sub/../../outside.txt")]
 	[InlineData("C:/Windows/System32/drivers/etc/hosts")]
+	[InlineData("c:/temp/x")]
+	[InlineData("C:report.txt")]
 	[InlineData("/etc/passwd")]
 	public void 越界路径一律解析失败(string path)
 	{

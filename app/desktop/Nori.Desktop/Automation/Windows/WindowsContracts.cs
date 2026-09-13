@@ -25,7 +25,16 @@ public sealed record WindowsTargetValidationResult(bool IsValid, WindowsTargetRe
 public enum WindowsScreenshotFormat { Png, Jpeg }
 
 /// <summary>截图请求。</summary>
-public sealed record WindowsScreenshotRequest(WindowsScreenshotFormat Format = WindowsScreenshotFormat.Png, int Quality = 90);
+/// <summary>
+/// 截屏请求。
+///
+/// <c>RequireForeground</c> 默认为 true，与自动化的既有判据一致。读屏要截的是被 Nori 自己的
+/// 窗口挡住的那一个，按定义不是前台，因此需要能关掉这条要求。
+/// </summary>
+public sealed record WindowsScreenshotRequest(
+	WindowsScreenshotFormat Format = WindowsScreenshotFormat.Png,
+	int Quality = 90,
+	bool RequireForeground = true);
 
 /// <summary>内存中的窗口截图。</summary>
 public sealed record WindowsScreenshot(byte[] Data, int Width, int Height, uint Dpi, WindowsScreenshotFormat Format);

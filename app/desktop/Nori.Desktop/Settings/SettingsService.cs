@@ -40,6 +40,7 @@ public sealed class SettingsService : IDisposable
 		"settings_update_workspace",
 		"settings_pick_workspace",
 		"settings_update_tasks",
+		"settings_update_screen",
 		"settings_update_proactive",
 		"reminder_add",
 		"reminder_cancel",

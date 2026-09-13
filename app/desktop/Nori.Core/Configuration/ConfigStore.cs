@@ -57,6 +57,14 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	public const string KeyWorkspaceTasks = "workspace_tasks";
 
 	/// <summary>
+	/// 是否允许查看屏幕。默认关闭。
+	///
+	/// 与工作目录分开授权：文件访问的范围是用户挑的一个文件夹，而屏幕上会出现什么他在授权
+	/// 那一刻无从预料。两者的敏感度不是一回事，不能一次同意覆盖两件。
+	/// </summary>
+	public const string KeyScreenReadingEnabled = "screen_reading_enabled";
+
+	/// <summary>
 	/// 一轮对话里最多连续调用多少次工具。
 	///
 	/// 原先写死 5，而一个「先搜、再读、再改、再验」的任务在第五轮刚好卡在验证之前 —— 她做了

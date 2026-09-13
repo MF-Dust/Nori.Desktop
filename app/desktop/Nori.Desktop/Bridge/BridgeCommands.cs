@@ -264,6 +264,18 @@ public sealed class BridgeCommands
 		"settings_update_tasks" => RequireMain(source, () => Run(() => UpdateTaskSettings(args))),
 
 		/// <summary>
+		/// 开关读屏。
+		/// 前端调用：invoke("settings_update_screen", {enabled: boolean})
+		/// </summary>
+		"settings_update_screen" => RequireMain(source, () => Run(() =>
+		{
+			UpdateBoolConfig(args, "enabled", ConfigStore.KeyScreenReadingEnabled);
+			// 工具注册表按开关构建，不重建则要到下次启动才生效。
+			Runtime.RebuildTools();
+			Runtime.InvalidateSnapshot("workspace", "tools");
+		})),
+
+		/// <summary>
 		/// 打开系统文件夹选择对话框，返回选中路径；用户取消时返回 null。
 		/// 前端调用：invoke("settings_pick_workspace")
 		/// </summary>

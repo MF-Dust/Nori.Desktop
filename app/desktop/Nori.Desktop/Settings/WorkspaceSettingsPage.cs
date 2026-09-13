@@ -15,8 +15,8 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			service,
 			"workspace",
 			"core",
-			new("文件访问", "File access"),
-			new("选择她可以查看和修改的文件夹，并控制单轮工具次数。", "Choose the folder she may read and edit, and cap tool calls per turn."),
+			new("访问权限", "Access"),
+			new("她能碰到你哪些东西：文件夹、可运行的命令、屏幕。", "What she can reach: folders, runnable commands, and your screen."),
 			lifetimeToken)
 	{
 		SettingsSectionViewModel folder = AddSection(new("工作文件夹", "Working folder"));
@@ -77,6 +77,36 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			"",
 			(value, token) => ExecuteAsync("settings_update_tasks", new { tasks = ParseTasks(Convert.ToString(value)) }, token));
 
+		SettingsSectionViewModel screen = AddSection(new("屏幕", "Screen"));
+		AddField(
+			screen,
+			"screenReading",
+			new("允许查看屏幕", "Allow looking at your screen"),
+			new(
+				"开启后她可以在你问起时截取当前窗口交给模型分析。每次都会请求确认。"
+					+ "只看你正在用的那个窗口，看不了整个屏幕，也不会自己主动去看。",
+				"When on, she can capture the current window and have the model analyse it when you ask. "
+					+ "Each capture asks for confirmation. Only the window you are using, never the whole "
+					+ "screen, and never on her own initiative."),
+			SettingsEditorKind.Boolean,
+			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "workspace", "screenEnabled"),
+			false,
+			(value, token) => ExecuteAsync(
+				"settings_update_screen", new { enabled = Convert.ToBoolean(value) }, token));
+
+		AddField(
+			screen,
+			"screenAvailability",
+			new("可用性", "Availability"),
+			new(
+				"需要当前平台支持截屏，且已配置支持看图的模型。",
+				"Requires screen capture support on this platform and a configured model that accepts images."),
+			SettingsEditorKind.Text,
+			ScreenAvailabilityText,
+			"",
+			(_, _) => Task.FromResult(default(JsonElement)),
+			readOnly: true);
+
 		SettingsSectionViewModel limits = AddSection(new("工具次数", "Tool calls"));
 		AddField(
 			limits,
@@ -101,6 +131,19 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			maximum: Core.Agent.AgentEngine.MaxToolIterationsLimit,
 			increment: 1);
 	}
+
+	/// <summary>
+	/// 读屏能不能用。
+	///
+	/// 与开关分开显示：开关是「要不要」，这一行是「能不能」。两者混在一起时，用户打开了开关
+	/// 却没反应，只能怀疑是坏了 —— 实际原因可能是当前模型不支持看图。
+	/// </summary>
+	private string ScreenAvailabilityText(JsonElement snapshot) =>
+		SettingsSnapshotReader.Boolean(snapshot, false, "workspace", "screenAvailable")
+			? IsEnglish ? "Ready" : "可用"
+			: IsEnglish
+				? "Unavailable — this platform has no capture support, or the current model cannot read images"
+				: "不可用 —— 当前平台不支持截屏，或当前模型不支持看图";
 
 	/// <summary>
 	/// 把隔离强度翻成用户能判断的话。

@@ -17,6 +17,8 @@ using Nori.Core.Skills;
 using Nori.Core.Sandbox;
 using Nori.Core.Security;
 using Nori.Core.Tools;
+using Nori.Core.Vision;
+using Nori.Desktop.Vision;
 using Nori.Core.Telemetry;
 using Nori.Core.Voice;
 using Nori.PluginRuntime;
@@ -797,7 +799,29 @@ public sealed class AppRuntime : IAsyncDisposable
 		WorkspaceAccess workspace = ResolveWorkspace();
 		WorkspaceTools.RegisterAll(Tools, workspace);
 		RegisterTaskTools(Tools, workspace);
+		RegisterScreenTools(Tools);
 	}
+
+	/// <summary>
+	/// 注册读屏工具。用户未显式开启、或处于安全模式时不注册。
+	///
+	/// 授权与工作目录分开：文件访问的范围是用户挑的一个文件夹，屏幕上会出现什么他在授权那一刻
+	/// 无从预料。能力是否具备（平台支持、模型已配）由 ScreenTools 自己判断。
+	/// </summary>
+	private void RegisterScreenTools(ToolRegistry registry)
+	{
+		bool allowed = !Services.SafeMode
+			&& Services.Config.GetBoolOr(ConfigStore.KeyScreenReadingEnabled, false);
+		ScreenTools.RegisterAll(registry, allowed ? ScreenCapture : null, allowed ? VisionAnalyzer : null);
+	}
+
+	/// <summary>读屏实现；非 Windows 暂无实现，返回 null 即整组不注册。</summary>
+	private IScreenCapture? ScreenCapture =>
+		OperatingSystem.IsWindows() ? _screenCapture ??= new WindowsScreenCapture() : null;
+
+	/// <summary>截图分析器，走当前聊天 Provider 的多模态能力。</summary>
+	private IVisionAnalyzer VisionAnalyzer =>
+		_visionAnalyzer ??= new ChatVisionAnalyzer(Services.Chat, Services.AiSettings);
 
 	/// <summary>
 	/// 注册 runTask。没有任务时直接注销并返回，**不触碰 <see cref="Sandbox"/>**。
@@ -889,6 +913,8 @@ public sealed class AppRuntime : IAsyncDisposable
 	}
 
 	private ISandboxLauncher? _sandbox;
+	private IScreenCapture? _screenCapture;
+	private IVisionAnalyzer? _visionAnalyzer;
 
 	private IReadOnlyList<WorkspaceTask> ResolveTasks() =>
 		Services.SafeMode
@@ -928,6 +954,7 @@ public sealed class AppRuntime : IAsyncDisposable
 		WorkspaceAccess workspace = ResolveWorkspace();
 		WorkspaceTools.RegisterAll(registry, workspace);
 		RegisterTaskTools(registry, workspace);
+		RegisterScreenTools(registry);
 		return registry;
 	}
 
@@ -1369,6 +1396,9 @@ public sealed class AppRuntime : IAsyncDisposable
 				// 启动器尚未建立时报本平台的预期值，不报 unknown —— 用户在配置命令之前就该知道。
 				isolation = (ExistingSandbox?.Isolation ?? SandboxLauncherFactory.PlannedIsolation)
 					.ToString().ToLowerInvariant(),
+				screenEnabled = config.GetBoolOr(ConfigStore.KeyScreenReadingEnabled, false),
+				// 平台不支持或模型没配时，界面要说清是「开不了」而不是「没开」。
+				screenAvailable = ScreenCapture is {IsAvailable: true} && VisionAnalyzer.IsConfigured,
 			},
 			telemetry = new
 			{

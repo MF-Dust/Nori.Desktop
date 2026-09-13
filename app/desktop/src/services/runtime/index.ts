@@ -434,6 +434,10 @@ export const RUNTIME = {
 	updateWorkspace(patch: Partial<{root: string; maxToolIterations: number}>): Promise<WorkspaceSettingsResult> {
 		return invoke("settings_update_workspace", patch)
 	},
+	/** 开关读屏。与工作目录分开授权：屏幕上会出现什么，用户在授权那一刻无从预料。 */
+	updateScreenReading(enabled: boolean): Promise<void> {
+		return invoke("settings_update_screen", {enabled})
+	},
 	/** 整份替换 runTask 可运行的任务清单。任务只有名字这一个键，改名无法与新增区分，故不做增量。 */
 	updateTasks(tasks: WorkspaceTaskDto[]): Promise<WorkspaceTasksResult> {
 		return invoke("settings_update_tasks", {tasks})

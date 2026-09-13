@@ -73,6 +73,20 @@ public sealed class AgentEngine
 	private readonly AgentTraceSink _trace;
 	private readonly Func<LlmProvider, HttpClient, ILlmAdapter> _adapterFactory;
 
+	/// <summary>
+	/// 把对话交给 LuoLiCore 的那条路。为 null 或未启用时本类行为不变。
+	///
+	/// 可选而不是必填：这条路是一个可选后端，缺省时桌宠仍然完整可用，
+	/// 不该让一个没配它的实例连构造都过不去。
+	/// </summary>
+	private readonly Chat.LuoLiCore.LuoLiCoreConversation? _luoLiCore;
+
+	/// <summary>
+	/// 回复文本 → 表情动作。只在走 LuoLiCore 那条路时用到：本机那条由模型在协议里直接给。
+	/// 为 null 时不挑，退化成只有物理摆动与口型。
+	/// </summary>
+	private readonly ReplyReactionService? _replyReaction;
+
 	private readonly HttpClient _http;
 	private readonly ConfigStore _config;
 	private readonly ChatService _chat;
@@ -100,7 +114,9 @@ public sealed class AgentEngine
 		int maxToolIterations = 5,
 		AgentSessionCoordinator? sessionCoordinator = null,
 		AgentTraceSink? trace = null,
-		Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null)
+		Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null,
+		Chat.LuoLiCore.LuoLiCoreConversation? luoLiCore = null,
+		ReplyReactionService? replyReaction = null)
 	{
 		_http = http;
 		_config = config;
@@ -117,6 +133,8 @@ public sealed class AgentEngine
 		_sessionCoordinator = sessionCoordinator ?? new AgentSessionCoordinator();
 		_trace = trace ?? AgentTraceSink.Noop;
 		_adapterFactory = adapterFactory ?? LlmClient.CreateAdapter;
+		_luoLiCore = luoLiCore;
+		_replyReaction = replyReaction;
 	}
 
 	/// <summary>
@@ -136,6 +154,15 @@ public sealed class AgentEngine
 		void SetState(AgentRunState state) => callbacks.OnState?.Invoke(state);
 
 		SetState(AgentRunState.Thinking);
+
+		// 0. 对话是否交给 LuoLiCore。
+		//
+		// 判定放在读取 LLM 配置之前：那一段要求 BaseUrl / ApiKey / Model 三项齐全，
+		// 而只配了 LuoLiCore 的实例本来就没有这三项，放在后面会先被那条检查挡掉。
+		if (_luoLiCore is { IsActive: true })
+		{
+			return await RunViaLuoLiCoreAsync(userText, sessionId, callbacks, runToken, runClock, cancellationToken);
+		}
 
 		// 1. 读取 AI 与用户自定义人设配置 (秘密只在后端流转)
 		Stopwatch configClock = Stopwatch.StartNew();
@@ -431,6 +458,171 @@ public sealed class AgentEngine
 			SetState(AgentRunState.Error);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", FailureCategory(exception));
 			throw;
+		}
+	}
+
+	/// <summary>
+	/// 把这一轮整个交给 LuoLiCore。
+	///
+	/// 不跑本机的工具循环 —— 对端一次「发消息」等于它自己跑完一整轮（含它那侧的工具、
+	/// 记忆与审批）。两套 agent 同时持有工具循环的控制权是两套记忆、两套工具注册表、
+	/// 两条审批路径打架的起点。
+	///
+	/// 收尾与本机那条保持一致：同样落库、同样回调 OnComplete、同样记 trace。区别只有
+	/// 「谁生成了这段文本」，对上层与界面是透明的。
+	/// </summary>
+	private async Task<ProtocolMessage> RunViaLuoLiCoreAsync(
+		string userText,
+		string sessionId,
+		AgentCallbacks callbacks,
+		CancellationToken runToken,
+		Stopwatch runClock,
+		CancellationToken cancellationToken)
+	{
+		void SetState(AgentRunState state) => callbacks.OnState?.Invoke(state);
+
+		try
+		{
+			// 状态跟本机那条一致：入口已经是 Thinking，见到第一个增量才算开始说话。
+			//
+			// 不在这里直接置 Streaming：对端的排队闸可能让轮次等上数秒，而那条流在轮次执行
+			// 期间没有任何保活帧 —— 一上来就说「正在说」，界面会长时间停在一个不动的说话态。
+			bool streaming = false;
+			void EnterStreaming()
+			{
+				if (streaming) return;
+				streaming = true;
+				SetState(AgentRunState.Streaming);
+			}
+
+			ProtocolMessage message = await _luoLiCore!.RunAsync(
+				userText,
+				text =>
+				{
+					EnterStreaming();
+					callbacks.OnTextChunk?.Invoke(text);
+				},
+				// 排了队就明确退回 Thinking，让界面知道这一轮还没轮到。
+				() => SetState(AgentRunState.Thinking),
+				// 对端开始跑一个工具。走本机那条路一样的两个回调，界面不必分辨这一轮是谁在执行。
+				//
+				// 只有开始没有结束：对端那条流上没有「工具跑完了」这个事件。补一个假的结束回调
+				// 会让界面显示一个它并不知道的事实；下一个增量到来时状态自然回到 Streaming，
+				// 而一直没有增量的话，状态停在 ToolExecuting 恰好是真的。
+				name =>
+				{
+					streaming = false;
+					SetState(AgentRunState.ToolExecuting);
+					callbacks.OnToolExecuting?.Invoke(name, null);
+				},
+				runToken);
+
+			if (message.Text.Length == 0) throw new InvalidOperationException("LuoLiCore 未产出最终回复");
+
+			// **先落库，再挑表情。**
+			//
+			// 顺序反过来的话有一个真实的丢数据窗口：done 已经到了，对端那一轮**已经提交**，
+			// 界面上也已经有流式文本了，而挑表情是可取消的 —— 用户此刻按停止，取消会从那次
+			// await 抛出来，这一轮就永远不会落进本地历史。结果是远端记着、界面显示过、本地
+			// 没有，下一轮的远端上下文与用户看到的对不上。
+			//
+			// 落库只存文本，与表情无关，因此提前没有任何代价。
+			_chat.SaveMessage("user", userText);
+			_chat.SaveMessage("assistant", message.Text);
+
+			// 远端只给文本，表情动作在本地挑：合法名随当前 Live2D 模型变化，只有宿主知道。
+			// 挑不出来（没配本机模型、超时、返回的不是 JSON、这一刻被取消）就保持空值 ——
+			// 退化成没有表情，不影响这一轮对话。
+			message = await AttachReactionAsync(message, runToken);
+
+			SetState(AgentRunState.Idle);
+			DispatchEffects(message);
+			callbacks.OnComplete?.Invoke(message);
+			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "completed");
+			return message;
+		}
+		catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+		{
+			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", "timeout");
+			throw new ChatException("LuoLiCore 这一轮超时了, 请稍后重试");
+		}
+		catch (OperationCanceledException)
+		{
+			SetState(AgentRunState.Idle);
+			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "cancelled", "cancelled");
+			throw;
+		}
+		catch (Exception exception)
+		{
+			SetState(AgentRunState.Error);
+			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", FailureCategory(exception));
+			throw;
+		}
+	}
+
+	/// <summary>
+	/// 对端这一侧能调哪些工具。没接这条路或未启用时返回空列表。
+	/// </summary>
+	public Task<IReadOnlyList<Chat.LuoLiCore.LuoLiCoreTool>> ListRemoteToolsAsync(CancellationToken cancellationToken) =>
+		_luoLiCore is null
+			? Task.FromResult<IReadOnlyList<Chat.LuoLiCore.LuoLiCoreTool>>([])
+			: _luoLiCore.ListToolsAsync(cancellationToken);
+
+	/// <summary>
+	/// 清掉对端记着的这段对话。清空本地聊天记录时一起调用。
+	/// </summary>
+	/// <returns>远端确实被重置了返回 true；没启用或还没建过会话返回 false。</returns>
+	public Task<bool> ResetRemoteContextAsync(CancellationToken cancellationToken) =>
+		_luoLiCore is null ? Task.FromResult(false) : _luoLiCore.ResetAsync(cancellationToken);
+
+	/// <summary>
+	/// 只作废本地记着的远端会话，不联网。安全模式下清空聊天记录走这条。
+	/// </summary>
+	public void ForgetRemoteSession() => _luoLiCore?.ForgetSession();
+
+	/// <summary>
+	/// 对端那边是否有一段会话在记着东西。
+	///
+	/// 给调用方区分「没接外部后端」与「接了但这次没去重置」用 —— 后者需要提示用户，前者不用。
+	/// </summary>
+	public bool HasRemoteContext => _luoLiCore?.HasSession ?? false;
+
+	/// <summary>
+	/// 给一条只有文本的回复补上表情与动作。
+	///
+	/// 挑选本身绝不允许影响这一轮：服务内部已经把超时与故障吞成空反应，这里再兜一层，
+	/// 是因为「挑表情失败」和「她没话说」在用户那边看起来一模一样，而前者根本不该让
+	/// 整轮失败。
+	/// </summary>
+	private async Task<ProtocolMessage> AttachReactionAsync(ProtocolMessage message, CancellationToken cancellationToken)
+	{
+		if (_replyReaction is null) return message;
+
+		try
+		{
+			PetInteractionReaction reaction = await _replyReaction.ReactAsync(
+				new ReplyReactionRequest
+				{
+					ReplyText = message.Text,
+					CurrentEmotion = _emotion?.CurrentType,
+					AvailableMotions = _motionNames(),
+					AvailableExpressions = _expressionNames(),
+				},
+				cancellationToken);
+
+			return message with
+			{
+				Emotion = reaction.Emotion,
+				Expression = reaction.Expression,
+				Action = reaction.Motion,
+			};
+		}
+		catch (Exception)
+		{
+			// 含取消：走到这里时对端那一轮已经提交、文本已经落库，没有什么还能「停下来」。
+			// 把取消当成「这次没挑出表情」，而不是让整轮失败 —— 后者会把一段已经发生过的
+			// 对话报成取消，界面与远端就此分叉。
+			return message;
 		}
 	}
 

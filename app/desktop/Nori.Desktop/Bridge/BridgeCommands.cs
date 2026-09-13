@@ -436,11 +436,7 @@ public sealed class BridgeCommands
 			(long)(OptionalDouble(args, "beforeId") ?? 0))),
 
 		// invoke("chat_clear")
-		"chat_clear" => RequireMain(source, () => Run(() =>
-		{
-			_services.Chat.ClearHistory();
-			Runtime.InvalidateSnapshot("chat");
-		})),
+		"chat_clear" => await ClearChatAsync(source, cancellationToken),
 
 		// ---- 记忆库 ----
 		/// invoke("memory_add", {content, type?, importance?, tags?})
@@ -966,6 +962,61 @@ public sealed class BridgeCommands
 		await RequireVisibleMainVoidAsync(source);
 		return await Automation.StopAllAsync(cancellationToken).ConfigureAwait(false);
 	}
+
+	/// <summary>
+	/// 清空聊天记录。
+	///
+	/// 对话交给 LuoLiCore 时，上下文记在对端，本地表只是一份副本。**先重置远端、成功了才删
+	/// 本地**：反过来的话，删完本地远端却没清，她下一句仍然接得上前面聊过的内容，而界面上
+	/// 什么都没有了，用户只会以为清空没生效 —— 这种不一致比清不掉难查得多。
+	///
+	/// 因此远端重置失败时整条命令失败，本地记录原样留着，两边仍然一致。连不上对端又确实要
+	/// 清本地的话，关掉 LuoLiCore 再清。
+	/// </summary>
+	private async Task<object?> ClearChatAsync(IBridgeSource source, CancellationToken cancellationToken) =>
+		await RequireMainAsync(source, async () =>
+		{
+			// 安全模式禁用一切外部调用（AGENTS.md §1「Safe Mode」），重置远端会话是一次
+			// 真正的出网请求，所以这里跳过它。
+			//
+			// 不把 chat_clear 整条加进 IsNetworkCommand：清空本地聊天记录本身是纯本地操作，
+			// 安全模式没有理由连它一起禁掉 —— 那会让人在排障时连清个记录都做不到。
+			//
+			// 代价是两边会不一致：安全模式下对话本来就不走远端（chat_start 已被挡），远端的
+			// 上下文停在进入安全模式那一刻，清完本地它还记着。因此把这件事**报给调用方**，
+			// 由界面提示一句，而不是让用户以为清干净了 —— 这种不一致查起来比清不掉贵得多。
+			// 判据要在动手之前取：作废之后再问「有没有远端会话」恒为否。
+			bool hadRemoteSession = Runtime.Engine.HasRemoteContext;
+			bool remoteReset = false;
+			if (_services.SafeMode)
+			{
+				// 安全模式不出网，但本地记着的会话必须作废 —— 否则退出安全模式之后那段「已经
+				// 清掉」的上下文会原样回来。这一步不联网。
+				Runtime.Engine.ForgetRemoteSession();
+			}
+			else
+			{
+				remoteReset = await Runtime.Engine.ResetRemoteContextAsync(cancellationToken);
+			}
+
+			_services.Chat.ClearHistory();
+			Runtime.InvalidateSnapshot("chat");
+			return new ClearChatResult(
+				remoteReset,
+				_services.SafeMode && hadRemoteSession
+					// 用户这一侧已经干净了：本地空了，那段会话也不会再被用到。留着说一句是因为
+					// 旧会话的内容仍留在对端服务器上 —— 删它需要联网，而安全模式的前提是不联网。
+					? "安全模式下未联系外部服务；本地会话已作废，重新启用后会开一段新的对话"
+					: null);
+		});
+
+	/// <summary>
+	/// 清空聊天记录的结果。
+	///
+	/// <paramref name="RemoteReset"/> 为 false 有两种原因：没接外部后端（无事可做），或者安全
+	/// 模式跳过了那次调用（<paramref name="Note"/> 会说明）。两者对界面的意义不同。
+	/// </summary>
+	private sealed record ClearChatResult(bool RemoteReset, string? Note);
 
 	private async Task<object?> MemoryAddAsync(IBridgeSource source, JsonElement args)
 	{

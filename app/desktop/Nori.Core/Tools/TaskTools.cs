@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Nori.Core.Sandbox;
+using static Nori.Core.Tools.ToolProperty;
+using static Nori.Core.Tools.ToolRegistration;
 
 namespace Nori.Core.Tools;
 
@@ -44,27 +46,13 @@ public static class TaskTools
 		registry.Unregister(RunTaskName);
 		if (!workspace.IsConfigured || tasks.Count == 0) return;
 
-		registry.Register(new RegisteredTool
-		{
-			Name = RunTaskName,
-			Description = Describe(tasks),
-			Parameters = new JsonObject
-			{
-				["type"] = "object",
-				["properties"] = new JsonObject
-				{
-					["name"] = new JsonObject
-					{
-						["type"] = "string",
-						["description"] = "任务名，必须是已配置的其中之一",
-						["enum"] = Names(tasks),
-					},
-				},
-				["required"] = new JsonArray { "name" },
-			},
-			PermissionLevel = "confirm",
-			Execute = (args, context) => RunAsync(workspace, tasks, launcher, args, context.CancellationToken),
-		});
+		Register(
+			registry,
+			RunTaskName,
+			Describe(tasks),
+			"confirm",
+			Schema(Choice("name", "任务名，必须是已配置的其中之一", [.. tasks.Select(task => task.Name)])),
+			(args, context) => RunAsync(workspace, tasks, launcher, args, context.CancellationToken));
 	}
 
 	/// <summary>
@@ -83,13 +71,6 @@ public static class TaskTools
 
 		text.Append("\n只能运行上面列出的任务，不能自行拼接命令。");
 		return ToolLimits.CapText(text.ToString(), ToolLimits.MaxDescriptionCharacters);
-	}
-
-	private static JsonArray Names(IReadOnlyList<WorkspaceTask> tasks)
-	{
-		JsonArray names = [];
-		foreach (WorkspaceTask task in tasks) names.Add(task.Name);
-		return names;
 	}
 
 	private static async Task<object?> RunAsync(

@@ -2,6 +2,8 @@ using System.IO.Enumeration;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using static Nori.Core.Tools.ToolProperty;
+using static Nori.Core.Tools.ToolRegistration;
 
 namespace Nori.Core.Tools;
 
@@ -36,48 +38,46 @@ public static class WorkspaceTools
 
 		Register(registry, "listFiles",
 			"列出工作目录中某个文件夹下的文件与子文件夹。path 省略时列根目录。", "safe",
-			Schema(("path", "相对工作目录的文件夹路径，省略表示根目录", false)),
+			Schema(Text("path", "相对工作目录的文件夹路径，省略表示根目录", required: false)),
 			(args, _) => Task.FromResult<object?>(ListFiles(workspace, Str(args, "path"))));
 
 		Register(registry, "readFile",
 			"读取工作目录中一个文本文件的内容。文件过大时只返回开头部分。", "safe",
-			Schema(("path", "相对工作目录的文件路径", true)),
+			Schema(Text("path", "相对工作目录的文件路径")),
 			(args, _) => Task.FromResult<object?>(ReadFile(workspace, Str(args, "path"))));
 
 		Register(registry, "searchFiles",
 			"在工作目录中按内容搜索文本，返回命中的文件、行号与该行内容。", "safe",
 			Schema(
-				("query", "要搜索的文本（区分大小写与否由 caseSensitive 决定）", true),
-				("path", "限定搜索的子目录，省略表示整个工作目录", false),
-				("extension", "限定文件扩展名，例如 .cs；省略表示不限", false)),
+				Text("query", "要搜索的文本（区分大小写与否由 caseSensitive 决定）"),
+				Text("path", "限定搜索的子目录，省略表示整个工作目录", required: false),
+				Text("extension", "限定文件扩展名，例如 .cs；省略表示不限", required: false)),
 			(args, token) => Task.FromResult<object?>(SearchFiles(
 				workspace, Str(args, "query"), Str(args, "path"), Str(args, "extension"), token.CancellationToken)));
 
 		Register(registry, "findFiles",
 			"按文件名查找工作目录里的文件，支持通配符 * 和 ?，例如 *.cs 或 Agent*。", "safe",
 			Schema(
-				("pattern", "文件名通配符；含 / 时按相对路径匹配，例如 src/*.cs", true),
-				("path", "限定查找的子目录，省略表示整个工作目录", false)),
+				Text("pattern", "文件名通配符；含 / 时按相对路径匹配，例如 src/*.cs"),
+				Text("path", "限定查找的子目录，省略表示整个工作目录", required: false)),
 			(args, token) => Task.FromResult<object?>(FindFiles(
 				workspace, Str(args, "pattern"), Str(args, "path"), token.CancellationToken)));
 
 		Register(registry, "writeFile",
 			"新建文件或整份覆盖写入。父文件夹不存在时会创建。修改已有文件请改用 editFile。", "confirm",
 			Schema(
-				("path", "相对工作目录的文件路径", true),
-				("content", "要写入的完整文本内容", true)),
+				Text("path", "相对工作目录的文件路径"),
+				Text("content", "要写入的完整文本内容")),
 			(args, _) => Task.FromResult<object?>(WriteFile(workspace, Str(args, "path"), Str(args, "content"))));
 
 		Register(registry, "editFile",
 			"替换工作目录中某个文件里的一段文本。oldText 必须与文件中的内容逐字符一致且唯一；"
 				+ "修改已有文件用本工具，不要用 writeFile 整份回传。", "confirm",
-			WithBoolean(
-				Schema(
-					("path", "相对工作目录的文件路径", true),
-					("oldText", "要被替换掉的原文，需包含足够上下文以在文件中唯一", true),
-					("newText", "替换成的新内容，留空表示删除这一段", true)),
-				"replaceAll",
-				"原文出现多次时是否全部替换，默认 false（此时出现多次会拒绝执行）"),
+			Schema(
+				Text("path", "相对工作目录的文件路径"),
+				Text("oldText", "要被替换掉的原文，需包含足够上下文以在文件中唯一"),
+				Text("newText", "替换成的新内容，留空表示删除这一段"),
+				Boolean("replaceAll", "原文出现多次时是否全部替换，默认 false（此时出现多次会拒绝执行）")),
 			(args, _) => Task.FromResult<object?>(EditFile(
 				workspace, Str(args, "path"), Str(args, "oldText"), Str(args, "newText"), Bool(args, "replaceAll"))));
 	}
@@ -532,40 +532,4 @@ public static class WorkspaceTools
 			&& string.Equals(node.GetValue<string>().Trim(), "true", StringComparison.OrdinalIgnoreCase);
 	}
 
-	/// <summary>给 <see cref="Schema"/> 产出的对象补一个布尔属性（非必填）。</summary>
-	private static JsonObject WithBoolean(JsonObject schema, string name, string description)
-	{
-		((JsonObject)schema["properties"]!)[name] =
-			new JsonObject { ["type"] = "boolean", ["description"] = description };
-		return schema;
-	}
-
-	private static JsonObject Schema(params (string Name, string Description, bool Required)[] properties)
-	{
-		JsonObject props = new();
-		JsonArray required = [];
-		foreach ((string name, string description, bool isRequired) in properties)
-		{
-			props[name] = new JsonObject { ["type"] = "string", ["description"] = description };
-			if (isRequired) required.Add(name);
-		}
-
-		return new JsonObject { ["type"] = "object", ["properties"] = props, ["required"] = required };
-	}
-
-	private static void Register(
-		ToolRegistry registry,
-		string name,
-		string description,
-		string permissionLevel,
-		JsonObject parameters,
-		Func<JsonNode?, ToolContext, Task<object?>> execute) =>
-		registry.Register(new RegisteredTool
-		{
-			Name = name,
-			Description = description,
-			Parameters = parameters,
-			PermissionLevel = permissionLevel,
-			Execute = execute,
-		});
 }

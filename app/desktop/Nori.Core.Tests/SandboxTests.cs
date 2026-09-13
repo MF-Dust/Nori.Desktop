@@ -216,9 +216,9 @@ public sealed class SandboxTests : IDisposable
 	///
 	/// 授权就是往 DACL 里加一条该 SID 的 ACE，所以这是判断「授权还在不在」的直接判据。
 	/// </summary>
+	[System.Runtime.Versioning.SupportedOSPlatform("windows")]
 	private static bool HasGrant(string path, string containerSid)
 	{
-		if (!OperatingSystem.IsWindows()) return false;
 		System.Security.AccessControl.AuthorizationRuleCollection rules =
 			new DirectoryInfo(path).GetAccessControl(System.Security.AccessControl.AccessControlSections.Access)
 				.GetAccessRules(true, false, typeof(System.Security.Principal.SecurityIdentifier));

@@ -6,6 +6,7 @@
  */
 import {ref} from "vue"
 import {invoke} from "../host/invoke"
+import type {WorkspacePickResult, WorkspaceSettingsResult} from "../host/commands"
 import {listen, type UnlistenFn} from "../host/event"
 import {feedback} from "../feedback"
 import type {
@@ -428,6 +429,14 @@ export const RUNTIME = {
 	},
 	updateProactive(patch: Partial<{idleEnabled: boolean; idleMinutes: number; dailyGreeting: boolean}>): Promise<void> {
 		return invoke("settings_update_proactive", patch)
+	},
+	/** 更新文件工具的工作目录与单轮工具次数上限。传空串的 root 表示停用文件工具。 */
+	updateWorkspace(patch: Partial<{root: string; maxToolIterations: number}>): Promise<WorkspaceSettingsResult> {
+		return invoke("settings_update_workspace", patch)
+	},
+	/** 打开系统文件夹选择对话框；用户取消时返回 null，调用方应保持原有配置不变。 */
+	pickWorkspace(): Promise<WorkspacePickResult> {
+		return invoke("settings_pick_workspace")
 	},
 	updateAutomation(patch: Partial<{enabled: boolean; desktopEnabled: boolean; browserEnabled: boolean}>): Promise<AutomationSettingsDto> {
 		return invoke("settings_update_automation", patch)

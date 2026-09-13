@@ -54,6 +54,19 @@ import type {PluginInfo, PluginInstallResult, PluginUninstallResult} from "../pl
 export type CommandArgs = JsonObject
 export type EmptyCommandArgs = undefined
 
+/** `settings_update_workspace` 的返回：写入后的工作目录状态。 */
+export interface WorkspaceSettingsResult {
+	/** 当前工作目录的绝对路径；空串表示未启用文件工具。 */
+	root: string
+	/** 该目录当前是否可用。与 `root` 分开：目录被删除或移动后配置仍在，但工具已不再注册。 */
+	available: boolean
+	/** 单轮回复中连续调用工具的次数上限。 */
+	maxToolIterations: number
+}
+
+/** `settings_pick_workspace` 的返回；用户取消选择时为 `null`。 */
+export type WorkspacePickResult = {root: string} | null
+
 /** 前端实际使用的宿主命令契约。C# 仍会再次校验参数和来源窗口。 */
 export interface BridgeCommandMap {
 	ui_get_snapshot: {args: EmptyCommandArgs; result: UiSnapshot}
@@ -94,6 +107,8 @@ export interface BridgeCommandMap {
 	settings_update_voice: {args: CommandArgs; result: void}
 	settings_update_general: {args: CommandArgs; result: void}
 	settings_update_proactive: {args: CommandArgs; result: void}
+	settings_update_workspace: {args: Partial<{root: string; maxToolIterations: number}>; result: WorkspaceSettingsResult}
+	settings_pick_workspace: {args: EmptyCommandArgs; result: WorkspacePickResult}
 	settings_update_automation: {args: Partial<{enabled: boolean; desktopEnabled: boolean; browserEnabled: boolean}>; result: AutomationSettingsDto}
 	automation_get_snapshot: {args: EmptyCommandArgs; result: UiSnapshot["automation"]}
 	automation_update_settings: {args: Partial<{enabled: boolean; allowPointer: boolean; allowKeyboard: boolean; allowScroll: boolean; browserEnabled: boolean}>; result: AutomationSettingsDto}

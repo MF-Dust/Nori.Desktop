@@ -251,6 +251,18 @@ public sealed class BridgeCommands
 				Runtime.InvalidateSnapshot("general", "telemetry");
 			})),
 
+		/// <summary>
+		/// 更新文件工具的工作目录与单轮工具次数上限。
+		/// 前端调用：invoke("settings_update_workspace", {root?: string, maxToolIterations?: number})
+		/// </summary>
+		"settings_update_workspace" => RequireMain(source, () => Run(() => UpdateWorkspaceSettings(args))),
+
+		/// <summary>
+		/// 打开系统文件夹选择对话框，返回选中路径；用户取消时返回 null。
+		/// 前端调用：invoke("settings_pick_workspace")
+		/// </summary>
+		"settings_pick_workspace" => await PickWorkspaceAsync(source),
+
 		// ---- 自动更新 ----
 		/// <summary>
 		/// 检查是否有可用软件更新。
@@ -1808,6 +1820,68 @@ public sealed class BridgeCommands
 	// ===================================================================
 	// 配置写入 (内部直写, 不再暴露给前端通用入口)
 	// ===================================================================
+
+	/// <summary>
+	/// 文件工具的工作目录与工具轮数上限。
+	///
+	/// 目录在此处即时校验是否存在。写入不存在的路径不会报错，但该组工具会静默不注册，表现为
+	/// 配置项有值而工具不可用，排查成本高。空串为合法取值，表示禁用该功能。
+	/// </summary>
+	private void UpdateWorkspaceSettings(JsonElement args)
+	{
+		if (args.ValueKind == JsonValueKind.Object
+			&& args.TryGetProperty("root", out JsonElement rootValue)
+			&& rootValue.ValueKind == JsonValueKind.String)
+		{
+			string root = (rootValue.GetString() ?? "").Trim();
+			if (root.Length > 0 && !Directory.Exists(root))
+			{
+				throw new InvalidOperationException("这个文件夹不存在，换一个吧");
+			}
+
+			_services.Config.Set(ConfigStore.KeyWorkspaceRoot, new ConfigValue.Text(root));
+		}
+
+		if (args.ValueKind == JsonValueKind.Object
+			&& args.TryGetProperty("maxToolIterations", out JsonElement iterations)
+			&& iterations.ValueKind == JsonValueKind.Number
+			&& iterations.TryGetInt32(out int parsed))
+		{
+			// 存为 Integer 而非 Text：文本路径上 "0"/"1" 会被解析为布尔并渲染为 "false"/"true"。
+			_services.Config.Set(
+				ConfigStore.KeyAgentMaxToolIterations,
+				new ConfigValue.Integer(Math.Clamp(
+					parsed,
+					Nori.Core.Agent.AgentEngine.MinToolIterations,
+					Nori.Core.Agent.AgentEngine.MaxToolIterationsLimit)));
+		}
+
+		// 工具注册表依赖工作目录构建，变更后必须重建，否则要到下次启动才生效。
+		Runtime.RebuildTools();
+		Runtime.InvalidateSnapshot("workspace", "tools");
+	}
+
+	/// <summary>
+	/// 选文件夹。返回选中的路径，用户取消时返回 null。
+	///
+	/// 仅返回选择结果，不写配置：写入仍由 `settings_update_workspace` 承担，配置只有一个写入点。
+	/// </summary>
+	private async Task<object?> PickWorkspaceAsync(IBridgeSource source)
+	{
+		RequireMainVoid(source);
+		Avalonia.Controls.Window? self = source.Self ?? throw new InvalidOperationException("来源窗口不可用");
+		string? picked = await _uiDispatcher.InvokeTaskAsync(async () =>
+		{
+			IReadOnlyList<IStorageFolder> folders = await self.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+			{
+				Title = "选择可访问的文件夹",
+				AllowMultiple = false,
+			});
+			return folders.Count > 0 ? folders[0].Path.LocalPath : null;
+		});
+
+		return picked is null ? null : new { root = picked };
+	}
 
 	private void UpdateConfigDirect(string key, string value) =>
 		_services.Config.Set(key, new ConfigValue.Text(value));

@@ -40,6 +40,23 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	public const string LegacyKeyLanguage = "app_language";
 
 	/// <summary>配置键: 伴侣模型。</summary>
+	/// <summary>
+	/// 文件工具的工作目录（绝对路径）。空串 = 整族文件工具不注册。
+	///
+	/// 默认空而不是给一个「用户目录」之类的值：那等于替用户做了一个他没同意过的决定。
+	/// 配这个目录本身就是用户那次同意，所以目录内的读取不再逐次弹框（写入仍然每次都问）。
+	/// </summary>
+	public const string KeyWorkspaceRoot = "workspace_root";
+
+	/// <summary>
+	/// 一轮对话里最多连续调用多少次工具。
+	///
+	/// 原先写死 5，而一个「先搜、再读、再改、再验」的任务在第五轮刚好卡在验证之前 —— 她做了
+	/// 一半就停下，对用户表现成「没做完也没说为什么」。放宽不增加简单对话的开销：模型不调
+	/// 工具时循环自己就结束了，上限只决定它最多能走多远。
+	/// </summary>
+	public const string KeyAgentMaxToolIterations = "agent_max_tool_iterations";
+
 	public const string KeySelectedModel = "selected_model";
 
 	/// <summary>配置键: 首次初始化是否已完成。</summary>

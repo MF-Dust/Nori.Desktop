@@ -37,6 +37,8 @@ public sealed class SettingsService : IDisposable
 		"tts_stop",
 		"stt_start",
 		"stt_stop",
+		"settings_update_workspace",
+		"settings_pick_workspace",
 		"settings_update_proactive",
 		"reminder_add",
 		"reminder_cancel",

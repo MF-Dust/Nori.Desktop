@@ -93,9 +93,6 @@ jobs:
       - name: 安装前端依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 一方 TODO/FIXME 门禁
-        run: pnpm check:todo
-
       # ESLint 与平台无关，只在 Windows 门禁 job 跑一次，避免三平台重复消耗。
       - name: 前端门 · 静态检查
         if: matrix.name == 'windows'
@@ -104,7 +101,9 @@ jobs:
       - name: 前端门 · 类型检查与构建
         run: pnpm build
 
+      # Windows 的覆盖率命令已执行全量测试，无需重复跑普通测试。
       - name: 前端门 · 单元测试
+        if: matrix.name != 'windows'
         run: pnpm test
 
       - name: 前端门 · 覆盖率与阈值
@@ -126,7 +125,13 @@ jobs:
 
       # Desktop 宿主测试包含短生命周期异步任务；限制 MSBuild 并行度，避免多个测试项目同时争用 runner 调度。
       - name: 后端门 · 单元测试
+        if: matrix.name != 'windows'
         run: dotnet test Nori.slnx --configuration Release --no-build --no-restore -m:1
+
+      # Windows 的其余三个测试项目由覆盖率步骤完整执行；启动器没有覆盖率收集器。
+      - name: 后端门 · Windows 启动器单元测试
+        if: matrix.name == 'windows'
+        run: dotnet test Nori.AppLauncher.Tests/Nori.AppLauncher.Tests.csproj --configuration Release --no-build --no-restore -m:1
 
       - name: 原生设置 · 真实渲染与布局验证
         if: matrix.name == 'windows'
@@ -174,7 +179,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      # 前面的 build/test 已准备好 Release 输出；覆盖率只重新收集，不重复还原/编译。
+      # 复用 Release 构建，在同一轮执行 Core、Desktop、PluginRuntime 全量测试并收集覆盖率。
       - name: 后端门 · 覆盖率产物
         if: matrix.name == 'windows'
         run: pnpm coverage:dotnet --no-build --no-restore

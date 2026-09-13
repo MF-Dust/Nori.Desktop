@@ -109,7 +109,7 @@
 			<NoriSentryBuildConfigLines Include="}" />
 		</ItemGroup>
 		<MakeDir Directories="$(NoriSentryGeneratedDir)" />
-		<WriteLinesToFile File="$(NoriSentryGeneratedFile)" Lines="@(NoriSentryBuildConfigLines)" Overwrite="true" />
+		<WriteLinesToFile File="$(NoriSentryGeneratedFile)" Lines="@(NoriSentryBuildConfigLines)" Overwrite="true" WriteOnlyWhenDifferent="true" />
 		<ItemGroup>
 			<Compile Include="$(NoriSentryGeneratedFile)" />
 		</ItemGroup>

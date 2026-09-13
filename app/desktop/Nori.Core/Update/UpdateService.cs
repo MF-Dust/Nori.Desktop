@@ -45,6 +45,7 @@ public sealed class UpdateService : IDisposable
 	private readonly bool _safeMode;
 	private readonly string _runningExecutable;
 	private readonly HttpClient _httpClient;
+	private readonly TimeSpan _metadataTimeout;
 	private readonly NoriHttpClients? _ownedClients;
 	private readonly object _stateLock = new();
 	private CancellationTokenSource? _activeCts;
@@ -63,7 +64,7 @@ public sealed class UpdateService : IDisposable
 		: this(paths, rid, productVersion, safeMode, config, repository, httpClient, Environment.ProcessPath ?? "") { }
 
 	internal UpdateService(AppStoragePaths paths, string rid, string productVersion, bool safeMode,
-		ConfigStore? config, string repository, HttpClient? httpClient, string runningExecutable)
+		ConfigStore? config, string repository, HttpClient? httpClient, string runningExecutable, TimeSpan? metadataTimeout = null)
 	{
 		_paths = paths;
 		_rid = rid;
@@ -72,6 +73,7 @@ public sealed class UpdateService : IDisposable
 		_config = config;
 		_repository = repository;
 		_runningExecutable = runningExecutable;
+		_metadataTimeout = metadataTimeout ?? TimeSpan.FromSeconds(30);
 		if (httpClient is null)
 		{
 			_ownedClients = NoriHttpClients.Create(false, TimeSpan.FromMinutes(30),
@@ -111,7 +113,7 @@ public sealed class UpdateService : IDisposable
 			SetStatus(CurrentStatus with { State = UpdaterState.Checking, Message = "正在检查更新...", AvailableVersion = null, ReleaseTag = null, ReleaseNotes = null, ManualDownloadUrl = null });
 			SlotManifest current = ValidateEnvironment();
 			using CancellationTokenSource metadataTimeout = CancellationTokenSource.CreateLinkedTokenSource(operation.Token);
-			metadataTimeout.CancelAfter(TimeSpan.FromSeconds(30));
+			metadataTimeout.CancelAfter(_metadataTimeout);
 			UpdateManifest? manifest = await FetchManifestAsync(metadataTimeout.Token);
 			string now = DateTimeOffset.UtcNow.ToString("o");
 			_config?.Set(ConfigKeyLastCheckedAt, new ConfigValue.Text(now));

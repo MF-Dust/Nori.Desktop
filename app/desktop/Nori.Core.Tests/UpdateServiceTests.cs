@@ -1,13 +1,11 @@
 using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks.Sources;
 using Nori.Core.Data;
 using Nori.Core.Update;
-using Xunit;
 
 namespace Nori.Core.Tests;
 
@@ -73,8 +71,8 @@ public sealed class UpdateServiceTests : IDisposable
 				: url.EndsWith(".json", StringComparison.Ordinal) ? new StringContent(_manifest.ToJsonString()) : new ByteArrayContent(_package),
 		};
 	}
-	private UpdateService Create(HttpClient client, string product = "1.0.0-test", bool safe = false, string rid = "win-x64", string? executable = null) =>
-		new(_paths, rid, product, safe, null, UpdateService.DefaultRepository, client, executable ?? _executable);
+	private UpdateService Create(HttpClient client, string product = "1.0.0-test", bool safe = false, string rid = "win-x64", string? executable = null, TimeSpan? metadataTimeout = null) =>
+		new(_paths, rid, product, safe, null, UpdateService.DefaultRepository, client, executable ?? _executable, metadataTimeout);
 
 	[Theory]
 	[InlineData("Dev", false, "win-x64", "开发环境")]
@@ -280,8 +278,9 @@ public sealed class UpdateServiceTests : IDisposable
 		TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		using BlockingStream stream = new(started);
 		using HttpClient client = new(new Handler(_ => new(HttpStatusCode.OK) { Content = new StreamContent(stream) }));
-		using UpdateService service = Create(client);
-		await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.CheckForUpdateAsync().WaitAsync(TimeSpan.FromSeconds(40)));
+		// 只缩短内部期限，仍验证收到响应头后正文读取会被超时令牌取消。
+		using UpdateService service = Create(client, metadataTimeout: TimeSpan.FromMilliseconds(250));
+		await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.CheckForUpdateAsync().WaitAsync(TimeSpan.FromSeconds(5)));
 		Assert.True(started.Task.IsCompleted);
 		Assert.Equal(UpdaterState.Error, service.CurrentStatus.State);
 	}

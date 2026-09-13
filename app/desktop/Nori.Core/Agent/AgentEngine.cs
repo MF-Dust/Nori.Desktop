@@ -261,6 +261,8 @@ public sealed class AgentEngine
 			AvailableExpressions = expressions,
 			SkillsPrompt = skillsPrompt,
 			ToolsJson = _tools.BuildToolsPrompt(),
+			WorkspaceRoot = PromptBuilder.WorkspaceRootFor(
+				availableToolNames, _config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")),
 		};
 		ContextBudgetOptions budgetOptions = new()
 		{

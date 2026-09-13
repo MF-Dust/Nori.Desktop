@@ -97,6 +97,19 @@ public static class PromptBuilder
 			other.Add($"【可用表情列表 (expression)】：{string.Join(", ", options.AvailableExpressions)}");
 		}
 
+		// 5. 工作目录。
+		//
+		// 文件工具的描述里只写「工作目录」，不含具体路径。缺这一段时模型回答不了「你能看到哪个
+		// 文件夹」，也无法把用户贴来的绝对路径换算成工具要求的相对路径 —— 而绝对路径一律判越界，
+		// 表现为模型反复用不同写法重试同一个文件。
+		if (!string.IsNullOrWhiteSpace(options.WorkspaceRoot))
+		{
+			other.Add(
+				$"【当前工作目录】：{options.WorkspaceRoot}\n" +
+				"文件工具只能访问这个文件夹内的内容。路径参数一律使用相对该文件夹的相对路径；" +
+				"用户给出绝对路径时，先去掉上面这段前缀再传入。");
+		}
+
 		return new PromptSections(
 			persona,
 			string.Join("\n\n", memory),
@@ -106,6 +119,15 @@ public static class PromptBuilder
 			ProtocolInstruction,
 			string.Join("\n\n", other));
 	}
+
+	/// <summary>
+	/// 工作目录分段的取值判据：文件工具确实注册了才注入路径。
+	///
+	/// 判据取注册表而非配置值。安全模式下配置项仍在库里、文件工具已被注销，此时若按配置注入，
+	/// 模型会看到一个工作目录却调不到任何文件工具，表现为它坚持说自己能读文件然后每次都失败。
+	/// </summary>
+	public static string WorkspaceRootFor(IReadOnlySet<string> availableToolNames, string configuredRoot) =>
+		availableToolNames.Contains("readFile") ? configuredRoot : "";
 
 	/// <summary>按稳定顺序拼接已预算的提示词分段。</summary>
 	public static string BuildSectionsText(PromptSections sections) =>
@@ -165,4 +187,12 @@ public sealed record PromptBuildOptions
 
 	/// <summary>可用工具清单 JSON 文本</summary>
 	public string ToolsJson { get; init; } = "[]";
+
+	/// <summary>
+	/// 当前工作目录的绝对路径；为空表示未授予本地文件访问权限，该分段不注入。
+	///
+	/// 判据应取「文件工具是否已注册」而非配置值本身：安全模式下配置仍在、工具已注销，
+	/// 此时注入目录会使模型去调用不存在的工具。
+	/// </summary>
+	public string WorkspaceRoot { get; init; } = "";
 }

@@ -136,6 +136,14 @@ public sealed class AppServices : IAsyncDisposable
 	/// <summary>是否以手动安全模式启动。</summary>
 	public bool SafeMode { get; init; }
 
+	/// <summary>
+	/// 受限执行的启动器；留空表示按平台自动挑选。
+	///
+	/// 这个口子是给测试的：自动挑选在 Windows 上会创建 AppContainer 配置文件，那是持久的
+	/// 机器状态，测试跑完不该留下。
+	/// </summary>
+	public Nori.Core.Sandbox.ISandboxLauncher? Sandbox { get; init; }
+
 	private int _disposed;
 
 	public async ValueTask DisposeAsync()

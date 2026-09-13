@@ -6,7 +6,7 @@
  */
 import {ref} from "vue"
 import {invoke} from "../host/invoke"
-import type {WorkspacePickResult, WorkspaceSettingsResult} from "../host/commands"
+import type {WorkspacePickResult, WorkspaceSettingsResult, WorkspaceTaskDto, WorkspaceTasksResult} from "../host/commands"
 import {listen, type UnlistenFn} from "../host/event"
 import {feedback} from "../feedback"
 import type {
@@ -433,6 +433,10 @@ export const RUNTIME = {
 	/** 更新文件工具的工作目录与单轮工具次数上限。传空串的 root 表示停用文件工具。 */
 	updateWorkspace(patch: Partial<{root: string; maxToolIterations: number}>): Promise<WorkspaceSettingsResult> {
 		return invoke("settings_update_workspace", patch)
+	},
+	/** 整份替换 runTask 可运行的任务清单。任务只有名字这一个键，改名无法与新增区分，故不做增量。 */
+	updateTasks(tasks: WorkspaceTaskDto[]): Promise<WorkspaceTasksResult> {
+		return invoke("settings_update_tasks", {tasks})
 	},
 	/** 打开系统文件夹选择对话框；用户取消时返回 null，调用方应保持原有配置不变。 */
 	pickWorkspace(): Promise<WorkspacePickResult> {

@@ -49,6 +49,14 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	public const string KeyWorkspaceRoot = "workspace_root";
 
 	/// <summary>
+	/// 具名任务清单（JSON 数组，`[{"name","command"}]`）。空 = runTask 不注册。
+	///
+	/// 模型只能按名触发这里配好的命令，不参与命令行的构造。让模型自由拼命令的话，一次
+	/// 提示注入就能得到任意执行，而用户在确认框里逐字审一条命令行实际上做不到。
+	/// </summary>
+	public const string KeyWorkspaceTasks = "workspace_tasks";
+
+	/// <summary>
 	/// 一轮对话里最多连续调用多少次工具。
 	///
 	/// 原先写死 5，而一个「先搜、再读、再改、再验」的任务在第五轮刚好卡在验证之前 —— 她做了

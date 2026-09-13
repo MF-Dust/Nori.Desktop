@@ -14,6 +14,7 @@ using Nori.Core.Mcp;
 using Nori.Core.Network;
 using Nori.Core.Proactive;
 using Nori.Core.Skills;
+using Nori.Core.Sandbox;
 using Nori.Core.Security;
 using Nori.Core.Tools;
 using Nori.Core.Telemetry;
@@ -791,7 +792,46 @@ public sealed class AppRuntime : IAsyncDisposable
 	/// 文件工具在注册时将工作目录捕获进闭包，不重建则配置变更要到下次启动才生效，表现为保存
 	/// 未成功。MCP 与插件工具按各自分类原子替换，本方法不涉及。
 	/// </summary>
-	public void RebuildTools() => WorkspaceTools.RegisterAll(Tools, ResolveWorkspace());
+	public void RebuildTools()
+	{
+		WorkspaceAccess workspace = ResolveWorkspace();
+		WorkspaceTools.RegisterAll(Tools, workspace);
+		RegisterTaskTools(Tools, workspace);
+	}
+
+	/// <summary>
+	/// 注册 runTask。没有任务时直接注销并返回，**不触碰 <see cref="Sandbox"/>**。
+	///
+	/// 建立启动器在 Windows 上会创建 AppContainer 配置文件，那是持久的机器状态。没配任务的
+	/// 用户不该平白多出这份东西。
+	/// </summary>
+	private void RegisterTaskTools(ToolRegistry registry, WorkspaceAccess workspace)
+	{
+		IReadOnlyList<WorkspaceTask> tasks = ResolveTasks();
+		if (!workspace.IsConfigured || tasks.Count == 0)
+		{
+			registry.Unregister(TaskTools.RunTaskName);
+			return;
+		}
+
+		TaskTools.RegisterAll(registry, workspace, tasks, Sandbox);
+	}
+
+	/// <summary>
+	/// 受限执行的启动器，首次使用时建立。
+	///
+	/// 延迟到首次使用：Windows 上建立它会创建 AppContainer 配置文件，没配任务的用户不该
+	/// 平白多出这份状态。
+	/// </summary>
+	private ISandboxLauncher Sandbox => _sandbox ??= Services.Sandbox ?? SandboxLauncherFactory.Create();
+
+	/// <summary>当前该给 runTask 哪些任务。安全模式下一条都不给，判据与文件工具一致。</summary>
+	private ISandboxLauncher? _sandbox;
+
+	private IReadOnlyList<WorkspaceTask> ResolveTasks() =>
+		Services.SafeMode
+			? []
+			: WorkspaceTaskList.Read(Services.Config.Get(ConfigStore.KeyWorkspaceTasks));
 
 	/// <summary>
 	/// 当前该给文件工具哪个工作目录。构建与重建共用这一处判据。
@@ -823,7 +863,9 @@ public sealed class AppRuntime : IAsyncDisposable
 
 		// 文件工具仅在配置了工作目录时注册。安全模式下一并跳过：该组工具虽不产生网络请求，
 		// 但具备对宿主文件系统的读写能力，属于安全模式要禁用的范围。判据与 RebuildTools 共用。
-		WorkspaceTools.RegisterAll(registry, ResolveWorkspace());
+		WorkspaceAccess workspace = ResolveWorkspace();
+		WorkspaceTools.RegisterAll(registry, workspace);
+		RegisterTaskTools(registry, workspace);
 		return registry;
 	}
 
@@ -1259,6 +1301,10 @@ public sealed class AppRuntime : IAsyncDisposable
 				// 目录被删除或移动后配置仍在，但工具已不再注册，界面需要区分这两种状态。
 				available = new WorkspaceAccess(config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")).IsConfigured,
 				maxToolIterations = Engine.ConfiguredToolIterations,
+				tasks = WorkspaceTaskList.Read(config.Get(ConfigStore.KeyWorkspaceTasks))
+					.Select(task => new { name = task.Name, command = task.Command }),
+				// 界面要能说清「命令跑在什么边界里」：无隔离与 AppContainer 的确认强度不同。
+				isolation = _sandbox is null ? "unknown" : _sandbox.Isolation.ToString().ToLowerInvariant(),
 			},
 			telemetry = new
 			{

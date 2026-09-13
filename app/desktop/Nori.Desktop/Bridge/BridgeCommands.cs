@@ -258,6 +258,12 @@ public sealed class BridgeCommands
 		"settings_update_workspace" => RequireMain(source, () => Run(() => UpdateWorkspaceSettings(args))),
 
 		/// <summary>
+		/// 更新 runTask 可运行的具名任务清单，整份替换。
+		/// 前端调用：invoke("settings_update_tasks", {tasks: {name: string, command: string}[]})
+		/// </summary>
+		"settings_update_tasks" => RequireMain(source, () => Run(() => UpdateTaskSettings(args))),
+
+		/// <summary>
 		/// 打开系统文件夹选择对话框，返回选中路径；用户取消时返回 null。
 		/// 前端调用：invoke("settings_pick_workspace")
 		/// </summary>
@@ -1826,6 +1832,39 @@ public sealed class BridgeCommands
 	///
 	/// 目录在此处即时校验是否存在。写入不存在的路径不会报错，但该组工具会静默不注册，表现为
 	/// 配置项有值而工具不可用，排查成本高。空串为合法取值，表示禁用该功能。
+	/// </summary>
+	private void UpdateTaskSettings(JsonElement args)
+	{
+		if (args.ValueKind != JsonValueKind.Object
+			|| !args.TryGetProperty("tasks", out JsonElement list)
+			|| list.ValueKind != JsonValueKind.Array)
+		{
+			throw new InvalidOperationException("tasks 必须是数组");
+		}
+
+		List<WorkspaceTask> parsed = [];
+		foreach (JsonElement entry in list.EnumerateArray())
+		{
+			if (entry.ValueKind != JsonValueKind.Object) continue;
+			parsed.Add(new WorkspaceTask
+			{
+				Name = entry.TryGetProperty("name", out JsonElement name) ? name.GetString() ?? "" : "",
+				Command = entry.TryGetProperty("command", out JsonElement command) ? command.GetString() ?? "" : "",
+			});
+		}
+
+		// 严格校验后再落库：非法条目在读取侧是被跳过的，静默丢一条比当场报错难查得多。
+		_services.Config.Set(ConfigStore.KeyWorkspaceTasks, WorkspaceTaskList.Write(WorkspaceTaskList.Validate(parsed)));
+
+		Runtime.RebuildTools();
+		Runtime.InvalidateSnapshot("workspace", "tools");
+	}
+
+	/// <summary>
+	/// 整份替换 runTask 的任务清单。
+	///
+	/// 增量更新需要稳定标识，而任务只有名字这一个键，改名就无法与新增区分。整份替换让
+	/// 界面持有唯一真相，代价是并发编辑会互相覆盖 —— 设置窗口是单实例，不存在这种情形。
 	/// </summary>
 	private void UpdateWorkspaceSettings(JsonElement args)
 	{

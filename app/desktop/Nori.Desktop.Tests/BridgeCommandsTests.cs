@@ -384,6 +384,8 @@ public partial class BridgeCommandsTests : IDisposable
 					browserTaskTimeout: browserTaskTimeout),
 			Windows = _windows,
 			SafeMode = safeMode,
+			// 不用自动挑选：Windows 上它会创建 AppContainer 配置文件，测试跑完会留在机器上。
+			Sandbox = new Nori.Core.Sandbox.UnsandboxedLauncher(),
 			Update = new Nori.Core.Update.UpdateService(new AppStoragePaths(_tempDir), "win-x64", "0.1.0", safeMode, httpClient: _http),
 		};
 		_runtime = new AppRuntime(_services);
@@ -857,7 +859,101 @@ public partial class BridgeCommandsTests : IDisposable
 		// 的按钮点了会报「不允许执行」。
 		Assert.Contains("settings_update_workspace", SettingsService.Commands);
 		Assert.Contains("settings_pick_workspace", SettingsService.Commands);
+		Assert.Contains("settings_update_tasks", SettingsService.Commands);
 		await Task.CompletedTask;
+	}
+
+	// ---- 具名任务 ----
+
+	[Fact]
+	public async Task 配了任务之后runTask才出现()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+
+		// 工作目录有了但一条任务也没配，此时不该有 runTask。
+		Assert.Null(_runtime.Tools.Get(TaskTools.RunTaskName));
+
+		await commands.InvokeAsync(
+			main,
+			"settings_update_tasks",
+			Args(new { tasks = new[] { new { name = "构建", command = "dotnet build" } } }));
+
+		Assert.NotNull(_runtime.Tools.Get(TaskTools.RunTaskName));
+		Assert.Contains("dotnet build", _runtime.Tools.Get(TaskTools.RunTaskName)!.Description, StringComparison.Ordinal);
+	}
+
+	/// <summary>清空清单之后工具必须真的消失，而不是留着持有旧清单的注册项。</summary>
+	[Fact]
+	public async Task 清空任务清单之后runTask消失()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+		await commands.InvokeAsync(
+			main, "settings_update_tasks", Args(new { tasks = new[] { new { name = "a", command = "echo hi" } } }));
+		Assert.NotNull(_runtime.Tools.Get(TaskTools.RunTaskName));
+
+		await commands.InvokeAsync(main, "settings_update_tasks", Args(new { tasks = Array.Empty<object>() }));
+
+		Assert.Null(_runtime.Tools.Get(TaskTools.RunTaskName));
+	}
+
+	/// <summary>
+	/// 重名当场拒绝。
+	///
+	/// 读取侧对非法条目是跳过的，写入侧不拦的话用户会看到保存成功而其中一条静默消失。
+	/// </summary>
+	[Fact]
+	public async Task 重复的任务名被就地拒绝()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+
+		InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			commands.InvokeAsync(
+				main,
+				"settings_update_tasks",
+				Args(new
+				{
+					tasks = new[]
+					{
+						new { name = "a", command = "echo 1" },
+						new { name = "A", command = "echo 2" },
+					},
+				})));
+
+		Assert.Contains("重复", error.Message, StringComparison.Ordinal);
+		Assert.Null(_runtime.Tools.Get(TaskTools.RunTaskName));
+	}
+
+	[Fact]
+	public async Task 快照把任务清单报给界面()
+	{
+		string folder = Path.Combine(_tempDir, "工作区");
+		Directory.CreateDirectory(folder);
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_workspace", Args(new { root = folder }));
+		await commands.InvokeAsync(
+			main,
+			"settings_update_tasks",
+			Args(new { tasks = new[] { new { name = "构建", command = "dotnet build" } } }));
+
+		JsonElement snapshot = JsonSerializer.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options);
+		JsonElement tasks = snapshot.GetProperty("workspace").GetProperty("tasks");
+
+		Assert.Equal(1, tasks.GetArrayLength());
+		Assert.Equal("构建", tasks[0].GetProperty("name").GetString());
+		Assert.Equal("dotnet build", tasks[0].GetProperty("command").GetString());
 	}
 
 	/// <summary>

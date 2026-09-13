@@ -47,6 +47,22 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 				new { root = Convert.ToString(value) ?? "" },
 				token));
 
+		SettingsSectionViewModel commands = AddSection(new("可运行的任务", "Runnable tasks"));
+		AddField(
+			commands,
+			"tasks",
+			new("任务清单", "Task list"),
+			new(
+				"一行一条，写成「名称 = 命令」。她只能按名字触发这里配好的任务，不能自己拼命令行；"
+					+ "每次运行都会请求确认。命令在工作文件夹下执行，默认没有网络。",
+				"One per line, written as \"name = command\". She can only trigger tasks listed here "
+					+ "and cannot compose her own command line; each run asks for confirmation. "
+					+ "Commands run in the working folder with no network access."),
+			SettingsEditorKind.Multiline,
+			snapshot => FormatTasks(snapshot),
+			"",
+			(value, token) => ExecuteAsync("settings_update_tasks", new { tasks = ParseTasks(Convert.ToString(value)) }, token));
+
 		SettingsSectionViewModel limits = AddSection(new("工具次数", "Tool calls"));
 		AddField(
 			limits,
@@ -70,6 +86,54 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			minimum: Core.Agent.AgentEngine.MinToolIterations,
 			maximum: Core.Agent.AgentEngine.MaxToolIterationsLimit,
 			increment: 1);
+	}
+
+	/// <summary>
+	/// 把快照里的任务清单渲染成「名称 = 命令」的文本。
+	///
+	/// 用多行文本而不是列表控件：任务是一组名值对，行文本的编辑成本低于增删行按钮，
+	/// 且改名与新增在整份替换的语义下本来就没有区别。
+	/// </summary>
+	private static string FormatTasks(JsonElement snapshot)
+	{
+		if (SettingsSnapshotReader.Get(snapshot, "workspace", "tasks") is not {ValueKind: JsonValueKind.Array} list)
+		{
+			return "";
+		}
+
+		return string.Join(
+			Environment.NewLine,
+			list.EnumerateArray().Select(entry =>
+				(entry.TryGetProperty("name", out JsonElement name) ? name.GetString() ?? "" : "")
+					+ " = "
+					+ (entry.TryGetProperty("command", out JsonElement command) ? command.GetString() ?? "" : "")));
+	}
+
+	/// <summary>
+	/// 解析「名称 = 命令」文本。
+	///
+	/// 按首个等号拆分：命令行里常含等号（`-p:Foo=Bar`），按最后一个或全部拆会把命令截断。
+	/// 空行与 `#` 开头的行跳过，便于用户临时注释掉一条而不必删除。
+	/// </summary>
+	private static IReadOnlyList<object> ParseTasks(string? text)
+	{
+		List<object> tasks = [];
+		foreach (string line in (text ?? "").Split('\n'))
+		{
+			string trimmed = line.Trim();
+			if (trimmed.Length == 0 || trimmed.StartsWith('#')) continue;
+
+			int separator = trimmed.IndexOf('=', StringComparison.Ordinal);
+			if (separator <= 0) continue;
+
+			tasks.Add(new
+			{
+				name = trimmed[..separator].Trim(),
+				command = trimmed[(separator + 1)..].Trim(),
+			});
+		}
+
+		return tasks;
 	}
 
 	/// <summary>

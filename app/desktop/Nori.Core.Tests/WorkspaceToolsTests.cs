@@ -68,6 +68,10 @@ public sealed class WorkspaceToolsTests : IDisposable
 		return result.Error ?? "";
 	}
 
+	/// <summary>取结果里某个数组字段的 path 列表。</summary>
+	private static string[] Paths(JsonElement result, string field) =>
+		[.. result.GetProperty(field).EnumerateArray().Select(entry => entry.GetProperty("path").GetString()!)];
+
 	// ---- 边界 ----
 
 	/// <summary>
@@ -139,6 +143,153 @@ public sealed class WorkspaceToolsTests : IDisposable
 		Assert.False(new WorkspaceAccess(Path.Combine(_root, "并不存在")).IsConfigured);
 	}
 
+
+
+	// ---- findFiles ----
+
+	[Fact]
+	public async Task 按扩展名找到深层文件()
+	{
+		Write("a.cs", "x");
+		Write("src/b.cs", "x");
+		Write("src/deep/c.cs", "x");
+		Write("src/readme.md", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "*.cs" });
+		string[] paths = Paths(result, "matches");
+
+		Assert.Equal(new[] { "a.cs", "src/b.cs", "src/deep/c.cs" }, paths.Order(StringComparer.Ordinal).ToArray());
+	}
+
+	/// <summary>
+	/// `**/*.cs` 必须有命中。
+	///
+	/// <see cref="FileSystemName.MatchesSimpleExpression"/> 只认 `*` 与 `?`，`**` 在它那里是
+	/// 两个连续的 `*`，语义与单个 `*` 相同但会使含 `/` 的判断走偏。模型普遍按 glob 习惯写这种
+	/// 形式，不归一的后果是零命中，而零命中与「确实没有」在返回值里无法区分。
+	/// </summary>
+	[Fact]
+	public async Task 归一glob风格的双星号()
+	{
+		Write("a.cs", "x");
+		Write("src/deep/c.cs", "x");
+		Write("src/deep/c.md", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "**/*.cs" });
+
+		// 根目录下的 a.cs 也必须命中：`**/` 表示任意层级，含零层。
+		Assert.Equal(
+			new[] { "a.cs", "src/deep/c.cs" },
+			Paths(result, "matches").Order(StringComparer.Ordinal).ToArray());
+	}
+
+	[Fact]
+	public async Task 模式含斜杠时按相对路径匹配()
+	{
+		Write("src/a.cs", "x");
+		Write("test/a.cs", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "src/*.cs" });
+
+		Assert.Equal(new[] { "src/a.cs" }, Paths(result, "matches"));
+	}
+
+	[Fact]
+	public async Task 不含斜杠时只匹配文件名()
+	{
+		Write("src/AgentEngine.cs", "x");
+		Write("src/other.cs", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "Agent*.cs" });
+
+		Assert.Equal(new[] { "src/AgentEngine.cs" }, Paths(result, "matches"));
+	}
+
+	[Fact]
+	public async Task 大小写不敏感与内容搜索口径一致()
+	{
+		Write("src/AgentEngine.cs", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "agentengine.CS" });
+
+		Assert.Equal(new[] { "src/AgentEngine.cs" }, Paths(result, "matches"));
+	}
+
+	[Fact]
+	public async Task 查找可以限定子目录()
+	{
+		Write("src/a.cs", "x");
+		Write("test/a.cs", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "*.cs", path = "test" });
+
+		Assert.Equal(new[] { "test/a.cs" }, Paths(result, "matches"));
+	}
+
+	/// <summary>查找与搜索共用 <c>Walk</c>，噪音目录的排除口径必须一致。</summary>
+	[Fact]
+	public async Task 查找跳过噪音目录()
+	{
+		Write("a.cs", "x");
+		Write("node_modules/b.cs", "x");
+		Write(".git/c.cs", "x");
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "*.cs" });
+
+		Assert.Equal(new[] { "a.cs" }, Paths(result, "matches"));
+	}
+
+	/// <summary>查找走的也是 <c>Walk</c>，指向目录外的链接同样不得跟随。</summary>
+	[Fact]
+	public async Task 查找不跟随指向目录外的链接()
+	{
+		File.WriteAllText(Path.Combine(_outside, "leak.cs"), "x");
+		Write("inside.cs", "x");
+		try
+		{
+			Directory.CreateSymbolicLink(Path.Combine(_root, "escape"), _outside);
+		}
+		catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+		{
+			return; // 该环境不允许建符号链接
+		}
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "*.cs" });
+
+		Assert.Equal(new[] { "inside.cs" }, Paths(result, "matches"));
+	}
+
+	[Fact]
+	public async Task 空模式被拒绝()
+	{
+		Assert.Contains(
+			"不能为空",
+			await FailAsync(Registry(), "findFiles", new { pattern = "  " }),
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task 查找同样受工作目录边界约束()
+	{
+		Assert.Contains(
+			"超出工作目录范围",
+			await FailAsync(Registry(), "findFiles", new { pattern = "*.txt", path = "../" }),
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task 命中数超过上限时截断并标注()
+	{
+		for (int index = 0; index < WorkspaceAccess.MaxEntries + 10; index++)
+		{
+			Write($"many/f{index}.cs", "x");
+		}
+
+		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "*.cs" });
+
+		Assert.True(result.GetProperty("truncated").GetBoolean());
+		Assert.Equal(WorkspaceAccess.MaxEntries, result.GetProperty("matches").GetArrayLength());
+	}
 
 	// ---- editFile ----
 

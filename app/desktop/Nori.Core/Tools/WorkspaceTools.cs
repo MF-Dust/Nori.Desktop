@@ -1,3 +1,4 @@
+using System.IO.Enumeration;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -5,11 +6,11 @@ using System.Text.Json.Nodes;
 namespace Nori.Core.Tools;
 
 /// <summary>
-/// 工作目录文件工具：列目录、搜索、读取、写入、定点替换。
+/// 工作目录文件工具：列目录、按名查找、按内容搜索、读取、写入、定点替换。
 ///
 /// 此前 19 件内建工具均不具备本地文件访问能力，模型无法读取用户当前处理的文件。
 ///
-/// 权限分档：读取、列目录、搜索为 `safe`，写入与替换为 `confirm`。工作目录由用户显式配置，该配置
+/// 权限分档：读取、列目录、查找、搜索为 `safe`，写入与替换为 `confirm`。工作目录由用户显式配置，该配置
 /// 动作即为授权；若每次读取都触发授权对话框，一次代码浏览会产生数十次确认，实际效果是用户
 /// 关闭该功能。写入修改用户数据，逐次确认。
 ///
@@ -18,7 +19,7 @@ namespace Nori.Core.Tools;
 public static class WorkspaceTools
 {
 	/// <summary>本组工具名。变更工作目录时据此先注销，避免残留持有旧目录的注册项。</summary>
-	public static readonly IReadOnlyList<string> ToolNames = ["listFiles", "readFile", "searchFiles", "writeFile", "editFile"];
+	public static readonly IReadOnlyList<string> ToolNames = ["listFiles", "readFile", "searchFiles", "writeFile", "editFile", "findFiles"];
 
 	/// <summary>
 	/// 注册本组工具，注册前先注销同名项。工作目录被清空时必须真正移除：仅跳过注册的话，旧注册
@@ -51,6 +52,14 @@ public static class WorkspaceTools
 				("extension", "限定文件扩展名，例如 .cs；省略表示不限", false)),
 			(args, token) => Task.FromResult<object?>(SearchFiles(
 				workspace, Str(args, "query"), Str(args, "path"), Str(args, "extension"), token.CancellationToken)));
+
+		Register(registry, "findFiles",
+			"按文件名查找工作目录里的文件，支持通配符 * 和 ?，例如 *.cs 或 Agent*。", "safe",
+			Schema(
+				("pattern", "文件名通配符；含 / 时按相对路径匹配，例如 src/*.cs", true),
+				("path", "限定查找的子目录，省略表示整个工作目录", false)),
+			(args, token) => Task.FromResult<object?>(FindFiles(
+				workspace, Str(args, "pattern"), Str(args, "path"), token.CancellationToken)));
 
 		Register(registry, "writeFile",
 			"新建文件或整份覆盖写入。父文件夹不存在时会创建。修改已有文件请改用 editFile。", "confirm",
@@ -200,6 +209,75 @@ public static class WorkspaceTools
 		}
 
 		return new { query = needle, hits, truncated };
+	}
+
+	/// <summary>
+	/// 按文件名查找。
+	///
+	/// 补齐第三条检索路径：<c>listFiles</c> 按目录逐层列出，<c>searchFiles</c> 按内容匹配，
+	/// 两者都无法回答「`AgentEngine.cs` 在哪」。缺这条时模型只能逐层列目录，而单轮工具次数
+	/// 有上限（默认 12 次），深目录下常在找到之前耗尽。
+	///
+	/// 通配符语义由 <see cref="FileSystemName.MatchesSimpleExpression"/> 提供，只有 `*` 与 `?`，
+	/// 且 `*` 跨越 `/`。因此 `**` 是冗余写法，此处归一成 `*` —— 模型普遍按 glob 习惯写
+	/// `**/*.cs`，不归一会得到零命中。
+	///
+	/// 模式不含 `/` 时匹配文件名，含 `/` 时匹配相对工作目录的路径。大小写一律不敏感，与
+	/// <c>searchFiles</c> 的内容匹配口径一致。
+	/// </summary>
+	private static object FindFiles(
+		WorkspaceAccess workspace,
+		string? pattern,
+		string? path,
+		CancellationToken cancellationToken)
+	{
+		string raw = (pattern ?? string.Empty).Trim();
+		if (raw.Length == 0) throw new InvalidOperationException("pattern 不能为空");
+
+		// `**` 归一。
+		//
+		// `MatchesSimpleExpression` 只认 `*` 与 `?`，且 `*` 跨越 `/`，没有「任意层级」的概念。
+		// 直接把 `**` 折成 `*` 不够：`**/*.cs` 折成 `*/*.cs` 之后仍要求候选串里有一个 `/`，
+		// 根目录下的 `a.cs` 匹配不上，而 glob 语义要求匹配。因此先消掉表示层级的 `**/`，
+		// 再折叠其余的 `**`。
+		string expression = raw.Replace('\\', '/');
+		expression = expression.Replace("/**/", "/", StringComparison.Ordinal);
+		if (expression.StartsWith("**/", StringComparison.Ordinal)) expression = expression[3..];
+		while (expression.Contains("**", StringComparison.Ordinal))
+		{
+			expression = expression.Replace("**", "*", StringComparison.Ordinal);
+		}
+
+		if (expression.Length == 0) throw new InvalidOperationException("pattern 不能为空");
+
+		bool matchFullPath = expression.Contains('/');
+		string root = workspace.Resolve(path) ?? throw OutOfBounds(path);
+		if (!Directory.Exists(root)) throw new InvalidOperationException($"文件夹不存在: {Show(path)}");
+
+		List<object> matches = [];
+		bool truncated = false;
+		foreach (string file in Walk(workspace, root, cancellationToken))
+		{
+			if (matches.Count >= WorkspaceAccess.MaxEntries) { truncated = true; break; }
+
+			string relative = workspace.Relative(file);
+			string candidate = matchFullPath ? relative : Path.GetFileName(file);
+			if (!FileSystemName.MatchesSimpleExpression(expression, candidate, ignoreCase: true)) continue;
+
+			matches.Add(new { path = relative, bytes = new FileInfo(file).Length });
+		}
+
+		// 与 searchFiles 同样从尾部移除而非整体截断：靠前的命中来自较浅的层级。
+		while (matches.Count > 0 &&
+			ToolLimits.SerializedLength(
+				JsonSerializer.SerializeToNode(new { pattern = raw, matches, truncated = true }))
+				> ToolLimits.MaxResultCharacters)
+		{
+			matches.RemoveAt(matches.Count - 1);
+			truncated = true;
+		}
+
+		return new { pattern = raw, matches, truncated };
 	}
 
 	private static object WriteFile(WorkspaceAccess workspace, string? path, string? content)

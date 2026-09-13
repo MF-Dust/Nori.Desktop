@@ -18,6 +18,11 @@ on:
         required: true
         default: ""
         type: string
+      prerelease:
+        description: "是否为预发行版（标记为 GitHub Pre-release）"
+        required: false
+        default: false
+        type: boolean
       run_extra_checks:
         description: "运行 TODO/FIXME 门禁和额外 Windows 冒烟测试"
         required: false
@@ -143,7 +148,7 @@ jobs:
           echo "程序 informational version: $informational (标签将在所有测试通过后创建)"
 
   preflight:
-    name: Ubuntu 四道门与前端产物
+    name: 前端与发布结构门禁
     needs: validate
     runs-on: ubuntu-latest
     defaults:
@@ -185,16 +190,6 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/desktop/pnpm-lock.yaml
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
-      - name: 缓存 NuGet 全局包
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('app/desktop/**/*.csproj', 'app/desktop/Directory.Build.props', 'app/desktop/version.props', 'app/desktop/Nori.slnx') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
       - name: 安装前端依赖
         run: pnpm install --frozen-lockfile
       - name: 一方 TODO/FIXME 门禁（可选）
@@ -208,11 +203,7 @@ jobs:
         run: node scripts/validate-publish-structure.test.mjs
       - name: 自动更新清单 fixture 门
         run: node scripts/generate-update-manifest.test.mjs
-      # dotnet 调用不并行, 且 test 不再触发第二次 build, 避免 obj 锁冲突。
-      - name: 后端门 · 构建
-        run: dotnet build Nori.slnx --configuration Release
-      - name: 后端门 · 单元测试
-        run: dotnet test Nori.slnx --configuration Release --no-build --no-restore
+      # 后端构建与全量单测统一交给 native 三平台门禁，不在 Ubuntu 重复执行。
       - name: 处理 source map
         shell: bash
         run: |
@@ -291,7 +282,7 @@ jobs:
       - name: 后端门 · 跨平台构建
         run: dotnet build Nori.slnx --configuration Release
       - name: 后端门 · 跨平台单元测试
-        run: dotnet test Nori.slnx --configuration Release --no-build --no-restore
+        run: dotnet test Nori.slnx --configuration Release --no-build --no-restore -m:1
 
       - name: Native Sentry 配置提示
         shell: bash
@@ -536,6 +527,7 @@ jobs:
           TAG: ${{ needs.create_tag.outputs.tag }}
           VERSION: ${{ needs.validate.outputs.version }}
           REPO: ${{ github.repository }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: |
           assets=(
             release-artifacts/nori-${VERSION}-win-x64-framework-dependent.zip
@@ -565,7 +557,7 @@ jobs:
           done
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$TAG" "${assets[@]}" --repo "$REPO" --clobber
-            gh release edit "$TAG" --repo "$REPO" --title "$TAG"
+            gh release edit "$TAG" --repo "$REPO" --title "$TAG" --prerelease="$PRERELEASE"
           else
-            gh release create "$TAG" --repo "$REPO" --verify-tag --title "$TAG" --generate-notes "${assets[@]}"
+            gh release create "$TAG" --repo "$REPO" --verify-tag --title "$TAG" --prerelease="$PRERELEASE" --generate-notes "${assets[@]}"
           fi

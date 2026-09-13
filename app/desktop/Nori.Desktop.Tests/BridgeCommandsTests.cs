@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Nori.Core.Automation;
@@ -38,6 +39,40 @@ public partial class BridgeCommandsTests : IDisposable
 	/// <summary>无界面测试使用生产主题，但不启动桌面服务。</summary>
 	public static AppBuilder BuildAvaloniaApp() =>
 		AppBuilder.Configure<App>().UseHeadless(new AvaloniaHeadlessPlatformOptions());
+
+	[Theory]
+	[InlineData("en-US")]
+	[InlineData("zh-CN")]
+	public Task NativeTestFixtureLanguageIsIndependentOfHostCulture(string hostCulture) => WithSettingsUiAsync(async () =>
+	{
+		// Headless 使用自己的 UI 线程；必须在该线程构造夹具前模拟宿主语言。
+		CultureInfo previous = CultureInfo.CurrentUICulture;
+		try
+		{
+			CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(hostCulture);
+			using BridgeCommandsTests fixture = new(safeMode: true);
+			Assert.Equal(hostCulture, ConfigStore.SystemLanguage());
+			Assert.Equal("zh-CN", fixture._config.GetInitConfig().Language);
+			ModelsWindow models = new(fixture._services);
+			MemoryWindow memory = new(fixture._services);
+			try
+			{
+				models.Show(); memory.Show();
+				await models.RefreshAsync(); await memory.RefreshAsync();
+				Assert.Equal("Nori · 模型", models.Title);
+				Assert.Contains("记忆", memory.Title);
+				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text("en-US"));
+				fixture._runtime.InvalidateSnapshot("general");
+				await models.RefreshAsync(); await memory.RefreshAsync();
+				await WaitUntilAsync(() => models.Title == "Nori · Models" && memory.Title?.Contains("Memory", StringComparison.Ordinal) == true);
+				Assert.Equal("Nori · Models", models.Title);
+				Assert.Contains("Memory", memory.Title);
+				await models.PrepareShutdownAsync(); await memory.PrepareShutdownAsync();
+			}
+			finally { models.AllowClose = memory.AllowClose = true; models.Close(); memory.Close(); }
+		}
+		finally { CultureInfo.CurrentUICulture = previous; }
+	});
 
 	private static async Task WithSettingsUiAsync(Func<Task> action)
 	{
@@ -298,6 +333,8 @@ public partial class BridgeCommandsTests : IDisposable
 		_database = NoriDatabase.Open(_dbPath);
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("0.1.0");
+		// 中文断言使用固定测试语言，不依赖 CI 系统语言；双语测试可显式覆盖此配置。
+		_config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text("zh-CN"));
 		_http = new HttpClient();
 		ChatService chat = new(_http, _database, _config);
 		_services = new AppServices

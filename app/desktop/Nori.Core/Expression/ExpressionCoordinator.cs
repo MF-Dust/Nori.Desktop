@@ -37,7 +37,7 @@ public sealed class ExpressionCoordinator
 	/// <summary>
 	/// 触发下发的最小强度变化。
 	///
-	/// 情绪强度是连续量，不设阈值的话每一轮回复都会重下一次；对全局通道（系统强调色、壁纸）
+	/// 情绪强度是连续量，不设阈值的话每一轮回复都会重下一次；对全局通道（系统强调色）
 	/// 那就是每说一句话整个桌面闪一下。
 	/// </summary>
 	public const double MinimumIntensityChange = 0.15;

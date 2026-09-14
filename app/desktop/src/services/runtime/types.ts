@@ -94,6 +94,19 @@ export interface PetState {
 	visible: boolean
 }
 
+/**
+ * 各个独立窗口开着没有。
+ *
+ * 侧边栏那四项是**另开窗口**, 不是切页 —— 界面靠这四个布尔量说出"它已经开着了",
+ * 而不是画一个假的选中态。
+ */
+export interface WindowsState {
+	chat: boolean
+	models: boolean
+	memory: boolean
+	settings: boolean
+}
+
 /** 运行会话类型 (Linux 下区分 x11 / wayland) */
 export type SessionType = "windows" | "macos" | "x11" | "wayland" | "unknown"
 
@@ -143,7 +156,7 @@ export interface AiChatState {
 	hasApiKey: boolean
 }
 
-/** AI 大脑状态 (包含扁平兼容字段与统一 chat/embedding 嵌套结构) */
+/** 模型服务状态 (包含扁平兼容字段与统一 chat/embedding 嵌套结构) */
 export interface AiState extends AiChatState {
 	chat?: AiChatState
 	embedding?: EmbeddingState
@@ -677,6 +690,7 @@ export interface UiSnapshot {
 	ai: AiState
 	models: ModelsState
 	pet: PetState
+	windows: WindowsState
 	platform: PlatformState
 	behaviors: BehaviorsState
 	voice: VoiceState
@@ -973,7 +987,7 @@ export interface McpToolResultDto {
 	isError: boolean
 }
 
-/** 交互反应模式: 本地动作 / AI 大脑响应 */
+/** 交互反应模式: 本地动作 / 模型响应 */
 export type InteractionReactionMode = "local" | "ai"
 
 /** 交互动作触发模式: 无 / 随机 / 指定 */

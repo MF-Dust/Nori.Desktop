@@ -248,6 +248,9 @@ public sealed class BridgeCommands
 				UpdateBoolConfig(args, "autoCheckUpdates", "auto_check_updates");
 				UpdateTelemetryConsent(source, args);
 				_services.Telemetry.Configure(_services.Config.GetTelemetryConsent() == TelemetryConsent.Granted);
+				// 托盘菜单是另一棵原生控件树, 不吃前端快照。语言改了要单独推给它,
+				// 否则会一直停在启动那一刻的语言上。
+				Tray.TrayMenu.Refresh();
 				Runtime.InvalidateSnapshot("general", "telemetry");
 			})),
 
@@ -272,6 +275,12 @@ public sealed class BridgeCommands
 		/// 前端调用：invoke("settings_update_expression", {channel: string, enabled: boolean})
 		/// </summary>
 		"settings_update_expression" => RequireMain(source, () => Run(() => UpdateExpressionChannel(args))),
+
+		/// <summary>
+		/// 换授权档位。
+		/// 前端调用：invoke("settings_update_permission", {gear: "ask"|"session"|"trusted"|"bypass"})
+		/// </summary>
+		"settings_update_permission" => RequireMain(source, () => Run(() => UpdatePermissionGear(args))),
 
 		"settings_update_screen" => RequireMain(source, () => Run(() =>
 		{
@@ -1944,6 +1953,39 @@ public sealed class BridgeCommands
 	/// 增量更新需要稳定标识，而任务只有名字这一个键，改名就无法与新增区分。整份替换让
 	/// 界面持有唯一真相，代价是并发编辑会互相覆盖 —— 设置窗口是单实例，不存在这种情形。
 	/// </summary>
+	/// <summary>
+	/// 换授权档位。
+	///
+	/// 选到完全放行时**在这里**按下到期时刻，而不是读取时再算 —— 到期时刻要跟着
+	/// 「哪一次点的」走。读取时才算的话，改一次别的设置就等于又续了四小时。
+	/// </summary>
+	private void UpdatePermissionGear(JsonElement args)
+	{
+		if (args.ValueKind != JsonValueKind.Object
+			|| !args.TryGetProperty("gear", out JsonElement value)
+			|| value.ValueKind != JsonValueKind.String)
+		{
+			throw new InvalidOperationException("缺少 gear");
+		}
+
+		string raw = (value.GetString() ?? "").Trim();
+		PermissionGear gear = ToolPermissionPolicy.Parse(raw);
+		// Parse 认不出的值会退到最严的一档，那对配置读取是对的，但在这里会把一次
+		// 拼错的调用变成一次静默的"改成逐次确认"。写入侧要严格。
+		if (!string.Equals(ToolPermissionPolicy.Format(gear), raw, StringComparison.Ordinal))
+		{
+			throw new InvalidOperationException($"不认识的档位: {raw}");
+		}
+
+		_services.Config.Set(ToolPermissionPolicy.KeyGear, new ConfigValue.Text(ToolPermissionPolicy.Format(gear)));
+		_services.Config.Set(
+			ToolPermissionPolicy.KeyBypassUntil,
+			new ConfigValue.Text(gear == PermissionGear.Bypass
+				? ToolPermissionPolicy.FormatDeadline(ToolPermissionPolicy.BypassDeadline(DateTimeOffset.UtcNow))
+				: string.Empty));
+		Runtime.InvalidateSnapshot("workspace");
+	}
+
 	private void UpdateWorkspaceSettings(JsonElement args)
 	{
 		// 同上：授权面要在改配置之前取。

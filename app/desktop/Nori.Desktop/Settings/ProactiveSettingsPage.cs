@@ -24,7 +24,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 
 	/// <summary>创建主动互动设置页。</summary>
 	public ProactiveSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "proactive", "perception", new("主动互动", "Proactive"), new("控制空闲互动、每日问候和提醒。", "Control idle interactions, daily greetings and reminders."), lifetimeToken)
+		: base(service, "proactive", "self", new("主动互动", "Proactive"), new("控制空闲互动、每日问候和提醒。", "Control idle interactions, daily greetings and reminders."), lifetimeToken)
 	{
 		SettingsSectionViewModel behavior = _behaviorSection = AddSection(new("自动互动", "Automatic interaction"));
 		_safeModeNotice = AddField(behavior, "safeModeNotice", new("安全模式", "Safe mode"), new("安全模式下暂停主动互动和新提醒，可继续查看及取消已有提醒。", "Safe mode pauses proactive interaction and new reminders. Existing reminders can still be viewed or cancelled."), SettingsEditorKind.Text,

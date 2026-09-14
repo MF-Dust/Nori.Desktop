@@ -50,7 +50,7 @@ const onClick = () => {
 		@click="onClick"
 	>
 		<span class="flex items-center gap-1.5 text-hint">
-			<Icon v-if="icon" :name="icon" :size="13"/>
+			<Icon v-if="icon" :name="icon" :size="15"/>
 			<span class="truncate">{{ label }}</span>
 		</span>
 		<!-- 数值可能是模型名这类长串, 统一截断以免撑破栅格列 -->

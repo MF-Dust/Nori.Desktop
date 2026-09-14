@@ -15,7 +15,7 @@ public sealed class UpdatesSettingsPage : SettingsPageBase
 
 	/// <summary>创建更新设置页。</summary>
 	public UpdatesSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "updates", "system", new("软件更新", "Updates"), new("查看最新版本与发布说明，管理下载和安装。", "View releases and manage downloads and installation."), lifetimeToken)
+		: base(service, "updates", "app", new("软件更新", "Updates"), new("查看最新版本与发布说明，管理下载和安装。", "View releases and manage downloads and installation."), lifetimeToken)
 	{
 		SettingsSectionViewModel version = AddSection(new("版本与更新", "Version and updates"));
 		Read(version, "currentVersion", new("当前版本", "Current version"), snapshot => SettingsSnapshotReader.String(snapshot, "Dev", "app", "productVersion"));

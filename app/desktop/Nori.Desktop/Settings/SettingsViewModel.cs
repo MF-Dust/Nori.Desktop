@@ -9,12 +9,24 @@ namespace Nori.Desktop.Settings;
 /// <summary>原生设置窗口的导航与页面状态。</summary>
 public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 {
+	/// <summary>
+	/// 左侧分组。
+	///
+	/// 旧分组是「核心 / 感知 / 扩展 / 系统」—— 那是按子系统切的, 不是按人找东西的路子切的:
+	///
+	///   · 「感知」里一个感知都没有。装的是语音(收发声音)、主动互动(她先开口)、
+	///     自动化(接管鼠标键盘) —— 最后一个是**行动**, 放在感知下面正好反了。
+	///     而真正的感知(看屏幕)在「访问权限」里, 归在「核心」。
+	///   · 「核心」是个杂物抽屉: 接哪个模型、她能碰什么、她怎么表现情绪, 三件不相干的事。
+	///   · 「扩展 vs 核心」的界线是实现细节 —— 对用户来说技能和工具都是"她会做什么"。
+	///
+	/// 现在按打开设置时心里那句话分:「她是个什么样的人」「她能动我什么」「这个软件本身」。
+	/// </summary>
 	private static readonly (string Key, SettingsText Title)[] GroupOrder =
 	[
-		("core", new("核心", "Core")),
-		("perception", new("感知", "Perception")),
-		("extend", new("扩展", "Extensions")),
-		("system", new("系统", "System")),
+		("self", new("对话与表现", "Conversation & expression")),
+		("reach", new("权限与能力", "Permissions & capabilities")),
+		("app", new("应用", "Application")),
 	];
 
 	private readonly SettingsService _service;
@@ -41,17 +53,20 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 		}
 
 		NavigateCommand = new SettingsCommand(parameter => Navigate(parameter as string));
+		// 组内顺序就是这里的添加顺序, 按"多久会去改一次"排。
 		AddPage(new AiSettingsPage(_service, _lifetimeCts.Token));
-		AddPage(new WorkspaceSettingsPage(_service, _lifetimeCts.Token));
-		AddPage(new ExpressionSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new VoiceSettingsPage(_service, _lifetimeCts.Token));
+		AddPage(new ExpressionSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new ProactiveSettingsPage(_service, _lifetimeCts.Token));
+		AddPage(new WorkspaceSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new GeneralSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new UpdatesSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new AboutSettingsPage(_service, _lifetimeCts.Token));
+		// 自动化紧跟访问权限: 两条都在回答"她能动我这台机器的什么", 中间隔着技能和
+		// 工具会让人以为它们是两类事。
+		AddPage(new AutomationSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new SkillsSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new McpSettingsPage(_service, _lifetimeCts.Token));
-		AddPage(new AutomationSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new PluginsSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new DebugSettingsPage(_service, _lifetimeCts.Token));
 		_service.StateChanged += OnStateChanged;

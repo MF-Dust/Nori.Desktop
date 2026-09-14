@@ -187,15 +187,34 @@ option {
 	}
 }
 
+// 在场感: 一圈光环从点上扩出去再散掉。
+//
+// 颜色走 --pulse-tint 而不是写死绿色 —— 写死之后它只能表示"在线", 别的状态想用
+// 同一个节拍就得再写一套关键帧。
 @keyframes pulse-soft {
 	0% {
-		box-shadow: 0 0 0 0 rgba(32, 224, 144, 0.4);
+		box-shadow: 0 0 0 0 var(--pulse-tint, rgba(32, 224, 144, 0.45));
 	}
 	70% {
-		box-shadow: 0 0 0 0.8rem rgba(32, 224, 144, 0);
+		box-shadow: 0 0 0 0.75rem transparent;
 	}
 	100% {
-		box-shadow: 0 0 0 0 rgba(32, 224, 144, 0);
+		box-shadow: 0 0 0 0 transparent;
+	}
+}
+
+// ---------- 她是连着线的 ----------
+//
+// 立绘上她尾巴末端拖着一根接头线 —— 她不是凭空住在屏幕里, 是插在这台机器上的。
+// 面板上沿那道光就是这根线: 每隔几秒走过一趟, 说明这头还通着。
+//
+// 走一趟给 7 秒。快了像进度条, 慢了没人会注意到它动过。
+@keyframes nori-current {
+	from {
+		background-position: -60% 0;
+	}
+	to {
+		background-position: 160% 0;
 	}
 }
 
@@ -222,8 +241,25 @@ option {
 	animation: glow-pulse 2.5s ease-in-out infinite;
 }
 
+// 3.6 秒一轮。原来是 1.2 秒 —— 那是告警的节拍, 不是待在那儿的节拍。
+// (这条规则此前没有任何地方用到, 改节奏不影响既有界面。)
 .animate-pulse-soft {
-	animation: pulse-soft 1.2s infinite;
+	animation: pulse-soft 3.6s cubic-bezier(0.4, 0, 0.3, 1) infinite;
+}
+
+.nori-current {
+	// 亮芯只占一小段: 宽了就成了一团光晕, 看着像渲染瑕疵而不像有东西走过去
+	background-image: linear-gradient(
+		90deg,
+		transparent 0%,
+		var(--glow-teal-soft) 30%,
+		var(--nori-teal-bright) 50%,
+		var(--glow-teal-soft) 70%,
+		transparent 100%
+	);
+	background-size: 26% 100%;
+	background-repeat: no-repeat;
+	animation: nori-current 7s linear infinite;
 }
 
 .animate-bubble-in {

@@ -161,7 +161,8 @@ interface NavCard {
 const NAV_CARDS = computed<NavCard[]>(() => [
 	{
 		key: "talk",
-		icon: "send",
+		// 这张卡是"跟她说话", 不是"发送一条消息" —— 所以放她本人, 不放纸飞机
+		icon: "bot",
 		title: I18N.value.cards.chat.title,
 		desc: I18N.value.cards.chat.desc,
 		action: I18N.value.cards.chat.action,
@@ -269,7 +270,11 @@ onMounted(() => {
 		>
 			<!-- 深海径向光晕背景 -->
 			<span class="absolute -top-1/2 -left-[15%] w-[42rem] h-[24rem] opacity-35 pointer-events-none bg-[radial-gradient(circle,var(--glow-teal)_0%,transparent_68%)]"/>
-			<span class="absolute top-0 inset-x-0 h-[0.1rem] bg-gradient-to-r from-transparent via-nori-teal-bright/30 to-transparent pointer-events-none"/>
+			<!-- 上沿这道光就是她尾巴上那根线: 在线时每 7 秒走过一趟, 离线时静止 -->
+			<span
+				class="absolute top-0 inset-x-0 h-[0.1rem] pointer-events-none"
+				:class="props.petVisible ? 'nori-current' : 'bg-gradient-to-r from-transparent via-nori-teal-bright/30 to-transparent'"
+			/>
 
 			<div class="relative flex items-center gap-5 min-w-0">
 				<!-- 头像与在线呼吸环 -->
@@ -277,7 +282,8 @@ onMounted(() => {
 					<img :src="currentModel.thumb" :alt="currentModel.name" class="w-full h-full object-cover object-top transition-transform duration-300 hover:scale-110"/>
 					<span
 						class="absolute bottom-0 right-0 w-[1.3rem] h-[1.3rem] rounded-full border-2 border-bg-abyss"
-						:class="props.petVisible ? 'bg-success shadow-[0_0_0.8rem_var(--success)] animate-pulse' : 'bg-text-faint'"
+						:class="props.petVisible ? 'bg-success animate-pulse-soft' : 'bg-text-faint'"
+						:style="props.petVisible ? {'--pulse-tint': 'rgba(32, 224, 144, 0.5)'} : undefined"
 					/>
 				</div>
 
@@ -349,7 +355,7 @@ onMounted(() => {
 
 					<div class="flex items-center gap-2.5 min-w-0">
 						<span class="w-8 h-8 shrink-0 rounded-sm flex items-center justify-center border border-line-subtle text-nori-teal-bright bg-nori-teal-bright/10 transition-all duration-200 group-hover:(border-nori-teal-bright/40 shadow-[0_0_1.2rem_var(--glow-teal-soft)])">
-							<Icon :name="card.icon" :size="16"/>
+							<Icon :name="card.icon" mode="duotone" :size="18"/>
 						</span>
 						<span class="title-sm truncate text-text-primary transition-colors group-hover:text-nori-teal-bright">{{ card.title }}</span>
 					</div>

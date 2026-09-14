@@ -7,7 +7,7 @@ public sealed class GeneralSettingsPage : SettingsPageBase
 {
 	/// <summary>创建常规设置页。</summary>
 	public GeneralSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "general", "system", new("常规", "General"), new("选择语言、启动行为和诊断偏好。", "Choose language, startup behavior and diagnostics preferences."), lifetimeToken)
+		: base(service, "general", "app", new("常规", "General"), new("选择语言、启动行为和诊断偏好。", "Choose language, startup behavior and diagnostics preferences."), lifetimeToken)
 	{
 		SettingsSectionViewModel language = AddSection(new("语言", "Language"));
 		AddField(language, "language", new("界面语言", "Interface language"), new("切换后立即更新设置窗口文案。", "The settings window updates immediately after switching."), SettingsEditorKind.Choice,

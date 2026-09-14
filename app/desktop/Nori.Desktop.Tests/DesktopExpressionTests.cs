@@ -15,7 +15,7 @@ namespace Nori.Desktop.Tests;
 /// 重点全在**还原**上。改了用户机器上的持久状态就必须有还原路径 —— 这和 AppContainer 的
 /// ACL 授权是同一类，那次是写了文档没接调用点，这次从一开始就把它做进来并测到。
 ///
-/// 用假的桌面外观实现，用例不碰真实注册表与壁纸。
+/// 用假的桌面外观实现，用例不碰真实注册表。
 /// </summary>
 public sealed class DesktopExpressionTests : IDisposable
 {
@@ -23,21 +23,9 @@ public sealed class DesktopExpressionTests : IDisposable
 	{
 		public bool IsAvailable { get; init; } = true;
 
-		public string? Wallpaper { get; set; } = @"D:\wallpaper\original.jpg";
-
 		public uint? Accent { get; set; } = 0xFFD4C677;   // 实测值：AABBGGRR
 
 		public List<Color> AccentWrites { get; } = [];
-
-		public List<string> WallpaperWrites { get; } = [];
-
-		public string? GetWallpaper() => Wallpaper;
-
-		public void SetWallpaper(string path)
-		{
-			WallpaperWrites.Add(path);
-			Wallpaper = path;
-		}
 
 		public uint? GetAccentColor() => Accent;
 
@@ -247,47 +235,6 @@ public sealed class DesktopExpressionTests : IDisposable
 		Assert.Empty(appearance.AccentWrites);
 	}
 
-	// ---- 壁纸 ----
-
-	[Fact]
-	public void 壁纸是全局档()
-	{
-		Assert.Equal(
-			Intrusiveness.Global,
-			new WallpaperChannel(new FakeAppearance(), _backup, Path.Combine(Path.GetTempPath(), "x.jpg")).Level);
-	}
-
-	[Fact]
-	public void 还原把壁纸改回原来那张()
-	{
-		FakeAppearance appearance = new() {Wallpaper = @"D:\wallpaper\original.jpg"};
-		string original = Path.Combine(Path.GetTempPath(), $"nori-wp-{Guid.NewGuid():N}.jpg");
-		File.WriteAllBytes(original, [1, 2, 3]);
-		appearance.Wallpaper = original;
-
-		WallpaperChannel channel = new(appearance, _backup, Path.Combine(Path.GetTempPath(), "generated.jpg"));
-		_backup.Remember(WallpaperChannel.ChannelKey, appearance.GetWallpaper());
-		appearance.Wallpaper = "generated.jpg";
-
-		channel.Restore();
-
-		Assert.Equal(original, appearance.WallpaperWrites[^1]);
-		Assert.False(_backup.HasBackup(WallpaperChannel.ChannelKey));
-		File.Delete(original);
-	}
-
-	/// <summary>原图已经被用户删掉时不要去设一个不存在的路径 —— 那会让桌面变成纯黑。</summary>
-	[Fact]
-	public void 原壁纸文件已不存在时不设置()
-	{
-		FakeAppearance appearance = new();
-		_backup.Remember(WallpaperChannel.ChannelKey, @"D:\wallpaper\已经删掉了.jpg");
-
-		new WallpaperChannel(appearance, _backup, Path.Combine(Path.GetTempPath(), "g.jpg")).Restore();
-
-		Assert.Empty(appearance.WallpaperWrites);
-	}
-
 	// ---- 灯效（A6）----
 
 	/// <summary>
@@ -303,6 +250,32 @@ public sealed class DesktopExpressionTests : IDisposable
 	public void 控制器数据损坏时判为不可用(byte[] payload)
 	{
 		Assert.Null(OpenRgbClient.TryParseDevice(payload, 0));
+	}
+
+	/// <summary>
+	/// IsAvailable 不得阻塞。
+	///
+	/// 这个属性会被 BuildSnapshot 调到，而快照在应用里到处都在建。第一版在这里同步连 TCP
+	/// （超时 2 秒），结果 CI 上两个时序敏感的界面用例稳定失败 —— 而单元测试一条都没抓到，
+	/// 因为它们不建快照。用一个「连接要花很久」的假实现把这条判据钉住。
+	/// </summary>
+	[Fact]
+	public void 可用性查询不被慢连接阻塞()
+	{
+		using RgbLightingChannel channel = new(() =>
+		{
+			Thread.Sleep(TimeSpan.FromSeconds(3));
+			return null;
+		});
+
+		System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+		for (int round = 0; round < 5; round++)
+		{
+			_ = channel.IsAvailable;
+			_ = channel.Devices;
+		}
+
+		Assert.True(clock.ElapsedMilliseconds < 500, $"读可用性花了 {clock.ElapsedMilliseconds} ms，说明它在等 I/O");
 	}
 
 	[Fact]

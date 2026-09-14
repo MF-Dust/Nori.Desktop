@@ -285,7 +285,8 @@ public partial class BridgeCommandsTests : IDisposable
 
 		public bool IsWindowVisible(string label) => _visible.TryGetValue(label, out bool visible) && visible;
 
-		private void SetVisible(string label, bool visible)
+		/// <summary>测试替身, 直接拨可见性。用例要造「某个窗口开着」这种局面。</summary>
+		public void SetVisible(string label, bool visible)
 		{
 			if (IsWindowVisible(label) == visible) return;
 			_visible[label] = visible;
@@ -945,9 +946,8 @@ public partial class BridgeCommandsTests : IDisposable
 		Assert.True(tray.TryGetProperty("enabled", out _));
 		Assert.True(tray.TryGetProperty("available", out _));
 
-		// 改整个桌面的两条默认关。
+		// 改整个系统那一条默认关。
 		Assert.False(expression.GetProperty("expression_accent_color").GetProperty("enabled").GetBoolean());
-		Assert.False(expression.GetProperty("expression_wallpaper").GetProperty("enabled").GetBoolean());
 
 		// 她自己身上那两条默认开。
 		Assert.True(expression.GetProperty("expression_tray_icon").GetProperty("enabled").GetBoolean());

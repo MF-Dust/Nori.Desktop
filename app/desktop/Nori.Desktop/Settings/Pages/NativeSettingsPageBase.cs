@@ -49,7 +49,7 @@ public sealed class SkillsSettingsPage : NativeSettingsPageBase
 {
 	/// <summary>创建技能工坊页面。</summary>
 	public SkillsSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "skills", "extend", new("技能工坊", "Skills Workshop"), new("管理已安装技能、市场预设与自定义技能。", "Manage installed, marketplace and custom skills."), new SkillsSettingsViewModel(service), lifetimeToken)
+		: base(service, "skills", "reach", new("技能工坊", "Skills Workshop"), new("管理已安装技能、市场预设与自定义技能。", "Manage installed, marketplace and custom skills."), new SkillsSettingsViewModel(service), lifetimeToken)
 	{
 	}
 }
@@ -59,7 +59,7 @@ public sealed class McpSettingsPage : NativeSettingsPageBase
 {
 	/// <summary>创建 MCP 与工具页面。</summary>
 	public McpSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "mcp", "extend", new("MCP 与工具", "MCP & Tools"), new("管理 MCP 服务与内置工具，所有调用均由宿主执行。", "Manage MCP servers and built-in tools; calls run in the host."), new McpSettingsViewModel(service), lifetimeToken)
+		: base(service, "mcp", "reach", new("MCP 与工具", "MCP & Tools"), new("管理 MCP 服务与内置工具，所有调用均由宿主执行。", "Manage MCP servers and built-in tools; calls run in the host."), new McpSettingsViewModel(service), lifetimeToken)
 	{
 	}
 }
@@ -69,7 +69,7 @@ public sealed class AutomationSettingsPage : NativeSettingsPageBase
 {
 	/// <summary>创建自动化页面。</summary>
 	public AutomationSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "automation", "perception", new("自动化", "Automation"), new("管理桌面、浏览器自动化权限和任务生命周期。", "Manage desktop and browser automation permissions and task lifecycles."), new AutomationSettingsViewModel(service), lifetimeToken)
+		: base(service, "automation", "reach", new("自动化", "Automation"), new("管理桌面、浏览器自动化权限和任务生命周期。", "Manage desktop and browser automation permissions and task lifecycles."), new AutomationSettingsViewModel(service), lifetimeToken)
 	{
 	}
 }
@@ -79,7 +79,7 @@ public sealed class PluginsSettingsPage : NativeSettingsPageBase
 {
 	/// <summary>创建插件管理页面。</summary>
 	public PluginsSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "plugins", "extend", new("插件", "Plugins"), new("安装、启停插件并管理插件数据。", "Install, control and remove plugins and their data."), new PluginsSettingsViewModel(service), lifetimeToken)
+		: base(service, "plugins", "reach", new("插件", "Plugins"), new("安装、启停插件并管理插件数据。", "Install, control and remove plugins and their data."), new PluginsSettingsViewModel(service), lifetimeToken)
 	{
 	}
 }
@@ -89,7 +89,7 @@ public sealed class DebugSettingsPage : NativeSettingsPageBase
 {
 	/// <summary>创建调试与诊断页面。</summary>
 	public DebugSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "debug", "system", new("调试与诊断", "Debug & Diagnostics"), new("查看日志、导出脱敏诊断并验证异常处理入口。", "Inspect logs, export redacted diagnostics and exercise failure handling."), new DebugSettingsViewModel(service), lifetimeToken)
+		: base(service, "debug", "app", new("调试与诊断", "Debug & Diagnostics"), new("查看日志、导出脱敏诊断并验证异常处理入口。", "Inspect logs, export redacted diagnostics and exercise failure handling."), new DebugSettingsViewModel(service), lifetimeToken)
 	{
 	}
 }

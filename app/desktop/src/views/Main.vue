@@ -51,13 +51,35 @@ type NavKey = "home" | "talk" | "model" | "memory" | "settings"
 
 const aiConfigured = computed(() => RUNTIME.snapshot.value?.ai.configured ?? false)
 
-const NAV_ITEMS = computed<{key: NavKey; label: string; icon: IconName; badge?: boolean}[]>(() => [
-	{key: "home", label: I18N.value.nav.home, icon: "noriOS"},
-	{key: "talk", label: I18N.value.nav.talk, icon: "send"},
-	{key: "model", label: I18N.value.nav.model, icon: "package"},
-	{key: "memory", label: I18N.value.nav.memory, icon: "server"},
-	{key: "settings", label: I18N.value.nav.settings, icon: "settings", badge: !aiConfigured.value},
+/**
+ * 侧边栏分两类，因为这两类**行为根本不一样**。
+ *
+ * 改动前五项画得一模一样：一样的选中样式、一样的左侧高亮条、一样的
+ * `aria-current="page"`。但只有「主页」是页，其余四项点下去是**另开一个窗口**，
+ * 而且 activeNav 压根不会变 —— 于是窗口开在旁边了，侧边栏还钉在「主页」上，
+ * 像是什么都没发生。看起来是标签页，用起来是启动器，选中态还在撒谎。
+ *
+ * 现在：主页是页，其余四项是启动器，各自画各自的。
+ */
+const HOME_ITEM = computed(() => ({key: "home" as const, label: I18N.value.nav.home, icon: "noriOS" as IconName}))
+
+/** 点下去会另开一个窗口的四项。`window` 是它在快照里对应的那个键。 */
+const LAUNCHERS = computed<{
+	key: Exclude<NavKey, "home">
+	window: keyof NonNullable<typeof RUNTIME.snapshot.value>["windows"]
+	label: string
+	icon: IconName
+	badge?: boolean
+}[]>(() => [
+	{key: "talk", window: "chat", label: I18N.value.nav.talk, icon: "bot"},
+	{key: "model", window: "models", label: I18N.value.nav.model, icon: "package"},
+	{key: "memory", window: "memory", label: I18N.value.nav.memory, icon: "memory"},
+	{key: "settings", window: "settings", label: I18N.value.nav.settings, icon: "settings", badge: !aiConfigured.value},
 ])
+
+/** 那个窗口此刻开着没有。开着就点亮，而不是画一个假的「已选中」。 */
+const isWindowOpen = (key: "chat" | "models" | "memory" | "settings") =>
+	RUNTIME.snapshot.value?.windows?.[key] ?? false
 
 // 常驻快照通知不会丢失后台检查结果，也不会强制弹窗或抢焦点。
 const UPDATE = computed(() => RUNTIME.snapshot.value?.updater)
@@ -66,27 +88,16 @@ const showUpdate = () => {
 	void openNativeSettings("updates")
 }
 
-const activeNav = ref<NavKey>("home")
-const currentNav = computed(() => NAV_ITEMS.value.find((item) => item.key === activeNav.value))
-
-// 设置面板要打开的初始子页 (从主页磁贴跳过来时直达)。
-// seq 是同一目标重复跳转的信号: 只看 target 的话第二次点同一张磁贴不会有反应。
-
-// ---- 来路记录: 从对话/主页跳进设置后给一条明确的回头路 ----
-const navOrigin = ref<NavKey | null>(null)
-
-const ORIGIN_LABEL = computed(() =>
-	NAV_ITEMS.value.find(item => item.key === navOrigin.value)?.label ?? "")
-
-const goNav = (key: NavKey, origin: NavKey | null = null) => {
-	navOrigin.value = origin === key ? null : origin
-	activeNav.value = key
-}
-
-const goBack = () => {
-	const ORIGIN = navOrigin.value
-	if (ORIGIN) goNav(ORIGIN)
-}
+/**
+ * 主窗口只有一页。
+ *
+ * 这里原来还有一整套「来路记录 + 返回按钮」：navOrigin / ORIGIN_LABEL / goBack，
+ * 外加 activeNav 这个可变状态。但四个启动器全都在 goNav 之前 return 掉了，
+ * goNav 只会被 `goNav(key)` 这一种形式调到（origin 恒为 null）—— 也就是说
+ * navOrigin 永远是 null，那个返回按钮**一次都没渲染过**，activeNav 也永远是 home。
+ *
+ * 一并删掉。留着它会让人以为这里还有别的页可以去。
+ */
 
 const openNativeSettings = async (page?: string) => {
 	try {
@@ -104,24 +115,15 @@ const openNativeChat = () => {
 	void RUNTIME.openChat().catch(error => feedback.error(UI_I18N.value.loadFailed, error))
 }
 
-const navigateSidebar = (key: NavKey) => {
-	if (key === "talk") {
-		openNativeChat()
-		return
-	}
-	if (key === "model") {
-		openNativeModels()
-		return
-	}
+/** 打开对应的窗口。已经开着的会被带到前面来，这是各个 open* 自己的行为。 */
+const openWindow = (key: Exclude<NavKey, "home">) => {
+	if (key === "talk") return openNativeChat()
+	if (key === "model") return openNativeModels()
 	if (key === "memory") {
 		void RUNTIME.openMemory().catch(error => feedback.error(UI_I18N.value.loadFailed, error))
 		return
 	}
-	if (key === "settings") {
-		void openNativeSettings()
-		return
-	}
-	goNav(key)
+	void openNativeSettings()
 }
 
 // ---- 侧边栏折叠 (状态持久化在 general.sidebarCollapsed) ----
@@ -172,8 +174,8 @@ const togglePet = async () => {
 	}
 }
 
-// 主页磁贴跳转
-const navigate = (tab: "talk" | "model" | "settings", origin: NavKey = "home") => {
+// 主页磁贴跳转。三张磁贴各自开一个窗口, 和侧边栏那四项是同一批动作。
+const navigate = (tab: "talk" | "model" | "settings") => {
 	if (tab === "talk") {
 		openNativeChat()
 		return
@@ -186,7 +188,6 @@ const navigate = (tab: "talk" | "model" | "settings", origin: NavKey = "home") =
 		void openNativeSettings("ai")
 		return
 	}
-	goNav(tab, origin)
 }
 
 // 面板内未捕获异常不能拖崩整个主窗口
@@ -195,10 +196,6 @@ onErrorCaptured((error) => {
 	panelError.value = error instanceof Error ? error.message : String(error)
 	console.error("面板异常:", error)
 	return false
-})
-
-watch(activeNav, () => {
-	panelError.value = ""
 })
 
 onMounted(async () => {
@@ -226,12 +223,8 @@ onBeforeUnmount(() => {
 			@close="exitApp"
 			@minimize="minimizeMain"
 		>
+			<!-- 这里原来挂着一枚「当前页」面包屑。主窗口只有一页, 它恒等于「主页」—— 是装饰, 撤掉。 -->
 			<div class="flex items-center gap-2.5">
-				<div class="flex items-center gap-2 px-2.5 py-0.8 rounded-pill bg-overlay-4 border border-line-subtle text-xs text-text-faint font-500 backdrop-blur-[0.8rem]">
-					<Icon :name="currentNav?.icon || 'noriOS'" :size="13" class="text-nori-teal-bright"/>
-					<span class="text-text-muted">{{ currentNav?.label }}</span>
-				</div>
-
 				<OperationDrawer/>
 			</div>
 		</TitleBar>
@@ -244,35 +237,60 @@ onBeforeUnmount(() => {
 				:class="collapsed ? 'w-[5.6rem]' : 'w-[15.5rem]'"
 			>
 				<nav class="flex flex-col gap-1.5" :aria-label="I18N.nav.home">
+					<!-- 你在这里。主窗口只有这一页, 所以左边那道高亮条只属于它。 -->
+					<div
+						class="nav-item nav-item-active"
+						:class="collapsed ? 'justify-center px-0' : ''"
+						:title="collapsed ? HOME_ITEM.label : undefined"
+						aria-current="page"
+					>
+						<span class="absolute left-0 top-1.5 bottom-1.5 w-[0.35rem] rounded-pill bg-gradient-to-b from-nori-teal-bright to-nori-teal shadow-[0_0_1rem_var(--glow-teal)]"/>
+						<span class="flex items-center justify-center shrink-0 text-nori-teal-bright">
+							<Icon :name="HOME_ITEM.icon" :size="17"/>
+						</span>
+						<span v-if="!collapsed" class="truncate font-500">{{ HOME_ITEM.label }}</span>
+					</div>
+
+					<!--
+						下面四项是启动器, 不是标签页 —— 点下去各自开一个窗口。
+						所以它们没有高亮条、没有 aria-current: 那两样是「你在这一页」的意思。
+						右边那颗点说的是**那个窗口此刻开着没有** —— 真状态, 换掉了原先那个
+						永远不会亮的假选中态。
+					-->
+					<p v-if="!collapsed" class="mt-2 mb-0.5 px-3 text-xs text-text-faint">{{ I18N.nav.openGroup }}</p>
+					<span v-else class="mt-2 mb-0.5 mx-3 h-px bg-line-subtle" aria-hidden="true"/>
+
 					<button
-						v-for="item in NAV_ITEMS"
+						v-for="item in LAUNCHERS"
 						:key="item.key"
 						type="button"
 						class="nav-item group"
-						:class="[
-							item.key === activeNav ? 'nav-item-active' : '',
-							collapsed ? 'justify-center px-0' : '',
-						]"
-						:title="collapsed ? item.label : undefined"
-						:aria-label="item.label"
-						:aria-current="item.key === activeNav ? 'page' : undefined"
-						@click="navigateSidebar(item.key)"
+						:class="collapsed ? 'justify-center px-0' : ''"
+						:title="item.label + I18N.nav.opensWindow"
+						:aria-label="item.label + I18N.nav.opensWindow"
+						@click="openWindow(item.key)"
 					>
-						<span
-							v-if="item.key === activeNav"
-							class="absolute left-0 top-1.5 bottom-1.5 w-[0.35rem] rounded-pill bg-gradient-to-b from-nori-teal-bright to-nori-teal shadow-[0_0_1rem_var(--glow-teal)]"
-						/>
-						<span
-							class="flex items-center justify-center shrink-0 transition-all duration-200"
-							:class="item.key === activeNav ? 'text-nori-teal-bright scale-105' : 'group-hover:scale-110'"
-						>
+						<span class="flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-110">
 							<Icon :name="item.icon" :size="17"/>
 						</span>
 						<span v-if="!collapsed" class="truncate font-500">{{ item.label }}</span>
+
+						<!--
+							开着才画那颗点, 没开就什么都不画。
+							第一版给"没开"也画了一圈淡描边 —— line-strong 是 28% 的青色, 描在
+							这么小的一个圆上, 实机根本看不见。一个看不见的提示不是提示, 只是每一行都挂着的
+							一点噪声。去掉之后这颗点只剩一个意思: 那个窗口正开着。
+						-->
+						<span
+							v-if="isWindowOpen(item.window)"
+							class="w-1.6 h-1.6 rounded-full bg-nori-teal-bright animate-pulse-soft"
+							:class="collapsed ? 'absolute bottom-1.5 right-1.5' : 'absolute right-3'"
+							:style="{'--pulse-tint': 'var(--glow-teal)'}"
+						/>
 						<span
 							v-if="item.badge"
-							class="w-1.8 h-1.8 rounded-full bg-warning shadow-[0_0_0.8rem_var(--warning)] animate-pulse"
-							:class="collapsed ? 'absolute top-1.5 right-1.5' : 'absolute right-3'"
+							class="w-1.8 h-1.8 rounded-full bg-warning shadow-[0_0_0.8rem_var(--warning)]"
+							:class="collapsed ? 'absolute top-1.5 right-1.5' : 'absolute right-7'"
 						/>
 					</button>
 				</nav>
@@ -292,7 +310,7 @@ onBeforeUnmount(() => {
 			<!-- 主工作区 -->
 			<main
 				class="flex-1 min-h-0 flex flex-col items-stretch overflow-hidden px-5 py-4 relative"
-				:data-main-panel="activeNav"
+				data-main-panel="home"
 			>
 				<div v-if="UPDATE_NOTICE" class="shrink-0 flex flex-wrap items-center justify-between gap-2 mb-2.5 px-3 py-2 border-b border-line-subtle" role="status" aria-live="polite">
 					<span class="text-sm text-text-primary break-all">
@@ -306,23 +324,9 @@ onBeforeUnmount(() => {
 					role="alert"
 				>{{ panelError }}</p>
 
-				<!-- 来路返回条: 从别处跳进来时留一条明确的回头路 -->
-				<button
-					v-if="navOrigin"
-					type="button"
-					class="self-start shrink-0 mb-2.5 btn-ghost px-2.5 py-1 text-xs"
-					:aria-label="`${I18N.nav.back} ${ORIGIN_LABEL}`"
-					@click="goBack"
-				>
-					<Icon name="arrow-left" :size="12"/>
-					<span class="font-500">{{ I18N.nav.back }}</span>
-					<span class="text-text-faint">{{ ORIGIN_LABEL }}</span>
-				</button>
-
 				<!-- 主工作区保留主页：对话窗口交给宿主原生窗口打开。 -->
 				<div class="flex-1 min-h-0 flex flex-col scroll-area">
 					<HomePanel
-						v-if="activeNav === 'home'"
 						:pet-visible="petVisible"
 						@toggle-pet="togglePet"
 						@navigate="navigate"

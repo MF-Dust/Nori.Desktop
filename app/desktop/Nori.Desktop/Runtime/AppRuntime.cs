@@ -877,7 +877,6 @@ public sealed class AppRuntime : IAsyncDisposable
 		RgbChannel,
 		AmbientChannel,
 		AccentChannel,
-		WallpaperChannel,
 	];
 
 	/// <summary>灯效通道。设备探测与重连由它自己管。</summary>
@@ -895,11 +894,6 @@ public sealed class AppRuntime : IAsyncDisposable
 
 	private AccentColorChannel AccentChannel => _accentChannel ??= new AccentColorChannel(Appearance, DesktopBackup);
 
-	private WallpaperChannel WallpaperChannel => _wallpaperChannel ??= new WallpaperChannel(
-		Appearance,
-		DesktopBackup,
-		Path.Combine(Services.Paths.DataRoot, "expression", "wallpaper.jpg"));
-
 	/// <summary>
 	/// 把改过的桌面设置还回去。
 	///
@@ -915,7 +909,7 @@ public sealed class AppRuntime : IAsyncDisposable
 
 	public void RestoreDesktopState()
 	{
-		foreach (Action restore in new Action[] {AccentChannel.Restore, WallpaperChannel.Restore})
+		foreach (Action restore in new Action[] {AccentChannel.Restore})
 		{
 			try
 			{
@@ -939,7 +933,7 @@ public sealed class AppRuntime : IAsyncDisposable
 	/// <summary>
 	/// 某条表达通道开没开。
 	///
-	/// 缺省值按侵入等级取：Global 档（系统强调色、壁纸）默认关，其余默认开 —— 用户没表过态时
+	/// 缺省值按侵入等级取：Global 档（系统强调色）默认关，其余默认开 —— 用户没表过态时
 	/// 不该被改掉整个桌面的颜色。
 	/// </summary>
 	private bool IsExpressionChannelEnabled(string key) =>
@@ -1019,7 +1013,6 @@ public sealed class AppRuntime : IAsyncDisposable
 	private RgbLightingChannel? _rgbChannel;
 	private AmbientSoundChannel? _ambientChannel;
 	private AccentColorChannel? _accentChannel;
-	private WallpaperChannel? _wallpaperChannel;
 	private ISandboxLauncher? _sandbox;
 	private IScreenCapture? _screenCapture;
 	private IVisionAnalyzer? _visionAnalyzer;
@@ -1155,6 +1148,8 @@ public sealed class AppRuntime : IAsyncDisposable
 				lease.Dispose();
 				_sessions.TryRemove(sessionId, out _);
 				session.Dispose();
+				// 「本轮记住」记的就是这一轮。轮结束必须忘掉，否则下一轮会继承上一轮的同意。
+				Permissions.ForgetTurn(sessionId);
 			}
 			// 终结事件意味着引擎与落库已结束，清空/下一轮不再被自动朗读占用。
 			PostAgentEvent(session.Source, terminal);
@@ -1208,13 +1203,45 @@ public sealed class AppRuntime : IAsyncDisposable
 	// 工具授权
 	// ===================================================================
 
+	/// <summary>
+	/// 授权档位。运行期只有这一份 —— 「本轮记住」的记忆挂在它身上，换一个实例等于失忆。
+	/// </summary>
+	public ToolPermissionPolicy Permissions { get; } = new();
+
+	/// <summary>配置里存的档位（不看是否到期）。</summary>
+	public PermissionGear StoredGear =>
+		ToolPermissionPolicy.Parse(Services.Config.GetStringOr(ToolPermissionPolicy.KeyGear, ""));
+
+	/// <summary>完全放行的到期时刻；没存过则为 null。</summary>
+	public DateTimeOffset? BypassUntil =>
+		ToolPermissionPolicy.ParseDeadline(Services.Config.GetStringOr(ToolPermissionPolicy.KeyBypassUntil, ""));
+
+	/// <summary>真正生效的档位：存的是完全放行但已过期时，按完全授权走。</summary>
+	public PermissionGear EffectiveGear =>
+		ToolPermissionPolicy.Effective(StoredGear, BypassUntil, DateTimeOffset.UtcNow);
+
 	internal async Task<bool> RequestApprovalAsync(IBridgeSource source, string sessionId, ToolApprovalRequest request, CancellationToken cancellationToken)
 	{
+		// 安全模式排在档位之前：它是「什么都不做」，不是「不用问」。把 bypass 打开也不能
+		// 让安全模式放行 —— 那会让一个用来收拾残局的开关变成最宽的那一档。
 		if (Services.SafeMode) return false;
+
+		/* ── 档位 ──────────────────────────────────────────────────────────
+		 * 判定在**发事件之前**。放在之后（发了卡片再自动点掉）会让界面闪一下
+		 * 又消失，用户以为自己看漏了什么。 */
+		if (Permissions.Decide(EffectiveGear, sessionId, request.ToolName, request.PermissionLevel)
+			== PermissionDecision.Allow)
+		{
+			// 自动放行也要留痕：出事时要答得出「她什么时候做的、按的哪一档」。
+			Services.Logger.Write(LogSource.Backend, "info",
+				$"按档位自动放行：{request.ToolName}（{ToolPermissionPolicy.Format(EffectiveGear)}）");
+			return true;
+		}
+
 		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
 			cancellationToken, request.CancellationToken, _lifetimeCts.Token,
 			source is INativeChatSource native ? native.LifetimeToken : CancellationToken.None);
-		PendingApproval approval = new(request.RequestId, source, sessionId,
+		PendingApproval approval = new(request.RequestId, request.ToolName, source, sessionId,
 			request.DeadlineUtc ?? DateTimeOffset.UtcNow.AddSeconds(AgentEngine.CallTimeoutSeconds), linked.Token);
 		lock (_approvalGate)
 		{
@@ -1252,6 +1279,9 @@ public sealed class AppRuntime : IAsyncDisposable
 	{
 		if (!_approvals.TryRemove(new KeyValuePair<string, PendingApproval>(approval.RequestId, approval))) return false;
 		approval.Dispose();
+		// 只有用户**真的按了允许**才记。超时、取消、拒绝都不是同意 —— 把它们也记进来，
+		// 等于一次没人看见的超时换来后面整轮的静默放行。
+		if (approved) Permissions.Remember(approval.SessionId, approval.ToolName);
 		PostAgentEvent(approval.Source, new
 		{
 			type = "approval-result", sessionId = approval.SessionId, requestId = approval.RequestId, approved, reason,
@@ -1288,7 +1318,7 @@ public sealed class AppRuntime : IAsyncDisposable
 	}
 
 	/// <summary>等待桌面或浏览器高风险动作的用户决定；未装配或取消时一律不自动放行。</summary>
-	private async Task<AutomationApprovalDecision> RequestAutomationApprovalAsync(
+	internal async Task<AutomationApprovalDecision> RequestAutomationApprovalAsync(
 		AutomationApprovalRequest request,
 		CancellationToken cancellationToken)
 	{
@@ -1297,6 +1327,26 @@ public sealed class AppRuntime : IAsyncDisposable
 			Services.Automation?.RecordApprovalOutcome(request, AutomationApprovalOutcome.Denied);
 			return AutomationApprovalDecision.Create(request, AutomationApprovalOutcome.Denied, DateTimeOffset.UtcNow);
 		}
+
+		/* ── 档位 ──────────────────────────────────────────────────────────
+		 * 接管鼠标键盘按 **dangerous** 算，不按 confirm：
+		 *
+		 * 它和「改一个文件」不是一个量级 —— 动的是你正在用的那套输入设备，出错时
+		 * 你连夺回控制的动作都要和她抢。所以「完全授权」这一档仍然逐次问，只有
+		 * 「完全放行」才免掉。这也正是那两档在今天唯一真实的差别：内置工具目前
+		 * 没有一个注册成 dangerous。
+		 *
+		 * 自动化自己的那几个开关（allowPointer / allowKeyboard / allowScroll）在这
+		 * 之外，档位放宽不了它们 —— 没打开的东西，哪一档都动不了。 */
+		if (Permissions.Decide(EffectiveGear, request.RequestId.ToString("D"), "automation", "dangerous")
+			== PermissionDecision.Allow)
+		{
+			Services.Logger.Write(LogSource.Backend, "info",
+				$"按档位自动放行自动化：{string.Join('/', request.ActionKinds)}（{ToolPermissionPolicy.Format(EffectiveGear)}）");
+			Services.Automation?.RecordApprovalOutcome(request, AutomationApprovalOutcome.Approved);
+			return AutomationApprovalDecision.Create(request, AutomationApprovalOutcome.Approved, DateTimeOffset.UtcNow);
+		}
+
 		TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		PendingDesktopApproval approval = new(request, tcs);
 		if (!_desktopApprovals.TryAdd(request.RequestId.ToString("D"), approval))
@@ -1546,6 +1596,20 @@ public sealed class AppRuntime : IAsyncDisposable
 				screenEnabled = config.GetBoolOr(ConfigStore.KeyScreenReadingEnabled, false),
 				// 平台不支持或模型没配时，界面要说清是「开不了」而不是「没开」。
 				screenAvailable = ScreenCapture is {IsAvailable: true} && VisionAnalyzer.IsConfigured,
+				/* ── 授权档位 ────────────────────────────────────────────────
+				 * gear 是用户存的那个值，effective 是此刻真正生效的 —— 完全放行到期
+				 * 之后两者会不一样，界面必须能同时说出「你选的是什么」和「现在按什么走」。
+				 * 只报一个的话，用户看到还写着完全放行却仍然被弹框，只能怀疑是坏了。 */
+				permissions = new
+				{
+					gear = ToolPermissionPolicy.Format(StoredGear),
+					effective = ToolPermissionPolicy.Format(EffectiveGear),
+					bypassUntil = BypassUntil,
+					bypassRemainingSeconds = (int?)ToolPermissionPolicy
+						.BypassRemaining(StoredGear, BypassUntil, DateTimeOffset.UtcNow)?.TotalSeconds,
+					// 安全模式下需要确认的工具一律拒绝，档位说了不算。
+					safeMode = Services.SafeMode,
+				},
 			},
 			// 每条通道两项：开没开（用户的选择）与能不能用（环境是否具备）。界面要能说出差别，
 			// 否则「开了没反应」无从排查。
@@ -1616,6 +1680,20 @@ public sealed class AppRuntime : IAsyncDisposable
 			{
 				visible = Services.Windows.IsWindowVisible(WindowLabels.Pet),
 				renderMetrics = Services.PetRuntime?.RenderMetrics,
+			},
+			/* ── 各个窗口开着没有 ──────────────────────────────────────────────
+			 * 侧边栏那四项点下去是**另开一个窗口**, 不是切页。此前界面拿不到这四个
+			 * 状态, 只好统一画成"未选中", 于是点了「对话」之后窗口开在旁边, 侧边栏
+			 * 却还是一副什么都没发生的样子。
+			 *
+			 * 注意 VisibilityChanged 里本来就在调 InvalidateSnapshot("windows") ——
+			 * 也就是说刷新这条路早就接好了, 缺的一直是这一段本身, 而缺了也不报错。 */
+			windows = new
+			{
+				chat = Services.Windows.IsWindowVisible(WindowLabels.Chat),
+				models = Services.Windows.IsWindowVisible(WindowLabels.Models),
+				memory = Services.Windows.IsWindowVisible(WindowLabels.Memory),
+				settings = Services.Windows.IsWindowVisible(WindowLabels.Settings),
 			},
 			platform = new
 			{
@@ -2051,9 +2129,12 @@ public sealed class AppRuntime : IAsyncDisposable
 	}
 
 	/// <summary>待决授权请求</summary>
-	private sealed class PendingApproval(string requestId, IBridgeSource source, string sessionId, DateTimeOffset maximumDeadlineUtc, CancellationToken cancellationToken) : IDisposable
+	private sealed class PendingApproval(string requestId, string toolName, IBridgeSource source, string sessionId, DateTimeOffset maximumDeadlineUtc, CancellationToken cancellationToken) : IDisposable
 	{
 		public string RequestId { get; } = requestId;
+
+		/// <summary>工具名。「本轮记住」那一档在用户按下允许时要记它。</summary>
+		public string ToolName { get; } = toolName;
 		public IBridgeSource Source { get; } = source;
 		public string SessionId { get; } = sessionId;
 		public CancellationToken CancellationToken { get; } = cancellationToken;

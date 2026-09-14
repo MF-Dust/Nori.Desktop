@@ -33,7 +33,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 
 	/// <summary>创建语音设置页。</summary>
 	public VoiceSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "voice", "perception", new("语音", "Voice"), new("配置朗读、语音克隆和语音识别。", "Configure speech, voice cloning and speech recognition."), lifetimeToken)
+		: base(service, "voice", "self", new("语音", "Voice"), new("配置朗读、语音克隆和语音识别。", "Configure speech, voice cloning and speech recognition."), lifetimeToken)
 	{
 		SettingsSectionViewModel general = _generalSection = AddSection(new("朗读", "Text to speech"));
 		AddField(general, "volume", new("音量", "Volume"), new("调整 Nori 的全局朗读音量。", "Adjust Nori's global speech volume."), SettingsEditorKind.Slider,

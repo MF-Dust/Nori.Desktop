@@ -33,7 +33,7 @@ export default {
 				openFailed: "打开链接失败",
 				features: {
 					live2d: "灵动 Live2D 交互",
-					ai: "全协议 AI 大脑",
+					ai: "全协议模型接入",
 					local: "本地私密安全",
 				},
 				links: {
@@ -78,8 +78,8 @@ export default {
 				notInstalled: "尚未导入",
 			},
 			aiSetup: {
-				badge: "AI 大脑",
-				title: "接入 AI 大脑",
+				badge: "模型服务",
+				title: "接入模型服务",
 				hint: "填上任意一家兼容协议的密钥, Nori 就能开口说话。这一步也可以之后再做。",
 				baseUrlHint: "留空即用该协议的默认地址, 自建或中转填完整地址",
 				apiKeyHint: "密钥只加密保存在本机, 不会上传",
@@ -107,7 +107,7 @@ export default {
 					languageValue: "已偏好配置",
 					model: "伴侣形象",
 					modelValue: "Live2D 载入完毕",
-					ai: "AI 大脑与设置",
+					ai: "模型服务与设置",
 					aiValue: "可在主界面扩展",
 					aiReady: "已接入, 随时开聊",
 				},
@@ -126,7 +126,7 @@ export default {
 				welcome: "欢迎",
 				language: "语言",
 				model: "形象",
-				ai: "大脑",
+				ai: "模型",
 				ready: "就绪",
 			},
 			error: {
@@ -163,6 +163,8 @@ export default {
 				settings: "设置",
 				about: "声明",
 				back: "返回",
+				openGroup: "打开",
+				opensWindow: "（另开窗口）",
 			},
 			home: {
 				modelMissingTitle: "本地 Live2D 模型不可用",
@@ -183,7 +185,7 @@ export default {
 				safeModeDesc: "已跳过 MCP 自动连接、主动交互与后台维护, 重新启动即可回到标准模式。",
 				stats: {
 					title: "运行概况",
-					ai: "AI 大脑",
+					ai: "模型服务",
 					aiReady: "已就绪",
 					aiMissing: "未配置",
 					aiProviderNone: "尚未选择服务商",
@@ -207,7 +209,7 @@ export default {
 						action: "进入换装",
 					},
 					ai: {
-						title: "AI 大脑设置",
+						title: "模型服务设置",
 						desc: "支持 OpenAI、Claude、Gemini 等多种大模型接入",
 						action: "连接配置",
 					},
@@ -424,7 +426,7 @@ export default {
 					modeLocal: "本地反应",
 					modeLocalDesc: "仅播放本地动作或表情，无需联网，零延迟",
 					modeAi: "AI 反应",
-					modeAiDesc: "触发 AI 大脑生成专属情绪、动作与文本对话",
+					modeAiDesc: "调用模型生成专属情绪、动作与文本对话",
 					motion: "动作响应",
 					motionModeNone: "无动作",
 					motionModeRandom: "随机动作",
@@ -529,7 +531,7 @@ export default {
 				clear: "清空搜索",
 			},
 			settingsTabs: {
-				ai: "AI 大脑",
+				ai: "模型服务",
 				voice: "语音音效",
 				proactive: "主动日程",
 				skills: "技能工坊",

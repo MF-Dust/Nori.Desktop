@@ -167,6 +167,8 @@ export default () => {
 					settings: t("views.main.nav.settings"),
 					about: t("views.main.nav.about"),
 					back: t("views.main.nav.back"),
+					openGroup: t("views.main.nav.openGroup"),
+					opensWindow: t("views.main.nav.opensWindow"),
 				},
 				home: {
 					modelMissingTitle: t("views.main.home.modelMissingTitle"),

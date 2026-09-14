@@ -19,6 +19,16 @@
 		<Using Include="Xunit" />
 	</ItemGroup>
 
+	<!--
+		设置窗口的主题文件在构建时嵌进来, 供 SettingsNavigationTests 核对导航图标。
+
+		走嵌入而不是运行时找路径: Avalonia 的 .axaml 打在 !AvaloniaResources 那个私有容器里,
+		AssetLoader 又要有一个跑起来的 Avalonia 应用才能读 —— 测试宿主里没有。
+	-->
+	<ItemGroup>
+		<EmbeddedResource Include="..\Nori.Desktop\Settings\SettingsTheme.axaml" LogicalName="SettingsTheme.axaml" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\Nori.Core\Nori.Core.csproj" />
 		<ProjectReference Include="..\Nori.Desktop\Nori.Desktop.csproj" />

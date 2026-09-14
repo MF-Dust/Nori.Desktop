@@ -49,6 +49,7 @@ describe("Views and Panels Mounting", () => {
 			visible: true,
 			renderMetrics: null,
 		},
+		windows: {chat: false, models: false, memory: false, settings: false},
 		platform: {
 			os: "windows",
 			sessionType: "x11",
@@ -185,39 +186,69 @@ describe("Views and Panels Mounting", () => {
 		element.dispatchEvent(new MouseEvent("click", {bubbles: true}))
 	}
 
-	it("main 侧边导航主面板不切换对话页，原生窗口在主界面外打开", async () => {
+	it("侧边栏把「页」和「启动器」分开：只有主页是页，其余四项各开一个窗口", async () => {
 		const MOUNT = mountComponent(Main)
 		try {
 			await settleView()
 			expect(MOUNT.container.innerHTML).toBeTruthy()
 
-			const NAV_BUTTONS = Array.from(MOUNT.container.querySelectorAll("aside nav button"))
-			expect(NAV_BUTTONS).toHaveLength(5)
+			// 主页不是按钮：它是「你在这里」，点它没有任何事情要发生。
+			const CURRENT = MOUNT.container.querySelectorAll("aside nav [aria-current='page']")
+			expect(CURRENT).toHaveLength(1)
+			expect(CURRENT[0].tagName).not.toBe("BUTTON")
 
-			click(NAV_BUTTONS[0]) // home
-			await settleView()
+			// 其余四项是启动器。
+			const LAUNCHERS = Array.from(MOUNT.container.querySelectorAll("aside nav button"))
+			expect(LAUNCHERS).toHaveLength(4)
+
+			/*
+			 * 启动器**不许**带 aria-current。
+			 *
+			 * 改动前五项都带，而 activeNav 永远是 home —— 也就是说那四项的选中态是一个
+			 * 恒为假的承诺：点了「对话」，窗口开在旁边，侧边栏却一动不动。这条用例就是
+			 * 钉住那个谎不要再回来。
+			 */
+			for (const launcher of LAUNCHERS) {
+				expect(launcher.getAttribute("aria-current")).toBeNull()
+			}
+
 			const PANELS = MOUNT.container.querySelectorAll("[data-main-panel]")
 			expect(PANELS).toHaveLength(1)
 			expect(PANELS[0].getAttribute("data-main-panel")).toBe("home")
 
-			click(NAV_BUTTONS[1]) // talk
-			await settleView()
+			for (const launcher of LAUNCHERS) {
+				click(launcher)
+				await settleView()
+				// 主面板始终是主页：这四项从来就不切页。
+				expect(PANELS[0].getAttribute("data-main-panel")).toBe("home")
+			}
+
 			expect(INVOKED).toContain("window_open_chat")
-			expect(PANELS[0].getAttribute("data-main-panel")).toBe("home")
-
-			click(NAV_BUTTONS[2]) // model
-			await settleView()
-			click(NAV_BUTTONS[3]) // memory
-			await settleView()
-			click(NAV_BUTTONS[4]) // settings
-			await settleView()
-
 			expect(INVOKED).toContain("window_open_models")
-			expect(INVOKED).not.toContain("model_get_meta")
 			expect(INVOKED).toContain("window_open_settings")
 			expect(INVOKED).toContain("window_open_memory")
+			// 开窗口是宿主的事，主界面不该顺手去拉那两份数据。
+			expect(INVOKED).not.toContain("model_get_meta")
 			expect(INVOKED).not.toContain("memory_list_page")
 		} finally {
+			MOUNT.app.unmount()
+			MOUNT.container.remove()
+		}
+	})
+
+	it("窗口开着时，侧边栏对应那一项亮一颗点", async () => {
+		const SNAPSHOT = RUNTIME.snapshot.value as any
+		SNAPSHOT.windows = {chat: true, models: false, memory: false, settings: false}
+		const MOUNT = mountComponent(Main)
+		try {
+			await settleView()
+			const LAUNCHERS = Array.from(MOUNT.container.querySelectorAll("aside nav button"))
+			// 只有「对话」那一项该有点：这颗点说的是那个窗口开着，不是"选中了它"。
+			const LIT = LAUNCHERS.filter(b => b.querySelector(".animate-pulse-soft"))
+			expect(LIT).toHaveLength(1)
+			expect(LIT[0].textContent).toContain(ZH.views.main.nav.talk)
+		} finally {
+			SNAPSHOT.windows = {chat: false, models: false, memory: false, settings: false}
 			MOUNT.app.unmount()
 			MOUNT.container.remove()
 		}

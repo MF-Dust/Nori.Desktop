@@ -5,18 +5,32 @@ namespace Nori.Desktop.Settings;
 /// <summary>
 /// 文件访问设置页：她能看哪个文件夹，以及一轮里最多连续用多少次工具。
 ///
-/// 归入 `core` 组，与「AI 大脑」相邻：前者决定模型与推理配置，本页决定可访问的资源范围。
+/// 归入 `core` 组，与「模型服务」相邻：前者决定模型与推理配置，本页决定可访问的资源范围。
 /// </summary>
 public sealed class WorkspaceSettingsPage : SettingsPageBase
 {
+	private const string GearOptionAsk = "ask";
+
+	/// <summary>
+	/// 四个档位。措辞按**她会怎么做**写，不按内部名字写 —— 用户要判断的是
+	/// 「我会不会被打扰」和「我放掉了多少」，不是 trusted 和 bypass 的区别。
+	/// </summary>
+	private static readonly IReadOnlyList<SettingsOption> GearOptions =
+	[
+		new(GearOptionAsk, new("逐次确认（默认）", "Confirm every time (default)")),
+		new("session", new("本轮记住：同一工具每轮只确认一次", "Remember for this reply: confirm once per tool")),
+		new("trusted", new("完全授权：常规操作不再确认（接管鼠标键盘仍需确认）", "Full: routine actions skip confirmation; mouse and keyboard control still requires it")),
+		new("bypass", new("完全放行：一律不确认，含接管鼠标键盘（4 小时后降回完全授权）", "Bypass: no confirmation at all, mouse and keyboard control included (falls back to Full after 4 hours)")),
+	];
+
 	/// <summary>创建文件访问设置页。</summary>
 	public WorkspaceSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
 		: base(
 			service,
 			"workspace",
-			"core",
+			"reach",
 			new("访问权限", "Access"),
-			new("她能碰到你哪些东西：文件夹、可运行的命令、屏幕。", "What she can reach: folders, runnable commands, and your screen."),
+			new("她可访问的范围：工作文件夹、具名任务、屏幕内容。", "Scope she can access: the working folder, named tasks, and screen contents."),
 			lifetimeToken)
 	{
 		SettingsSectionViewModel folder = AddSection(new("工作文件夹", "Working folder"));
@@ -107,6 +121,37 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			(_, _) => Task.FromResult(default(JsonElement)),
 			readOnly: true);
 
+		/* ── 授权档位 ────────────────────────────────────────────────────────
+		 * 排在工作文件夹与任务之后：那两节决定「她能碰到什么」，这一节只决定
+		 * 「碰之前问不问你」。顺序反过来会让人以为调档位能扩大她的活动范围。 */
+		SettingsSectionViewModel permission = AddSection(new("确认方式", "Confirmations"));
+		AddField(
+			permission,
+			"permissionGear",
+			new("何时请求确认", "When to ask for confirmation"),
+			new(
+				"只改变确认时机，不扩大可访问范围。工作文件夹之外的文件与未配置的任务，任何档位都不可执行。",
+				"Only changes when confirmation is requested; it never widens the accessible scope. Files outside the working folder and unconfigured tasks remain unavailable at every setting."),
+			SettingsEditorKind.Choice,
+			snapshot => SettingsSnapshotReader.String(snapshot, GearOptionAsk, "workspace", "permissions", "gear"),
+			GearOptionAsk,
+			(value, token) => ExecuteAsync(
+				"settings_update_permission",
+				new {gear = Convert.ToString(value) ?? GearOptionAsk},
+				token),
+			options: GearOptions);
+
+		AddField(
+			permission,
+			"permissionState",
+			new("　当前生效", "　In effect"),
+			new("", ""),
+			SettingsEditorKind.Text,
+			GearStateText,
+			"",
+			(_, _) => Task.FromResult(default(JsonElement)),
+			readOnly: true);
+
 		SettingsSectionViewModel limits = AddSection(new("工具次数", "Tool calls"));
 		AddField(
 			limits,
@@ -130,6 +175,53 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			minimum: Core.Agent.AgentEngine.MinToolIterations,
 			maximum: Core.Agent.AgentEngine.MaxToolIterationsLimit,
 			increment: 1);
+	}
+
+	/// <summary>
+	/// 当前真正生效的那一档。
+	///
+	/// 与上面的下拉分开显示，理由和读屏那两行一样：下拉是「你选的」，这一行是
+	/// 「现在按什么走」。完全放行到期之后两者会不一样，只显示一个的话，用户看到
+	/// 还写着完全放行却仍然被弹框，只能怀疑是坏了。
+	/// </summary>
+	private string GearStateText(JsonElement snapshot)
+	{
+		if (SettingsSnapshotReader.Boolean(snapshot, false, "workspace", "permissions", "safeMode"))
+		{
+			return IsEnglish
+				? "Safe mode: all actions requiring confirmation are refused; this setting has no effect."
+				: "安全模式：需要确认的操作一律拒绝，此设置不生效。";
+		}
+
+		string stored = SettingsSnapshotReader.String(snapshot, GearOptionAsk, "workspace", "permissions", "gear");
+		string effective = SettingsSnapshotReader.String(snapshot, GearOptionAsk, "workspace", "permissions", "effective");
+		if (stored != effective)
+		{
+			return IsEnglish
+				? "Bypass has expired; now running as Full. Select it again to renew for 4 hours."
+				: "完全放行已到期，当前按完全授权执行。需要继续请重新选择。";
+		}
+
+		if (stored == "bypass")
+		{
+			int seconds = (int)SettingsSnapshotReader.Number(
+				snapshot, 0, "workspace", "permissions", "bypassRemainingSeconds");
+			int minutes = Math.Max(1, seconds / 60);
+			return IsEnglish
+				? $"No confirmation will be requested for the next {minutes} min, mouse and keyboard control included."
+				: $"接下来 {minutes} 分钟内不再请求确认，包括接管鼠标键盘。";
+		}
+
+		return stored switch
+		{
+			"trusted" => IsEnglish
+				? "Routine actions execute without confirmation; mouse and keyboard control still requires it."
+				: "常规操作直接执行，接管鼠标键盘仍需确认。",
+			"session" => IsEnglish
+				? "Each tool requires confirmation once per reply, then stays approved until that reply ends."
+				: "每个工具在一轮回复内只需确认一次，该轮结束后重新计算。",
+			_ => IsEnglish ? "Every action requiring confirmation is asked first." : "每一次需要确认的操作都会先请求确认。",
+		};
 	}
 
 	/// <summary>

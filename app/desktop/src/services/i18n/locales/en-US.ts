@@ -33,7 +33,7 @@ export default {
 				openFailed: "Failed to open the link",
 				features: {
 					live2d: "Lively Live2D interaction",
-					ai: "Any-protocol AI brain",
+					ai: "Any-protocol model access",
 					local: "Local and private",
 				},
 				links: {
@@ -78,8 +78,8 @@ export default {
 				notInstalled: "Not imported",
 			},
 			aiSetup: {
-				badge: "AI Brain",
-				title: "Connect an AI Brain",
+				badge: "Model provider",
+				title: "Connect a model provider",
 				hint: "Add a key for any compatible protocol and Nori can start talking. You can also do this later.",
 				baseUrlHint: "Leave it empty to use this protocol's default endpoint; enter a full URL for a self-hosted or proxy endpoint",
 				apiKeyHint: "The key is stored encrypted on this machine and is never uploaded",
@@ -107,7 +107,7 @@ export default {
 					languageValue: "Preference saved",
 					model: "Companion character",
 					modelValue: "Live2D ready",
-					ai: "AI brain & settings",
+					ai: "Model provider & settings",
 					aiValue: "Extend from the main window",
 					aiReady: "Connected, ready to chat",
 				},
@@ -163,6 +163,8 @@ export default {
 				settings: "Settings",
 				about: "About",
 				back: "Back",
+				openGroup: "Open",
+				opensWindow: " (opens a window)",
 			},
 			home: {
 				modelMissingTitle: "Local Live2D model unavailable",
@@ -183,7 +185,7 @@ export default {
 				safeModeDesc: "MCP auto-connect, proactive interaction and background maintenance are skipped. Restart to return to standard mode.",
 				stats: {
 					title: "Runtime Overview",
-					ai: "AI Brain",
+					ai: "Model provider",
 					aiReady: "Ready",
 					aiMissing: "Not configured",
 					aiProviderNone: "No provider selected yet",
@@ -207,7 +209,7 @@ export default {
 						action: "Manage Models",
 					},
 					ai: {
-						title: "AI Brain Settings",
+						title: "Model provider settings",
 						desc: "Connect OpenAI, Claude, Gemini and more LLMs",
 						action: "Configure",
 					},
@@ -424,7 +426,7 @@ export default {
 					modeLocal: "Local Reaction",
 					modeLocalDesc: "Plays local motions or expressions offline with zero latency",
 					modeAi: "AI Response",
-					modeAiDesc: "Triggers AI brain to generate emotion, motion, and dialogue",
+					modeAiDesc: "Calls the model to generate emotion, motion, and dialogue",
 					motion: "Motion Action",
 					motionModeNone: "None",
 					motionModeRandom: "Random Motion",
@@ -529,7 +531,7 @@ export default {
 				clear: "Clear search",
 			},
 			settingsTabs: {
-				ai: "AI Brain",
+				ai: "Model provider",
 				voice: "Voice & Audio",
 				proactive: "Proactive & Routine",
 				skills: "Skills Workshop",

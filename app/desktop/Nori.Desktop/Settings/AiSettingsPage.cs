@@ -33,7 +33,7 @@ public sealed class AiSettingsPage : SettingsPageBase
 
 	/// <summary>创建 AI 设置页。</summary>
 	public AiSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "ai", "core", new("AI 大脑", "AI brain"), new("配置对话、模型和知识库向量服务。", "Configure chat, model and knowledge embedding providers."), lifetimeToken)
+		: base(service, "ai", "self", new("模型服务", "Model providers"), new("配置对话、模型和知识库向量服务。", "Configure chat, model and knowledge embedding providers."), lifetimeToken)
 	{
 		SettingsSectionViewModel chat = AddSection(new("对话服务", "Chat provider"));
 		_provider = AddField(chat, "provider", new("服务商", "Provider"), new("选择兼容的对话 API。", "Choose a compatible chat API."), SettingsEditorKind.Choice,

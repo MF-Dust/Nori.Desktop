@@ -140,25 +140,19 @@
 	<Style Selector="TextBox.settings-search">
 		<Setter Property="CornerRadius" Value="7"/>
 	</Style>
+	<!--
+		导航图标不带底片。
+
+		原来每一页配一枚不同色的圆角方块: 紫、红、绿、橙、蓝、灰 —— 十一页十一种颜色,
+		而颜色不编码任何信息, 纯装饰。整个应用是深海蓝加一点薄荷的单色体系, 这一排
+		彩虹是唯一的例外, 而它恰好长在用户最常来的地方。
+
+		底片撤掉之后还有一个附带好处: 「访问权限」和「情绪表达」当时是**两块纯色空白**
+		(见下面那段注释), 有底片时它们看着像坏了, 没底片时只是图标缺失 —— 当然两个都补上了。
+	-->
 	<Style Selector="Border.settings-nav-symbol">
-		<Setter Property="Background" Value="{DynamicResource SettingsIconBlueBrush}"/>
-		<Setter Property="BorderBrush" Value="{DynamicResource SettingsIconHighlightBrush}"/>
-		<Setter Property="BorderThickness" Value="0.5"/>
-	</Style>
-	<Style Selector="Button.settings-nav[Tag=ai] Border.settings-nav-symbol, Button.settings-nav[Tag=skills] Border.settings-nav-symbol, Button.settings-nav[Tag=behaviors] Border.settings-nav-symbol">
-		<Setter Property="Background" Value="{DynamicResource SettingsIconPurpleBrush}"/>
-	</Style>
-	<Style Selector="Button.settings-nav[Tag=proactive] Border.settings-nav-symbol">
-		<Setter Property="Background" Value="{DynamicResource SettingsIconRedBrush}"/>
-	</Style>
-	<Style Selector="Button.settings-nav[Tag=mcp] Border.settings-nav-symbol, Button.settings-nav[Tag=plugins] Border.settings-nav-symbol">
-		<Setter Property="Background" Value="{DynamicResource SettingsIconGreenBrush}"/>
-	</Style>
-	<Style Selector="Button.settings-nav[Tag=automation] Border.settings-nav-symbol">
-		<Setter Property="Background" Value="{DynamicResource SettingsIconOrangeBrush}"/>
-	</Style>
-	<Style Selector="Button.settings-nav[Tag=general] Border.settings-nav-symbol, Button.settings-nav[Tag=debug] Border.settings-nav-symbol">
-		<Setter Property="Background" Value="{DynamicResource SettingsIconGrayBrush}"/>
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="BorderThickness" Value="0"/>
 	</Style>
 	<!-- 独立绘制的圆端线条符号，固定 24 单位画布避免不同图标的视觉尺寸漂移。 -->
 	<Style Selector="Path.settings-nav-icon">
@@ -171,6 +165,22 @@
 	</Style>
 	<Style Selector="Button.settings-nav[Tag=ai] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 10,3 Q 11,10 18,11 Q 11,12 10,19 Q 9,12 2,11 Q 9,10 10,3 Z M 19,2 L 19,6 M 17,4 L 21,4 M 20,16 L 20,20 M 18,18 L 22,18"/>
+	</Style>
+	<!--
+		workspace 与 expression 此前**没有图标数据**。
+
+		页面早先叫 library / behaviors, 改名之后样式选择器没跟着改, 于是这两页的 Path
+		拿不到 Data —— 渲染成一个空 Path, 不报错、不告警, 界面上就是两块空白。
+		(那两条死样式已在下面删掉。)
+
+		这两枚按主界面那套图标的画法来: 圆角收笔, 1.8 描边。
+	-->
+	<Style Selector="Button.settings-nav[Tag=workspace] Path.settings-nav-icon">
+		<Setter Property="Data" Value="M 12,3.2 L 4.8,6 L 4.8,12.1 C 4.8,16 7.7,19 12,20.8 C 16.3,19 19.2,16 19.2,12.1 L 19.2,6 Z M 9.1,12.2 L 11.3,14.4 L 15,10.4"/>
+	</Style>
+	<!-- 情绪表达改的都是颜色: 托盘图标、气泡描边、系统强调色。所以画一滴颜料。 -->
+	<Style Selector="Button.settings-nav[Tag=expression] Path.settings-nav-icon">
+		<Setter Property="Data" Value="M 12,3.6 C 15.4,7.8 17.2,10.5 17.2,12.7 A 5.2,5.2 0 0 1 6.8,12.7 C 6.8,10.5 8.6,7.8 12,3.6 Z"/>
 	</Style>
 	<Style Selector="Button.settings-nav[Tag=voice] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 9,6 A 3,3 0 0 1 15,6 L 15,12 A 3,3 0 0 1 9,12 Z M 6,11 L 6,12 A 6,6 0 0 0 18,12 L 18,11 M 12,18 L 12,21 M 9,21 L 15,21"/>

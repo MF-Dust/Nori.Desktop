@@ -7,7 +7,7 @@ public sealed class AboutSettingsPage : SettingsPageBase
 {
 	/// <summary>创建关于页面。</summary>
 	public AboutSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "about", "system", new("关于 Nori", "About Nori"), new("版本、许可证和运行环境信息。", "Version, license and runtime information."), lifetimeToken)
+		: base(service, "about", "app", new("关于 Nori", "About Nori"), new("版本、许可证和运行环境信息。", "Version, license and runtime information."), lifetimeToken)
 	{
 		SettingsSectionViewModel identity = AddSection(new("Nori Desktop Pet", "Nori Desktop Pet"));
 		AddField(identity, "version", new("版本", "Version"), new("当前应用版本。", "The current application version."), SettingsEditorKind.Text,

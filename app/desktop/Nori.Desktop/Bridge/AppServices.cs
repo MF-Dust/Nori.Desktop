@@ -91,6 +91,88 @@ public sealed class AppServices : IAsyncDisposable
 	/// <summary>自动化审计仓储；只保存固定分类和稳定失败码。</summary>
 	public AutomationAuditRepository AutomationAudit => _automationAudit ??= new AutomationAuditRepository(Database);
 
+	private Account.SignInCoordinator? _signIn;
+
+	/// <summary>
+	/// 云端账户的登录协调器。
+	///
+	/// 走 <see cref="PublicHttp"/>：这是公网调用，不该和指向本机/内网模型服务的
+	/// <see cref="Http"/> 共用一个客户端 —— 后者可能配了只在本机成立的代理与超时。
+	///
+	/// 同意对话框的宿主窗口在**调用时**才解析，不是装配时 —— 装配发生在窗口建好之前。
+	/// </summary>
+	public Account.SignInCoordinator SignIn => _signIn ??= CreateSignIn();
+
+	/// <summary>
+	/// 造登录协调器，并把「登录成功」接到界面刷新上。
+	///
+	/// 登录成功之后必须让快照失效：设置里的「账户与同步」页、托盘标题、WebView 那一侧，
+	/// 读的都是快照的 account 段。缺这一步的症状是**登录完界面一切照旧** —— 那一页仍写着
+	/// 「未登录」，备份与恢复仍是禁用的，直到别的操作碰巧让快照失效才跟上。
+	///
+	/// 接在协调器的事件上，不接在账户窗口的关闭回调上：登录入口不止一个（设置页、托盘、
+	/// 以后可能还有别的），而这个事件是它们共同的终点。
+	/// </summary>
+	private Account.SignInCoordinator CreateSignIn()
+	{
+		Account.SignInCoordinator coordinator = Account.SignInCoordinator.Create(
+			PublicHttp, Config, AskConsentAsync, Logger);
+		coordinator.SignedIn += _ =>
+		{
+			Runtime?.InvalidateSnapshot("account");
+			// 托盘那一条要从「登录…」换成账户名，它不读快照，只能单独喊一次。
+			Avalonia.Threading.Dispatcher.UIThread.Post(Tray.TrayMenu.Refresh);
+		};
+		return coordinator;
+	}
+
+	/// <summary>
+	/// 弹一次条款确认。
+	///
+	/// 找不到宿主窗口时返回「不同意」。这个默认值决定了在异常路径上我们是替用户签了字，
+	/// 还是让他重来一次 —— 只有后者是可接受的。
+	/// </summary>
+	private Nori.Core.Cloud.CloudSyncService? _cloudSync;
+
+	/// <summary>
+	/// 云端存档的同步。偏好、记忆与提醒；**不含对话原文**。
+	///
+	/// 与 <see cref="SignIn"/> 共用同一个 <see cref="Nori.Core.Cloud.AccountSession"/>，
+	/// 否则退出登录之后这一侧还会拿着旧令牌继续上传。
+	///
+	/// 记忆那一块**必须用 Runtime 手上那个** <c>MemoryTransferService</c>：它是带
+	/// <c>queueEmbedding</c> 建起来的，另起一个会让恢复进来的记忆没有向量 —— 它们存在，
+	/// 但检索不到，而且不报错。所以这个属性依赖运行时就绪。
+	/// </summary>
+	public Nori.Core.Cloud.CloudSyncService CloudSync
+	{
+		get
+		{
+			Runtime.AppRuntime runtime = Runtime
+				?? throw new InvalidOperationException("应用运行时尚未就绪，暂时无法同步");
+			return _cloudSync ??= new Nori.Core.Cloud.CloudSyncService(
+				new Nori.Core.Cloud.NoriCloudClient(PublicHttp,
+					Config.GetStringOr(Nori.Core.Cloud.NoriCloudClient.BaseUrlKey,
+						Nori.Core.Cloud.NoriCloudClient.DefaultBaseUrl)),
+				SignIn.Session,
+				new Nori.Core.Cloud.CloudSaveService(
+					Config, runtime.Memory.Transfer, new Nori.Core.Proactive.ReminderStore(Database)),
+				Config);
+		}
+	}
+
+	private static Task<bool> AskConsentAsync(Account.ConsentRequest request)
+	{
+		Avalonia.Controls.Window? owner =
+			Avalonia.Application.Current?.ApplicationLifetime
+				is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+			? desktop.Windows.FirstOrDefault(window => window.IsActive) ?? desktop.Windows.FirstOrDefault()
+			: null;
+		return owner is null
+			? Task.FromResult(false)
+			: Account.ConsentDialog.AskAsync(owner, request);
+	}
+
 	/// <summary>浏览器运行器工厂；生产默认使用隔离 Edge，测试可注入 fake。</summary>
 	public Func<IAutomationBrowserRunner>? AutomationBrowserRunnerFactory { get; set; }
 

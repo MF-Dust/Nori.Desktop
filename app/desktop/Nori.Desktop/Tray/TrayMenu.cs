@@ -42,6 +42,8 @@ public static class TrayMenu
 	private static NativeMenuItem? _toggleItem;
 	private static NativeMenuItem? _mainItem;
 	private static NativeMenuItem? _settingsItem;
+	private static NativeMenuItem? _accountItem;
+	private static NativeMenuItem? _syncItem;
 	private static NativeMenuItem? _quitItem;
 	private static TrayIcon? _icon;
 	private static AppServices? _services;
@@ -66,6 +68,22 @@ public static class TrayMenu
 
 	internal static string SettingsLabel(bool english) => english ? "Settings" : "设置";
 
+	/// <summary>
+	/// 账户那一条的标题。
+	///
+	/// 已登录时把邮箱写出来。这条菜单项此时的动作是退出登录，而「退出登录」不说明退的是
+	/// 哪个账户 —— 一台机器上换过账户的人只能退掉再看。
+	///
+	/// 未登录时写「登录」而不是「账户」：菜单项是动词。
+	/// </summary>
+	internal static string AccountLabel(bool signedIn, string email, bool english)
+	{
+		if (!signedIn) return english ? "Sign in to Nori Cloud" : "登录 Nori 账户";
+		return email.Length > 0
+			? (english ? $"Sign out ({email})" : $"退出登录（{email}）")
+			: (english ? "Sign out" : "退出登录");
+	}
+
 	/// <summary>退出。写清楚退的是谁 —— 托盘上可能还蹲着别的程序。</summary>
 	internal static string QuitLabel(bool english) => english ? "Quit Nori" : "退出 Nori";
 
@@ -87,6 +105,14 @@ public static class TrayMenu
 		if (_toggleItem is {} toggle) toggle.Header = ToggleLabel(petVisible, english);
 		if (_mainItem is {} main) main.Header = MainLabel(english);
 		if (_settingsItem is {} settings) settings.Header = SettingsLabel(english);
+		if (_accountItem is {} account) account.Header = CurrentAccountLabel(services, english);
+		if (_syncItem is {} sync)
+		{
+			sync.Header = SyncLabel(english);
+			// 三个动作都要账户，没登录时这一条点开只会看到一句"请先登录"。
+			// 与其给一个必定无用的入口，不如让它跟着登录态出现。
+			sync.IsVisible = IsSignedIn(services);
+		}
 		if (_quitItem is {} quit) quit.Header = QuitLabel(english);
 		if (_icon is {} icon) icon.ToolTipText = Tooltip(english);
 	}
@@ -122,6 +148,12 @@ public static class TrayMenu
 		NativeMenuItem openSettings = _settingsItem = new(SettingsLabel(english));
 		openSettings.Click += (_, _) => services.Windows.ShowSettings();
 
+		NativeMenuItem account = _accountItem = new(CurrentAccountLabel(services, english));
+		account.Click += (_, _) => OnAccountClick(services);
+
+		NativeMenuItem sync = _syncItem = new(SyncLabel(english)) {IsVisible = IsSignedIn(services)};
+		sync.Click += (_, _) => services.Windows.ShowCloudSync();
+
 		NativeMenuItem quit = _quitItem = new(QuitLabel(english));
 		quit.Click += (_, _) =>
 		{
@@ -139,6 +171,8 @@ public static class TrayMenu
 				openMain,
 				new NativeMenuItemSeparator(),
 				openSettings,
+				account,
+				sync,
 				new NativeMenuItemSeparator(),
 				quit,
 			],
@@ -166,6 +200,65 @@ public static class TrayMenu
 		}
 		services.Logger.Write(LogSource.Backend, "info", "托盘菜单初始化完成");
 		return true;
+	}
+
+	/// <summary>云端同步那一条。写「同步」不写「云端存档」—— 菜单项是动词。</summary>
+	internal static string SyncLabel(bool english) => english ? "Cloud sync…" : "云端同步…";
+
+	/// <summary>登录了没有。读不出来时按未登录处理。</summary>
+	private static bool IsSignedIn(AppServices services)
+	{
+		try { return new Nori.Core.Cloud.AccountSession(services.Config).IsSignedIn; }
+		catch (Exception exception) when (exception is not OutOfMemoryException) { return false; }
+	}
+
+	/// <summary>
+	/// 按当前登录态取标题。
+	///
+	/// 直接从配置读，不经 <c>services.SignIn</c> —— 那个属性会顺带建出 HTTP 客户端，
+	/// 而托盘在启动早期就要画出这一条，那时公网客户端未必装配好了。
+	/// </summary>
+	private static string CurrentAccountLabel(AppServices services, bool english)
+	{
+		try
+		{
+			Nori.Core.Cloud.CloudAccount? account = new Nori.Core.Cloud.AccountSession(services.Config).Current;
+			return AccountLabel(account is not null, account?.Email ?? "", english);
+		}
+		catch (Exception exception) when (exception is not OutOfMemoryException)
+		{
+			// 读不出登录态（密钥库不可用等）不该让托盘装不上。按未登录画，点进去会得到
+			// 一句真正的错误说明。
+			services.Logger.Write(LogSource.Backend, "warn", $"读取登录态失败: {exception.GetType().Name}");
+			return AccountLabel(false, "", english);
+		}
+	}
+
+	/// <summary>登录 / 退出登录。同一条菜单项按当前状态分叉。</summary>
+	private static void OnAccountClick(AppServices services)
+	{
+		if (new Nori.Core.Cloud.AccountSession(services.Config).Current is null)
+		{
+			services.Logger.Write(LogSource.Backend, "info", "托盘菜单：打开账户窗口");
+			services.Windows.ShowAccount();
+			return;
+		}
+		_ = SignOutAsync(services);
+	}
+
+	private static async Task SignOutAsync(AppServices services)
+	{
+		try
+		{
+			await services.SignIn.SignOutAsync(services.ShutdownToken);
+		}
+		catch (Exception exception) when (exception is not OutOfMemoryException)
+		{
+			// SignOutAsync 自己已经吞掉了网络失败并且无论如何都会清本机记录，所以走到
+			// 这里说明是别的问题。记下来，但标题仍然要刷 —— 本机那份已经清了。
+			services.Logger.Write(LogSource.Backend, "warn", $"退出登录异常: {exception.GetType().Name}");
+		}
+		Avalonia.Threading.Dispatcher.UIThread.Post(Refresh);
 	}
 
 	private static bool CanShowPet(AppServices services)

@@ -61,7 +61,7 @@ public partial class BridgeCommandsTests
 
 			foreach ((int width, int height) in new[] {(720, 480), (1920, 1080)})
 			foreach (ThemeVariant theme in new[] {ThemeVariant.Dark})
-			foreach (string scenario in new[] {"ai", "voice", "proactive", "skills", "skills-marketplace", "mcp", "mcp-tools", "automation", "plugins", "general", "updates", "debug", "about"})
+			foreach (string scenario in new[] {"ai", "voice", "proactive", "skills", "skills-marketplace", "mcp", "mcp-tools", "automation", "plugins", "general", "account", "updates", "debug", "about"})
 			{
 				string page = scenario.Split('-')[0];
 				SettingsWindow window = new() {Width = width, Height = height};
@@ -154,7 +154,8 @@ public partial class BridgeCommandsTests
 			SettingsLocalization.SetLanguage("zh-CN");
 			return true;
 		}, CancellationToken.None);
-		Assert.Equal(26, manifest.Count);
+		// 场景数 × 尺寸数。加一页就要改这里 —— 它是「新页面没被截进来」的唯一警报。
+		Assert.Equal(28, manifest.Count);
 	}
 
 	private static int NativeSettingsSampledColors(WriteableBitmap frame)

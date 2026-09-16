@@ -28,6 +28,13 @@ public class LAppModel : CubismUserModel
     /// </summary>
     private readonly Dictionary<string, ACubismMotion> _motions = [];
 
+    /// <summary>
+    /// 全程闭着眼的动作，键与 <see cref="_motions"/> 同为「组名_序号」。
+    ///
+    /// 只在待机组的随机挑选里用到，见 <see cref="PickIdleMotion"/>。
+    /// </summary>
+    private readonly HashSet<string> _eyesClosedMotions = new(StringComparer.Ordinal);
+
     public List<TextureInfo> Textures = [];
 
     /// <summary>
@@ -498,8 +505,31 @@ public class LAppModel : CubismUserModel
             return null;
         }
 
-        int no = _random.Next(motionGroup.Count);
+        int no = string.Equals(resolvedGroup, LAppDefine.MotionGroupIdle, StringComparison.OrdinalIgnoreCase)
+            ? PickIdleMotion(resolvedGroup, motionGroup.Count)
+            : _random.Next(motionGroup.Count);
         return StartMotion(resolvedGroup, no, priority, onFinishedMotionHandler);
+    }
+
+    /// <summary>
+    /// 从待机组里随机挑一个，**排除全程闭眼的那些**。
+    ///
+    /// 两个内置形象都把睡觉动作放进了待机组（ARG Nori 的 sleep_Loop、Nori 的 00_Sleep 与
+    /// 00_IdleCameraEyeClosed）。它们都带 Loop，播起来不会结束，也就不会再挑一次 ——
+    /// 挑中一次就一直闭着眼，而自动眨眼见到眼睛已闭会主动让路（那条让路是给「表情故意
+    /// 闭眼」留的），于是永远睁不开。
+    ///
+    /// 睡觉动作不是不能播，但那该由宿主按「用户离开了多久」决定，不能是启动时的一次
+    /// 掷骰子。整组都闭眼时照常随机 —— 那是模型作者的安排，不该在这里推翻。
+    /// </summary>
+    private int PickIdleMotion(string resolvedGroup, int count)
+    {
+        List<int> open = [];
+        for (int index = 0; index < count; index++)
+        {
+            if (!_eyesClosedMotions.Contains($"{resolvedGroup}_{index}")) open.Add(index);
+        }
+        return open.Count == 0 ? _random.Next(count) : open[_random.Next(open.Count)];
     }
 
     /// <summary>
@@ -591,6 +621,8 @@ public class LAppModel : CubismUserModel
 			if (item.FadeOutTime >= 0.0f) motion.FadeOutSeconds = item.FadeOutTime;
 			motion.SetEffectIds(_eyeBlinkIds, _lipSyncIds);
 			_motions[name] = motion;
+			// 加载时判一次就够：曲线不会变，而待机每隔几秒就要挑一次。
+			if (MotionEyeState.KeepsEyesClosed(data)) _eyesClosedMotions.Add(name);
 		}
 	}
 }

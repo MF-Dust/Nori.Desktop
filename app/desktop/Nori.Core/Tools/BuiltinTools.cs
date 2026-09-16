@@ -121,8 +121,7 @@ public static class BuiltinTools
 			(args, _) =>
 			{
 				string content = RequireString(args, "content");
-				double minutes = OptionalNumber(args, "delayMinutes")
-					?? throw new InvalidOperationException("缺少参数: delayMinutes");
+				double minutes = RequireNumber(args, "delayMinutes");
 				ReminderItem item = deps.Proactive.AddReminder(content, minutes);
 				return Task.FromResult<object?>(new {success = true, reminderId = item.Id, triggerInMinutes = minutes});
 			});
@@ -266,7 +265,7 @@ public static class BuiltinTools
 			Schema(Text("memoryId", "要归档的记忆 id")),
 			(args, _) =>
 			{
-				long id = (long)(OptionalNumber(args, "memoryId") ?? throw new InvalidOperationException("缺少参数: memoryId"));
+				long id = (long) RequireNumber(args, "memoryId");
 				bool archived = deps.Memory.Archive(id);
 				return Task.FromResult<object?>(new {success = archived, memoryId = id});
 			});
@@ -347,6 +346,44 @@ public static class BuiltinTools
 	private static string? OptionalString(JsonNode? args, string name) =>
 		args?[name] is JsonValue text && text.TryGetValue(out string? parsed) ? parsed : null;
 
-	private static double? OptionalNumber(JsonNode? args, string name) =>
-		args?[name] is JsonValue num && num.TryGetValue(out double parsed) ? parsed : null;
+	/// <summary>
+	/// 取一个数字参数。**写成字符串的数字也认。**
+	///
+	/// 模型经常把 <c>20</c> 发成 <c>"20"</c>，而 <c>JsonValue.TryGetValue&lt;double&gt;</c>
+	/// 对 JSON 字符串一律返回 false。实测 qwen3.8-flash 调 setReminder 就是这样发的，
+	/// 结果 delayMinutes 变成 null，再被报成「缺少参数」——参数在，报的却是不在。
+	///
+	/// 只收能完整解析成数字的字符串；"二十分钟" 这类仍然返回 null，由调用方报错。
+	/// 解析固定用 InvariantCulture：参数是 JSON，不跟着系统区域走。
+	/// </summary>
+	private static double? OptionalNumber(JsonNode? args, string name)
+	{
+		if (args?[name] is not JsonValue value) return null;
+
+		// TryGetValue<double> 只在底层就是 double 时成功。模型的输出经 JsonNode.Parse
+		// 进来是 JsonElement 支撑的，转得动；而代码里 new JsonObject{["x"] = 5} 构出来
+		// 的是 CLR int 支撑的，转不动 —— 同一个 5，两条来路结果不同，所以逐个试过去。
+		if (value.TryGetValue(out double asDouble)) return asDouble;
+		if (value.TryGetValue(out long asLong)) return asLong;
+		if (value.TryGetValue(out int asInt)) return asInt;
+		if (value.TryGetValue(out decimal asDecimal)) return (double) asDecimal;
+
+		return value.TryGetValue(out string? text)
+			&& double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double fromText)
+			? fromText
+			: null;
+	}
+
+	/// <summary>报错里回显原值。字符串直接回显 —— ToJsonString 会把中文转义成 \uXXXX。</summary>
+	private static string Describe(JsonNode node) =>
+		node is JsonValue value && value.TryGetValue(out string? text) ? text : node.ToJsonString();
+
+	/// <summary>
+	/// 必填的数字参数。缺失和「给了但不是数字」要分开报，否则排查时会去找一个
+	/// 明明已经传了的参数。
+	/// </summary>
+	private static double RequireNumber(JsonNode? args, string name) =>
+		OptionalNumber(args, name)
+		?? throw new InvalidOperationException(
+			args?[name] is null ? $"缺少参数: {name}" : $"参数 {name} 不是数字: {Describe(args[name]!)}");
 }

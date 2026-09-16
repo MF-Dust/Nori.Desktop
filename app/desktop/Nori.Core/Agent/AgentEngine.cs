@@ -75,6 +75,15 @@ public sealed class AgentEngine
 	public const int MinToolIterations = 1;
 	public const int MaxToolIterationsLimit = 32;
 
+	/// <summary>
+	/// 同一轮里最多同时跑几个工具。
+	///
+	/// 4 是对着实际调用取的：一轮里并排出现的多为查询类（搜索、读文件、取时间），它们
+	/// 各自等的是网络或磁盘。再放开只会让同一个对端同时收到更多请求，触发限流之后总时长
+	/// 反而更长。
+	/// </summary>
+	public const int MaxParallelTools = 4;
+
 	/// <summary>没配过时的取值。</summary>
 	public const int DefaultToolIterations = 12;
 
@@ -133,6 +142,14 @@ public sealed class AgentEngine
 	private readonly ConfigStore _config;
 	private readonly ChatService _chat;
 	private readonly ToolRegistry _tools;
+
+	/// <summary>
+	/// 这个工具可不可以和同一轮里的别的工具一起跑。
+	///
+	/// 判据是权限级别：<c>safe</c> 不弹确认、按约定也不产生副作用。查不到的名字按不可并发
+	/// 处理 —— 它会在执行时报「工具不存在」，那条路径顺序走更容易对上日志。
+	/// </summary>
+	private bool IsParallelSafe(string name) => _tools.Get(name) is {PermissionLevel: "safe"};
 	private readonly SkillService _skills;
 	private readonly EmotionManager _emotion;
 	private readonly MemoryService _memory;
@@ -341,6 +358,47 @@ public sealed class AgentEngine
 				}
 			}
 
+			/// <summary>
+			/// 跑完这一轮的全部工具调用，返回与调用顺序一一对应的结果。
+			///
+			/// **只有 safe 级别的工具并发跑。** 其余级别要弹确认框：两个确认同时弹出来，
+			/// 用户无从分辨哪个对应哪一条；而且它们通常带副作用，执行顺序不能乱。所以按
+			/// 原顺序扫描，连续的 safe 调用合成一批并发，遇到非 safe 的就单独顺序执行。
+			///
+			/// 并发上限 <see cref="MaxParallelTools"/>：模型一轮里要十个搜索时，十条请求
+			/// 同时打出去只会一起触发对端限流。
+			/// </summary>
+			async Task<IReadOnlyList<ToolResult>> ExecuteCallsAsync(
+				IReadOnlyList<ProtocolToolCall> calls, CancellationToken token)
+			{
+				ToolResult[] results = new ToolResult[calls.Count];
+				int index = 0;
+				while (index < calls.Count)
+				{
+					int end = index;
+					while (end < calls.Count && IsParallelSafe(calls[end].Name) && end - index < MaxParallelTools) end++;
+
+					if (end == index)
+					{
+						ProtocolToolCall single = calls[index];
+						results[index] = await ExecuteToolAsync(single.Name, single.Arguments, token, single.Id);
+						index++;
+						continue;
+					}
+
+					Task<ToolResult>[] batch = new Task<ToolResult>[end - index];
+					for (int offset = 0; offset < batch.Length; offset++)
+					{
+						ProtocolToolCall call = calls[index + offset];
+						batch[offset] = ExecuteToolAsync(call.Name, call.Arguments, token, call.Id);
+					}
+					ToolResult[] done = await Task.WhenAll(batch);
+					done.CopyTo(results, index);
+					index = end;
+				}
+				return results;
+			}
+
 			int iterationBudget = ToolIterations;
 			for (int iteration = 0; iteration < iterationBudget; iteration++)
 			{
@@ -447,39 +505,47 @@ public sealed class AgentEngine
 				StreamingTextProjection correction = projector.Complete(items);
 				if (correction.IsCorrection) callbacks.OnTextCorrection?.Invoke(correction.FullText);
 				else if (await coalescer.FlushAsync(timeout.Token) is {Length: > 0} correctionBatch) EmitText(correctionBatch);
-				bool hasToolCall = false;
-
+				// 这一轮的工具调用先收齐再执行：安全级别的几条要并发跑（见
+				// ExecuteCallsAsync），所以不能在遍历里就地 await。
+				List<ProtocolToolCall> calls = [];
 				foreach (AgentProtocolItem item in items)
 				{
-					switch (item)
+					if (item is ProtocolToolCall call)
 					{
-						// A. 普通消息 (工具调用之后的消息需要等结果反馈，跳过提前定稿)
-						case ProtocolMessage message when !hasToolCall:
-							finalMessage = message;
-							DispatchEffects(message);
-							break;
-
-						// B. 工具调用 (同一轮可执行多个工具，全部并入下一轮推理)
-						case ProtocolToolCall call:
-						{
-							hasToolCall = true;
-							SetState(AgentRunState.ToolExecuting);
-							ToolResult result = await ExecuteToolAsync(call.Name, call.Arguments, timeout.Token, call.Id);
-
-							working.Add(("assistant", SerializeToolCall(call)));
-							working.Add(("user",
-								$"【系统工具执行反馈 - {call.Name}】:\n" + JsonSerializer.Serialize(new
-								{
-									id = call.Id,
-									name = call.Name,
-									result = result.Result,
-									error = result.Error,
-								}, JsonOptions)));
-
-							SetState(AgentRunState.Thinking);
-							break;
-						}
+						calls.Add(call);
+						continue;
 					}
+					// 工具调用之后的消息要等结果反馈，不能提前定稿。
+					if (calls.Count == 0 && item is ProtocolMessage message)
+					{
+						finalMessage = message;
+						DispatchEffects(message);
+					}
+				}
+
+				bool hasToolCall = calls.Count > 0;
+				if (hasToolCall)
+				{
+					SetState(AgentRunState.ToolExecuting);
+					IReadOnlyList<ToolResult> results = await ExecuteCallsAsync(calls, timeout.Token);
+
+					// 结果按**调用顺序**写回，与完成顺序无关：交给模型的这段记录必须是确定的，
+					// 否则同样一次提问会因为网络快慢产生不同的上下文。
+					for (int index = 0; index < calls.Count; index++)
+					{
+						ProtocolToolCall call = calls[index];
+						working.Add(("assistant", SerializeToolCall(call)));
+						working.Add(("user",
+							$"【系统工具执行反馈 - {call.Name}】:\n" + JsonSerializer.Serialize(new
+							{
+								id = call.Id,
+								name = call.Name,
+								result = results[index].Result,
+								error = results[index].Error,
+							}, JsonOptions)));
+					}
+
+					SetState(AgentRunState.Thinking);
 				}
 
 				// 若本轮没有触发新的工具调用，说明已产出最终回复，跳出循环

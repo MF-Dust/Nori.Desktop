@@ -282,6 +282,19 @@ public sealed class BridgeCommands
 		/// </summary>
 		"settings_update_permission" => RequireMain(source, () => Run(() => UpdatePermissionGear(args))),
 
+		/// <summary>
+		/// 开关「待决授权也发系统通知」。
+		/// 前端调用：invoke("settings_update_notifications", {enabled: boolean})
+		/// </summary>
+		"settings_update_notifications" => RequireMain(source, () => Run(() =>
+		{
+			UpdateBoolConfig(args, "enabled", ConfigStore.KeyToastApprovals);
+			// 关掉时要把开始菜单快捷方式和注册表项清掉 —— 用户关的是「别在我机器上留东西」，
+			// 只停止发送等于留了一半。
+			Runtime.SyncNotificationRegistration();
+			Runtime.InvalidateSnapshot("workspace");
+		})),
+
 		"settings_update_screen" => RequireMain(source, () => Run(() =>
 		{
 			UpdateBoolConfig(args, "enabled", ConfigStore.KeyScreenReadingEnabled);
@@ -738,6 +751,21 @@ public sealed class BridgeCommands
 		/// 前端调用：invoke("window_open_chat")
 		/// </summary>
 		"window_open_chat" => await OpenChatAsync(source),
+
+		// ---- 账户与云端同步 ----
+		/// <summary>打开账户窗口（登录）。已登录时调用方该给的是退出登录，不是再登一次。</summary>
+		"account_open" => await OnUi(() => Run(_services.Windows.ShowAccount)),
+		/// <summary>打开云端同步窗口。删除与冲突处置都在那扇窗上。</summary>
+		"cloud_open" => await OnUi(() => Run(_services.Windows.ShowCloudSync)),
+		/// <summary>退出登录。先告知服务端，再清本机 —— 后者不因前者失败而跳过。</summary>
+		"account_sign_out" => await SignOutAsync(cancellationToken),
+		/// <summary>备份到云端。冲突不是错误，原样回给调用方，由人来选留哪一份。</summary>
+		"cloud_backup" => await CloudSyncAsync(
+			token => _services.CloudSync.BackupAsync(overwrite: false, token), cancellationToken),
+		/// <summary>从云端恢复。合并语义：本机有、存档里没有的记忆与提醒会留下。</summary>
+		"cloud_restore" => await CloudSyncAsync(
+			token => _services.CloudSync.RestoreAsync(token), cancellationToken),
+
 		"window_show" => await OnUi(() => ShowWindow(source, args)),
 		"window_hide" => await OnUi(() => HideWindow(source, args)),
 		"window_close" => await OnUi(() => CloseWindow(source, args)),
@@ -1845,16 +1873,11 @@ public sealed class BridgeCommands
 		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
 		if (!visible) throw new InvalidOperationException("初始化窗口不可见");
 
-		string? modelId = SupportedModelIds.Normalize(_services.Config.GetStringOr(ConfigStore.KeySelectedModel, ""));
-		bool modelValid = modelId is not null && IsKnownInstalledModel(modelId);
-		bool autoSummon = _services.Config.GetBoolOr("pet_auto_summon", true);
 		cancellationToken.ThrowIfCancellationRequested();
+		// 判定与切换都在 Runtime 上：原生初始化窗口走同一条路，两处各写一份会漂。
 		await OnUi(() =>
 		{
-			_services.Windows.Show(WindowLabels.Main);
-			if (modelValid && autoSummon && !_services.SafeMode) _services.Windows.Show(WindowLabels.Pet);
-			else _services.Windows.Hide(WindowLabels.Pet);
-			_services.Windows.Hide(WindowLabels.Init);
+			Runtime.EnterMainFromInit();
 			return (object?)null;
 		});
 		return null;
@@ -2911,6 +2934,70 @@ public sealed class BridgeCommands
 	{
 		McpServerConfig? config = args.Deserialize<McpServerConfig>(BridgeJson.Options);
 		return config ?? throw new InvalidOperationException("无法解析 MCP 服务器配置");
+	}
+
+	/// <summary>
+	/// 退出登录。
+	///
+	/// 退完要让快照失效：设置页上那行「已登录 someone@example.com」是从快照读的，
+	/// 不失效的话人点了退出、界面却还显示着登录中的那个账户。
+	/// </summary>
+	private async Task<object?> SignOutAsync(CancellationToken cancellationToken)
+	{
+		await _services.SignIn.SignOutAsync(cancellationToken);
+		_services.Runtime?.InvalidateSnapshot("account");
+		await OnUi(() => Run(Tray.TrayMenu.Refresh));
+		return new {ok = true};
+	}
+
+	/// <summary>
+	/// 跑一次云端同步动作，把结果转成设置页能直接显示的形状。
+	///
+	/// <c>conflict</c> 单独给出去：它不是错误而是并发的正常结果，调用方要据此把选择权
+	/// 交给用户，而不是当成失败去重试。
+	/// </summary>
+	private async Task<object?> CloudSyncAsync(
+		Func<CancellationToken, Task<Nori.Core.Cloud.CloudSyncResult>> work,
+		CancellationToken cancellationToken)
+	{
+		Nori.Core.Cloud.CloudSyncResult result;
+		try
+		{
+			result = await work(cancellationToken);
+		}
+		catch (Exception error) when (error is not OperationCanceledException and not OutOfMemoryException)
+		{
+			/*
+			 * 这一层**不抛**。
+			 *
+			 * 预期内的失败（没登录、网络不通、超限、冲突）CloudSyncService 本来就用返回值
+			 * 表达，走到这里说明是没预料到的。但结果要显示在设置页那行只读文字上，而那行
+			 * 只从快照取值 —— 抛出去的话它永远是空的，用户点了按钮什么也没发生。
+			 */
+			_services.Logger.Write(LogSource.Backend, "warn",
+				$"云端同步失败: {Nori.Core.Security.SensitiveDataRedactor.ExceptionSummary(error)}");
+			result = new Nori.Core.Cloud.CloudSyncResult {Message = "同步失败：" + error.GetType().Name};
+		}
+
+		string message = result.Message;
+		// 静默少传是这类功能最难发现的故障：备份显示成功，换台机器才发现少了一半。
+		if (result.Skipped.Count > 0) message += "\n未包含：" + string.Join("；", result.Skipped);
+		if (_services.Runtime is {} runtime)
+		{
+			runtime.LastCloudSyncMessage = message;
+			// 恢复会改配置与记忆，快照必须重建；备份不改本机，但版本号变了，那一行也要刷。
+			runtime.InvalidateSnapshot("account");
+		}
+		// 令牌失效时 CloudSyncService 会就地清掉本机登录态。托盘那一条不读快照，
+		// 只能单独喊一次 —— 不喊的话它会一直停在「退出登录」。
+		await OnUi(() => Run(Tray.TrayMenu.Refresh));
+		return new
+		{
+			ok = result.Ok,
+			message,
+			conflict = result.Conflict,
+			remoteSavedAt = result.RemoteSavedAt,
+		};
 	}
 
 	private static object? Run(Func<object?> action)

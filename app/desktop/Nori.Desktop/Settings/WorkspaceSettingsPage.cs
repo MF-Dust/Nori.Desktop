@@ -91,6 +91,24 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			"",
 			(value, token) => ExecuteAsync("settings_update_tasks", new { tasks = ParseTasks(Convert.ToString(value)) }, token));
 
+		SettingsSectionViewModel notifications = AddSection(new("确认方式", "How to confirm"));
+
+		AddField(
+			notifications,
+			"toastApprovals",
+			new("同时发系统通知", "Also send a system notification"),
+			new(
+				"需要确认时，除了应用内的卡片，再发一条 Windows 通知，可以直接在通知上允许或拒绝。"
+					+ "打开后会在开始菜单建一个快捷方式（系统据此归属通知），关掉时一并清除。",
+				"When a confirmation is needed, send a Windows notification alongside the in-app card so you "
+					+ "can allow or deny from the notification. Turning this on creates a Start menu shortcut "
+					+ "(Windows needs it to attribute notifications); turning it off removes the shortcut."),
+			SettingsEditorKind.Boolean,
+			snapshot => SettingsSnapshotReader.Boolean(snapshot, true, "workspace", "toastApprovals"),
+			true,
+			(value, token) => ExecuteAsync(
+				"settings_update_notifications", new { enabled = Convert.ToBoolean(value) }, token));
+
 		SettingsSectionViewModel screen = AddSection(new("屏幕", "Screen"));
 		AddField(
 			screen,

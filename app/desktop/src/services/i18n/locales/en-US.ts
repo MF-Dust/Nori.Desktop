@@ -228,7 +228,7 @@ export default {
 				title: "About",
 				subtitle: "License, maintainers and the current runtime environment",
 				licenseNotice: "Released under GPL-3.0 License",
-				authors: "Authors: erhio · Nori · qicajie",
+				authors: "Authors: erhio · Nori · qicajie · Cloudnyco",
 				desc: "Nori — An unofficial open-source desktop AI companion created and maintained by the community (unaffiliated with official entities).",
 				env: "Runtime Environment",
 				version: "Client Version",

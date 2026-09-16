@@ -64,6 +64,18 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// </summary>
 	public const string KeyScreenReadingEnabled = "screen_reading_enabled";
 
+	/// <summary>把待决授权也发成系统通知。默认开；关掉会清掉开始菜单快捷方式和注册表项。</summary>
+	public const string KeyToastApprovals = "toast_approvals";
+
+	/// <summary>
+	/// 音频后端：auto / native / webview。
+	///
+	/// auto 时 Windows 走原生设备、其余平台走 WebView（CoreAudio 与 ALSA 尚未实现）。
+	/// 留 webview 这一档是给原生后端在某台机器上出问题时退回去用的 —— 这一层动得深，
+	/// 有条退路比事后查故障便宜。
+	/// </summary>
+	public const string KeyAudioBackend = "audio_backend";
+
 	/// <summary>
 	/// 情绪表达通道的开关前缀，完整键名即通道自己的 Key。
 	///

@@ -47,7 +47,7 @@ namespace Nori.Desktop.Runtime;
 ///
 /// 秘密纪律: 快照只返回 hasApiKey 等脱敏标记, 明文绝不回传事件/日志/错误。
 /// </summary>
-public sealed class AppRuntime : IAsyncDisposable
+public sealed partial class AppRuntime : IAsyncDisposable
 {
 	/// <summary>工具授权等待超时 (秒); 超时一律 fail-closed 拒绝</summary>
 	public const int ApprovalTimeoutSeconds = 60;
@@ -61,11 +61,33 @@ public sealed class AppRuntime : IAsyncDisposable
 	private readonly ConcurrentDictionary<string, AgentSessionState> _sessions = new();
 	private readonly ConcurrentDictionary<string, PendingApproval> _approvals = new();
 	private readonly Lock _approvalGate = new();
+	private readonly Lock _notifierGate = new();
+	private Nori.Core.Notifications.INativeNotifier _notifier = Nori.Core.Notifications.NullNativeNotifier.Instance;
+	private bool _notifierTried;
 	private readonly ConcurrentDictionary<string, PendingDesktopApproval> _desktopApprovals = new();
 	private readonly ConcurrentDictionary<Task, byte> _backgroundTasks = new();
 	private readonly CancellationTokenSource _lifetimeCts = new();
-	private readonly WebViewAudioPlayback _playback;
-	private readonly WebViewMicrophoneRecorder _recorder;
+	/// <summary>
+	/// 这一轮装配的是哪一套音频后端：native 或 webview。
+	///
+	/// 日志里也写了一行，但那条只能事后翻。这个属性让「装配到了哪一份」可断言 ——
+	/// 换后端这种改动一旦悄悄回退到旧路径，现象只是「声音还是老样子」，很难发现。
+	/// </summary>
+	public string AudioBackendName { get; }
+
+	/// <summary>实际在用的播放后端。可能是原生设备，也可能是 WebView 那份。</summary>
+	private readonly IAudioPlayback _playback;
+	private readonly IMicrophoneRecorder _recorder;
+
+	/// <summary>
+	/// WebView 那两份，**只为桥回调保留**。
+	///
+	/// ReportPlaybackFinished / ReportRecordingReady 这些是 WebView 专有的入口：
+	/// 页面播完或录完之后经桥回报。走原生后端时没有页面，这两个字段为 null，
+	/// 对应的桥命令变成空操作。
+	/// </summary>
+	private readonly WebViewAudioPlayback? _webViewPlayback;
+	private readonly WebViewMicrophoneRecorder? _webViewRecorder;
 	private readonly AudioHostChannel _audioChannel;
 	private readonly ReflectionWorker _reflectionWorker;
 	private readonly PetInteractionReactionService _petInteractionService;
@@ -192,18 +214,41 @@ public sealed class AppRuntime : IAsyncDisposable
 			reminderStore, config, services.Logger,
 			GetIdleSecondsSafe);
 
-		// 音频与录音下沉到 main 窗口的 WebAudio / MediaRecorder: 三平台一套代码, 不再依赖 NAudio
+		/* ── 音频后端 ──────────────────────────────────────────────────────
+		 * Windows 直接推声卡（WASAPI）；其余平台仍下沉到 main 窗口的
+		 * WebAudio / MediaRecorder，直到 CoreAudio 与 ALSA 补上。
+		 *
+		 * WebView 那条一直建着而不是按需建：桥回调（页面播完/录完的回报）挂在它
+		 * 身上，而那几条桥命令的存在与否不该随后端变化。真正的分流在下面那两行。 */
 		MediaExchange media = services.Assets?.Media ?? new MediaExchange();
 		Func<string, string> mediaUrl = services.Assets is {} assets
 			? assets.MediaUrl
 			: _ => throw new InvalidOperationException("资源服务未启动, 音频端点不可用");
 		AudioHostChannel channel = new(() => services.Windows?.GetNoriWindow(WindowLabels.Main));
-		WebViewAudioPlayback playback = new(media, mediaUrl, channel);
-		WebViewMicrophoneRecorder recorder = new(media, mediaUrl, channel);
-		_playback = playback;
-		_recorder = recorder;
 		_audioChannel = channel;
-		Voice = new VoiceService(services.Http, config, playback, () => VoiceRetired() ? null : recorder, services.Paths);
+
+		bool useNativeAudio = Nori.Core.Voice.Audio.AudioBackend.PrefersNative(
+			config.GetStringOr(ConfigStore.KeyAudioBackend, Nori.Core.Voice.Audio.AudioBackend.Auto), OperatingSystem.IsWindows());
+		if (useNativeAudio)
+		{
+			_playback = Audio.NativeAudioFactory.CreatePlayback();
+			_recorder = Audio.NativeAudioFactory.CreateRecorder();
+			_webViewPlayback = null;
+			_webViewRecorder = null;
+		}
+		else
+		{
+			WebViewAudioPlayback webPlayback = new(media, mediaUrl, channel);
+			WebViewMicrophoneRecorder webRecorder = new(media, mediaUrl, channel);
+			_playback = _webViewPlayback = webPlayback;
+			_recorder = _webViewRecorder = webRecorder;
+		}
+		AudioBackendName = useNativeAudio ? "native" : "webview";
+		services.Logger.Write(LogSource.Backend, "info",
+			$"音频后端：{(useNativeAudio ? "原生设备" : "WebView")}");
+
+		Voice = new VoiceService(services.Http, config, _playback,
+			() => VoiceRetired() ? null : _recorder, services.Paths);
 		_petInteractionService = new PetInteractionReactionService(services.Http, config);
 
 		Tools = BuildToolRegistry(true);
@@ -1256,6 +1301,8 @@ public sealed class AppRuntime : IAsyncDisposable
 				category = request.Category, deadlineUtc = approval.DeadlineUtc,
 			});
 		}
+		// 通知在锁外发：它要起 COM、要建快捷方式，不该把授权锁按住那么久。
+		ShowApprovalNotice(request);
 		// 工具轮次自身先超时或退出时，立即撤销授权卡，而不是留下一张已失效的可批准卡片。
 		using CancellationTokenRegistration cancelled = linked.Token.Register(() =>
 		{
@@ -1279,6 +1326,8 @@ public sealed class AppRuntime : IAsyncDisposable
 	{
 		if (!_approvals.TryRemove(new KeyValuePair<string, PendingApproval>(approval.RequestId, approval))) return false;
 		approval.Dispose();
+		// 无论从哪条路结束的，屏幕上那条都要收掉 —— 留一张点了没反应的卡片比不弹更糟。
+		_notifier.Hide(approval.RequestId);
 		// 只有用户**真的按了允许**才记。超时、取消、拒绝都不是同意 —— 把它们也记进来，
 		// 等于一次没人看见的超时换来后面整轮的静默放行。
 		if (approved) Permissions.Remember(approval.SessionId, approval.ToolName);
@@ -1462,25 +1511,40 @@ public sealed class AppRuntime : IAsyncDisposable
 
 	/// <summary>前端回报一段音频播放结束 (或失败)</summary>
 	public void ReportPlaybackFinished(string token, string? error) =>
-		_playback.ReportPlaybackFinished(token, error);
+		_webViewPlayback?.ReportPlaybackFinished(token, error);
 
 	/// <summary>前端回报实时播放音量 (0~1), 驱动伴侣口型</summary>
-	public void ReportAudioLevel(double level) => _playback.ReportLevel(level);
+	public void ReportAudioLevel(double level) => _webViewPlayback?.ReportLevel(level);
 
 	/// <summary>前端 main WebView 完成监听器安装后的就绪握手。</summary>
 	public void MarkAudioHostReady() => _audioChannel.MarkReady();
 
 	/// <summary>前端回报 MediaRecorder 已获权并开始。</summary>
-	public void ReportRecordingReady(string token) => _recorder.ReportRecordingReady(token);
+	public void ReportRecordingReady(string token) => _webViewRecorder?.ReportRecordingReady(token);
 
 	/// <summary>前端回报麦克风权限、录音或上传失败。</summary>
-	public void ReportRecordingFailed(string token, string? error) => _recorder.ReportRecordingFailed(token, error);
+	public void ReportRecordingFailed(string token, string? error) => _webViewRecorder?.ReportRecordingFailed(token, error);
 
 	// ===================================================================
 	// UI 状态快照
 	// ===================================================================
 
 	/// <summary>使快照失效并广播变更主题</summary>
+	private string _lastCloudSyncMessage = "";
+
+	/// <summary>
+	/// 最近一次云端同步动作的结果，给设置页显示。
+	///
+	/// 放在这里而不是页面里：页面的只读字段只从快照取值，页面自己存一份就要绕开那条
+	/// 通路去改控件，而那会把字段标成「有未保存的编辑」，之后的快照刷新全部被跳过。
+	/// 走快照还有一个好处 —— 切走再切回来，那句话还在。
+	/// </summary>
+	internal string LastCloudSyncMessage
+	{
+		get => Volatile.Read(ref _lastCloudSyncMessage);
+		set => Volatile.Write(ref _lastCloudSyncMessage, value ?? "");
+	}
+
 	public void InvalidateSnapshot(params string[] topics)
 	{
 		Interlocked.Increment(ref _snapshotVersion);
@@ -1562,6 +1626,35 @@ public sealed class AppRuntime : IAsyncDisposable
 		(int activeMemories, int atomCount, int archivedMemories, int totalMemories) = Memory.GetOverview();
 		Nori.Core.Memory.MemoryIndexStatus memoryIndex = Knowledge.Status;
 
+		/*
+		 * 登录态。读不出来（平台密钥库不可用）时按未登录呈现 —— 快照构建失败会让整个
+		 * 设置窗口打不开，而这一条只是一行状态文字，不值得让它有这个权力。
+		 */
+		object accountSnapshot;
+		try
+		{
+			Nori.Core.Cloud.AccountSession session = new(config);
+			Nori.Core.Cloud.CloudAccount? signedInAs = session.Current;
+			accountSnapshot = new
+			{
+				signedIn = signedInAs is not null,
+				email = signedInAs?.Email ?? "",
+				// 本机最后一次见到的云端版本号。0 表示这台机器还没同步过。
+				cloudRevision = Nori.Core.Cloud.CloudSyncService.KnownRevisionOf(config),
+				available = true,
+				lastSyncMessage = LastCloudSyncMessage,
+			};
+		}
+		catch (Exception exception) when (exception is not OutOfMemoryException)
+		{
+			Services.Logger.Write(LogSource.Backend, "warn", $"读取登录态失败: {exception.GetType().Name}");
+			accountSnapshot = new
+			{
+				signedIn = false, email = "", cloudRevision = 0, available = false,
+				lastSyncMessage = LastCloudSyncMessage,
+			};
+		}
+
 		return new
 		{
 			version = snapshotVersion,
@@ -1573,6 +1666,14 @@ public sealed class AppRuntime : IAsyncDisposable
 				debugCrashTestsAvailable = !SentryTelemetry.IsProductionBuild,
 				safeMode = Services.SafeMode,
 			},
+			/*
+			 * 账户与云端同步。
+			 *
+			 * **只放本机状态，不放云端状态。** 云端有没有存档、是什么时候的，都要发一次
+			 * 网络请求才知道，而快照是同步构建并且带缓存的 —— 在这里发请求会让每一次界面
+			 * 刷新都挂在网络上，断网时整个设置窗口转圈。云端那一侧由同步窗口按需去取。
+			 */
+			account = accountSnapshot,
 			general = new
 			{
 				language = config.GetStringOr("language", "zh-CN"),
@@ -1587,6 +1688,9 @@ public sealed class AppRuntime : IAsyncDisposable
 				// 目录被删除或移动后配置仍在，但工具已不再注册，界面需要区分这两种状态。
 				available = new WorkspaceAccess(config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")).IsConfigured,
 				maxToolIterations = Engine.ConfiguredToolIterations,
+				// 待决授权是否也发成系统通知。非 Windows 上界面据此显示「本平台不支持」。
+				toastApprovals = config.GetBoolOr(ConfigStore.KeyToastApprovals, true),
+				toastSupported = OperatingSystem.IsWindows(),
 				tasks = WorkspaceTaskList.Read(config.Get(ConfigStore.KeyWorkspaceTasks))
 					.Select(task => new { name = task.Name, command = task.Command }),
 				// 界面要能说清「命令跑在什么边界里」：无隔离与 AppContainer 的安全含义完全不同。
@@ -1991,7 +2095,9 @@ public sealed class AppRuntime : IAsyncDisposable
 		{
 			approval.Tcs.TrySetResult(false);
 			approval.Dispose();
+			_notifier.Hide(approval.RequestId);
 		}
+		DisposeNotifier();
 		foreach ((string _, PendingDesktopApproval approval) in _desktopApprovals)
 		{
 			approval.Tcs.TrySetResult(false);

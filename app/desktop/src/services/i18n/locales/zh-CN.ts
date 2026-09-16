@@ -228,7 +228,7 @@ export default {
 				title: "声明",
 				subtitle: "开源协议、维护者与当前运行环境信息",
 				licenseNotice: "本软件基于 GPL-3.0 开源协议发布",
-				authors: "作者: erhio · Nori · qicajie",
+				authors: "作者: erhio · Nori · qicajie · Cloudnyco",
 				desc: "Nori — 社区自发维护的非官方开源桌面 AI 伴侣（与官方无关），诞生于高维信息之海，旨在提供自由、温暖的桌面共鸣体验。",
 				env: "运行环境",
 				version: "客户端版本",

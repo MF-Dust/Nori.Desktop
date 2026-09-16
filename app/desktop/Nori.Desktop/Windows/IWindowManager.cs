@@ -38,6 +38,21 @@ public interface IWindowManager
 	/// <summary>打开并复用原生对话窗口。</summary>
 	void ShowChat();
 
+	/// <summary>
+	/// 打开账户窗口。
+	///
+	/// 已登录时调用方不该走这里 —— 那时该给的是退出登录，不是再登一次。
+	/// </summary>
+	void ShowAccount();
+
+	/// <summary>
+	/// 打开云端同步窗口。
+	///
+	/// 未登录时窗口自己会说明这一点并禁用三个动作 —— 调用方不必先判断登录态，
+	/// 否则「登录了没有」这个判断会散落在每个入口上。
+	/// </summary>
+	void ShowCloudSync();
+
 	/// <summary>隐藏窗口</summary>
 	void Hide(string label);
 

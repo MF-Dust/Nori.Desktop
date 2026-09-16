@@ -87,6 +87,53 @@ public sealed class ReminderStore(NoriDatabase database)
 		};
 	}
 
+	/// <summary>
+	/// 按给定的 id 与创建时间插入一条提醒。**只给云存档恢复用。**
+	///
+	/// <see cref="Add(string,long,bool,string,string?)"/> 会自己发 id，而恢复时手上
+	/// 的 id 来自另一台机器 —— 换掉的话同一条提醒在两台机器上就成了两条，之后每次
+	/// 恢复都会再加一条。id 保持原值，合并才是幂等的。
+	///
+	/// 状态一律写 pending：投递进度是每台机器自己的事，不跟着存档走。
+	/// </summary>
+	/// <returns>插入成功返回 true；id 已存在时不覆盖，返回 false。</returns>
+	public bool AddExact(
+		string id,
+		string content,
+		long triggerAt,
+		bool repeatDaily,
+		string timezone,
+		string? recurrenceJson,
+		string? createdAt)
+	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(id);
+		string now = UtcNowText();
+		string created = string.IsNullOrWhiteSpace(createdAt) ? now : createdAt;
+		string? storedRecurrence = repeatDaily && string.IsNullOrWhiteSpace(recurrenceJson)
+			? "{\"type\":\"daily\"}"
+			: recurrenceJson;
+
+		return database.Locked(connection =>
+		{
+			using SqliteCommand command = connection.CreateCommand();
+			// INSERT OR IGNORE：id 撞上说明本机已经有这条，恢复不该覆盖它。
+			command.CommandText = """
+				INSERT OR IGNORE INTO reminders
+					(id, content, trigger_at, repeat_daily, created_at, status, timezone, recurrence_json, updated_at)
+				VALUES ($id, $content, $trigger_at, $repeat_daily, $created_at, 'pending', $timezone, $recurrence_json, $updated_at)
+				""";
+			command.Parameters.AddWithValue("$id", id);
+			command.Parameters.AddWithValue("$content", content);
+			command.Parameters.AddWithValue("$trigger_at", triggerAt);
+			command.Parameters.AddWithValue("$repeat_daily", repeatDaily ? 1 : 0);
+			command.Parameters.AddWithValue("$created_at", created);
+			command.Parameters.AddWithValue("$timezone", string.IsNullOrWhiteSpace(timezone) ? "UTC" : timezone);
+			command.Parameters.AddWithValue("$recurrence_json", (object?)storedRecurrence ?? DBNull.Value);
+			command.Parameters.AddWithValue("$updated_at", now);
+			return command.ExecuteNonQuery() > 0;
+		});
+	}
+
 	/// <summary>读取一条提醒，终态也会返回，供用户操作前检查状态。</summary>
 	public ReminderItem? Get(string id) => database.Locked(connection =>
 	{

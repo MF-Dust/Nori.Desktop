@@ -20,6 +20,13 @@ public sealed class SettingsService : IDisposable
 
 	private static readonly FrozenSet<string> AllowedCommands = new[]
 	{
+		// 账户与云端同步。前三个只是打开窗口或清本机凭据；后两个会动数据，
+		// 但删除与冲突处置留在同步窗口里，这里只是入口。
+		"account_open",
+		"account_sign_out",
+		"cloud_open",
+		"cloud_backup",
+		"cloud_restore",
 		"ai_test_connection",
 		"llm_fetch_models",
 		"llm_test_connection",

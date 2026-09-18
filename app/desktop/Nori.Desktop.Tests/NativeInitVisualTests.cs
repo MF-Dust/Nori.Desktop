@@ -96,7 +96,7 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public Task 显示流程结束后才进入主界面并关闭初始化窗口() => WithSettingsUiAsync(async () =>
+	public Task 显示流程结束后才进入主界面并隐藏初始化窗口且停止定时器() => WithSettingsUiAsync(async () =>
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true);
 		WindowManager manager = new(null!, new NativeWindowLifetime().Shutdown, fixture._services.Paths);
@@ -123,11 +123,20 @@ public partial class BridgeCommandsTests
 			await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 			Assert.True(init.HasStartedForTests);
 			Assert.True(main.IsVisible);
+			// 正常交接保留隐藏窗口；只有显式宿主关闭才释放窗口和管理器引用。
+			Assert.False(init.IsVisible);
+			Assert.False(manager.IsWindowVisible(WindowLabels.Init));
+			Assert.Equal(0, closed);
+			Assert.Same(init, manager.Get(WindowLabels.Init));
+			Assert.False(init.AnimationRunningForTests);
+			Assert.False(init.WatchdogRunningForTests);
+			Assert.False(fixture._runtime.ConsumeInitStartPending());
+
+			manager.Close(WindowLabels.Init);
 			Assert.Equal(1, closed);
 			Assert.Null(manager.Get(WindowLabels.Init));
 			Assert.False(init.AnimationRunningForTests);
 			Assert.False(init.WatchdogRunningForTests);
-			Assert.False(fixture._runtime.ConsumeInitStartPending());
 		}
 		finally { init.AllowClose = true; init.Close(); main.Close(); }
 	});

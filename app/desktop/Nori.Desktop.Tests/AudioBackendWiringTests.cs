@@ -18,10 +18,10 @@ public partial class BridgeCommandsTests
 	[Fact]
 	public async Task 默认按平台挑音频后端()
 	{
-		AppRuntime runtime = new(_services);
+		await using AppRuntime runtime = new(_services);
 
-		Assert.Equal(OperatingSystem.IsWindows() ? "native" : "webview", runtime.AudioBackendName);
-		await runtime.DisposeAsync();
+		// 装配使用真实宿主平台，不能使用自动化夹具固定为 Windows 的全局别名。
+		Assert.Equal(System.OperatingSystem.IsWindows() ? "native" : "webview", runtime.AudioBackendName);
 	}
 
 	/// <summary>
@@ -35,10 +35,9 @@ public partial class BridgeCommandsTests
 	{
 		_config.Set(ConfigStore.KeyAudioBackend, new ConfigValue.Text(AudioBackend.WebView));
 
-		AppRuntime runtime = new(_services);
+		await using AppRuntime runtime = new(_services);
 
 		Assert.Equal("webview", runtime.AudioBackendName);
-		await runtime.DisposeAsync();
 	}
 
 	/// <summary>写坏的值不该让应用哑掉 —— 按平台默认走。</summary>
@@ -49,9 +48,8 @@ public partial class BridgeCommandsTests
 	{
 		_config.Set(ConfigStore.KeyAudioBackend, new ConfigValue.Text(configured));
 
-		AppRuntime runtime = new(_services);
+		await using AppRuntime runtime = new(_services);
 
-		Assert.Equal(OperatingSystem.IsWindows() ? "native" : "webview", runtime.AudioBackendName);
-		await runtime.DisposeAsync();
+		Assert.Equal(System.OperatingSystem.IsWindows() ? "native" : "webview", runtime.AudioBackendName);
 	}
 }

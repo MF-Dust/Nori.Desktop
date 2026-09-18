@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using Avalonia.LogicalTree;
 using Nori.Desktop.Main;
 using Nori.Core.Configuration;
+using Nori.Core.Platform;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Tests;
@@ -191,22 +192,31 @@ public partial class BridgeCommandsTests
 	///
 	/// 那种桌面环境下这个窗口是找到 Nori 的唯一入口，不说的话用户关掉就再也找不回来。
 	/// </summary>
-	[Fact]
-	public async Task 托盘不可用时给出提示()
+	[Theory]
+	[InlineData("zh-CN", "系统托盘不可用，只能从这个窗口找到 Nori。", "本平台不支持点击穿透。")]
+	[InlineData("en-US", "System tray unavailable; use this window to reach Nori.", "Click-through is unavailable on this platform.")]
+	public async Task 托盘不可用时给出提示(string language, string trayHint, string hitThroughHint)
 	{
 		await WithSettingsUiAsync(() =>
 		{
 			using BridgeCommandsTests fixture = new(safeMode: false);
+			fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(language));
 			MainWindow window = new(MainDefinition(), fixture._services);
 			try
 			{
+				// 点击穿透提示独立于托盘状态，非 Windows 平台也必须保留真实能力提示。
+				string platformHint = PlatformServices.Current.Capabilities.SupportsHitThrough ? "" : hitThroughHint;
 				fixture._runtime.TrayAvailable = true;
 				window.RefreshForTests();
-				Assert.Empty(window.HintsForTests);
+				Assert.Equal(platformHint, window.HintsForTests);
 
 				fixture._runtime.TrayAvailable = false;
 				window.RefreshForTests();
-				Assert.Contains("托盘", window.HintsForTests);
+				Assert.Equal(platformHint.Length == 0 ? trayHint : $"{trayHint}  {platformHint}", window.HintsForTests);
+
+				fixture._runtime.TrayAvailable = true;
+				window.RefreshForTests();
+				Assert.Equal(platformHint, window.HintsForTests);
 			}
 			finally
 			{

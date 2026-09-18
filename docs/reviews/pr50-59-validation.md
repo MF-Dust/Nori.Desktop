@@ -59,3 +59,14 @@
 真实 WASAPI 设备拔出、三平台音频/麦克风、Linux/macOS 隐藏音频宿主后台行为及原生 WebView 卡片需要实机验收。同步设备 Open 没有取消参数，Stop/Dispose 可请求取消，但资源最终释放需等 Open 返回。opaque sandbox 不允许卡片直接使用 localStorage，持久化应通过所属插件动作。
 
 原生视觉截图由新增 CI 步骤生成；本地没有可供查看的截图，因此不宣称已完成视觉验收。保留 Draft 状态直到后端和实机门禁确认。
+
+## 三平台 CI 测试失败接续
+
+提交 `8c468e7` 的 [Actions](https://github.com/MF-Dust/Nori.Desktop/actions/runs/35359614760) 已通过三平台后端构建，以及 Windows 原生设置、记忆、首页真实渲染和上传步骤。Linux 后端结果为 Launcher 5、Core 1129、PluginRuntime 166 通过；Desktop 609 通过、10 跳过、5 失败。macOS Desktop 有 4 项同源失败；Windows 覆盖率测试发现初始化断言和音频宿主 COM 挂接共 2 项失败。本轮据日志修复如下：
+
+- 音频装配测试使用 `System.OperatingSystem.IsWindows()`，避免测试项目固定 Windows 自动化语义的全局别名；用 `await using` 保证断言失败也释放 runtime。
+- 托盘测试按真实平台能力保留独立点击穿透提示，精确校验中英文完整内容及托盘恢复后的提示移除。
+- 初始化交接继续遵守既有 Hide 契约，验证不可见、计时器停止、启动信号已消费和管理器保留引用；随后显式 Close，验证 Closed 一次及引用释放。
+- 音频宿主创建提供内部窗口工厂注入。Headless 测试仍构造真实 NoriWindow、运行 StartAudioHost 并验证选择、后台显示属性和就绪通道，但显示前移除 NativeWebView 控件，避免 Windows Headless MTA 线程启动 WebView2 导致 RPC_E_CHANGED_MODE。生产默认工厂和原生主窗口路径不变；真实浏览器播放仍需实机验收。
+
+没有跳过或删除失败测试。生命周期前端检查再次 5/5 通过，`git diff --check` 通过；本地仍无 dotnet，C# 修复是否通过由后续 Actions 确认。

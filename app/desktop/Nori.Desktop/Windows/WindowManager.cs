@@ -103,19 +103,23 @@ public sealed class WindowManager : IWindowManager
 	}
 
 	/// <summary>仅兼容后端创建专用宿主，不进入用户窗口列表或导航。</summary>
-	internal void CreateAudioHost(NoriBridge bridge, AppServices services)
+	internal void CreateAudioHost(NoriBridge bridge, AppServices services, Func<WindowDefinition, NoriWindow>? createWindow = null)
 	{
 		if (Nori.Core.Voice.Audio.AudioBackend.PrefersNative(
 			services.Config.GetStringOr(Nori.Core.Configuration.ConfigStore.KeyAudioBackend, Nori.Core.Voice.Audio.AudioBackend.Auto),
 			OperatingSystem.IsWindows()) || _audioHost is not null) return;
-		_audioHost = new NoriWindow(new WindowDefinition
+		WindowDefinition definition = new()
 		{
 			Label = WindowLabels.AudioHost,
 			Title = "Nori Audio",
 			Width = 1,
 			Height = 1,
 			ShowInTaskbar = false,
-		}, bridge, _assetServer.WindowUrl(WindowLabels.AudioHost), _storagePaths);
+		};
+		// 允许测试替换原生控件挂接边界，宿主选择、显示与通道生命周期仍走真实实现。
+		_audioHost = createWindow is null
+			? new NoriWindow(definition, bridge, _assetServer.WindowUrl(WindowLabels.AudioHost), _storagePaths)
+			: createWindow(definition);
 		_audioHost.StartAudioHost();
 	}
 

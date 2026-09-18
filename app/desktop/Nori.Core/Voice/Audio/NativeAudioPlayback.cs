@@ -18,6 +18,8 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 	: IAudioPlayback
 {
 	private readonly Lock _gate = new();
+	private readonly Queue<(CancellationTokenSource? Owner, bool IsLevel, Action Notify)> _notifications = new();
+	private bool _notifying;
 	private CancellationTokenSource? _current;
 	private IAudioDevice? _device;
 	private bool _playing;
@@ -74,6 +76,7 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 				device.Volume = _volume;
 				SetPlaying(true);
 			}
+			DrainNotifications();
 			await Task.Run(() => Pump(device, pcm, linked), CancellationToken.None).ConfigureAwait(false);
 		}
 		catch (OperationCanceledException) when (linked.IsCancellationRequested)
@@ -89,15 +92,13 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 					if (ReferenceEquals(_current, linked))
 					{
 						_device = null;
+						_current = null;
 						SetPlaying(false);
-						if (ReferenceEquals(_current, linked))
-						{
-							_current = null;
-							// 只有当前段能合嘴，旧段收尾不能覆盖新段的口型。
-							VolumeSampled?.Invoke(0);
-						}
+						// 只有当前段能合嘴，旧段收尾不能覆盖新段的口型。
+						EnqueueLevel(null, 0);
 					}
 				}
+				DrainNotifications();
 			}
 			finally
 			{
@@ -135,8 +136,10 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 			lock (_gate)
 			{
 				if (!ReferenceEquals(_current, owner) || cancellationToken.IsCancellationRequested) return;
-				VolumeSampled?.Invoke(smoothed);
+				EnqueueLevel(owner, smoothed);
 			}
+
+			DrainNotifications();
 
 			// 写会阻塞到设备吃得下，而这一窗**就是**马上要响的那一窗，所以先发后写。
 			int written = device.Write(
@@ -220,7 +223,47 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 	{
 		if (Volatile.Read(ref _playing) == playing) return;
 		Volatile.Write(ref _playing, playing);
-		PlayingChanged?.Invoke(playing);
+		_notifications.Enqueue((null, false, () => PlayingChanged?.Invoke(playing)));
+	}
+
+	private void EnqueueLevel(CancellationTokenSource? owner, double level)
+	{
+		if (VolumeSampled is not { } sampled) return;
+		// 每位订阅者单独入队；前一位回调启动新段后，其余旧段通知也必须失效。
+		foreach (Action<double> subscriber in sampled.GetInvocationList())
+			_notifications.Enqueue((owner, true, () => subscriber(level)));
+	}
+
+	/// <summary>通知按状态变更顺序串行派发，回调不持有设备状态锁，允许 UI 线程同步停止。</summary>
+	private void DrainNotifications()
+	{
+		lock (_gate)
+		{
+			if (_notifying) return;
+			_notifying = true;
+		}
+		System.Runtime.ExceptionServices.ExceptionDispatchInfo? failure = null;
+		while (true)
+		{
+			Action notify;
+			lock (_gate)
+			{
+				if (!_notifications.TryDequeue(out var notification))
+				{
+					_notifying = false;
+					break;
+				}
+				// 回调中可能启动下一段；延后的旧电平或归零不能覆盖它。
+				if (notification.IsLevel && !ReferenceEquals(notification.Owner, _current)) continue;
+				notify = notification.Notify;
+			}
+			try { notify(); }
+			catch (Exception exception)
+			{
+				failure ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
+			}
+		}
+		failure?.Throw();
 	}
 
 	public void Dispose()

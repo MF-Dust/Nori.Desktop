@@ -339,6 +339,109 @@ public sealed class NativeAudioPlaybackTests
 	[Theory]
 	[InlineData(true)]
 	[InlineData(false)]
+	public async Task 状态与电平回调允许其他线程同步停止(bool onState)
+	{
+		FakeDevice device = new();
+		using NativeAudioPlayback playback = Playback(device, Tone());
+		bool invoked = false;
+		void StopFromOtherThread()
+		{
+			if (invoked) return;
+			invoked = true;
+			using ManualResetEventSlim stopped = new(false);
+			_ = Task.Run(() =>
+			{
+				playback.Stop();
+				stopped.Set();
+			});
+			Assert.True(stopped.Wait(TimeSpan.FromSeconds(3)), "通知回调持有状态锁，阻塞了停止操作");
+		}
+		if (onState) playback.PlayingChanged += playing => { if (playing) StopFromOtherThread(); };
+		else playback.VolumeSampled += level => { if (level > 0) StopFromOtherThread(); };
+
+		await playback.PlayAsync(Bytes(), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+
+		Assert.True(invoked);
+		Assert.False(playback.IsPlaying);
+		Assert.True(device.DisposedOnce);
+	}
+
+	[Fact]
+	public async Task 收尾回调开始新段不会收到旧段归零()
+	{
+		FakeDevice first = new();
+		FakeDevice second = new() {BlockWrites = true};
+		int created = 0;
+		using NativeAudioPlayback playback = new(
+			() => Interlocked.Increment(ref created) == 1 ? first : second, (_, _) => Tone());
+		Task? current = null;
+		List<double> levels = [];
+		playback.VolumeSampled += levels.Add;
+		playback.PlayingChanged += playing =>
+		{
+			if (playing || current is not null) return;
+			levels.Clear();
+			current = playback.PlayAsync(Bytes(), CancellationToken.None);
+		};
+
+		await playback.PlayAsync(Bytes(), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(3));
+		await second.WriteEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		try
+		{
+			Assert.True(playback.IsPlaying);
+			Assert.DoesNotContain(0d, levels);
+			Assert.NotEmpty(levels);
+		}
+		finally
+		{
+			second.Release();
+			await current!.WaitAsync(TimeSpan.FromSeconds(3));
+		}
+	}
+
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public async Task 电平首位订阅者开始新段后其余订阅者不会收到旧电平(bool onZero)
+	{
+		FakeDevice first = new();
+		FakeDevice second = new() {BlockWrites = true};
+		int created = 0;
+		using NativeAudioPlayback playback = new(
+			() => Interlocked.Increment(ref created) == 1 ? first : second,
+			(_, _) => Tone(amplitude: Volatile.Read(ref created) == 0 ? 0.1f : 0.9f));
+		Task? current = null;
+		double replacedLevel = -1;
+		List<double> receivedAfterReplacement = [];
+		playback.VolumeSampled += level =>
+		{
+			if (current is not null || (onZero ? level != 0 : level == 0)) return;
+			replacedLevel = level;
+			current = playback.PlayAsync(Bytes(), CancellationToken.None);
+		};
+		playback.VolumeSampled += level =>
+		{
+			if (current is not null) receivedAfterReplacement.Add(level);
+		};
+
+		await playback.PlayAsync(Bytes(), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(3));
+		await second.WriteEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		try
+		{
+			Assert.True(playback.IsPlaying);
+			Assert.Single(receivedAfterReplacement);
+			Assert.DoesNotContain(replacedLevel, receivedAfterReplacement);
+		}
+		finally
+		{
+			second.Release();
+			await current!.WaitAsync(TimeSpan.FromSeconds(3));
+		}
+	}
+
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
 	public async Task 打开或设置音量失败也释放设备并还原状态(bool failOpen)
 	{
 		FakeDevice device = new() {FailOpen = failOpen, FailVolume = !failOpen};

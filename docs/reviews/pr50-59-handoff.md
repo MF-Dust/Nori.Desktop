@@ -1,5 +1,7 @@
 # Nori PR #50–#59 修复交接（未完成）
 
+> 2026-09-18 接续：本轮实现与实际验证见 [接续修复与验证](pr50-59-validation.md)，代码已提交 [PR #63](https://github.com/MF-Dust/Nori.Desktop/pull/63)。下文保留原交接历史；最新状态以验证记录和最终提交的 Actions 为准。
+
 ## 给接手助手的首条指令
 
 继续本地集成分支 `local/pr50-59` 的完整审查修复，不是只做报告。先阅读本文件、当前源码、`AGENTS.md`，检查工作区；本轮修改已按问题提交在该分支，包含未完成的WIP，不能把WIP误认为验收通过。按下面问题顺序补完、验证并形成独立语义提交。**禁止读取、参考、合并或 cherry-pick PR #60。** 用户随后强调正在去 WebView 化：Main / Init / FirstRun 保持原生；只为尚未原生化的 Linux/macOS 音频、公开插件 HTML card 契约保留最窄兼容层；Windows native 不增设非 WAV 自动 WebView fallback。
@@ -155,4 +157,3 @@ CI还包括Windows启动器测试、NORI_CAPTURE_SETTINGS=1 / NORI_CAPTURE_MEMOR
 建议后续提交按tools（已有）、notifications、first-run、playback、WASAPI如独立、microphone、WAV、audiohost、home/lifecycle拆分，不能一锅提交所有半成品。
 
 最终报告必须：各问题/commit映射、测试改动、实际完整验证命令及结果、范围外问题、git status、git log --oneline origin/main..HEAD、#60排除证据。最终修复完成仍需工作区干净；此次交接提交仅保存进度，不代表功能验收完成。
-

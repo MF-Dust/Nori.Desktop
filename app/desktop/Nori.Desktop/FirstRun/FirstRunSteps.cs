@@ -24,7 +24,8 @@ namespace Nori.Desktop.FirstRun;
 /// 每一步通过 <c>onStepChanged</c> 把「我这一步现在能不能过」抬给壳：给一句话就是
 /// 挡住并显示它，给空串就是解除。选形象那一步靠它挡住「一个形象都没有就往下走」。
 /// </summary>
-public sealed class FirstRunSteps(AppServices services, Action<string> onGate, Action onRebuild)
+public sealed class FirstRunSteps(AppServices services, Action<string> onGate, Action onRebuild,
+	Func<string, Task<string?>> pickModel)
 {
 	private readonly AppServices _services = services;
 
@@ -43,6 +44,10 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 	public string Gate { get; private set; } = "";
 
 	private AiDraft _draft = new();
+	private string _importError = "";
+
+	/// <summary>选择文件或导入期间禁止重复操作和离开当前步骤。</summary>
+	public bool IsImporting { get; private set; }
 
 	/// <summary>选中的形象 id。空串表示一个都没装。</summary>
 	public string SelectedModel { get; private set; } = "";
@@ -146,7 +151,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		string configured = _services.Config.GetStringOr(ConfigStore.KeySelectedModel, "");
 
 		List<string> installed = [.. catalog.Where(IsInstalled)];
-		if (SelectedModel.Length == 0)
+		if (!installed.Contains(SelectedModel))
 			SelectedModel = installed.Contains(configured) ? configured : installed.FirstOrDefault() ?? "";
 
 		foreach (string id in catalog)
@@ -157,10 +162,11 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 				id,
 				ready ? english ? "Installed" : "已安装" : english ? "Not installed" : "未安装",
 				id == SelectedModel,
-				ready
+				ready && !IsImporting
 					? () =>
 					{
 						SelectedModel = captured;
+						_importError = "";
 						_onRebuild();
 					}
 					: null));
@@ -168,16 +174,69 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 
 		// 一个都没装就挡住：带着空配置进主界面，伴侣窗口会是一片空白。
 		// 写 Gate 而不是回调 —— 构建过程中回调会递归。
-		Gate = SelectedModel.Length > 0
-			? ""
+		Gate = IsImporting
+			? english ? "Importing appearance..." : "正在导入形象..."
+			: _importError.Length > 0 ? _importError
+			: SelectedModel.Length > 0 ? ""
 			: english ? "Import an appearance to continue" : "先导入一个形象才能继续";
+
+		StackPanel imports = new()
+		{
+			Orientation = Orientation.Horizontal, Spacing = 12,
+			HorizontalAlignment = HorizontalAlignment.Center,
+		};
+		foreach (string kind in new[] {"zip", "folder"})
+		{
+			Button import = new()
+			{
+				Name = kind == "zip" ? "FirstRunImportZip" : "FirstRunImportFolder",
+				Content = kind == "zip"
+					? english ? "Import ZIP" : "导入 ZIP"
+					: english ? "Import folder" : "导入文件夹",
+				Padding = new Thickness(16, 6), CornerRadius = new CornerRadius(8),
+				Background = ChatPalette.Panel, Foreground = ChatPalette.Body,
+				BorderThickness = default, IsEnabled = !IsImporting,
+			};
+			import.Click += async (_, _) => await ImportModelAsync(kind, english);
+			imports.Children.Add(import);
+		}
 
 		return Stage(
 			Heading(english ? "Choose an appearance" : "选择形象", 19),
 			Muted(english
-				? "Only installed appearances can be selected. More can be added later in Models."
-				: "只有已安装的形象可以选。之后可以在模型窗口里添加。", 340),
-			list);
+				? "Import a local ZIP or folder, then choose an installed appearance."
+				: "导入本地 ZIP 或文件夹，再选择已安装的形象。", 340),
+			imports, list);
+	}
+
+	/// <summary>直接复用资源服务的校验与原子导入，不借用其他窗口的桥接身份。</summary>
+	internal async Task ImportModelAsync(string sourceKind, bool english)
+	{
+		if (IsImporting) return;
+		IsImporting = true;
+		_importError = "";
+		_onRebuild();
+		try
+		{
+			string? path = await pickModel(sourceKind);
+			if (string.IsNullOrWhiteSpace(path)) return;
+			IReadOnlyList<string> imported = await Task.Run(
+				() => _services.Resources.Import(ResourceType.Live2D, path, _services.ShutdownToken),
+				_services.ShutdownToken);
+			SelectedModel = imported.FirstOrDefault() ?? SelectedModel;
+			_services.Runtime?.InvalidateSnapshot("models");
+		}
+		catch (OperationCanceledException) when (_services.ShutdownToken.IsCancellationRequested) { }
+		catch (Exception failure)
+		{
+			_importError = (english ? "Import failed, please retry: " : "导入失败，请重试：") + failure.Message;
+			_services.Logger.Write(LogSource.Backend, "warn", $"首次运行导入模型失败：{failure.GetType().Name}");
+		}
+		finally
+		{
+			IsImporting = false;
+			_onRebuild();
+		}
 	}
 
 	private bool IsInstalled(string modelId)

@@ -297,6 +297,9 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 		}
 		_windows.Remove(label);
 		if (window is NoriWindow nw) nw.AllowClose = true;
+		else if (window is InitWindow init) init.AllowClose = true;
+		else if (window is FirstRunWindow firstRun) firstRun.AllowClose = true;
+		else if (window is MainWindow main) main.AllowClose = true;
 		else if (window is SettingsWindow settings) settings.AllowClose = true;
 		else if (window is PetWindow pw)
 		{
@@ -457,6 +460,9 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 			foreach (Window window in _windows.Values)
 			{
 				if (window is NoriWindow noriWindow) noriWindow.AllowClose = true;
+				else if (window is InitWindow initWindow) initWindow.AllowClose = true;
+				else if (window is FirstRunWindow firstRunWindow) firstRunWindow.AllowClose = true;
+				else if (window is MainWindow mainWindow) mainWindow.AllowClose = true;
 				else if (window is SettingsWindow settingsWindow) settingsWindow.AllowClose = true;
 				else if (window is MemoryWindow memoryWindow) memoryWindow.AllowClose = true;
 				else if (window is ModelsWindow modelsWindow) modelsWindow.AllowClose = true;

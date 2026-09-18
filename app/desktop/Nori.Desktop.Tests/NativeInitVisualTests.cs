@@ -95,6 +95,93 @@ public partial class BridgeCommandsTests
 		});
 	}
 
+	[Fact]
+	public Task 显示流程结束后才进入主界面并关闭初始化窗口() => WithSettingsUiAsync(async () =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		WindowManager manager = new(null!, new NativeWindowLifetime(), fixture._services.Paths);
+		fixture._services.Windows = manager;
+		InitWindow init = new(InitDefinition(), fixture._services);
+		Window main = new();
+		RegisterNativeTestWindow(manager, WindowLabels.Init, init);
+		RegisterNativeTestWindow(manager, WindowLabels.Main, main);
+		fixture._runtime.MarkInitStartPending();
+		bool opened = false;
+		int closed = 0;
+		init.Opened += (_, _) =>
+		{
+			opened = true;
+			Assert.False(init.HasStartedForTests);
+			Assert.False(main.IsVisible);
+		};
+		init.Closed += (_, _) => closed++;
+		try
+		{
+			manager.Show(WindowLabels.Init);
+			Assert.True(opened);
+			Assert.False(init.HasStartedForTests);
+			await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+			Assert.True(init.HasStartedForTests);
+			Assert.True(main.IsVisible);
+			Assert.Equal(1, closed);
+			Assert.Null(manager.Get(WindowLabels.Init));
+			Assert.False(init.AnimationRunningForTests);
+			Assert.False(init.WatchdogRunningForTests);
+			Assert.False(fixture._runtime.ConsumeInitStartPending());
+		}
+		finally { init.AllowClose = true; init.Close(); main.Close(); }
+	});
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public Task 排队启动前隐藏或关闭不再启动定时器或消费信号(bool close) => WithSettingsUiAsync(async () =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		InitWindow window = new(InitDefinition(), fixture._services);
+		fixture._runtime.MarkInitStartPending();
+		try
+		{
+			window.Show();
+			if (close) { window.AllowClose = true; window.Close(); }
+			else window.Hide();
+			await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+			Assert.False(window.HasStartedForTests);
+			Assert.False(window.AnimationRunningForTests);
+			Assert.False(window.WatchdogRunningForTests);
+			Assert.False(fixture._windows.IsWindowVisible(WindowLabels.Main));
+			Assert.True(fixture._runtime.ConsumeInitStartPending());
+		}
+		finally { window.AllowClose = true; window.Close(); }
+	});
+
+	[Fact]
+	public Task 等待运行时期间隐藏和关闭都会停止全部定时器() => WithSettingsUiAsync(async () =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		fixture._services.Runtime = null;
+		InitWindow window = new(InitDefinition(), fixture._services);
+		try
+		{
+			window.Show();
+			await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+			Assert.True(window.AnimationRunningForTests);
+			Assert.True(window.WatchdogRunningForTests);
+			window.Hide();
+			Assert.False(window.AnimationRunningForTests);
+			Assert.False(window.WatchdogRunningForTests);
+			window.Show();
+			await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+			Assert.True(window.AnimationRunningForTests);
+			Assert.True(window.WatchdogRunningForTests);
+			window.AllowClose = true;
+			window.Close();
+			Assert.False(window.AnimationRunningForTests);
+			Assert.False(window.WatchdogRunningForTests);
+		}
+		finally { window.AllowClose = true; window.Close(); }
+	});
+
 	/// <summary>文案跟着界面语言走，不跟系统区域。</summary>
 	[Theory]
 	[InlineData("zh-CN", "进入主界面")]

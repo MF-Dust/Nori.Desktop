@@ -24,7 +24,7 @@ namespace Nori.Desktop.Windows;
 /// 迁过来之后启动路径上就少一次 WebView 冷启动 —— 那正是用户第一眼等待的那几百毫秒。
 ///
 /// 流程与原来一致：
-/// 进入 → 跑一次初始化 → 打开主界面 → 自己隐藏。等不到信号时留一条 10 秒的自救出口，
+/// 进入 → 跑一次初始化 → 打开主界面 → 关闭自己。等不到信号时留一条 10 秒的自救出口，
 /// 不让用户永远看着转圈。
 /// </summary>
 public sealed class InitWindow : Window
@@ -67,19 +67,23 @@ public sealed class InitWindow : Window
 		// 用户会下意识按住任意位置挪。
 		PointerPressed += (_, args) =>
 		{
-			if (args.GetCurrentPoint(this).Properties.IsLeftButtonPressed) BeginMoveDrag(args);
+			if (WindowDecorations == WindowDecorations.None
+				&& args.GetCurrentPoint(this).Properties.IsLeftButtonPressed) BeginMoveDrag(args);
 		};
 
 		// **推到下一帧再起跑。** 在 Opened 处理器里同步走完「进主界面」会连带
 		// Hide 掉自己，而那时窗口还在完成显示流程，屏幕上会留下一个不重绘的空壳。
-		Opened += (_, _) => Dispatcher.UIThread.Post(() => _ = BeginAsync());
 		PropertyChanged += (_, args) =>
 		{
 			if (args.Property != IsVisibleProperty) return;
 			// 首次运行路径下这个窗口是隐藏启动的，向导完成后宿主 Show 它 —— 变可见
 			// 就是原来那条 nori:init-start 广播的等价信号，不必再走一次事件总线。
-			if (IsVisible) Dispatcher.UIThread.Post(() => _ = BeginAsync());
-			else _view.StopAnimation();
+			if (IsVisible) Dispatcher.UIThread.Post(() => _ = BeginAsync(), DispatcherPriority.Loaded);
+			else
+			{
+				_watchdog?.Stop();
+				_view.StopAnimation();
+			}
 		};
 		Closing += (_, args) =>
 		{
@@ -96,22 +100,22 @@ public sealed class InitWindow : Window
 	/// <summary>
 	/// 起跑。
 	///
-	/// 可见、或宿主已经置位了「该开始了」，就直接走；两样都没有说明这一轮不该由
-	/// 我们发起（例如首次运行向导还开着），只留一条超时出口。
+	/// 可见时起跑；排队期间已隐藏就不再启动定时器，也不消费首次运行的待启动标记。
+	/// 运行时尚未就绪时保留超时出口，避免永远停在加载动效。
 	/// </summary>
 	private async Task BeginAsync()
 	{
-		if (_started) return;
+		if (_started || !IsVisible) return;
 		_view.SetLanguage(IsEnglish());
 		_view.StartAnimation();
 
-		if (_services.Runtime is not { } runtime) return;
-		if (runtime.ConsumeInitStartPending() || IsVisible)
+		if (_services.Runtime is not { } runtime)
 		{
-			await EnterAsync();
+			ArmWatchdog();
 			return;
 		}
-		ArmWatchdog();
+		runtime.ConsumeInitStartPending();
+		await EnterAsync();
 	}
 
 	private void ArmWatchdog()
@@ -121,7 +125,7 @@ public sealed class InitWindow : Window
 		_watchdog.Tick += (_, _) =>
 		{
 			_watchdog?.Stop();
-			if (!_started) _view.ShowTimeout();
+			if (!_started && IsVisible) _view.ShowTimeout();
 		};
 		_watchdog.Start();
 	}
@@ -136,7 +140,7 @@ public sealed class InitWindow : Window
 
 	private async Task EnterAsync()
 	{
-		if (_started) return;
+		if (_started || !IsVisible) return;
 		_started = true;
 		_watchdog?.Stop();
 		try
@@ -161,6 +165,10 @@ public sealed class InitWindow : Window
 
 	/// <summary>是否已经发起过进入主界面。</summary>
 	internal bool HasStartedForTests => _started;
+
+	/// <summary>隐藏或关闭后，两类定时器都不应继续运行。</summary>
+	internal bool AnimationRunningForTests => _view.AnimationRunning;
+	internal bool WatchdogRunningForTests => _watchdog?.IsEnabled == true;
 
 	/// <summary>直接切到超时面板，不等那 10 秒。</summary>
 	internal void ShowTimeoutForTests()
@@ -383,9 +391,11 @@ internal sealed class InitView : Panel
 	}
 
 	/// <summary>起转。窗口可见时才应该转 —— 隐藏着空转一个定时器没有意义。</summary>
+	internal bool AnimationRunning => _ticker?.IsEnabled == true;
+
 	internal void StartAnimation()
 	{
-		if (_ticker is not null) return;
+		if (_ticker is not null || _timeoutCard.IsVisible) return;
 		_ticker = new DispatcherTimer {Interval = TimeSpan.FromMilliseconds(33)};
 		_ticker.Tick += (_, _) =>
 		{

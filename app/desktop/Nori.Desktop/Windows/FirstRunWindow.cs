@@ -6,11 +6,12 @@ using Avalonia.Layout;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Styling;
-using Avalonia.Threading;
+using Avalonia.Platform.Storage;
 using Nori.Core.Configuration;
 using Nori.Core.FirstRun;
 using Nori.Core.Logging;
 using Nori.Core.Platform;
+using Nori.Core.Resources;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
 using Nori.Desktop.FirstRun;
@@ -36,6 +37,7 @@ public sealed class FirstRunWindow : Window
 	private readonly AppServices _services;
 	private readonly FirstRunWizard _wizard;
 	private readonly FirstRunSteps _steps;
+	private bool _closed;
 
 	private readonly StackPanel _pips = new()
 	{
@@ -67,12 +69,16 @@ public sealed class FirstRunWindow : Window
 	public bool AllowClose { get; set; }
 
 	public FirstRunWindow(WindowDefinition definition, AppServices services)
+		: this(definition, services, null) { }
+
+	internal FirstRunWindow(WindowDefinition definition, AppServices services, Func<string, Task<string?>>? pickModel)
 	{
 		_services = services;
 		Title = definition.Title;
 		Width = definition.Width; Height = definition.Height;
 		MinWidth = definition.MinWidth ?? definition.Width;
 		MinHeight = definition.MinHeight ?? definition.Height;
+		CanResize = definition.CanResize;
 		// 与 NoriWindow 同一套判断：能原生拖动就去掉系统边框（整个应用都是自绘 chrome，
 		// 少设这一行就会在一堆无边框窗口里冒出一个系统标题栏）；不能拖的平台退回
 		// 系统边框，不留一个既拖不动也没有提示的窗口。
@@ -88,10 +94,11 @@ public sealed class FirstRunWindow : Window
 		Background = ChatPalette.Background;
 
 		_wizard = new FirstRunWizard(CompleteAsync);
-		_steps = new FirstRunSteps(services, OnGate, Render);
+		_steps = new FirstRunSteps(services, OnGate, Render, pickModel ?? PickModelAsync);
 
 		Content = BuildChrome();
 		Render();
+		Closed += (_, _) => _closed = true;
 
 		Closing += (_, args) =>
 		{
@@ -100,6 +107,29 @@ public sealed class FirstRunWindow : Window
 			// 向导阶段关窗等于放弃安装，不留一个没配置完的应用在后台。
 			_services.Windows.Shutdown();
 		};
+	}
+
+	private async Task<string?> PickModelAsync(string sourceKind)
+	{
+		if (sourceKind == "folder")
+		{
+			IReadOnlyList<IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+			{
+				Title = IsEnglish() ? "Choose a Live2D folder" : "选择 Live2D 模型文件夹",
+				AllowMultiple = false,
+			});
+			return folders.Count > 0 ? folders[0].TryGetLocalPath()
+				?? throw new InvalidOperationException("请选择本地模型文件夹") : null;
+		}
+
+		IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+		{
+			Title = IsEnglish() ? "Choose a Live2D ZIP" : "选择 Live2D 资源文件 (.zip)",
+			AllowMultiple = false,
+			FileTypeFilter = [new FilePickerFileType("Live2D ZIP") {Patterns = ["*.zip"]}],
+		});
+		return files.Count > 0 ? files[0].TryGetLocalPath()
+			?? throw new InvalidOperationException("请选择本地模型 ZIP 文件") : null;
 	}
 
 	private bool IsEnglish() =>
@@ -162,7 +192,8 @@ public sealed class FirstRunWindow : Window
 		// 不像启动画面那样整面可拖。
 		header.PointerPressed += (_, args) =>
 		{
-			if (args.GetCurrentPoint(header).Properties.IsLeftButtonPressed) BeginMoveDrag(args);
+			if (WindowDecorations == WindowDecorations.None
+				&& args.GetCurrentPoint(header).Properties.IsLeftButtonPressed) BeginMoveDrag(args);
 		};
 
 		return new DockPanel
@@ -210,6 +241,7 @@ public sealed class FirstRunWindow : Window
 	/// </summary>
 	private void OnGate(string error)
 	{
+		if (_closed) return;
 		if (error.Length > 0) _wizard.BlockStep(error);
 		else _wizard.ClearStep();
 		RenderFooter();
@@ -223,13 +255,18 @@ public sealed class FirstRunWindow : Window
 	/// </summary>
 	private async Task AdvanceAsync()
 	{
+		if (_closed || _steps.IsImporting) return;
 		if (_wizard.Snapshot().IsLast)
 		{
-			await _wizard.FinishAsync();
+			Task<bool> finishing = _wizard.FinishAsync(_services.ShutdownToken);
+			RenderFooter();
+			await finishing;
 			Render();
 			return;
 		}
 
+		// 模型可能在停留期间被移除，离开前重新检查安装状态。
+		if (_wizard.Snapshot().Step == WizardStep.Model) Render();
 		if (_wizard.Snapshot().Step == WizardStep.Ai)
 		{
 			_forward.IsEnabled = false;
@@ -257,11 +294,14 @@ public sealed class FirstRunWindow : Window
 		// 自己先挡一道。没有形象时 CompleteFirstRun 会抛 ArgumentException，而状态机
 		// 把异常消息原样摆到底部那条错误行上 —— 用户会看见「模型 ID 不能为空」这种
 		// 内部说法。正常路径上选形象那一步就挡住了，这里是兜底。
-		if (_steps.SelectedModel.Length == 0)
+		if (_steps.SelectedModel.Length == 0
+			|| !await Task.Run(() => _services.Resources.IsInstalled(ResourceType.Live2D, _steps.SelectedModel), cancellationToken))
 			throw new InvalidOperationException(IsEnglish()
 				? "Choose an appearance before starting"
 				: "开始之前要先选一个形象");
 
+		if (_closed) throw new OperationCanceledException("首次运行向导已关闭");
+		cancellationToken.ThrowIfCancellationRequested();
 		_services.Config.CompleteFirstRun(_steps.SelectedModel, _steps.TelemetryEnabled);
 		_services.Telemetry.Configure(_steps.TelemetryEnabled);
 		_services.Logger.Write(LogSource.Backend, "info",
@@ -271,15 +311,14 @@ public sealed class FirstRunWindow : Window
 		if (_services.Runtime is { } runtime) runtime.MarkInitStartPending();
 		cancellationToken.ThrowIfCancellationRequested();
 
-		AllowClose = true;
 		_services.Windows.Close(WindowLabels.FirstRun);
 		_services.Windows.Show(WindowLabels.Init);
-		await Task.CompletedTask;
 	}
 
 	/// <summary>把状态机的快照画出来。每次状态变化都整幅重画 —— 这一页够小。</summary>
 	private void Render()
 	{
+		if (_closed) return;
 		WizardState state = _wizard.Snapshot();
 		bool english = IsEnglish();
 		RenderChrome(state, english);
@@ -322,7 +361,7 @@ public sealed class FirstRunWindow : Window
 
 		_back.Content = english ? "Back" : "上一步";
 		_back.IsVisible = !state.IsFirst;
-		_back.IsEnabled = state.CanPrev;
+		_back.IsEnabled = state.CanPrev && !_steps.IsImporting;
 
 		bool submitting = state.FinishState == WizardFinishState.Submitting;
 		_forward.Content = state.IsLast
@@ -332,7 +371,7 @@ public sealed class FirstRunWindow : Window
 					? english ? "Retry" : "重试"
 					: english ? "Start" : "开始使用"
 			: english ? "Next" : "下一步";
-		_forward.IsEnabled = state.IsLast ? !submitting : state.CanNext;
+		_forward.IsEnabled = !_steps.IsImporting && (state.IsLast ? !submitting : state.CanNext);
 		// 显式设过 Background，Avalonia 的禁用态样式盖不掉 —— 不自己压暗的话，
 		// 一颗按不动的按钮看起来和能按的一模一样。
 		_forward.Opacity = _forward.IsEnabled ? 1 : 0.4;
@@ -356,6 +395,10 @@ public sealed class FirstRunWindow : Window
 
 	/// <summary>推进一步，走的是按钮那条路。</summary>
 	internal Task AdvanceForTests() => AdvanceAsync();
+
+	/// <summary>导入与当前选择，复用按钮实际执行的路径。</summary>
+	internal Task ImportModelForTests(string sourceKind) => _steps.ImportModelAsync(sourceKind, IsEnglish());
+	internal string SelectedModelForTests => _steps.SelectedModel;
 
 	/// <summary>
 	/// 直接跳到某一步，绕开守卫。

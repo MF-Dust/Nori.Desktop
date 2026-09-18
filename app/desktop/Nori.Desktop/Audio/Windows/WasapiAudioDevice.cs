@@ -39,7 +39,6 @@ internal sealed class WasapiAudioDevice : IAudioDevice
 	private uint _bufferFrames;
 	private int _channels;
 	private bool _floatFormat;
-	private ushort _bitsPerSample;
 	private volatile bool _stopped;
 	private bool _started;
 	private bool _disposed;
@@ -53,13 +52,16 @@ internal sealed class WasapiAudioDevice : IAudioDevice
 		lock (_gate)
 		{
 			ObjectDisposedException.ThrowIf(_disposed, this);
+			WasapiNativeApi.IMmDeviceEnumerator? enumerator = null;
+			WasapiNativeApi.IMmDevice? endpoint = null;
 			try
 			{
-				WasapiNativeApi.IMmDeviceEnumerator enumerator =
+				enumerator =
 					(WasapiNativeApi.IMmDeviceEnumerator) new WasapiNativeApi.MmDeviceEnumerator();
 				enumerator.GetDefaultAudioEndpoint(
 					WasapiNativeApi.DataFlowRender, WasapiNativeApi.RoleConsole,
 					out WasapiNativeApi.IMmDevice device);
+				endpoint = device;
 				DeviceName = WasapiNativeApi.FriendlyName(device);
 
 				Guid clientId = WasapiNativeApi.IidAudioClient;
@@ -97,6 +99,11 @@ internal sealed class WasapiAudioDevice : IAudioDevice
 				Dispose();
 				throw new AudioDeviceException($"打不开输出设备：{failure.Message}", failure);
 			}
+			finally
+			{
+				if (endpoint is not null) Marshal.FinalReleaseComObject(endpoint);
+				if (enumerator is not null) Marshal.FinalReleaseComObject(enumerator);
+			}
 		}
 	}
 
@@ -110,7 +117,6 @@ internal sealed class WasapiAudioDevice : IAudioDevice
 	private AudioFormat ReadFormat(IntPtr mixFormat)
 	{
 		WasapiNativeApi.WaveFormatEx format = Marshal.PtrToStructure<WasapiNativeApi.WaveFormatEx>(mixFormat);
-		_bitsPerSample = format.BitsPerSample;
 
 		ushort tag = format.FormatTag;
 		if (tag == WasapiNativeApi.FormatExtensible && format.ExtraSize >= 22)
@@ -133,45 +139,52 @@ internal sealed class WasapiAudioDevice : IAudioDevice
 	public int Write(ReadOnlySpan<float> samples, CancellationToken cancellationToken)
 	{
 		if (samples.IsEmpty) return 0;
-		lock (_gate)
+		try
 		{
-			if (_stopped || cancellationToken.IsCancellationRequested) return 0;
-			if (_client is null || _render is null) throw new AudioDeviceException("设备尚未打开");
-			WasapiNativeApi.IAudioClient client = _client;
-			WasapiNativeApi.IAudioRenderClient render = _render;
-
-			// COM 调用全程与 Stop/释放互斥；Stop 先置位并唤醒，再等这把锁。
-			int frames = samples.Length / Math.Max(1, _channels);
-			int writtenFrames = 0;
-			while (writtenFrames < frames)
+			lock (_gate)
 			{
-				if (_stopped || cancellationToken.IsCancellationRequested) break;
+				if (_stopped || cancellationToken.IsCancellationRequested) return 0;
+				if (_client is null || _render is null) throw new AudioDeviceException("设备尚未打开");
+				WasapiNativeApi.IAudioClient client = _client;
+				WasapiNativeApi.IAudioRenderClient render = _render;
 
-				client.GetCurrentPadding(out uint padding);
-				uint free = _bufferFrames - padding;
-				if (free == 0)
+				// COM 调用全程与 Stop/释放互斥；Stop 先置位并唤醒，再等这把锁。
+				int frames = samples.Length / Math.Max(1, _channels);
+				int writtenFrames = 0;
+				while (writtenFrames < frames)
 				{
+					if (_stopped || cancellationToken.IsCancellationRequested) break;
+
+					client.GetCurrentPadding(out uint padding);
+					uint free = _bufferFrames - padding;
+					if (free == 0)
+					{
+						EnsureStarted(client);
+						_wake.Wait(PollMilliseconds, cancellationToken);
+						_wake.Reset();
+						continue;
+					}
+
+					int take = Math.Min((int) free, frames - writtenFrames);
+					render.GetBuffer((uint) take, out IntPtr buffer);
+					try
+					{
+						CopyInto(buffer, samples.Slice(writtenFrames * _channels, take * _channels));
+					}
+					finally
+					{
+						render.ReleaseBuffer((uint) take, 0);
+					}
+					writtenFrames += take;
+					// 第一批数据入缓冲后才 Start，避免先播未填充的缓冲。
 					EnsureStarted(client);
-					_wake.Wait(PollMilliseconds, cancellationToken);
-					_wake.Reset();
-					continue;
 				}
-
-				int take = Math.Min((int) free, frames - writtenFrames);
-				render.GetBuffer((uint) take, out IntPtr buffer);
-				try
-				{
-					CopyInto(buffer, samples.Slice(writtenFrames * _channels, take * _channels));
-				}
-				finally
-				{
-					render.ReleaseBuffer((uint) take, 0);
-				}
-				writtenFrames += take;
-				// 第一批数据入缓冲后才 Start，避免先播未填充的缓冲。
-				EnsureStarted(client);
+				return writtenFrames * _channels;
 			}
-			return writtenFrames * _channels;
+		}
+		catch (COMException failure)
+		{
+			throw new AudioDeviceException($"输出设备写入失败：{failure.Message}", failure);
 		}
 	}
 
@@ -212,17 +225,24 @@ internal sealed class WasapiAudioDevice : IAudioDevice
 	/// <inheritdoc />
 	public void Drain(CancellationToken cancellationToken)
 	{
-		lock (_gate)
+		try
 		{
-			if (_client is null || !_started) return;
-			// 等缓冲里剩的那点播完，否则 Dispose 会把尾音切掉。
-			while (!_stopped && !cancellationToken.IsCancellationRequested)
+			lock (_gate)
 			{
-				_client.GetCurrentPadding(out uint padding);
-				if (padding == 0) break;
-				_wake.Wait(PollMilliseconds, cancellationToken);
-				_wake.Reset();
+				if (_client is null || !_started) return;
+				// 等缓冲里剩的那点播完，否则 Dispose 会把尾音切掉。
+				while (!_stopped && !cancellationToken.IsCancellationRequested)
+				{
+					_client.GetCurrentPadding(out uint padding);
+					if (padding == 0) break;
+					_wake.Wait(PollMilliseconds, cancellationToken);
+					_wake.Reset();
+				}
 			}
+		}
+		catch (COMException failure)
+		{
+			throw new AudioDeviceException($"输出设备排空失败：{failure.Message}", failure);
 		}
 	}
 

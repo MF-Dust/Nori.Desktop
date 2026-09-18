@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Nori.Desktop.Audio.Windows;
+using Nori.Core.Voice.Audio;
 
 namespace Nori.Desktop.Tests;
 
@@ -14,6 +15,9 @@ public sealed class WasapiAudioDeviceTests
 		public IntPtr Buffer { get; } = Marshal.AllocHGlobal(256);
 		public Action CheckAccess { get; set; } = () => { };
 		public Action? BufferEntered { get; set; }
+		public Action? PaddingRead { get; set; }
+		public uint Padding { get; set; }
+		public COMException? PaddingFailure { get; set; }
 		public int Starts { get; private set; }
 		public int Stops { get; private set; }
 		public int Resets { get; private set; }
@@ -22,7 +26,9 @@ public sealed class WasapiAudioDeviceTests
 		public void GetCurrentPadding(out uint paddingFrames)
 		{
 			CheckAccess();
-			paddingFrames = 0;
+			if (PaddingFailure is { } failure) throw failure;
+			PaddingRead?.Invoke();
+			paddingFrames = Padding;
 		}
 
 		public void GetBuffer(uint requestedFrames, out IntPtr buffer)
@@ -144,6 +150,61 @@ public sealed class WasapiAudioDeviceTests
 		Assert.Equal(2, client.Releases);
 		Assert.Equal(1, client.Stops);
 		Assert.Equal(1, client.Resets);
+	}
+
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public async Task 停止打断缓冲已满的写入或排空(bool drain)
+	{
+		using FakeClient client = new();
+		WasapiAudioDevice device = Device(client);
+		device.Write([0.5f], CancellationToken.None);
+		client.Padding = 64;
+		TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		client.PaddingRead = () => entered.TrySetResult();
+		Task pumping = Task.Run(() =>
+		{
+			if (drain) device.Drain(CancellationToken.None);
+			else Assert.Equal(0, device.Write(new float[] {0.5f}, CancellationToken.None));
+		});
+		try
+		{
+			await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+			await Task.Run(device.Stop).WaitAsync(TimeSpan.FromSeconds(3));
+			await pumping.WaitAsync(TimeSpan.FromSeconds(3));
+			Assert.Equal(1, client.Stops);
+		}
+		finally
+		{
+			device.Stop();
+			await pumping.WaitAsync(TimeSpan.FromSeconds(3));
+			DisposeDevice(device);
+		}
+	}
+
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public void 设备拔出转为音频设备异常(bool drain)
+	{
+		using FakeClient client = new();
+		WasapiAudioDevice device = Device(client);
+		device.Write([0.5f], CancellationToken.None);
+		client.PaddingFailure = new COMException("设备已失效", unchecked((int) 0x88890004));
+		try
+		{
+			AudioDeviceException failure = Assert.Throws<AudioDeviceException>(() =>
+			{
+				if (drain) device.Drain(CancellationToken.None);
+				else device.Write(new float[] {0.5f}, CancellationToken.None);
+			});
+			Assert.Same(client.PaddingFailure, failure.InnerException);
+		}
+		finally
+		{
+			DisposeDevice(device);
+		}
 	}
 
 	[Fact]

@@ -7,22 +7,32 @@ namespace Nori.Desktop.Tests;
 /// <summary>隐藏 main WebView 时音频通道仍可用的可注入后端测试。</summary>
 public class AudioBackendTests
 {
-	[Fact]
-	public async Task 播放完成回报只结束当前段并通知状态()
+	[Theory]
+	[InlineData("audio/wav")]
+	[InlineData("audio/mpeg")]
+	[InlineData("audio/ogg")]
+	[InlineData("audio/webm;codecs=opus")]
+	public async Task WebView保留实际格式且播放完成后通知状态(string mime)
 	{
 		FakeChannel channel = new();
+		MediaExchange media = new();
 		WebViewAudioPlayback playback = null!;
 		List<bool> states = [];
 		channel.Posted = (name, payload) =>
 		{
 			if (name != "nori:audio-play") return;
-			string token = JsonSerializer.SerializeToElement(payload!).GetProperty("token").GetString()!;
+			JsonElement message = JsonSerializer.SerializeToElement(payload!);
+			string token = message.GetProperty("token").GetString()!;
+			Assert.Equal(mime, message.GetProperty("mime").GetString());
+			Assert.True(media.TryTakeAudio(token, out byte[] bytes, out string actualMime));
+			Assert.Equal(new byte[] {1, 2}, bytes);
+			Assert.Equal(mime, actualMime);
 			playback.ReportPlaybackFinished(token, null);
 		};
-		playback = new WebViewAudioPlayback(new MediaExchange(), token => token, channel);
+		playback = new WebViewAudioPlayback(media, token => token, channel);
 		playback.PlayingChanged += states.Add;
 
-		await playback.PlayAsync(new EncodedAudio([1, 2], "audio/wav"), CancellationToken.None);
+		await playback.PlayAsync(new EncodedAudio([1, 2], mime), CancellationToken.None);
 
 		Assert.False(playback.IsPlaying);
 		Assert.Equal([true, false], states);

@@ -32,15 +32,14 @@ internal static class NativeAudioFactory
 		: throw new AudioDeviceException("这个平台还没有原生输入设备实现");
 
 	/// <summary>
-	/// 解码。
-	///
-	/// 只认 WAV：本地 GPT-SoVITS 直接返回 wav，而 OpenAI 的 /audio/speech 支持
-	/// response_format —— 那个请求体是我们自己拼的。也就是说我们控制得了的链路
-	/// 都能只出 wav。别的格式抛出去，由调用方报「这段放不了」而不是静默无声。
+	/// 按实际内容解码 WAV，不以 MIME 声明代替 RIFF/WAVE 检查。
+	/// 非 WAV 只拒绝当前段，不更换后端或自动创建 WebView；后续 WAV 仍可正常播放。
 	/// </summary>
-	private static PcmAudio Decode(ReadOnlyMemory<byte> bytes, string mime)
+	internal static PcmAudio Decode(ReadOnlyMemory<byte> bytes, string mime)
 	{
 		if (WaveDecoder.IsWave(bytes.Span)) return WaveDecoder.Decode(bytes.Span);
-		throw new AudioDecodeException($"原生音频后端目前只解 WAV，收到的是 {mime}");
+		throw new AudioDecodeException(
+			$"原生音频后端仅支持 WAV，收到的是 {mime}。请将 TTS 服务（自定义 HTTP 在服务端）配置为输出 PCM WAV；"
+			+ "或显式设置 audio_backend=webview 并重启应用，使用兼容音频后端。");
 	}
 }

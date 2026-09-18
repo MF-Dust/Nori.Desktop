@@ -13,7 +13,8 @@ namespace Nori.Core.Voice;
 /// 优云智算 Modelverse IndexTTS-2 适配器 (OpenAI 兼容 /v1/audio/speech)。
 ///
 /// 与 OpenAI 兼容端点不同，IndexTTS-2 有自己默认的 Base URL 与模型名，
-/// 音色为 uspeech:xxxx (经参考音频克隆得到)，原生返回 WAV。
+/// 音色为 uspeech:xxxx (经参考音频克隆得到)，接口契约固定返回 WAV (audio/wav)，
+/// 不添加文档未支持的 response_format 字段。
 /// 扩展字段 (情感/采样率/增益/分块静音) 通过配置键可选透传。
 ///
 /// 音色克隆：模板音频上传后本地存档到 data/resources/indextts/voices/，

@@ -24,7 +24,7 @@ public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevic
 	/// <summary>一次从设备读多少帧。太小会频繁唤醒，太大会让停止不跟手。</summary>
 	private const int ReadFrames = 1024;
 
-	private enum RecordingState { Idle, Starting, Recording, Stopping, Disposed }
+	private enum RecordingState { Idle, Starting, Recording, Completed, Stopping, Disposed }
 
 	private readonly Lock _gate = new();
 	private RecordingState _state;
@@ -35,7 +35,8 @@ public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevic
 	/// <inheritdoc />
 	public bool IsRecording
 	{
-		get { lock (_gate) return _state is RecordingState.Starting or RecordingState.Recording; }
+		// 上层据此决定是否调用 Stop；已采完但尚未提取的结果仍属于当前录音会话。
+		get { lock (_gate) return _state is RecordingState.Starting or RecordingState.Recording or RecordingState.Completed; }
 	}
 
 	/// <inheritdoc />
@@ -52,6 +53,9 @@ public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevic
 			_state = RecordingState.Starting;
 			_cancelling = cancelling;
 			_pump = Task.Run(() => Capture(cancelling, started), CancellationToken.None);
+			// Start 失败或调用方只 Dispose 时，也观察后台故障；Stop 仍从原任务取得异常。
+			_ = _pump.ContinueWith(static task => { _ = task.Exception; }, CancellationToken.None,
+				TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 			return started.Task;
 		}
 	}
@@ -63,12 +67,12 @@ public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevic
 		lock (_gate)
 		{
 			ObjectDisposedException.ThrowIf(_state == RecordingState.Disposed, this);
-			if (_state is not (RecordingState.Starting or RecordingState.Recording))
+			if (_state is not (RecordingState.Starting or RecordingState.Recording or RecordingState.Completed))
 				throw new InvalidOperationException("当前没有在录音");
 			pump = _pump!;
 			_state = RecordingState.Stopping;
-			try { _device?.Stop(); }
-			finally { _cancelling?.Cancel(); }
+			try { _cancelling?.Cancel(); }
+			finally { _device?.Stop(); }
 		}
 
 		try
@@ -114,7 +118,12 @@ public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevic
 			}
 			finally
 			{
-				lock (_gate) _device = null;
+				lock (_gate)
+				{
+					_device = null;
+					// 自然结束或外部取消后保留结果，直到 Stop 提取才允许下一段录音。
+					if (_state == RecordingState.Recording) _state = RecordingState.Completed;
+				}
 				try { device?.Dispose(); }
 				finally
 				{
@@ -122,7 +131,7 @@ public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevic
 					{
 						_cancelling = null;
 						cancelling.Dispose();
-						if (_state != RecordingState.Recording)
+						if (_state != RecordingState.Completed)
 						{
 							_pump = null;
 							if (_state != RecordingState.Disposed) _state = RecordingState.Idle;
@@ -214,10 +223,10 @@ public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevic
 		{
 			if (_state == RecordingState.Disposed) return;
 			_state = RecordingState.Disposed;
-			// 打开和读取可能尚未退出，设备只由采集任务收尾释放。
-			try { _device?.Stop(); }
-			finally { _cancelling?.Cancel(); }
 			_pump = null;
+			// 打开和读取可能尚未退出，设备只由采集任务收尾释放。
+			try { _cancelling?.Cancel(); }
+			finally { _device?.Stop(); }
 		}
 	}
 }

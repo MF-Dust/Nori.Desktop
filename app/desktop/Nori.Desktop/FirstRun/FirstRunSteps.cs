@@ -25,7 +25,7 @@ namespace Nori.Desktop.FirstRun;
 /// 挡住并显示它，给空串就是解除。选形象那一步靠它挡住「一个形象都没有就往下走」。
 /// </summary>
 public sealed class FirstRunSteps(AppServices services, Action<string> onGate, Action onRebuild,
-	Func<string, Task<string?>> pickModel)
+	Func<string, Task<string?>> pickModel, CancellationToken lifetimeToken)
 {
 	private readonly AppServices _services = services;
 
@@ -212,21 +212,23 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 	/// <summary>直接复用资源服务的校验与原子导入，不借用其他窗口的桥接身份。</summary>
 	internal async Task ImportModelAsync(string sourceKind, bool english)
 	{
-		if (IsImporting) return;
+		if (IsImporting || lifetimeToken.IsCancellationRequested) return;
 		IsImporting = true;
 		_importError = "";
 		_onRebuild();
 		try
 		{
-			string? path = await pickModel(sourceKind);
+			string? path = await pickModel(sourceKind).WaitAsync(lifetimeToken);
 			if (string.IsNullOrWhiteSpace(path)) return;
+			lifetimeToken.ThrowIfCancellationRequested();
 			IReadOnlyList<string> imported = await Task.Run(
-				() => _services.Resources.Import(ResourceType.Live2D, path, _services.ShutdownToken),
-				_services.ShutdownToken);
+				() => _services.Resources.Import(ResourceType.Live2D, path, lifetimeToken),
+				lifetimeToken);
+			lifetimeToken.ThrowIfCancellationRequested();
 			SelectedModel = imported.FirstOrDefault() ?? SelectedModel;
 			_services.Runtime?.InvalidateSnapshot("models");
 		}
-		catch (OperationCanceledException) when (_services.ShutdownToken.IsCancellationRequested) { }
+		catch (OperationCanceledException) when (lifetimeToken.IsCancellationRequested) { }
 		catch (Exception failure)
 		{
 			_importError = (english ? "Import failed, please retry: " : "导入失败，请重试：") + failure.Message;

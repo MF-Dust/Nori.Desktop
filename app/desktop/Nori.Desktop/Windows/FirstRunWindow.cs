@@ -37,6 +37,8 @@ public sealed class FirstRunWindow : Window
 	private readonly AppServices _services;
 	private readonly FirstRunWizard _wizard;
 	private readonly FirstRunSteps _steps;
+	private readonly CancellationTokenSource _lifetime;
+	private readonly CancellationToken _lifetimeToken;
 	private bool _closed;
 
 	private readonly StackPanel _pips = new()
@@ -94,11 +96,19 @@ public sealed class FirstRunWindow : Window
 		Background = ChatPalette.Background;
 
 		_wizard = new FirstRunWizard(CompleteAsync);
-		_steps = new FirstRunSteps(services, OnGate, Render, pickModel ?? PickModelAsync);
+		_lifetime = CancellationTokenSource.CreateLinkedTokenSource(services.ShutdownToken);
+		_lifetimeToken = _lifetime.Token;
+		_steps = new FirstRunSteps(services, OnGate, Render, pickModel ?? PickModelAsync, _lifetimeToken);
 
 		Content = BuildChrome();
 		Render();
-		Closed += (_, _) => _closed = true;
+		Closed += (_, _) =>
+		{
+			_closed = true;
+			// 关闭窗口立即终止导入等待，不依赖应用稍后才触发的全局退出信号。
+			_lifetime.Cancel();
+			_lifetime.Dispose();
+		};
 
 		Closing += (_, args) =>
 		{
@@ -258,7 +268,7 @@ public sealed class FirstRunWindow : Window
 		if (_closed || _steps.IsImporting) return;
 		if (_wizard.Snapshot().IsLast)
 		{
-			Task<bool> finishing = _wizard.FinishAsync(_services.ShutdownToken);
+			Task<bool> finishing = _wizard.FinishAsync(_lifetimeToken);
 			RenderFooter();
 			await finishing;
 			Render();

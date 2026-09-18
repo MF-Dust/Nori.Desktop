@@ -270,8 +270,10 @@ public partial class BridgeCommandsTests
 		finally { window.AllowClose = true; window.Close(); }
 	});
 
-	[Fact]
-	public Task 关闭向导后取消在途导入不写资源也不重建界面() => WithSettingsUiAsync(async () =>
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public Task 关闭向导立即取消在途导入且不依赖全局退出(bool cancelShutdown) => WithSettingsUiAsync(async () =>
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true);
 		using CancellationTokenSource shutdown = new();
@@ -286,7 +288,10 @@ public partial class BridgeCommandsTests
 			Button beforeClose = FirstRunImportButtons(window)[0];
 			window.AllowClose = true;
 			window.Close();
-			shutdown.Cancel();
+			if (cancelShutdown) shutdown.Cancel();
+			// 文件选择器尚未返回时，窗口自身的取消信号已结束导入等待。
+			await importing.WaitAsync(TimeSpan.FromSeconds(2));
+			Assert.False(picked.Task.IsCompleted);
 			picked.SetResult(CreateFirstRunImportSource(fixture._tempDir, "nori", "folder"));
 			await importing;
 			Assert.False(fixture._services.Resources.IsInstalled(ResourceType.Live2D, "nori"));

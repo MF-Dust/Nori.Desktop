@@ -38,7 +38,8 @@ public sealed class MiniMaxTtsProvider(HttpClient httpClient, ConfigStore config
 			},
 			["audio_setting"] = new JsonObject
 			{
-				["format"] = "mp3",
+				// 非流式接口支持 WAV，直接满足原生播放器的 PCM 契约。
+				["format"] = "wav",
 			},
 			["output_format"] = "hex",
 		};
@@ -96,7 +97,7 @@ public sealed class MiniMaxTtsProvider(HttpClient httpClient, ConfigStore config
 				$"MiniMax TTS data.audio 不是有效的 hex 数据{DiagnosticSuffix(body, raw)}", exception);
 		}
 
-		string format = body?["extra_info"]?["audio_format"]?.GetValue<string>()?.Trim().ToLowerInvariant() ?? "mp3";
+		string format = body?["extra_info"]?["audio_format"]?.GetValue<string>()?.Trim().ToLowerInvariant() ?? "wav";
 		string mime = format switch
 		{
 			"mp3" => "audio/mpeg",

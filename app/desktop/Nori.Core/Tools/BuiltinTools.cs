@@ -363,20 +363,23 @@ public static class BuiltinTools
 		// TryGetValue<double> 只在底层就是 double 时成功。模型的输出经 JsonNode.Parse
 		// 进来是 JsonElement 支撑的，转得动；而代码里 new JsonObject{["x"] = 5} 构出来
 		// 的是 CLR int 支撑的，转不动 —— 同一个 5，两条来路结果不同，所以逐个试过去。
-		if (value.TryGetValue(out double asDouble)) return asDouble;
+		if (value.TryGetValue(out double asDouble)) return double.IsFinite(asDouble) ? asDouble : null;
 		if (value.TryGetValue(out long asLong)) return asLong;
 		if (value.TryGetValue(out int asInt)) return asInt;
 		if (value.TryGetValue(out decimal asDecimal)) return (double) asDecimal;
 
 		return value.TryGetValue(out string? text)
 			&& double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double fromText)
+			&& double.IsFinite(fromText)
 			? fromText
 			: null;
 	}
 
 	/// <summary>报错里回显原值。字符串直接回显 —— ToJsonString 会把中文转义成 \uXXXX。</summary>
 	private static string Describe(JsonNode node) =>
-		node is JsonValue value && value.TryGetValue(out string? text) ? text : node.ToJsonString();
+		node is JsonValue value && value.TryGetValue(out string? text) ? text
+			: node is JsonValue number && number.TryGetValue(out double numeric) ? numeric.ToString(CultureInfo.InvariantCulture)
+			: node.ToJsonString();
 
 	/// <summary>
 	/// 必填的数字参数。缺失和「给了但不是数字」要分开报，否则排查时会去找一个

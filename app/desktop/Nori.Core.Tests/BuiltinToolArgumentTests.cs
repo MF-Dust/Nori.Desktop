@@ -188,6 +188,60 @@ public sealed class BuiltinToolArgumentTests : IDisposable
 		}
 	}
 
+	[Theory]
+	[InlineData("NaN")]
+	[InlineData("Infinity")]
+	[InlineData("-Infinity")]
+	[InlineData("1e999")]
+	public async Task 非有限数字不能进入工具业务层(string text)
+	{
+		JsonNode[] values =
+		[
+			JsonValue.Create(text)!,
+			JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(text))!,
+		];
+		foreach (JsonNode value in values)
+		{
+			foreach (string tool in new[] {"setReminder", "forgetMemory"})
+			{
+				string key = tool == "setReminder" ? "delayMinutes" : "memoryId";
+				ToolResult result = await Call(tool, new JsonObject {["content"] = "喝水", [key] = value.DeepClone()});
+				Assert.Contains("不是数字", result.Error);
+			}
+			ToolResult emotion = await Call("setEmotion",
+				new JsonObject {["emotion"] = EmotionTypes.Happy, ["intensity"] = value.DeepClone()});
+			Assert.Null(emotion.Error);
+			Assert.Equal(0.8, _emotion.GetState().Intensity, 3);
+			ToolResult memory = await Call("remember",
+				new JsonObject {["content"] = "喜欢海洋", ["importance"] = value.DeepClone()});
+			Assert.Null(memory.Error);
+		}
+		Assert.Empty(_proactive.ListReminders());
+	}
+
+	[Theory]
+	[InlineData(double.NaN)]
+	[InlineData(double.PositiveInfinity)]
+	[InlineData(double.NegativeInfinity)]
+	public async Task CLR非有限值在共用解析器中同样拒绝(double value)
+	{
+		// CLR 非有限值不能序列化为 JSON，直接调用注册执行体覆盖这条内部来路。
+		InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			_tools.Get("setReminder")!.Execute(new JsonObject {["content"] = "喝水", ["delayMinutes"] = value}, new ToolContext()));
+		Assert.Contains("不是数字", error.Message);
+		await _tools.Get("setEmotion")!.Execute(new JsonObject {["emotion"] = EmotionTypes.Happy, ["intensity"] = value}, new ToolContext());
+		Assert.Equal(0.8, _emotion.GetState().Intensity, 3);
+		Assert.Empty(_proactive.ListReminders());
+	}
+
+	[Fact]
+	public async Task Json数字溢出也不能进入业务层()
+	{
+		ToolResult result = await Call("setReminder", JsonNode.Parse("""{"content":"喝水","delayMinutes":1e999}""")!);
+		Assert.Contains("不是数字", result.Error);
+		Assert.Empty(_proactive.ListReminders());
+	}
+
 	public void Dispose()
 	{
 		_proactive.Dispose();

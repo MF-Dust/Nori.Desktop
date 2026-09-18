@@ -2,6 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.LogicalTree;
+using Nori.Desktop.Main;
 using Nori.Core.Configuration;
 using Nori.Desktop.Windows;
 
@@ -38,11 +40,14 @@ public partial class BridgeCommandsTests
 		{
 			using BridgeCommandsTests fixture = new(safeMode: false);
 			foreach (string language in new[] {"zh-CN", "en-US"})
+			foreach (var size in new[] {(Width: 720, Height: 480), (Width: 1920, Height: 1080)})
 			{
 				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(language));
 				MainWindow window = new(MainDefinition(), fixture._services);
 				try
 				{
+					window.Width = size.Width;
+					window.Height = size.Height;
 					window.Show();
 					await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
 					AvaloniaHeadlessPlatform.ForceRenderTimerTick();
@@ -50,7 +55,7 @@ public partial class BridgeCommandsTests
 					AvaloniaHeadlessPlatform.ForceRenderTimerTick();
 
 					using WriteableBitmap frame = Assert.IsType<WriteableBitmap>(window.CaptureRenderedFrame());
-					frame.Save(Path.Combine(outputDirectory, $"main-{language}.png"), PngBitmapEncoderOptions.Default);
+					frame.Save(Path.Combine(outputDirectory, $"main-{language}-{size.Width}x{size.Height}.png"), PngBitmapEncoderOptions.Default);
 				}
 				finally
 				{
@@ -63,6 +68,25 @@ public partial class BridgeCommandsTests
 	}
 
 	// ── 接线 ───────────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task 首页快捷入口支持键盘且默认不创建网页控件()
+	{
+		await WithSettingsUiAsync(() =>
+		{
+			using BridgeCommandsTests fixture = new(safeMode: false);
+			HomeView home = new(fixture._services, () => { });
+			home.Refresh(false);
+			var controls = home.GetLogicalDescendants().OfType<Control>().ToArray();
+			Button[] shortcuts = controls.OfType<Button>().Where(button => button.Name == "HomeShortcut").ToArray();
+			Assert.Equal(4, shortcuts.Length);
+			Assert.All(shortcuts, button => Assert.True(button.Focusable));
+			Assert.DoesNotContain(controls, control => control.GetType().Name == "NativeWebView");
+			Assert.Equal(4, controls.OfType<Button>().Count(button => button.Tag is string url && url.StartsWith("https://", StringComparison.Ordinal)));
+			Assert.Single(controls.OfType<Button>(), button => button.Name == "CommunityQq");
+			return Task.CompletedTask;
+		});
+	}
 
 	[Fact]
 	public async Task 侧边栏四个启动器按界面语言出文案()

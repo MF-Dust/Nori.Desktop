@@ -263,8 +263,9 @@ public sealed class HomeView : Panel
 
 	private static Control Card(string title, string description, Action onOpen)
 	{
-		Border card = new()
+		Button card = new()
 		{
+			Name = "HomeShortcut",
 			Width = 268,
 			Margin = new Thickness(0, 0, 12, 12),
 			Background = ChatPalette.Deep,
@@ -272,7 +273,7 @@ public sealed class HomeView : Panel
 			CornerRadius = new CornerRadius(12),
 			Padding = new Thickness(16, 14),
 			Cursor = new Cursor(StandardCursorType.Hand),
-			Child = new StackPanel
+			Content = new StackPanel
 			{
 				Spacing = 5,
 				Children =
@@ -290,7 +291,7 @@ public sealed class HomeView : Panel
 				},
 			},
 		};
-		card.PointerPressed += (_, _) => onOpen();
+		card.Click += (_, _) => onOpen();
 		return card;
 	}
 

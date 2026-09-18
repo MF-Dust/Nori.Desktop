@@ -54,6 +54,8 @@
 
 首轮 Linux CI 已完成全部前端门禁，后端编译发现交接首页缺少 `Avalonia.Input.Platform` 扩展方法命名空间，导致剪贴板 `SetTextAsync` 报 CS1061。已补全引用并再次提交，由后续 Actions 复验。
 
+后续 CI 报告 `NativeWindowLifetime` 直接实现 Avalonia 三层不可由用户代码实现的生命周期接口，产生 CS0535。现将 WindowManager 的最终退出动作隔离为内部 `Action<int>` 注入点，公开构造函数仍绑定真实 Avalonia 生命周期的 Shutdown。测试替身仅记录退出次数/退出码并关闭真实 Headless 窗口，不启用 PrivateApi、不禁用测试；同步更新初始化和音频宿主测试的调用点。本次 `pnpm exec vitest run tests/views/lifecycle-resources.test.ts` 5/5 通过，`git diff --check` 通过，定向 .NET 测试仍因本地无 SDK 返回 127，由新提交的 Actions 验证。
+
 真实 WASAPI 设备拔出、三平台音频/麦克风、Linux/macOS 隐藏音频宿主后台行为及原生 WebView 卡片需要实机验收。同步设备 Open 没有取消参数，Stop/Dispose 可请求取消，但资源最终释放需等 Open 返回。opaque sandbox 不允许卡片直接使用 localStorage，持久化应通过所属插件动作。
 
 原生视觉截图由新增 CI 步骤生成；本地没有可供查看的截图，因此不宣称已完成视觉验收。保留 Draft 状态直到后端和实机门禁确认。

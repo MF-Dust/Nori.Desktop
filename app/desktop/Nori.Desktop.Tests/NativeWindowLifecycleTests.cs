@@ -1,6 +1,5 @@
 using System.Reflection;
 using Avalonia.Controls;
-using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using Nori.Core.Platform;
 using Nori.Desktop.Windows;
@@ -10,27 +9,16 @@ namespace Nori.Desktop.Tests;
 public partial class BridgeCommandsTests
 {
 	/// <summary>只模拟窗口关闭，不终止共享的 Headless UI 会话。</summary>
-	private sealed class NativeWindowLifetime : IClassicDesktopStyleApplicationLifetime
+	private sealed class NativeWindowLifetime
 	{
 		public int ShutdownCount { get; private set; }
-		public string[]? Args => null;
-		public ShutdownMode ShutdownMode { get; set; } = ShutdownMode.OnExplicitShutdown;
-		public Window? MainWindow { get; set; }
+		public int? ExitCode { get; private set; }
 		public List<Window> ManagedWindows { get; } = [];
-		public IReadOnlyList<Window> Windows => ManagedWindows;
-		public event EventHandler<ControlledApplicationLifetimeStartupEventArgs>? Startup { add { } remove { } }
-		public event EventHandler<ControlledApplicationLifetimeExitEventArgs>? Exit { add { } remove { } }
-		public event EventHandler<ShutdownRequestedEventArgs>? ShutdownRequested { add { } remove { } }
-
-		public bool TryShutdown(int exitCode = 0)
-		{
-			Shutdown(exitCode);
-			return true;
-		}
 
 		public void Shutdown(int exitCode = 0)
 		{
 			ShutdownCount++;
+			ExitCode = exitCode;
 			foreach (Window window in ManagedWindows) window.Close();
 		}
 	}
@@ -53,7 +41,7 @@ public partial class BridgeCommandsTests
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true);
 		NativeWindowLifetime lifetime = new();
-		WindowManager manager = new(null!, lifetime, fixture._services.Paths);
+		WindowManager manager = new(null!, lifetime.Shutdown, fixture._services.Paths);
 		fixture._services.Windows = manager;
 		WindowDefinition definition = WindowDefinition.All.Single(item => item.Label == label);
 		Window window = label switch
@@ -76,6 +64,7 @@ public partial class BridgeCommandsTests
 			manager.Close(label);
 			await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 			Assert.Equal(0, lifetime.ShutdownCount);
+			Assert.Null(lifetime.ExitCode);
 		}
 		finally
 		{
@@ -91,7 +80,7 @@ public partial class BridgeCommandsTests
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true);
 		NativeWindowLifetime lifetime = new();
-		WindowManager manager = new(null!, lifetime, fixture._services.Paths);
+		WindowManager manager = new(null!, lifetime.Shutdown, fixture._services.Paths);
 		fixture._services.Windows = manager;
 		FirstRunWindow firstRun = new(FirstRunDefinition(), fixture._services);
 		InitWindow init = new(InitDefinition(), fixture._services);
@@ -113,6 +102,7 @@ public partial class BridgeCommandsTests
 			manager.Shutdown();
 			await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 			Assert.Equal(1, lifetime.ShutdownCount);
+			Assert.Equal(0, lifetime.ExitCode);
 			Assert.Equal(3, closed);
 			Assert.True(firstRun.AllowClose && init.AllowClose && main.AllowClose);
 			Assert.False(init.AnimationRunningForTests);

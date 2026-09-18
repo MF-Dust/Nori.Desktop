@@ -99,7 +99,7 @@ public partial class BridgeCommandsTests
 	public Task 显示流程结束后才进入主界面并关闭初始化窗口() => WithSettingsUiAsync(async () =>
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true);
-		WindowManager manager = new(null!, new NativeWindowLifetime(), fixture._services.Paths);
+		WindowManager manager = new(null!, new NativeWindowLifetime().Shutdown, fixture._services.Paths);
 		fixture._services.Windows = manager;
 		InitWindow init = new(InitDefinition(), fixture._services);
 		Window main = new();

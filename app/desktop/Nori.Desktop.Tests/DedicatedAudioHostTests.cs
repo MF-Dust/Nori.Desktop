@@ -20,7 +20,7 @@ public partial class BridgeCommandsTests
 			AppRoot = fixture._tempDir,
 			ResourcesRoot = fixture._tempDir,
 		});
-		WindowManager manager = new(assets, new NativeWindowLifetime(), fixture._services.Paths);
+		WindowManager manager = new(assets, new NativeWindowLifetime().Shutdown, fixture._services.Paths);
 		manager.CreateAudioHost(new NoriBridge(fixture._services), fixture._services);
 		NoriWindow? host = manager.GetNoriWindow(WindowLabels.AudioHost);
 		bool needsHost = backend == "webview" || !System.OperatingSystem.IsWindows();

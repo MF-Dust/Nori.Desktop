@@ -15,11 +15,11 @@ namespace Nori.Desktop.Windows;
 /// 承接原来 Rust 侧 lib.rs setup / tray.rs 与前端 services/window/index.ts 的窗口调度职责.
 /// 管理三个 WebView、原生伴侣视窗与按需创建的原生设置、记忆、模型和对话窗口。
 /// </summary>
-public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleApplicationLifetime lifetime, AppStoragePaths storagePaths) : IWindowManager
+public sealed class WindowManager : IWindowManager
 {
-	private readonly AssetServer _assetServer = assetServer;
-	private readonly AppStoragePaths _storagePaths = storagePaths ?? throw new ArgumentNullException(nameof(storagePaths));
-	private readonly IClassicDesktopStyleApplicationLifetime _lifetime = lifetime;
+	private readonly AssetServer _assetServer;
+	private readonly AppStoragePaths _storagePaths;
+	private readonly Action<int> _shutdown;
 	private readonly Dictionary<string, Window> _windows = [];
 	private readonly ConcurrentDictionary<string, bool> _visible = new();
 	private PetWindow? _petWindow;
@@ -29,6 +29,20 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	private Task? _memoryCloseTask;
 	private Task? _modelsCloseTask;
 	private Task? _chatCloseTask;
+
+	/// <summary>生产入口仍由 Avalonia 生命周期执行最终退出。</summary>
+	public WindowManager(AssetServer assetServer, IClassicDesktopStyleApplicationLifetime lifetime, AppStoragePaths storagePaths)
+		: this(assetServer, lifetime.Shutdown, storagePaths)
+	{
+	}
+
+	/// <summary>隔离最终退出动作，生命周期测试不实现 Avalonia 私有接口，也不终止共享 UI 会话。</summary>
+	internal WindowManager(AssetServer assetServer, Action<int> shutdown, AppStoragePaths storagePaths)
+	{
+		_assetServer = assetServer;
+		_storagePaths = storagePaths ?? throw new ArgumentNullException(nameof(storagePaths));
+		_shutdown = shutdown ?? throw new ArgumentNullException(nameof(shutdown));
+	}
 
 	/// <inheritdoc />
 	public event Action<string, bool>? VisibilityChanged;
@@ -498,7 +512,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 
 			try
 			{
-				_lifetime.Shutdown(0);
+				_shutdown(0);
 			}
 			catch (InvalidOperationException)
 			{

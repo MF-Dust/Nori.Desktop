@@ -22,6 +22,7 @@ public sealed class PluginAssetRouteTests : IAsyncLifetime
 		Directory.CreateDirectory(Path.Combine(_root, "plugins", _pluginId));
 		await File.WriteAllTextAsync(Path.Combine(appRoot, "index.html"), "app");
 		await File.WriteAllTextAsync(Path.Combine(pluginRoot, "web", "index.html"), "plugin asset");
+		await File.WriteAllTextAsync(Path.Combine(pluginRoot, "web", "card.js"), "export const value = 1;");
 		await File.WriteAllTextAsync(Path.Combine(pluginRoot, "manifest.json"),
 			$"{{\"schemaVersion\":1,\"id\":\"{_pluginId}\",\"name\":\"Asset Plugin\",\"description\":\"Asset route test\",\"version\":\"1.0.0\",\"authors\":[{{\"name\":\"Nori\"}}],\"apiVersion\":\"2.0\",\"minHostVersion\":\"1.0.0\",\"runtime\":{{\"kind\":\"dotnet\",\"assembly\":\"lib/missing.dll\",\"entryType\":\"Missing.Entry\"}},\"ui\":{{\"webRoot\":\"web\"}},\"capabilities\":[],\"optionalCapabilities\":[],\"platforms\":[],\"dependencies\":[]}}");
 		await File.WriteAllTextAsync(Path.Combine(_root, "plugins", _pluginId, PluginPackageInstaller.CurrentFileName), "{\"Version\":\"1.0.0\"}");
@@ -64,6 +65,53 @@ public sealed class PluginAssetRouteTests : IAsyncLifetime
 	{
 		HttpResponseMessage response = await _client.GetAsync(new Uri($"{_server.Origin}{_server.Prefix}/plugins/{_pluginId}/{path}"));
 		Assert.NotEqual(HttpStatusCode.OK, response.StatusCode);
+	}
+
+	[Fact]
+	public async Task 隔离卡片模块只向不透明来源开放无凭据读取()
+	{
+		using HttpRequestMessage request = new(HttpMethod.Get, _server.PublicUrl("plugins", $"{_pluginId}/web/card.js"));
+		request.Headers.Add("Origin", "null");
+		using HttpResponseMessage response = await _client.SendAsync(request);
+		Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+		Assert.Equal("null", Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
+		Assert.Contains("Origin", response.Headers.Vary);
+		Assert.False(response.Headers.Contains("Access-Control-Allow-Credentials"));
+		Assert.Equal("export const value = 1;", await response.Content.ReadAsStringAsync());
+	}
+
+	[Theory]
+	[InlineData("https://example.com")]
+	[InlineData("http://localhost:1420")]
+	public async Task 公开模块不对任意外部来源开放跨域(string origin)
+	{
+		using HttpRequestMessage request = new(HttpMethod.Get, _server.PublicUrl("plugins", $"{_pluginId}/web/card.js"));
+		request.Headers.Add("Origin", origin);
+		using HttpResponseMessage response = await _client.SendAsync(request);
+		Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+		Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+	}
+
+	[Theory]
+	[InlineData("POST")]
+	[InlineData("OPTIONS")]
+	public async Task 隔离卡片资源通道拒绝写入与预检扩权(string method)
+	{
+		using HttpRequestMessage request = new(new HttpMethod(method), _server.PublicUrl("plugins", $"{_pluginId}/web/card.js"));
+		request.Headers.Add("Origin", "null");
+		using HttpResponseMessage response = await _client.SendAsync(request);
+		Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+		Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+	}
+
+	[Fact]
+	public async Task 隔离来源仍不能读取插件私有文件()
+	{
+		using HttpRequestMessage request = new(HttpMethod.Get, $"{_server.Origin}{_server.Prefix}/plugins/{_pluginId}/manifest.json");
+		request.Headers.Add("Origin", "null");
+		using HttpResponseMessage response = await _client.SendAsync(request);
+		Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+		Assert.DoesNotContain("schemaVersion", await response.Content.ReadAsStringAsync());
 	}
 
 	[Fact]

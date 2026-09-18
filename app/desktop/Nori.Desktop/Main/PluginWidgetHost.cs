@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Nori.Core.Logging;
 using Nori.Core.WebView;
 using Nori.Desktop.Bridge;
@@ -20,7 +21,7 @@ internal sealed class PluginWidgetHost : StackPanel
 	private readonly Dictionary<string, WidgetCard> _cards = new(StringComparer.Ordinal);
 	private readonly TextBlock _status = new() {Foreground = ChatPalette.Muted, FontSize = 12, IsVisible = false};
 	private PluginRuntimeHost? _runtime;
-	private Window? _owner;
+	private readonly List<Visual> _visibilityOwners = [];
 	private bool _attached;
 	private bool _reading;
 	private bool _english;
@@ -34,16 +35,19 @@ internal sealed class PluginWidgetHost : StackPanel
 		AttachedToVisualTree += (_, _) =>
 		{
 			_attached = true;
-			_owner = TopLevel.GetTopLevel(this) as Window;
-			if (_owner is not null) _owner.PropertyChanged += OnOwnerChanged;
+			foreach (Visual owner in this.GetVisualAncestors().Append(this))
+			{
+				_visibilityOwners.Add(owner);
+				owner.PropertyChanged += OnOwnerChanged;
+			}
 			Refresh(_english);
 		};
 		DetachedFromVisualTree += (_, _) =>
 		{
 			_attached = false;
 			_revision++;
-			if (_owner is not null) _owner.PropertyChanged -= OnOwnerChanged;
-			_owner = null;
+			foreach (Visual owner in _visibilityOwners) owner.PropertyChanged -= OnOwnerChanged;
+			_visibilityOwners.Clear();
 			if (_runtime is not null) _runtime.ActivePluginsChanged -= OnPluginsChanged;
 			_runtime = null;
 			ClearCards();
@@ -52,7 +56,7 @@ internal sealed class PluginWidgetHost : StackPanel
 
 	private void OnOwnerChanged(object? sender, AvaloniaPropertyChangedEventArgs args)
 	{
-		if (args.Property == IsVisibleProperty && _owner is {IsVisible: false})
+		if (args.Property == IsVisibleProperty && sender is Visual {IsVisible: false})
 			foreach (WidgetCard card in _cards.Values) card.IsExpanded = false;
 	}
 
@@ -96,7 +100,7 @@ internal sealed class PluginWidgetHost : StackPanel
 		catch (Exception failure)
 		{
 			if (_attached && revision == _revision) _status.IsVisible = true;
-			_services.Logger.Write(LogSource.Backend, "warn", $"读取插件卡片失败：{failure.GetType().Name}");
+			LogFailure(_services, $"读取插件卡片失败：{failure.GetType().Name}");
 		}
 		finally
 		{
@@ -134,6 +138,15 @@ internal sealed class PluginWidgetHost : StackPanel
 		foreach (string id in _cards.Keys.ToArray()) RemoveCard(id);
 	}
 
+	private static void LogFailure(AppServices services, string message)
+	{
+		try { services.Logger.Write(LogSource.Backend, "warn", message); }
+		catch (Exception) { /* 日志目录不可写也不能阻断原生首页。 */ }
+	}
+
+	internal static bool IsWrapperNavigation(Uri? request) =>
+		request is {IsAbsoluteUri: true} && request.AbsoluteUri == "about:blank";
+
 	/// <summary>折叠、隐藏或撤销时释放页面；每次展开重新绑定插件身份和独立取消令牌。</summary>
 	private sealed class WidgetCard : Expander
 	{
@@ -145,7 +158,7 @@ internal sealed class PluginWidgetHost : StackPanel
 		private NativeWebView? _webView;
 		private WebViewScriptDispatcher? _scripts;
 		private CancellationTokenSource? _lifetime;
-		private int _pending;
+		private sealed class RequestBudget { public int Pending; }
 
 		public PluginChatWidget Widget { get; }
 
@@ -163,6 +176,7 @@ internal sealed class PluginWidgetHost : StackPanel
 			_timeout.Tick += (_, _) => Fail(new TimeoutException("插件卡片加载超时"));
 			PropertyChanged += (_, args) =>
 			{
+				if (args.Property == IsVisibleProperty && !IsVisible) IsExpanded = false;
 				if (args.Property != IsExpandedProperty) return;
 				if (IsExpanded) OpenPage();
 				else ClosePage();
@@ -172,11 +186,13 @@ internal sealed class PluginWidgetHost : StackPanel
 		private void OpenPage()
 		{
 			ClosePage();
+			if (!IsExpanded || !IsEffectivelyVisible || _services.SafeMode || _services.ShutdownToken.IsCancellationRequested) return;
 			try
 			{
-				string document = PluginWidgetBridge.CreateDocument(Widget);
 				PluginRuntimeHost runtime = _services.PluginRuntime ?? throw new InvalidOperationException("插件运行时尚未就绪");
 				PluginWidgetBridge bridge = new(Widget.PluginId, runtime.InvokePluginActionAsync);
+				string document = PluginWidgetBridge.CreateDocument(Widget, bridge.TransportToken);
+				RequestBudget budget = new();
 				_lifetime = CancellationTokenSource.CreateLinkedTokenSource(_services.ShutdownToken);
 				CancellationToken token = _lifetime.Token;
 				NativeWebView webView = new() {Height = 220, Background = Brushes.Transparent};
@@ -189,6 +205,10 @@ internal sealed class PluginWidgetHost : StackPanel
 						windows.UserDataFolder = Path.Combine(_services.Paths.PluginsWebViewCacheDirectory, Widget.PluginId);
 				};
 				webView.NewWindowRequested += (_, args) => args.Handled = true;
+				webView.NavigationStarted += (_, args) =>
+				{
+					args.Cancel = token.IsCancellationRequested || !IsWrapperNavigation(args.Request);
+				};
 				webView.AdapterCreated += (_, _) =>
 				{
 					if (token.IsCancellationRequested) return;
@@ -204,10 +224,10 @@ internal sealed class PluginWidgetHost : StackPanel
 				webView.WebMessageReceived += (_, args) =>
 				{
 					if (token.IsCancellationRequested) return;
-					if (args.Body == "widget-loaded") { _timeout.Stop(); return; }
+					if (args.Body == $"widget-loaded:{bridge.TransportToken}") { _timeout.Stop(); return; }
 					if (args.Body is not {Length: > 0 and <= 65_536} raw) return;
-					if (Interlocked.Increment(ref _pending) > 8) { Interlocked.Decrement(ref _pending); return; }
-					_ = Task.Run(() => InvokeAsync(bridge, scripts, raw, token));
+					if (Interlocked.Increment(ref budget.Pending) > 8) { Interlocked.Decrement(ref budget.Pending); return; }
+					_ = Task.Run(() => InvokeAsync(bridge, scripts, raw, token, budget));
 				};
 				_timeout.Start();
 				Content = webView;
@@ -221,7 +241,7 @@ internal sealed class PluginWidgetHost : StackPanel
 			_retry.Content = english ? "Retry" : "重试";
 		}
 
-		private async Task InvokeAsync(PluginWidgetBridge bridge, WebViewScriptDispatcher scripts, string raw, CancellationToken token)
+		private async Task InvokeAsync(PluginWidgetBridge bridge, WebViewScriptDispatcher scripts, string raw, CancellationToken token, RequestBudget budget)
 		{
 			try
 			{
@@ -236,33 +256,45 @@ internal sealed class PluginWidgetHost : StackPanel
 						scripts.Dispatch($"window.__noriWidgetReply&&window.__noriWidgetReply({JsonSerializer.Serialize(reply)})");
 				});
 			}
+			catch (OperationCanceledException) when (!token.IsCancellationRequested)
+			{
+				FailCurrentPage(new TimeoutException("插件卡片动作超时"), token);
+			}
 			catch (OperationCanceledException) { }
 			catch (Exception failure)
 			{
-				_services.Logger.Write(LogSource.Backend, "warn", $"插件卡片动作失败 [{Widget.PluginId}]：{failure.GetType().Name}");
+				FailCurrentPage(failure, token);
 			}
-			finally { Interlocked.Decrement(ref _pending); }
+			finally { Interlocked.Decrement(ref budget.Pending); }
 		}
+
+		private void FailCurrentPage(Exception failure, CancellationToken token) => Dispatcher.UIThread.Post(() =>
+		{
+			// 旧页面超时或失败的回调不得关闭用户刚重新展开的页面。
+			if (!token.IsCancellationRequested) Fail(failure);
+		});
 
 		private void Fail(Exception failure)
 		{
 			ClosePage();
-			_services.Logger.Write(LogSource.Backend, "warn", $"插件卡片加载失败 [{Widget.PluginId}]：{failure.GetType().Name}");
+			LogFailure(_services, $"插件卡片加载失败 [{Widget.PluginId}]：{failure.GetType().Name}");
 			Content = _fallback;
 		}
 
 		public void ClosePage()
 		{
 			_timeout.Stop();
-			_lifetime?.Cancel();
+			CancellationTokenSource? lifetime = _lifetime;
+			_lifetime = null;
+			try { lifetime?.Cancel(); }
+			catch (Exception failure) { LogFailure(_services, $"撤销插件卡片动作失败：{failure.GetType().Name}"); }
 			_scripts?.Close();
 			try { _webView?.Stop(); }
 			catch (Exception) { /* 原生适配器初始化失败时仍需撤销卡片通道。 */ }
 			Content = null;
 			_webView = null;
 			_scripts = null;
-			_lifetime?.Dispose();
-			_lifetime = null;
+			lifetime?.Dispose();
 		}
 	}
 }

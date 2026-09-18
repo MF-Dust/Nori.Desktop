@@ -11,12 +11,13 @@ internal sealed class PluginWidgetBridge
 {
 	private readonly string _pluginId;
 	private readonly Func<string, string, JsonNode?, CancellationToken, Task<JsonNode?>> _invoke;
+	public string TransportToken { get; } = Guid.NewGuid().ToString("N");
 
 	public PluginWidgetBridge(string pluginId, Func<string, string, JsonNode?, CancellationToken, Task<JsonNode?>> invoke)
 	{
 		PluginWindowHost.ValidatePluginId(pluginId, nameof(pluginId));
 		_pluginId = pluginId;
-		_invoke = invoke;
+		_invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
 	}
 
 	/// <summary>仅处理卡片动作协议；非法信封不进入插件，更不会进入 NoriBridge。</summary>
@@ -24,17 +25,19 @@ internal sealed class PluginWidgetBridge
 	{
 		if (raw.Length > 65_536) return null;
 		JsonDocument document;
-		try { document = JsonDocument.Parse(raw); }
+		try { document = JsonDocument.Parse(raw, new JsonDocumentOptions {MaxDepth = 32}); }
 		catch (JsonException) { return null; }
 		using (document)
 		{
 			JsonElement request = document.RootElement;
 			if (request.ValueKind != JsonValueKind.Object
+				|| !request.TryGetProperty("transportToken", out JsonElement transport)
+				|| transport.ValueKind != JsonValueKind.String || transport.GetString() != TransportToken
 				|| !request.TryGetProperty("source", out JsonElement source)
 				|| source.ValueKind != JsonValueKind.String || source.GetString() != "nori-plugin-widget"
 				|| !request.TryGetProperty("requestId", out JsonElement id)
 				|| id.ValueKind != JsonValueKind.Number || !id.TryGetInt64(out long requestId)
-				|| Math.Abs((double)requestId) > 9_007_199_254_740_991)
+				|| requestId is < 0 or > 9_007_199_254_740_991)
 				return null;
 
 			JsonNode? result = null;
@@ -43,6 +46,9 @@ internal sealed class PluginWidgetBridge
 			{
 				cancellationToken.ThrowIfCancellationRequested();
 				if (request.TryGetProperty("cmd", out _) || request.TryGetProperty("kind", out _)
+					|| request.TryGetProperty("command", out _) || request.TryGetProperty("event", out _)
+					|| (request.TryGetProperty("pluginId", out JsonElement identity)
+						&& (identity.ValueKind != JsonValueKind.String || identity.GetString() != _pluginId))
 					|| !request.TryGetProperty("actionId", out JsonElement action)
 					|| action.ValueKind != JsonValueKind.String
 					|| string.IsNullOrWhiteSpace(action.GetString()) || action.GetString()!.Length > 256)
@@ -67,11 +73,12 @@ internal sealed class PluginWidgetBridge
 	}
 
 	/// <summary>
-	/// 在无主桥接的 about:blank 文档中承载卡片。卡片与包装页不同源，保留插件自己的模块和存储，
-	/// 但不允许弹窗、下载、顶层导航；消息同时核验来源窗口与资源服务 origin。
+	/// 在无主桥接的 about:blank 文档中承载卡片。卡片运行于 opaque origin，
+	/// 不允许存储、弹窗、下载或顶层导航；消息核验来源窗口，传输凭据只留在包装页闭包中。
 	/// </summary>
-	public static string CreateDocument(PluginChatWidget widget)
+	public static string CreateDocument(PluginChatWidget widget, string transportToken)
 	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(transportToken);
 		PluginWindowHost.ValidatePluginId(widget.PluginId, nameof(widget.PluginId));
 		Uri entry = widget.EntryUrl;
 		if (!entry.IsAbsoluteUri || entry.Scheme != "http" || !entry.IsLoopback
@@ -84,22 +91,26 @@ internal sealed class PluginWidgetBridge
 			<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{nonce}}'; style-src 'unsafe-inline'; frame-src {{WebUtility.HtmlEncode(entry.AbsoluteUri)}}; base-uri 'none'; form-action 'none'">
 			<style>html,body,iframe{margin:0;border:0;width:100%;height:100%;overflow:hidden}iframe{display:block}</style>
 			</head><body>
-			<iframe title="{{WebUtility.HtmlEncode(widget.Title)}}" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer"></iframe>
+			<iframe title="{{WebUtility.HtmlEncode(widget.Title)}}" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
 			<script nonce="{{nonce}}">
+			(() => {
 			const frame = document.querySelector("iframe");
-			const origin = {{JsonSerializer.Serialize(entry.GetLeftPart(UriPartial.Authority))}};
+			const pluginId = {{JsonSerializer.Serialize(widget.PluginId)}};
+			const transportToken = {{JsonSerializer.Serialize(transportToken)}};
 			window.addEventListener("message", event => {
-				if (event.source !== frame.contentWindow || event.origin !== origin) return;
+				if (event.source !== frame.contentWindow || event.origin !== "null") return;
 				const data = event.data;
-				if (!data || data.source !== "nori-plugin-widget" || !Number.isSafeInteger(data.requestId)) return;
+				if (!data || data.source !== "nori-plugin-widget" || !Number.isSafeInteger(data.requestId) || data.requestId < 0) return;
+				if ("cmd" in data || "kind" in data || "command" in data || "event" in data || ("pluginId" in data && data.pluginId !== pluginId)) return;
 				if (typeof window.invokeCSharpAction !== "function") return;
-				window.invokeCSharpAction(JSON.stringify({source: data.source, requestId: data.requestId, actionId: data.actionId, args: data.args}));
+				window.invokeCSharpAction(JSON.stringify({transportToken, source: data.source, requestId: data.requestId, actionId: data.actionId, args: data.args}));
 			});
-			window.__noriWidgetReply = json => frame.contentWindow.postMessage(JSON.parse(json), origin);
+			window.__noriWidgetReply = json => frame.contentWindow.postMessage(JSON.parse(json), "*");
 			frame.addEventListener("load", () => {
-				if (typeof window.invokeCSharpAction === "function") window.invokeCSharpAction("widget-loaded");
+				if (typeof window.invokeCSharpAction === "function") window.invokeCSharpAction("widget-loaded:" + transportToken);
 			});
 			frame.src = {{JsonSerializer.Serialize(entry.AbsoluteUri)}};
+			})();
 			</script></body></html>
 			""";
 	}

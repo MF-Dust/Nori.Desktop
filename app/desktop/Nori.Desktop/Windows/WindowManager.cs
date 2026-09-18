@@ -23,6 +23,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	private readonly Dictionary<string, Window> _windows = [];
 	private readonly ConcurrentDictionary<string, bool> _visible = new();
 	private PetWindow? _petWindow;
+	private NoriWindow? _audioHost;
 	private AppServices? _services;
 	private int _shutdownRequested;
 	private Task? _memoryCloseTask;
@@ -84,6 +85,24 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 
 			TrackVisibility(definition.Label, _windows[definition.Label]);
 		}
+		CreateAudioHost(bridge, services);
+	}
+
+	/// <summary>仅兼容后端创建专用宿主，不进入用户窗口列表或导航。</summary>
+	internal void CreateAudioHost(NoriBridge bridge, AppServices services)
+	{
+		if (Nori.Core.Voice.Audio.AudioBackend.PrefersNative(
+			services.Config.GetStringOr(Nori.Core.Configuration.ConfigStore.KeyAudioBackend, Nori.Core.Voice.Audio.AudioBackend.Auto),
+			OperatingSystem.IsWindows()) || _audioHost is not null) return;
+		_audioHost = new NoriWindow(new WindowDefinition
+		{
+			Label = WindowLabels.AudioHost,
+			Title = "Nori Audio",
+			Width = 1,
+			Height = 1,
+			ShowInTaskbar = false,
+		}, bridge, _assetServer.WindowUrl(WindowLabels.AudioHost), _storagePaths);
+		_audioHost.StartAudioHost();
 	}
 
 	/// <summary>
@@ -116,7 +135,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	/// <summary>
 	/// 按标签取 WebView2 窗口
 	/// </summary>
-	public NoriWindow? GetNoriWindow(string? label) => Get(label) as NoriWindow;
+	public NoriWindow? GetNoriWindow(string? label) => label == WindowLabels.AudioHost ? _audioHost : Get(label) as NoriWindow;
 
 	/// <summary>
 	/// 原生伴侣视窗引用
@@ -468,6 +487,13 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 				else if (window is ModelsWindow modelsWindow) modelsWindow.AllowClose = true;
 				else if (window is ChatWindow chatWindow) chatWindow.AllowClose = true;
 				else if (window is PetWindow petWindow) petWindow.AllowClose = true;
+			}
+
+			if (_audioHost is not null)
+			{
+				_audioHost.AllowClose = true;
+				_audioHost.Close();
+				_audioHost = null;
 			}
 
 			try

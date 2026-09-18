@@ -214,17 +214,12 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			reminderStore, config, services.Logger,
 			GetIdleSecondsSafe);
 
-		/* ── 音频后端 ──────────────────────────────────────────────────────
-		 * Windows 直接推声卡（WASAPI）；其余平台仍下沉到 main 窗口的
-		 * WebAudio / MediaRecorder，直到 CoreAudio 与 ALSA 补上。
-		 *
-		 * WebView 那条一直建着而不是按需建：桥回调（页面播完/录完的回报）挂在它
-		 * 身上，而那几条桥命令的存在与否不该随后端变化。真正的分流在下面那两行。 */
+		// Windows 默认使用 WASAPI；兼容后端使用独立的隐藏 WebView，不依赖原生 MainWindow。
 		MediaExchange media = services.Assets?.Media ?? new MediaExchange();
 		Func<string, string> mediaUrl = services.Assets is {} assets
 			? assets.MediaUrl
 			: _ => throw new InvalidOperationException("资源服务未启动, 音频端点不可用");
-		AudioHostChannel channel = new(() => services.Windows?.GetNoriWindow(WindowLabels.Main));
+		AudioHostChannel channel = new(() => services.Windows?.GetNoriWindow(WindowLabels.AudioHost));
 		_audioChannel = channel;
 
 		bool useNativeAudio = Nori.Core.Voice.Audio.AudioBackend.PrefersNative(

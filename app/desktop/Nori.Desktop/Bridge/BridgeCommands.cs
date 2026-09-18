@@ -696,26 +696,26 @@ public sealed class BridgeCommands
 
 		// ---- 前端音频宿主回报 (WebAudio / MediaRecorder 下沉后的反向通道) ----
 		// invoke("audio_host_ready")
-		"audio_host_ready" => RequireMain(source, () => Run(Runtime.MarkAudioHostReady)),
+		"audio_host_ready" => RequireLabel(source, WindowLabels.AudioHost, () => Run(Runtime.MarkAudioHostReady)),
 
 		// invoke("audio_playback_finished", {token, error?})
-		"audio_playback_finished" => RequireMain(source, () =>
+		"audio_playback_finished" => RequireLabel(source, WindowLabels.AudioHost, () =>
 			Run(() => Runtime.ReportPlaybackFinished(Str(args, "token"), OptionalStr(args, "error")))),
 
 		// invoke("audio_level", {level: 0.42})
-		"audio_level" => RequireMain(source, () =>
+		"audio_level" => RequireLabel(source, WindowLabels.AudioHost, () =>
 			Run(() => Runtime.ReportAudioLevel(Num(args, "level")))),
 
 		// invoke("audio_record_ready", {token})
-		"audio_record_ready" => RequireMain(source, () =>
+		"audio_record_ready" => RequireLabel(source, WindowLabels.AudioHost, () =>
 			Run(() => Runtime.ReportRecordingReady(Str(args, "token")))),
 
 		// invoke("audio_record_failed", {token, error?})
-		"audio_record_failed" => RequireMain(source, () =>
+		"audio_record_failed" => RequireLabel(source, WindowLabels.AudioHost, () =>
 			Run(() => Runtime.ReportRecordingFailed(Str(args, "token"), OptionalStr(args, "error")))),
 
 		// invoke("audio_upload_failed", {token, error?})
-		"audio_upload_failed" => RequireMain(source, () =>
+		"audio_upload_failed" => RequireLabel(source, WindowLabels.AudioHost, () =>
 			Run(() => Runtime.ReportRecordingFailed(Str(args, "token"), OptionalStr(args, "error")))),
 
 		// ---- 伴侣 Live2D 原生控制 ----

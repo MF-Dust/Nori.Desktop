@@ -89,6 +89,9 @@ public sealed record WindowDefinition
 /// </summary>
 public static class WindowLabels
 {
+	/// <summary>专用音频兼容宿主，不属于用户窗口。</summary>
+	public const string AudioHost = "audio-host";
+
 	/// <summary>按需创建的原生设置窗口。</summary>
 	public const string Settings = "settings";
 

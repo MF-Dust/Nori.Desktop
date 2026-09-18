@@ -346,7 +346,7 @@ public sealed class WebViewMicrophoneRecorder(MediaExchange media, Func<string, 
 
 /// <summary>
 /// 指向某个 WebView 窗口的音频事件通道。
-/// 音频宿主固定为 main 窗口：它关窗只隐藏、进程内始终存在，因此隐藏时依然能放声。
+/// 音频宿主为独立 audio-host 页面，与应用同寿命，不依赖用户可见的主窗口。
 /// </summary>
 public class AudioHostChannel(Func<Nori.Desktop.Windows.NoriWindow?> resolve, TimeSpan? readyTimeout = null) : IAudioHostChannel, IDisposable
 {

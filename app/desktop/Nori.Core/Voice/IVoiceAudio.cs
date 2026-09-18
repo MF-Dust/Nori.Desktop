@@ -64,6 +64,14 @@ public interface IAudioPlayback : IDisposable
 
 	/// <summary>停止当前播放并清空队列</summary>
 	void Stop();
+
+	/// <summary>
+	/// 设置输出音量 0..1。
+	///
+	/// 默认空实现：不是每个后端都控制得了设备音量（早期的实现就没有）。
+	/// 放在接口上是为了让调用方不必持有具体类型 —— 换后端时那是唯一要改的地方。
+	/// </summary>
+	void SetDeviceVolume(double volume) { }
 }
 
 /// <summary>

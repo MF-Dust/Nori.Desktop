@@ -179,6 +179,21 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: 原生首页 · 中英文双尺寸真实渲染
+        if: matrix.name == 'windows'
+        env:
+          NORI_CAPTURE_MAIN: "1"
+        run: dotnet test Nori.Desktop.Tests/Nori.Desktop.Tests.csproj --configuration Release --no-build --no-restore --filter FullyQualifiedName~原生主界面能截出一帧 -m:1
+
+      - name: 上传原生首页视觉产物
+        if: always() && matrix.name == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nori-native-main-visuals
+          path: app/desktop/artifacts/native-main
+          if-no-files-found: warn
+          retention-days: 7
+
       # 复用 Release 构建，在同一轮执行 Core、Desktop、PluginRuntime 全量测试并收集覆盖率。
       - name: 后端门 · 覆盖率产物
         if: matrix.name == 'windows'

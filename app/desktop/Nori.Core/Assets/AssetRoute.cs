@@ -14,4 +14,8 @@ public interface IAssetRoute
 public sealed record AssetRouteFile(
 	string FilePath,
 	string ContentType,
-	string CacheControl = "public, max-age=3600");
+	string CacheControl = "public, max-age=3600")
+{
+	/// <summary>允许隔离卡片读取公开模块资源；仅用于无凭据的 opaque origin GET/HEAD。</summary>
+	public bool AllowOpaqueOrigin { get; init; }
+}

@@ -15,19 +15,34 @@ namespace Nori.Desktop.Windows;
 /// 承接原来 Rust 侧 lib.rs setup / tray.rs 与前端 services/window/index.ts 的窗口调度职责.
 /// 管理三个 WebView、原生伴侣视窗与按需创建的原生设置、记忆、模型和对话窗口。
 /// </summary>
-public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleApplicationLifetime lifetime, AppStoragePaths storagePaths) : IWindowManager
+public sealed class WindowManager : IWindowManager
 {
-	private readonly AssetServer _assetServer = assetServer;
-	private readonly AppStoragePaths _storagePaths = storagePaths ?? throw new ArgumentNullException(nameof(storagePaths));
-	private readonly IClassicDesktopStyleApplicationLifetime _lifetime = lifetime;
+	private readonly AssetServer _assetServer;
+	private readonly AppStoragePaths _storagePaths;
+	private readonly Action<int> _shutdown;
 	private readonly Dictionary<string, Window> _windows = [];
 	private readonly ConcurrentDictionary<string, bool> _visible = new();
 	private PetWindow? _petWindow;
+	private NoriWindow? _audioHost;
 	private AppServices? _services;
 	private int _shutdownRequested;
 	private Task? _memoryCloseTask;
 	private Task? _modelsCloseTask;
 	private Task? _chatCloseTask;
+
+	/// <summary>生产入口仍由 Avalonia 生命周期执行最终退出。</summary>
+	public WindowManager(AssetServer assetServer, IClassicDesktopStyleApplicationLifetime lifetime, AppStoragePaths storagePaths)
+		: this(assetServer, lifetime.Shutdown, storagePaths)
+	{
+	}
+
+	/// <summary>隔离最终退出动作，生命周期测试不实现 Avalonia 私有接口，也不终止共享 UI 会话。</summary>
+	internal WindowManager(AssetServer assetServer, Action<int> shutdown, AppStoragePaths storagePaths)
+	{
+		_assetServer = assetServer;
+		_storagePaths = storagePaths ?? throw new ArgumentNullException(nameof(storagePaths));
+		_shutdown = shutdown ?? throw new ArgumentNullException(nameof(shutdown));
+	}
 
 	/// <inheritdoc />
 	public event Action<string, bool>? VisibilityChanged;
@@ -40,7 +55,25 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 		_services = services;
 		foreach (WindowDefinition definition in WindowDefinition.All)
 		{
-			if (definition.Label == WindowLabels.Pet)
+			if (definition.Label == WindowLabels.Main)
+			{
+				// 主界面也原生了：迁移的最后一块，WebView 在主路径上就此退出。
+				MainWindow mainWindow = new(definition, services);
+				_windows[definition.Label] = mainWindow;
+			}
+			else if (definition.Label == WindowLabels.FirstRun)
+			{
+				// 首次运行向导也已经是原生的：和初始化窗口一样不碰音频。
+				_windows[definition.Label] = new FirstRunWindow(definition, services);
+			}
+			else if (definition.Label == WindowLabels.Init)
+			{
+				// 初始化窗口已经是原生的：它自足，不碰音频也不碰插件，迁过来之后
+				// 启动路径上少一次 WebView 冷启动。
+				InitWindow initWindow = new(definition, services);
+				_windows[definition.Label] = initWindow;
+			}
+			else if (definition.Label == WindowLabels.Pet)
 			{
 				PetWindow petWindow = new(definition, services);
 				petWindow.Closing += (_, args) =>
@@ -66,6 +99,28 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 
 			TrackVisibility(definition.Label, _windows[definition.Label]);
 		}
+		CreateAudioHost(bridge, services);
+	}
+
+	/// <summary>仅兼容后端创建专用宿主，不进入用户窗口列表或导航。</summary>
+	internal void CreateAudioHost(NoriBridge bridge, AppServices services, Func<WindowDefinition, NoriWindow>? createWindow = null)
+	{
+		if (Nori.Core.Voice.Audio.AudioBackend.PrefersNative(
+			services.Config.GetStringOr(Nori.Core.Configuration.ConfigStore.KeyAudioBackend, Nori.Core.Voice.Audio.AudioBackend.Auto),
+			OperatingSystem.IsWindows()) || _audioHost is not null) return;
+		WindowDefinition definition = new()
+		{
+			Label = WindowLabels.AudioHost,
+			Title = "Nori Audio",
+			Width = 1,
+			Height = 1,
+			ShowInTaskbar = false,
+		};
+		// 允许测试替换原生控件挂接边界，宿主选择、显示与通道生命周期仍走真实实现。
+		_audioHost = createWindow is null
+			? new NoriWindow(definition, bridge, _assetServer.WindowUrl(WindowLabels.AudioHost), _storagePaths)
+			: createWindow(definition);
+		_audioHost.StartAudioHost();
 	}
 
 	/// <summary>
@@ -98,7 +153,7 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 	/// <summary>
 	/// 按标签取 WebView2 窗口
 	/// </summary>
-	public NoriWindow? GetNoriWindow(string? label) => Get(label) as NoriWindow;
+	public NoriWindow? GetNoriWindow(string? label) => label == WindowLabels.AudioHost ? _audioHost : Get(label) as NoriWindow;
 
 	/// <summary>
 	/// 原生伴侣视窗引用
@@ -279,6 +334,9 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 		}
 		_windows.Remove(label);
 		if (window is NoriWindow nw) nw.AllowClose = true;
+		else if (window is InitWindow init) init.AllowClose = true;
+		else if (window is FirstRunWindow firstRun) firstRun.AllowClose = true;
+		else if (window is MainWindow main) main.AllowClose = true;
 		else if (window is SettingsWindow settings) settings.AllowClose = true;
 		else if (window is PetWindow pw)
 		{
@@ -439,6 +497,9 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 			foreach (Window window in _windows.Values)
 			{
 				if (window is NoriWindow noriWindow) noriWindow.AllowClose = true;
+				else if (window is InitWindow initWindow) initWindow.AllowClose = true;
+				else if (window is FirstRunWindow firstRunWindow) firstRunWindow.AllowClose = true;
+				else if (window is MainWindow mainWindow) mainWindow.AllowClose = true;
 				else if (window is SettingsWindow settingsWindow) settingsWindow.AllowClose = true;
 				else if (window is MemoryWindow memoryWindow) memoryWindow.AllowClose = true;
 				else if (window is ModelsWindow modelsWindow) modelsWindow.AllowClose = true;
@@ -446,9 +507,16 @@ public sealed class WindowManager(AssetServer assetServer, IClassicDesktopStyleA
 				else if (window is PetWindow petWindow) petWindow.AllowClose = true;
 			}
 
+			if (_audioHost is not null)
+			{
+				_audioHost.AllowClose = true;
+				_audioHost.Close();
+				_audioHost = null;
+			}
+
 			try
 			{
-				_lifetime.Shutdown(0);
+				_shutdown(0);
 			}
 			catch (InvalidOperationException)
 			{

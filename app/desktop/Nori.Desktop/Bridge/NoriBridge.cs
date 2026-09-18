@@ -47,6 +47,7 @@ public sealed class NoriBridge(AppServices services)
 				TrackInvoke(source, message);
 				break;
 			case "emit":
+				if (source.Label == WindowLabels.AudioHost) return;
 				if (message.Event is { Length: > 0 } name)
 				{
 					object? payload = message.Payload.ValueKind == JsonValueKind.Undefined ? null : message.Payload.Clone();

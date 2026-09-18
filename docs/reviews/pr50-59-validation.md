@@ -1,0 +1,74 @@
+# PR 50–59 接续修复与验证
+
+日期：2026-09-18。接续分支 `local/pr50-59`，起点 `0312a80d2b76b511f0c72cc2d2a5831b223346cf`。
+交付入口：[PR #63](https://github.com/MF-Dust/Nori.Desktop/pull/63)。本记录补充原交接，不能把历史 WIP 或新增的未执行 C# 测试视作验收通过。
+
+最新接续：[Codacy 逐项处理与验证](pr63-codacy.md)。本轮已恢复完整检出并安装 .NET 10：本地 Release 全方案构建 0 警告/0 错误，后端 1960 项通过、11 项平台/环境跳过、0 失败，前端 180 项通过。下文保留早期环境限制与历史结果。
+
+## 实现与提交
+
+| 问题 | 提交 |
+| --- | --- |
+| 麦克风状态机 | `89a5fc5` |
+| 通知授权 | `0f40bcc` |
+| 首次运行导入 | `c7faf13` |
+| MiniMax WAV | `81f3706` |
+| WASAPI 生命周期 | `749a2f6` |
+| 插件卡片隔离 | `24f94d8` |
+| 原生首页与视觉验证 | `92ba012` |
+| 播放回调并发 | `9d55dd7` |
+
+- 麦克风补全显式 Completed 状态与唯一设备释放者；保留 VoiceService 依赖的待提取会话语义。23 个 Fact 包含 12 个新增用例，移除固定延时，覆盖双 Start、Open 失败、Stop/Dispose 竞态、取消等待与空 WAV。
+- 通知 Show/Hide 失败不再阻断待决授权完成；Open 忽略失效通知。Allow/Deny 的 UI 线程与不抢焦点契约保留。
+- 首启窗口关闭取消独立生命周期，停止等待文件选择器及后续导入；保留 Init Hide 时停止计时器的现有实现。
+- 播放事件离开设备状态锁，电平按订阅者分别检查当前 owner，防止回调内启动下一段后继续分发旧电平。WASAPI 释放枚举器/端点并将设备失效转换为领域异常。
+- MiniMax 非流式请求使用 WAV，补请求格式、实际 WAV 解码和显式 MIME 契约测试。其余 OpenAI/GPT-SoVITS WAV 请求沿用交接修复。Windows native 不自动创建非 WAV WebView 回退。
+- 原生与 Vue 卡片只允许脚本 sandbox，核验来源窗口并绑定宿主插件身份。原生包装页增加独立随机凭据、导航限制和请求生命周期；公开插件资源仅对 opaque origin 开放无凭据 GET/HEAD CORS，主资产与媒体端点不开放。
+- 首页四个快捷入口采用原生 Button，支持键盘操作。新增原生结构检查，Windows CI 截取中英文 720×480 与 1920×1080 首页并上传。
+
+## 已实际执行
+
+所有项目命令工作目录均为 `app/desktop`。
+
+| 命令 | 结果 |
+| --- | --- |
+| `pnpm exec vitest run tests/chat/plugin-widgets.test.ts` | 24/24 通过 |
+| `pnpm lint` | 通过 |
+| `pnpm exec vue-tsc --noEmit` | 通过 |
+| `pnpm build` | 通过，Vite 编译 3107 modules |
+| `pnpm test` | 32 files / 176 tests 通过 |
+| `pnpm coverage` | 通过全部阈值 |
+| `git diff --check` | 通过 |
+| `pnpm check:todo` | 本地已物化源码扫描通过，完整仓库由 CI 再扫 |
+| `dotnet --info`、定向 `dotnet test` | 无 .NET SDK，退出 127，未执行 C# 编译/测试 |
+
+覆盖率：statements 56.49%、branches 51.03%、functions 50.81%、lines 58.11%。初次全套验证因稀疏检出缺少图片/后端契约源文件失败，补齐指定提交的原始文件后以上完整前端验证通过；没有修改或跳过失败断言。
+
+## Git 与范围核对
+
+本地通过 GitHub 指定提交的原始树与文件建立稀疏检出，重建基准提交并校验其 SHA。远程提交按上表顺序单父提交接续基准，使用非强制 ref 更新，没有合并其他分支。PR 的 base SHA 仍为交接给定的 `cc96fe1d102876441d075e16116fe8937abf1e44`。
+
+全程未读取 PR #60 页面、diff、head ref 或实现，未 fetch/merge/cherry-pick #60。没有修改 `components.d.ts`。本次没有进行新的架构迁移：Main / Init / FirstRun 保持原生，独立音频宿主仅服务现有显式兼容选择及尚未原生化平台，HTML 仅保留公开插件卡契约。
+
+## 仍由 CI / 实机确认
+
+[首轮 Actions](https://github.com/MF-Dust/Nori.Desktop/actions/runs/35358352816) 已触发。完整后端 Release 构建、Core/Desktop/PluginRuntime/Launcher 测试、覆盖率、Windows 视觉与发布冒烟以最终提交的 Actions 结果为准，未在本地执行。
+
+首轮 Linux CI 已完成全部前端门禁，后端编译发现交接首页缺少 `Avalonia.Input.Platform` 扩展方法命名空间，导致剪贴板 `SetTextAsync` 报 CS1061。已补全引用并再次提交，由后续 Actions 复验。
+
+后续 CI 报告 `NativeWindowLifetime` 直接实现 Avalonia 三层不可由用户代码实现的生命周期接口，产生 CS0535。现将 WindowManager 的最终退出动作隔离为内部 `Action<int>` 注入点，公开构造函数仍绑定真实 Avalonia 生命周期的 Shutdown。测试替身仅记录退出次数/退出码并关闭真实 Headless 窗口，不启用 PrivateApi、不禁用测试；同步更新初始化和音频宿主测试的调用点。本次 `pnpm exec vitest run tests/views/lifecycle-resources.test.ts` 5/5 通过，`git diff --check` 通过，定向 .NET 测试仍因本地无 SDK 返回 127，由新提交的 Actions 验证。
+
+真实 WASAPI 设备拔出、三平台音频/麦克风、Linux/macOS 隐藏音频宿主后台行为及原生 WebView 卡片需要实机验收。同步设备 Open 没有取消参数，Stop/Dispose 可请求取消，但资源最终释放需等 Open 返回。opaque sandbox 不允许卡片直接使用 localStorage，持久化应通过所属插件动作。
+
+原生视觉截图由新增 CI 步骤生成；本地没有可供查看的截图，因此不宣称已完成视觉验收。保留 Draft 状态直到后端和实机门禁确认。
+
+## 三平台 CI 测试失败接续
+
+提交 `8c468e7` 的 [Actions](https://github.com/MF-Dust/Nori.Desktop/actions/runs/35359614760) 已通过三平台后端构建，以及 Windows 原生设置、记忆、首页真实渲染和上传步骤。Linux 后端结果为 Launcher 5、Core 1129、PluginRuntime 166 通过；Desktop 609 通过、10 跳过、5 失败。macOS Desktop 有 4 项同源失败；Windows 覆盖率测试发现初始化断言和音频宿主 COM 挂接共 2 项失败。本轮据日志修复如下：
+
+- 音频装配测试使用 `System.OperatingSystem.IsWindows()`，避免测试项目固定 Windows 自动化语义的全局别名；用 `await using` 保证断言失败也释放 runtime。
+- 托盘测试按真实平台能力保留独立点击穿透提示，精确校验中英文完整内容及托盘恢复后的提示移除。
+- 初始化交接继续遵守既有 Hide 契约，验证不可见、计时器停止、启动信号已消费和管理器保留引用；随后显式 Close，验证 Closed 一次及引用释放。
+- 音频宿主创建提供内部窗口工厂注入。Headless 测试仍构造真实 NoriWindow、运行 StartAudioHost 并验证选择、后台显示属性和就绪通道，但显示前移除 NativeWebView 控件，避免 Windows Headless MTA 线程启动 WebView2 导致 RPC_E_CHANGED_MODE。生产默认工厂和原生主窗口路径不变；真实浏览器播放仍需实机验收。
+
+没有跳过或删除失败测试。生命周期前端检查再次 5/5 通过，`git diff --check` 通过；本地仍无 dotnet，C# 修复是否通过由后续 Actions 确认。

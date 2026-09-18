@@ -101,6 +101,19 @@ public sealed class NoriWindow : Window, IBridgeSource
 		};
 	}
 
+	/// <summary>挂接原生 WebView 后隐藏；不激活、不在任务栏留下窗口。</summary>
+	internal void StartAudioHost()
+	{
+		if (Label != WindowLabels.AudioHost) throw new InvalidOperationException("不是音频宿主窗口");
+		ShowActivated = false;
+		ShowInTaskbar = false;
+		WindowStartupLocation = WindowStartupLocation.Manual;
+		Position = new PixelPoint(-32000, -32000);
+		Opacity = 0;
+		WindowDecorations = WindowDecorations.None;
+		Show();
+	}
+
 	/// <summary>
 	/// 把当前窗口度量推给页面 (物理像素)
 	/// </summary>
@@ -182,6 +195,12 @@ public sealed class NoriWindow : Window, IBridgeSource
 			return;
 		}
 		_scriptDispatcher.MarkReady();
+		if (Label == WindowLabels.AudioHost)
+		{
+			// 原生控件必须先挂到窗口才会导航；导航后隐藏不会卸载音频页面。
+			Dispatcher.UIThread.Post(Hide, DispatcherPriority.Background);
+			return;
+		}
 		// 页面就绪后先给一份度量, 免得首次调用还要往返
 		PostMetrics();
 	}

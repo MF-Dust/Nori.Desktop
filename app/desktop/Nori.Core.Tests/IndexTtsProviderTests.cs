@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Voice;
+using Nori.Core.Voice.Audio;
 
 namespace Nori.Core.Tests;
 
@@ -39,13 +40,15 @@ public class IndexTtsProviderTests : IDisposable
 		Assert.Equal("Bearer", handler.AuthorizationScheme);
 		Assert.Equal("test-secret", handler.AuthorizationParameter);
 		Assert.Equal("audio/wav", audio.Mime);
-		Assert.NotEmpty(audio.Bytes);
+		Assert.True(WaveDecoder.IsWave(audio.Bytes));
 
 		JsonNode body = JsonNode.Parse(handler.LastBody!)!;
 		Assert.Equal("IndexTeam/IndexTTS-2", body["model"]?.GetValue<string>());
 		Assert.Equal("你好，Nori", body["input"]?.GetValue<string>());
 		Assert.Equal("uspeech:abc123", body["voice"]?.GetValue<string>());
 		Assert.Equal(1.2, body["speed"]?.GetValue<double>());
+		// Modelverse 固定返回 WAV，不向该接口加入未声明支持的格式参数。
+		Assert.Null(body["response_format"]);
 	}
 
 	[Fact]

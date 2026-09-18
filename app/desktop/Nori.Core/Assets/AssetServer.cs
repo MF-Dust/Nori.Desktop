@@ -129,6 +129,11 @@ public sealed class AssetServer : IAsyncDisposable
 			{
 				string routePath = $"{prefix}/{route.Segment}";
 				if (!IsPathUnder(requestPath, routePath)) continue;
+				if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method))
+				{
+					context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+					return;
+				}
 
 				string relative = requestPath[routePath.Length..].Trim('/');
 				string? decoded = AssetPath.PercentDecode(relative);
@@ -142,6 +147,13 @@ public sealed class AssetServer : IAsyncDisposable
 				context.Response.ContentType = file.ContentType;
 				context.Response.ContentLength = new FileInfo(file.FilePath).Length;
 				context.Response.Headers.CacheControl = file.CacheControl;
+				if (file.AllowOpaqueOrigin)
+				{
+					context.Response.Headers.Vary = "Origin";
+					if (context.Request.Headers.Origin == "null")
+						context.Response.Headers.AccessControlAllowOrigin = "null";
+				}
+				if (HttpMethods.IsHead(context.Request.Method)) return;
 				await context.Response.SendFileAsync(file.FilePath, context.RequestAborted);
 				return;
 			}

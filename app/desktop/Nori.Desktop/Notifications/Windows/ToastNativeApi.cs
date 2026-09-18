@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
@@ -51,15 +52,19 @@ internal static class ToastNativeApi
 	internal const int SFalse = 1;
 
 	/// <summary>包一层 HSTRING，用完即删。WinRT 的字符串不归 GC 管。</summary>
-	internal readonly struct HString : IDisposable
+	internal sealed class HString : IDisposable
 	{
-		internal IntPtr Handle { get; }
+		private IntPtr _handle;
 
-		internal HString(string value) => Handle = WindowsCreateString(value, value.Length);
+		internal IntPtr Handle => Volatile.Read(ref _handle);
+
+		internal HString(string value) => _handle = WindowsCreateString(value, value.Length);
 
 		public void Dispose()
 		{
-			if (Handle != IntPtr.Zero) WindowsDeleteString(Handle);
+			// 引用共享一个所有者，重复释放或多个引用同时释放都只删除一次。
+			IntPtr handle = Interlocked.Exchange(ref _handle, IntPtr.Zero);
+			if (handle != IntPtr.Zero) WindowsDeleteString(handle);
 		}
 	}
 
@@ -216,10 +221,16 @@ internal static class ToastNativeApi
 	}
 
 	[StructLayout(LayoutKind.Sequential, Pack = 4)]
-	internal struct PropertyKey(Guid formatId, uint propertyId)
+	internal struct PropertyKey(Guid formatId, uint propertyId) : IEquatable<PropertyKey>
 	{
 		internal Guid FormatId = formatId;
 		internal uint PropertyId = propertyId;
+
+		public readonly bool Equals(PropertyKey other) => FormatId == other.FormatId && PropertyId == other.PropertyId;
+		public override readonly bool Equals(object? obj) => obj is PropertyKey other && Equals(other);
+		public override readonly int GetHashCode() => HashCode.Combine(FormatId, PropertyId);
+		public static bool operator ==(PropertyKey left, PropertyKey right) => left.Equals(right);
+		public static bool operator !=(PropertyKey left, PropertyKey right) => !left.Equals(right);
 	}
 
 	/// <summary>
@@ -227,6 +238,7 @@ internal static class ToastNativeApi
 	/// 用完必须 <c>PropVariantClear</c>，否则那块 CoTaskMem 泄掉。
 	/// </summary>
 	[StructLayout(LayoutKind.Sequential)]
+	[SuppressMessage("CodeQuality", "S3898", Justification = "原生联合体持有待释放的内存；指针或保留位相同不代表值相等，也不能复制所有权。")]
 	internal struct PropVariant
 	{
 		internal ushort VarType;

@@ -176,6 +176,9 @@ public sealed partial class AppRuntime
 						// 只有主动点正文才把卡片带到前台；允许/拒绝不抢焦点。
 						Services.Windows?.Show(Windows.WindowLabels.Main);
 						break;
+					default:
+						// 未识别的动作不能决定授权，也不打开窗口。
+						return;
 				}
 			});
 		}

@@ -120,12 +120,24 @@ public sealed class PluginWidgetBridgeTests
 	[Theory]
 	[InlineData("https://example.com/plugins/io.nori.widget/web/card.html")]
 	[InlineData("http://127.0.0.1:1234/secret/plugins/io.nori.other/web/card.html")]
-	[InlineData("http://user@127.0.0.1:1234/plugins/io.nori.widget/web/card.html")]
 	[InlineData("http://127.0.0.1:1234/plugins/io.nori.widget/web/card.html?next=other")]
 	[InlineData("file:///plugins/io.nori.widget/web/card.html")]
 	public void 卡片拒绝外网文件和跨插件入口(string entry)
 	{
 		Assert.Throws<InvalidOperationException>(() => PluginWidgetBridge.CreateDocument(new PluginChatWidget(PluginId, "卡片", new Uri(entry)), "token"));
+	}
+
+	[Fact]
+	public void 卡片拒绝回环地址中的用户信息()
+	{
+		// 本地资源服务使用 HTTP；此处仅构造恶意 URI 验证拒绝，不发送网络请求。
+		UriBuilder entry = new("http://127.0.0.1:1234/secret/plugins/io.nori.widget/web/card.html")
+		{
+			UserName = "user",
+		};
+		Assert.NotEmpty(entry.Uri.UserInfo);
+		Assert.Throws<InvalidOperationException>(() => PluginWidgetBridge.CreateDocument(
+			new PluginChatWidget(PluginId, "卡片", entry.Uri), "token"));
 	}
 
 	[Fact]

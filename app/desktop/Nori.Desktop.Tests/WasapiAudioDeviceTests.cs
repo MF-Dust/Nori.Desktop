@@ -155,6 +155,66 @@ public sealed class WasapiAudioDeviceTests
 	[Theory]
 	[InlineData(true)]
 	[InlineData(false)]
+	public async Task 写入阻塞时可跨线程更新音量且当前缓冲使用新值(bool floatFormat)
+	{
+		using FakeClient client = new();
+		using ManualResetEventSlim release = new(false);
+		TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		WasapiAudioDevice device = Device(client, floatFormat);
+		client.BufferEntered = () =>
+		{
+			entered.TrySetResult();
+			Assert.True(release.Wait(TimeSpan.FromSeconds(5)), "未放行音量测试缓冲");
+		};
+		Task<int> writing = Task.Run(() => device.Write(new float[] {0.5f}, CancellationToken.None));
+		try
+		{
+			await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+			// 音频线程仍持有设备锁；音量写入必须独立完成。
+			await Task.Run(() => device.Volume = 0.25).WaitAsync(TimeSpan.FromSeconds(3));
+			release.Set();
+			Assert.Equal(1, await writing.WaitAsync(TimeSpan.FromSeconds(3)));
+			if (floatFormat)
+			{
+				float[] samples = new float[1];
+				Marshal.Copy(client.Buffer, samples, 0, samples.Length);
+				Assert.Equal(0.125f, samples[0]);
+			}
+			else Assert.Equal((short) 4096, Marshal.ReadInt16(client.Buffer));
+		}
+		finally
+		{
+			release.Set();
+			await writing.WaitAsync(TimeSpan.FromSeconds(3));
+			DisposeDevice(device);
+		}
+	}
+
+	[Theory]
+	[InlineData(double.NaN)]
+	[InlineData(double.PositiveInfinity)]
+	[InlineData(double.NegativeInfinity)]
+	public void 非有限音量不会污染已有音量(double volume)
+	{
+		using WasapiAudioDevice device = new();
+		device.Volume = 0.5;
+		Assert.Throws<ArgumentOutOfRangeException>(() => device.Volume = volume);
+		Assert.Equal(0.5, device.Volume);
+	}
+
+	[Theory]
+	[InlineData(-1, 0)]
+	[InlineData(2, 1)]
+	public void 设备音量限制在有效范围(double requested, double expected)
+	{
+		using WasapiAudioDevice device = new();
+		device.Volume = requested;
+		Assert.Equal(expected, device.Volume);
+	}
+
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
 	public async Task 停止打断缓冲已满的写入或排空(bool drain)
 	{
 		using FakeClient client = new();

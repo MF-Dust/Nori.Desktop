@@ -221,7 +221,7 @@ internal sealed class PluginWidgetHost : StackPanel
 					if (args.IsSuccess) scripts.MarkReady();
 					else Fail(new InvalidOperationException("插件卡片导航失败"));
 				};
-				webView.WebMessageReceived += (_, args) =>
+				webView.WebMessageReceived += (sender, args) =>
 				{
 					if (token.IsCancellationRequested) return;
 					if (args.Body == $"widget-loaded:{bridge.TransportToken}") { _timeout.Stop(); return; }

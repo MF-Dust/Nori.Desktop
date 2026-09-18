@@ -91,6 +91,18 @@ describe("PluginWidgets.vue", () => {
 		expect(reply).not.toHaveBeenCalled()
 	})
 
+	it("窗口身份检查后 contentWindow 为空时忽略消息", async () => {
+		const container = await mountWidgets()
+		const frame = container.querySelector("iframe")!
+		const source = frame.contentWindow!
+		const readWindow = vi.spyOn(frame, "contentWindow", "get")
+		readWindow.mockReturnValueOnce(source).mockReturnValueOnce(null)
+		await send(source, action())
+		expect(invokeMock).toHaveBeenCalledTimes(1)
+		expect(errorMock).not.toHaveBeenCalled()
+		readWindow.mockRestore()
+	})
+
 	it("拒绝跨插件冒用并提供可读错误", async () => {
 		const container = await mountWidgets()
 		const frame = container.querySelector("iframe")!
@@ -143,6 +155,53 @@ describe("PluginWidgets.vue", () => {
 		await Promise.resolve()
 		expect(invokeMock).toHaveBeenCalledTimes(2)
 		expect(reply).not.toHaveBeenCalled()
+	})
+
+	it.each([false, true])("卡片再次加载后撤销动作和未完成回包，失败状态 %s", async failed => {
+		const container = await mountWidgets()
+		const frame = container.querySelector("iframe")!
+		const source = frame.contentWindow!
+		const reply = vi.spyOn(source, "postMessage")
+		frame.dispatchEvent(new Event("load"))
+		let complete!: (value: Record<string, unknown>) => void
+		let reject!: (error: Error) => void
+		invokeMock.mockReturnValueOnce(new Promise((resolve, rejectPromise) => {
+			complete = resolve
+			reject = rejectPromise
+		}))
+		await send(source, action())
+		frame.dispatchEvent(new Event("load"))
+		if (failed) reject(new Error("旧文档动作失败"))
+		else complete({secret: "old-result"})
+		await Promise.resolve()
+		await Promise.resolve()
+		await send(source, action({requestId: 2}))
+		expect(invokeMock).toHaveBeenCalledTimes(2)
+		expect(reply).not.toHaveBeenCalled()
+		expect(errorMock).not.toHaveBeenCalled()
+
+		// 列表未变时的 Vue 重渲染不能让已导航的窗口重新获得权限。
+		invokeMock.mockResolvedValueOnce({widgets: WIDGETS})
+		await vi.advanceTimersByTimeAsync(10_000)
+		await nextTick()
+		await send(source, action({requestId: 3}))
+		expect(invokeMock).toHaveBeenCalledTimes(3)
+		expect(reply).not.toHaveBeenCalled()
+	})
+
+	it("首次加载前的 SDK 动作在首次加载后仍可完成", async () => {
+		const container = await mountWidgets()
+		const frame = container.querySelector("iframe")!
+		const source = frame.contentWindow!
+		const reply = vi.spyOn(source, "postMessage")
+		let complete!: (value: Record<string, unknown>) => void
+		invokeMock.mockReturnValueOnce(new Promise(resolve => { complete = resolve }))
+		await send(source, action())
+		frame.dispatchEvent(new Event("load"))
+		complete({ok: true})
+		await Promise.resolve()
+		await Promise.resolve()
+		expect(reply).toHaveBeenCalledWith(expect.objectContaining({result: {ok: true}}), "*")
 	})
 
 	it("插件列表撤销与入口替换后旧窗口无权调用", async () => {

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
@@ -88,14 +89,21 @@ internal static class WasapiNativeApi
 	}
 
 	[StructLayout(LayoutKind.Sequential, Pack = 4)]
-	internal struct PropertyKey(Guid formatId, uint propertyId)
+	internal struct PropertyKey(Guid formatId, uint propertyId) : IEquatable<PropertyKey>
 	{
 		internal Guid FormatId = formatId;
 		internal uint PropertyId = propertyId;
+
+		public readonly bool Equals(PropertyKey other) => FormatId == other.FormatId && PropertyId == other.PropertyId;
+		public override readonly bool Equals(object? obj) => obj is PropertyKey other && Equals(other);
+		public override readonly int GetHashCode() => HashCode.Combine(FormatId, PropertyId);
+		public static bool operator ==(PropertyKey left, PropertyKey right) => left.Equals(right);
+		public static bool operator !=(PropertyKey left, PropertyKey right) => !left.Equals(right);
 	}
 
 	/// <summary>只取字符串那一种，所以按 VT_LPWSTR 的布局手写。</summary>
 	[StructLayout(LayoutKind.Sequential)]
+	[SuppressMessage("CodeQuality", "S3898", Justification = "原生联合体持有待释放的内存；指针或保留位相同不代表值相等，也不能复制所有权。")]
 	internal struct PropVariant
 	{
 		internal ushort VarType;
@@ -115,21 +123,34 @@ internal static class WasapiNativeApi
 	[DllImport("ole32.dll", PreserveSig = false)]
 	internal static extern void PropVariantClear(ref PropVariant value);
 
+	internal const ushort VtLpwstr = 31;
+
+	/// <summary>仅解释字符串变体；其他标签的联合体不能当作字符串指针解引用。</summary>
+	internal static string ReadString(in PropVariant value) =>
+		value.VarType == VtLpwstr && value.Value != IntPtr.Zero ? Marshal.PtrToStringUni(value.Value) ?? "" : "";
+
 	/// <summary>取设备的可读名字。取不到就返回空 —— 名字只是给日志和界面看的。</summary>
 	internal static string FriendlyName(IMmDevice device)
 	{
 		try
 		{
 			device.OpenPropertyStore(StorageRead, out IPropertyStore store);
-			PropertyKey key = FriendlyNameKey;
-			store.GetValue(ref key, out PropVariant value);
 			try
 			{
-				return value.Value == IntPtr.Zero ? "" : Marshal.PtrToStringUni(value.Value) ?? "";
+				PropertyKey key = FriendlyNameKey;
+				store.GetValue(ref key, out PropVariant value);
+				try
+				{
+					return ReadString(in value);
+				}
+				finally
+				{
+					PropVariantClear(ref value);
+				}
 			}
 			finally
 			{
-				PropVariantClear(ref value);
+				Marshal.ReleaseComObject(store);
 			}
 		}
 		catch
@@ -194,7 +215,7 @@ internal static class WasapiNativeApi
 	/// 去 SubFormat 里取真正的格式。
 	/// </summary>
 	[StructLayout(LayoutKind.Sequential, Pack = 1)]
-	internal struct WaveFormatEx
+	internal struct WaveFormatEx : IEquatable<WaveFormatEx>
 	{
 		internal ushort FormatTag;
 		internal ushort Channels;
@@ -203,6 +224,18 @@ internal static class WasapiNativeApi
 		internal ushort BlockAlign;
 		internal ushort BitsPerSample;
 		internal ushort ExtraSize;
+
+		public readonly bool Equals(WaveFormatEx other) =>
+			FormatTag == other.FormatTag && Channels == other.Channels &&
+			SamplesPerSecond == other.SamplesPerSecond && AverageBytesPerSecond == other.AverageBytesPerSecond &&
+			BlockAlign == other.BlockAlign && BitsPerSample == other.BitsPerSample && ExtraSize == other.ExtraSize;
+
+		public override readonly bool Equals(object? obj) => obj is WaveFormatEx other && Equals(other);
+		public override readonly int GetHashCode() =>
+			HashCode.Combine(FormatTag, Channels, SamplesPerSecond, AverageBytesPerSecond, BlockAlign, BitsPerSample, ExtraSize);
+
+		public static bool operator ==(WaveFormatEx left, WaveFormatEx right) => left.Equals(right);
+		public static bool operator !=(WaveFormatEx left, WaveFormatEx right) => !left.Equals(right);
 	}
 
 	/// <summary>WAVEFORMATEXTENSIBLE 里 SubFormat 相对结构体起点的偏移。</summary>

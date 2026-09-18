@@ -73,7 +73,7 @@ public sealed class InitWindow : Window
 
 		// **推到下一帧再起跑。** 在 Opened 处理器里同步走完「进主界面」会连带
 		// Hide 掉自己，而那时窗口还在完成显示流程，屏幕上会留下一个不重绘的空壳。
-		PropertyChanged += (_, args) =>
+		PropertyChanged += (sender, args) =>
 		{
 			if (args.Property != IsVisibleProperty) return;
 			// 首次运行路径下这个窗口是隐藏启动的，向导完成后宿主 Show 它 —— 变可见

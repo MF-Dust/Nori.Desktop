@@ -13,19 +13,26 @@ import {ListPluginWidgets, PluginWidgetBridge, type PluginWidgetInfo} from "../.
 import Icon from "../Icon.vue"
 
 const widgets = ref<PluginWidgetInfo[]>([])
-const BRIDGE = new PluginWidgetBridge((message, error) => feedback.error(message, error))
+const BRIDGE = new PluginWidgetBridge((message, error) => {
+	feedback.error(message, error)
+})
 let disposed = false
 let refreshing = false
 let refreshFailed = false
 const expanded = ref(new Set<string>())
 const knownIds = new Set<string>()
 
+/** 每次读取当前生命周期，await 期间组件可能已经卸载。 */
+function isDisposed(): boolean {
+	return disposed
+}
+
 async function refresh(): Promise<void> {
-	if (disposed || refreshing) return
+	if (isDisposed() || refreshing) return
 	refreshing = true
 	try {
 		const list = await ListPluginWidgets()
-		if (disposed) return
+		if (isDisposed()) return
 		refreshFailed = false
 		BRIDGE.Retain(list)
 		widgets.value = list
@@ -41,7 +48,7 @@ async function refresh(): Promise<void> {
 		}
 		if (expandedChanged) expanded.value = next
 	} catch (error) {
-		if (disposed) return
+		if (isDisposed()) return
 		BRIDGE.Clear()
 		widgets.value = []
 		if (!refreshFailed) feedback.error("加载插件卡片失败", error)

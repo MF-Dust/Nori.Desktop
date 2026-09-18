@@ -53,6 +53,8 @@ import type {PluginInfo, PluginInstallResult, PluginUninstallResult} from "../pl
 
 export type CommandArgs = JsonObject
 export type EmptyCommandArgs = undefined
+/** 无业务结果的宿主命令保持 Promise<void>，不宣称宿主返回 undefined。 */
+type EmptyCommandResult = ReturnType<() => void>
 
 /** `settings_update_workspace` 的返回：写入后的工作目录状态。 */
 export interface WorkspaceSettingsResult {
@@ -83,53 +85,53 @@ export type WorkspacePickResult = {root: string} | null
 /** 前端实际使用的宿主命令契约。C# 仍会再次校验参数和来源窗口。 */
 export interface BridgeCommandMap {
 	ui_get_snapshot: {args: EmptyCommandArgs; result: UiSnapshot}
-	write_log: {args: {level: "info" | "warn" | "error" | "debug"; message: string}; result: void}
+	write_log: {args: {level: "info" | "warn" | "error" | "debug"; message: string}; result: EmptyCommandResult}
 	get_recent_logs: {args: EmptyCommandArgs; result: {time: string; level: string; source: string; message: string}[]}
-	clear_recent_logs: {args: EmptyCommandArgs; result: void}
+	clear_recent_logs: {args: EmptyCommandArgs; result: EmptyCommandResult}
 	get_diagnostic_info: {args: EmptyCommandArgs; result: Record<string, string>}
 	export_diagnostics: {args: EmptyCommandArgs; result: {fileName: string; bytes: number; skipped: string[]} | null}
-	open_log_folder: {args: EmptyCommandArgs; result: void}
+	open_log_folder: {args: EmptyCommandArgs; result: EmptyCommandResult}
 	run_gc_collect: {args: EmptyCommandArgs; result: {released_bytes: number}}
-	debug_crash_test: {args: {mode: string}; result: void}
+	debug_crash_test: {args: {mode: string}; result: EmptyCommandResult}
 	get_system_language: {args: EmptyCommandArgs; result: string}
-	exit_app: {args: EmptyCommandArgs; result: void}
-	clipboard_write_text: {args: {text: string}; result: void}
-	open_url: {args: {url: string}; result: void}
-	window_open_settings: {args: {page?: string}; result: void}
-	window_open_memory: {args: {page?: MemoryPage}; result: void}
-	window_open_models: {args: EmptyCommandArgs; result: void}
-	window_open_chat: {args: EmptyCommandArgs; result: void}
+	exit_app: {args: EmptyCommandArgs; result: EmptyCommandResult}
+	clipboard_write_text: {args: {text: string}; result: EmptyCommandResult}
+	open_url: {args: {url: string}; result: EmptyCommandResult}
+	window_open_settings: {args: {page?: string}; result: EmptyCommandResult}
+	window_open_memory: {args: {page?: MemoryPage}; result: EmptyCommandResult}
+	window_open_models: {args: EmptyCommandArgs; result: EmptyCommandResult}
+	window_open_chat: {args: EmptyCommandArgs; result: EmptyCommandResult}
 
 	updater_check: {args: EmptyCommandArgs; result: UpdaterCheckResultDto}
 	updater_install: {args: EmptyCommandArgs; result: UpdaterInstallResultDto}
 	updater_cancel: {args: EmptyCommandArgs; result: boolean}
-	updater_restart: {args: EmptyCommandArgs; result: void}
+	updater_restart: {args: EmptyCommandArgs; result: EmptyCommandResult}
 
 	llm_fetch_models: {args: {provider: string; baseUrl: string; apiKey: string}; result: string[]}
 	llm_test_connection: {args: {provider: string; baseUrl: string; apiKey: string; model: string}; result: ProviderConnectionTestResult}
 	embedding_test_connection: {args: {baseUrl: string; apiKey: string; model: string; dimensions?: string}; result: ProviderConnectionTestResult}
 	ai_test_connection: {args: {target: "chat" | "embedding"; provider?: string; baseUrl?: string; apiKey?: string; model?: string; dimensions?: string}; result: ProviderConnectionTestResult}
-	settings_update_ai: {args: Partial<{provider: string; baseUrl: string; apiKey: string; model: string; persona: string}>; result: void}
-	settings_update_embedding: {args: Partial<{model: string; baseUrl: string; apiKey: string; dimensions: string}>; result: void}
+	settings_update_ai: {args: Partial<{provider: string; baseUrl: string; apiKey: string; model: string; persona: string}>; result: EmptyCommandResult}
+	settings_update_embedding: {args: Partial<{model: string; baseUrl: string; apiKey: string; dimensions: string}>; result: EmptyCommandResult}
 	settings_update_ai_providers: {args: {
 		chat?: Partial<{provider: string; baseUrl: string; apiKey: string; model: string}>
 		embedding?: Partial<{model: string; baseUrl: string; apiKey: string; dimensions: string}>
 		persona?: string
-	}; result: void}
+	}; result: EmptyCommandResult}
 	settings_test_ai: {args: SettingsTestAiArgs; result: SettingsTestAiResult}
 	settings_test_embedding: {args: EmbeddingConnectionTestArgs; result: ProviderConnectionTestResult}
-	settings_update_voice: {args: CommandArgs; result: void}
-	settings_update_general: {args: CommandArgs; result: void}
-	settings_update_proactive: {args: CommandArgs; result: void}
+	settings_update_voice: {args: CommandArgs; result: EmptyCommandResult}
+	settings_update_general: {args: CommandArgs; result: EmptyCommandResult}
+	settings_update_proactive: {args: CommandArgs; result: EmptyCommandResult}
 	settings_update_workspace: {args: Partial<{root: string; maxToolIterations: number}>; result: WorkspaceSettingsResult}
 	settings_pick_workspace: {args: EmptyCommandArgs; result: WorkspacePickResult}
 	settings_update_tasks: {args: {tasks: WorkspaceTaskDto[]}; result: WorkspaceTasksResult}
-	settings_update_screen: {args: {enabled: boolean}; result: void}
+	settings_update_screen: {args: {enabled: boolean}; result: EmptyCommandResult}
 	/** 待决授权是否同时发系统通知。关掉时宿主会顺带清掉开始菜单快捷方式与注册表项。 */
-	settings_update_notifications: {args: {enabled: boolean}; result: void}
+	settings_update_notifications: {args: {enabled: boolean}; result: EmptyCommandResult}
 	/** 授权档位。四个值都要写在类型里 —— 拼错的档位宿主会抛错，不会静默改成别的。 */
-	settings_update_permission: {args: {gear: "ask" | "session" | "trusted" | "bypass"}; result: void}
-	settings_update_expression: {args: {channel: string; enabled: boolean}; result: void}
+	settings_update_permission: {args: {gear: "ask" | "session" | "trusted" | "bypass"}; result: EmptyCommandResult}
+	settings_update_expression: {args: {channel: string; enabled: boolean}; result: EmptyCommandResult}
 	settings_update_automation: {args: Partial<{enabled: boolean; desktopEnabled: boolean; browserEnabled: boolean}>; result: AutomationSettingsDto}
 	automation_get_snapshot: {args: EmptyCommandArgs; result: UiSnapshot["automation"]}
 	automation_update_settings: {args: Partial<{enabled: boolean; allowPointer: boolean; allowKeyboard: boolean; allowScroll: boolean; browserEnabled: boolean}>; result: AutomationSettingsDto}
@@ -146,7 +148,7 @@ export interface BridgeCommandMap {
 	automation_stop_task: {args: {taskId: string}; result: boolean}
 	automation_stop_all: {args: EmptyCommandArgs; result: number}
 	automation_audit_list: {args: {limit?: number}; result: AutomationAuditRecordDto[]}
-	settings_ack_voice_notice: {args: EmptyCommandArgs; result: void}
+	settings_ack_voice_notice: {args: EmptyCommandArgs; result: EmptyCommandResult}
 
 	chat_start: {args: {text: string}; result: string}
 	chat_cancel: {args: {sessionId: string}; result: boolean}
@@ -155,24 +157,24 @@ export interface BridgeCommandMap {
 	chat_history_page: {args: {limit?: number; beforeId?: number}; result: HistoryMessage[]}
 	chat_clear: {args: EmptyCommandArgs; result: {remoteReset: boolean; note: string | null}}
 
-	model_select: {args: {modelId: string}; result: void}
-	complete_first_run: {args: {modelId: string; telemetryEnabled: boolean}; result: void}
-	init_enter_main: {args: EmptyCommandArgs; result: void}
+	model_select: {args: {modelId: string}; result: EmptyCommandResult}
+	complete_first_run: {args: {modelId: string; telemetryEnabled: boolean}; result: EmptyCommandResult}
+	init_enter_main: {args: EmptyCommandArgs; result: EmptyCommandResult}
 	get_init_config: {args: EmptyCommandArgs; result: CommandArgs}
 	init_ready: {args: EmptyCommandArgs; result: {initStartPending: boolean}}
 	model_import_local: {args: {resourceType: "live2d"; sourceKind: "zip" | "folder"}; result: string[] | null}
 	indextts_pick_template: {args: EmptyCommandArgs; result: string | null}
 	indextts_clone_voice: {args: {filePath?: string}; result: {voiceId: string}}
 	model_get_meta: {args: {modelId: string}; result: ModelMeta}
-	model_set_display: {args: {modelId: string} & CommandArgs; result: void}
-	model_set_interactions: {args: {modelId: string; interactions: InteractionConfig}; result: void}
-	model_set_behavior: {args: CommandArgs; result: void}
+	model_set_display: {args: {modelId: string} & CommandArgs; result: EmptyCommandResult}
+	model_set_interactions: {args: {modelId: string; interactions: InteractionConfig}; result: EmptyCommandResult}
+	model_set_behavior: {args: CommandArgs; result: EmptyCommandResult}
 	model_list: {args: EmptyCommandArgs; result: UiSnapshot}
 	pet_play_motion: {args: {name?: string}; result: boolean}
-	pet_reload_model: {args: {modelId?: string}; result: void}
+	pet_reload_model: {args: {modelId?: string}; result: EmptyCommandResult}
 	pet_get_state: {args: EmptyCommandArgs; result: CommandArgs}
 
-	tools_set_enabled: {args: {name: string; enabled: boolean}; result: void}
+	tools_set_enabled: {args: {name: string; enabled: boolean}; result: EmptyCommandResult}
 	tools_execute_manual: {args: {name: string; arguments?: CommandArgs | null}; result: JsonValue}
 
 	memory_add: {args: MemoryAddArgs; result: MemoryItem}
@@ -181,7 +183,7 @@ export interface BridgeCommandMap {
 	memory_get: {args: {id: number}; result: {item: MemoryItem; atoms: MemoryAtom[]; sources: MemorySource[]}}
 	memory_update: {args: MemoryUpdateArgs; result: boolean}
 	memory_delete: {args: {id: number; confirmToken: string}; result: boolean}
-	memory_clear: {args: {confirmToken: string}; result: void}
+	memory_clear: {args: {confirmToken: string}; result: EmptyCommandResult}
 	memory_archive: {args: {id: number}; result: boolean}
 	memory_restore: {args: {id: number}; result: boolean}
 	memory_overview: {args: EmptyCommandArgs; result: MemoryOverview}
@@ -189,7 +191,7 @@ export interface BridgeCommandMap {
 	memory_search_hybrid: {args: CommandArgs; result: MemoryItem[]}
 	memory_knowledge_status: {args: EmptyCommandArgs; result: MemoryIndexStatus}
 	memory_knowledge_reindex: {args: EmptyCommandArgs; result: MemoryIndexStatus}
-	memory_knowledge_open: {args: EmptyCommandArgs; result: void}
+	memory_knowledge_open: {args: EmptyCommandArgs; result: EmptyCommandResult}
 	memory_recall_debug: {args: {query: string}; result: MemoryRecallDebug}
 	memory_get_settings: {args: EmptyCommandArgs; result: MemorySettings}
 	memory_update_settings: {args: {settings: CommandArgs}; result: MemorySettings}
@@ -200,12 +202,12 @@ export interface BridgeCommandMap {
 
 	skills_marketplace: {args: EmptyCommandArgs; result: SkillMarketplaceDto[]}
 	skills_install_marketplace: {args: {skillId: string}; result: SkillDto}
-	skills_toggle: {args: {id: string; enabled: boolean}; result: void}
+	skills_toggle: {args: {id: string; enabled: boolean}; result: EmptyCommandResult}
 	skills_install_url: {args: {url: string}; result: SkillRecordDto}
 	skills_save_custom: {args: {skill: SkillRecordInput}; result: SkillRecordDto}
-	skills_uninstall: {args: {id: string}; result: void}
+	skills_uninstall: {args: {id: string}; result: EmptyCommandResult}
 	skills_export: {args: {id: string}; result: string}
-	skills_import_json: {args: {json: string}; result: void}
+	skills_import_json: {args: {json: string}; result: EmptyCommandResult}
 
 	mcp_get_servers: {args: EmptyCommandArgs; result: McpServerStatusInfo[]}
 	mcp_save_server: {args: McpServerConfigArgs; result: McpServerStatusInfo}
@@ -234,29 +236,29 @@ export interface BridgeCommandMap {
 	reminder_snooze: {args: ReminderSnoozeArgs; result: ReminderItemDto}
 	reminder_complete: {args: {id: string}; result: boolean}
 	reminder_list: {args: EmptyCommandArgs; result: ReminderItemDto[]}
-	tts_test: {args: {text?: string}; result: void}
-	tts_stop: {args: EmptyCommandArgs; result: void}
-	stt_start: {args: EmptyCommandArgs; result: void}
+	tts_test: {args: {text?: string}; result: EmptyCommandResult}
+	tts_stop: {args: EmptyCommandArgs; result: EmptyCommandResult}
+	stt_start: {args: EmptyCommandArgs; result: EmptyCommandResult}
 	stt_stop: {args: EmptyCommandArgs; result: {text: string}}
 
-	audio_host_ready: {args: EmptyCommandArgs; result: void}
-	audio_playback_finished: {args: {token: string; error?: string}; result: void}
-	audio_level: {args: {level: number}; result: void}
-	audio_record_ready: {args: {token: string}; result: void}
-	audio_record_failed: {args: {token: string; error?: string}; result: void}
-	audio_upload_failed: {args: {token: string; error?: string}; result: void}
+	audio_host_ready: {args: EmptyCommandArgs; result: EmptyCommandResult}
+	audio_playback_finished: {args: {token: string; error?: string}; result: EmptyCommandResult}
+	audio_level: {args: {level: number}; result: EmptyCommandResult}
+	audio_record_ready: {args: {token: string}; result: EmptyCommandResult}
+	audio_record_failed: {args: {token: string; error?: string}; result: EmptyCommandResult}
+	audio_upload_failed: {args: {token: string; error?: string}; result: EmptyCommandResult}
 
-	window_show: {args: {label: string}; result: void}
-	window_hide: {args: {label: string}; result: void}
-	window_close: {args: {label: string}; result: void}
-	window_focus: {args: {label: string}; result: void}
+	window_show: {args: {label: string}; result: EmptyCommandResult}
+	window_hide: {args: {label: string}; result: EmptyCommandResult}
+	window_close: {args: {label: string}; result: EmptyCommandResult}
+	window_focus: {args: {label: string}; result: EmptyCommandResult}
 	window_is_visible: {args: {label: string}; result: boolean}
 	window_scale_factor: {args: {label: string}; result: number}
 	window_outer_position: {args: {label: string}; result: {x: number; y: number}}
 	window_outer_size: {args: {label: string}; result: {width: number; height: number}}
-	window_set_size: {args: {label: string; width: number; height: number}; result: void}
-	window_set_position: {args: {label: string; x: number; y: number}; result: void}
-	window_start_drag: {args: {label: string}; result: void}
+	window_set_size: {args: {label: string; width: number; height: number}; result: EmptyCommandResult}
+	window_set_position: {args: {label: string; x: number; y: number}; result: EmptyCommandResult}
+	window_start_drag: {args: {label: string}; result: EmptyCommandResult}
 }
 
 export type BridgeCommandName = keyof BridgeCommandMap

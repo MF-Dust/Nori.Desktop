@@ -87,6 +87,7 @@ public partial class BridgeCommandsTests
 				case "window": window.Hide(); break;
 				case "remove": host.ApplyWidgets([]); break;
 				case "detach": parent.Children.Remove(host); break;
+				default: throw new ArgumentOutOfRangeException(nameof(closeKind), closeKind, "未知的卡片关闭场景");
 			}
 			Assert.True(token.IsCancellationRequested);
 			Assert.True(scripts.IsClosed);

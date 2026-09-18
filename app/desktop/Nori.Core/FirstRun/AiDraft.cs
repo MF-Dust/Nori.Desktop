@@ -18,7 +18,8 @@ public sealed record AiDraft
 	/// <summary>留空即用该协议的默认地址，与输入框的占位文字一致。</summary>
 	public string BaseUrl { get; init; } = "";
 
-	public string ApiKey { get; init; } = "";
+	/// <summary>用户尚未输入密钥时保持空值，不内置凭据。</summary>
+	public string ApiKey { get; init; } = string.Empty;
 
 	public string Model { get; init; } = "";
 }

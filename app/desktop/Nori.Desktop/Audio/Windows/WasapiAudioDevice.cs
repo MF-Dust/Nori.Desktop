@@ -42,9 +42,19 @@ internal sealed class WasapiAudioDevice : IAudioDevice
 	private volatile bool _stopped;
 	private bool _started;
 	private bool _disposed;
+	private double _volume = 1.0;
 
 	/// <inheritdoc />
-	public double Volume { get; set; } = 1.0;
+	public double Volume
+	{
+		get => Volatile.Read(ref _volume);
+		set
+		{
+			if (!double.IsFinite(value)) throw new ArgumentOutOfRangeException(nameof(value), "音量必须是有限数值");
+			// 写入可能阻塞在设备缓冲；音量更新不等待设备锁，下一批拷贝读取一次快照。
+			Volatile.Write(ref _volume, Math.Clamp(value, 0, 1));
+		}
+	}
 
 	/// <inheritdoc />
 	public AudioFormat Open(int sampleRate, int channels)
@@ -198,7 +208,7 @@ internal sealed class WasapiAudioDevice : IAudioDevice
 	/// <summary>把样本拷进 WASAPI 给的缓冲，顺带乘上音量。</summary>
 	private void CopyInto(IntPtr buffer, ReadOnlySpan<float> samples)
 	{
-		double volume = Math.Clamp(Volume, 0, 1);
+		double volume = Volume;
 		if (_floatFormat)
 		{
 			unsafe

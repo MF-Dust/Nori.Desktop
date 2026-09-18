@@ -35,9 +35,10 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 	/// <inheritdoc />
 	public event Action<double>? VolumeSampled;
 
-	/// <summary>输出音量 0..1，随下一段播放生效。</summary>
+	/// <summary>输出音量 0..1，传递给当前设备，并作为下一段播放的初始值。</summary>
 	public void SetDeviceVolume(double volume)
 	{
+		if (!double.IsFinite(volume)) throw new ArgumentOutOfRangeException(nameof(volume), "音量必须是有限数值。");
 		double clamped = Math.Clamp(volume, 0, 1);
 		lock (_gate)
 		{
@@ -121,12 +122,13 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 		cancellationToken.ThrowIfCancellationRequested();
 		AudioFormat actual = device.Open(pcm.SampleRate, pcm.Channels);
 		cancellationToken.ThrowIfCancellationRequested();
-		(float[] samples, float[] level) = Prepare(pcm, actual);
+		(float[] samples, float[] level) = PcmResampler.Prepare(pcm, actual, cancellationToken);
 
 		int frameWindow = Math.Max(1, actual.SampleRate * PcmLevel.WindowMilliseconds / 1000);
 		double smoothed = 0;
 
-		for (int frame = 0; frame < level.Length && !cancellationToken.IsCancellationRequested;)
+		int frame = 0;
+		while (frame < level.Length && !cancellationToken.IsCancellationRequested)
 		{
 			int take = Math.Min(frameWindow, level.Length - frame);
 
@@ -149,63 +151,6 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 		}
 
 		if (!cancellationToken.IsCancellationRequested) device.Drain(cancellationToken);
-	}
-
-	/// <summary>
-	/// 备好两样东西：写给设备的多声道缓冲，和一条与设备格式无关的单声道电平轨。
-	///
-	/// 两者帧数相同，用同一个帧区间对齐，所以电平天然对应正在播的那一段。
-	///
-	/// 重采样用最近邻。够用的理由：这里处理的是语音不是音乐，而多数声卡固定跑
-	/// 48000、语音合成常给 22050 或 24000，不转就变调。最近邻在语音上的可闻损失
-	/// 很小，换来的是零依赖；真要更好的质量，换成线性插值也只动这一个方法。
-	/// </summary>
-	private static (float[] Samples, float[] Level) Prepare(PcmAudio source, AudioFormat target)
-	{
-		int sourceFrames = source.FrameCount;
-		if (sourceFrames == 0) return ([], []);
-
-		long targetFrames = (long) sourceFrames * target.SampleRate / Math.Max(1, source.SampleRate);
-		float[] samples = new float[targetFrames * target.Channels];
-		float[] level = new float[targetFrames];
-
-		for (long frame = 0; frame < targetFrames; frame++)
-		{
-			long sourceFrame = frame * source.SampleRate / Math.Max(1, target.SampleRate);
-			if (sourceFrame >= sourceFrames) sourceFrame = sourceFrames - 1;
-
-			// 电平轨按源声道下混。口型只有一张嘴，不分左右。
-			double sum = 0;
-			for (int channel = 0; channel < source.Channels; channel++)
-				sum += source.Samples[sourceFrame * source.Channels + channel];
-			level[frame] = (float) (sum / source.Channels);
-
-			for (int channel = 0; channel < target.Channels; channel++)
-			{
-				int sourceChannel = MapChannel(channel, source.Channels, target.Channels);
-				samples[frame * target.Channels + channel] = sourceChannel < 0
-					? 0
-					: source.Samples[sourceFrame * source.Channels + sourceChannel];
-			}
-		}
-		return (samples, level);
-	}
-
-	/// <summary>
-	/// 目标的第 n 个声道该取源的哪一个；返回 −1 表示这个声道留空。
-	///
-	/// **只铺前两个声道（前置左右），其余留空。** 实测这台机器的默认输出是
-	/// 48000 Hz / **8 声道**（环绕配置），早先那版「源声道不够就重复最后一个」
-	/// 会把语音同时送进重低音和环绕音箱 —— 低频被 LFE 轰一遍，后方也在说话。
-	/// 多数播放器对单声道/立体声素材的做法就是只占前置，这里跟它一致。
-	///
-	/// 单声道进立体声要复制到两边，否则只有左边有声音。
-	/// </summary>
-	private static int MapChannel(int targetChannel, int sourceChannels, int targetChannels)
-	{
-		if (sourceChannels >= targetChannels) return targetChannel;          // 够用就一一对应
-		if (targetChannel >= 2) return -1;                                   // 前两个之外留空
-		return sourceChannels == 1 ? 0 : targetChannel;                      // 单声道复制到左右
 	}
 
 	/// <inheritdoc />

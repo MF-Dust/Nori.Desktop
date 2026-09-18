@@ -584,6 +584,23 @@ public sealed class NativeAudioPlaybackTests
 
 	// ── 音量 ───────────────────────────────────────────────────────────────
 
+	[Theory]
+	[InlineData(double.NaN)]
+	[InlineData(double.PositiveInfinity)]
+	[InlineData(double.NegativeInfinity)]
+	public async Task 非有限音量不会污染下次播放(double volume)
+	{
+		FakeDevice device = new();
+		using NativeAudioPlayback playback = Playback(device, Tone(frames: 50));
+		playback.SetDeviceVolume(0.3);
+
+		Assert.Throws<ArgumentOutOfRangeException>(() => playback.SetDeviceVolume(volume));
+		await playback.PlayAsync(Bytes(), CancellationToken.None);
+
+		Assert.Equal(0.3, device.Volume);
+		Assert.NotEmpty(device.Written);
+	}
+
 	[Fact]
 	public async Task 音量透传给设备并夹在零到一()
 	{

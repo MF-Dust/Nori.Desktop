@@ -11,6 +11,7 @@ using Nori.Core.Logging;
 using Nori.Core.Resources;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
+using Nori.Desktop.Runtime;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Main;
@@ -18,8 +19,8 @@ namespace Nori.Desktop.Main;
 /// <summary>
 /// 主界面的首页。
 ///
-/// 内容与 Vue 版一致：出事的横幅在最上面、伴侣状态与两个操作、三块运行概况、
-/// 几个去别处的入口。顺序不是随手排的 —— 需要用户处理的东西（模型没装、安全模式）
+/// 内容与 Vue 版一致：出事的横幅在最上面、伴侣状态与两个操作、四块运行概况、
+/// 快捷入口、按需插件卡片与社区。顺序不是随手排的 —— 需要用户处理的东西（模型没装、安全模式）
 /// 必须排在她的近况之前，否则用户会先看一眼状态就关窗。
 /// </summary>
 public sealed class HomeView : Panel
@@ -27,18 +28,70 @@ public sealed class HomeView : Panel
 	private readonly AppServices _services;
 	private readonly Action _onChanged;
 	private readonly StackPanel _body = new() {Spacing = 16};
+	private readonly PluginWidgetHost _widgets;
+	private readonly TextBlock _communityTitle = new() {FontSize = 13, FontWeight = FontWeight.SemiBold, Foreground = ChatPalette.Muted};
+	private readonly TextBlock _communityError = new() {FontSize = 12, Foreground = ChatPalette.Danger, TextWrapping = TextWrapping.Wrap, IsVisible = false};
+	private readonly Button _qq;
+	private readonly Button _bilibili;
+	private TextBlock _mcpValue = TileValue("—");
+	private int? _mcpCount;
+	private bool _readingMcp;
+	private bool _english;
+	private DateTimeOffset _qqCopiedUntil;
 
 	public HomeView(AppServices services, Action onChanged)
 	{
 		_services = services;
 		_onChanged = onChanged;
-		Children.Add(_body);
+		_widgets = new PluginWidgetHost(services);
+		_qq = Secondary("QQ", () => _ = CopyQqAsync());
+		_qq.Name = "CommunityQq";
+		_bilibili = CommunityLink("Bilibili", "https://space.bilibili.com/326505494");
+		Children.Add(new StackPanel
+		{
+			Spacing = 16,
+			Children =
+			{
+				_body,
+				_widgets,
+				new StackPanel
+				{
+					Spacing = 10,
+					Children =
+					{
+						_communityTitle,
+						new WrapPanel
+						{
+							Children =
+							{
+								CommunityLink("Steam", "https://store.steampowered.com/app/4996280/I_NORI/"),
+								CommunityLink("NoriOS", "https://os.inori.ai/landing"),
+								_qq,
+								_bilibili,
+								CommunityLink("GitHub", "https://github.com/MF-Dust/Nori-Desktop-Pet"),
+							},
+						},
+						_communityError,
+					},
+				},
+			},
+		});
 	}
 
-	/// <summary>整幅重画。这一页很轻，重建比维护一堆通知源便宜。</summary>
+	/// <summary>重画原生概况；插件入口和社区反馈常驻，不重建已展开的卡片。</summary>
 	public void Refresh(bool english)
 	{
+		_english = english;
+		_communityTitle.Text = english ? "Community" : "生态社区";
+		_qq.Content = DateTimeOffset.UtcNow < _qqCopiedUntil
+			? english ? "Copied" : "已复制"
+			: english ? "QQ group" : "QQ 交流群";
+		_bilibili.Content = english ? "Bilibili" : "哔哩哔哩";
+		_widgets.Refresh(english);
 		_body.Children.Clear();
+		_mcpValue = TileValue(_mcpCount?.ToString() ?? "—");
+		_mcpValue.Name = "McpServersCount";
+		if (!_readingMcp) _ = RefreshMcpCountAsync();
 
 		string modelId = _services.Config.GetStringOr(ConfigStore.KeySelectedModel, ConfigStore.DefaultModel);
 		bool modelReady = IsInstalled(modelId);
@@ -75,9 +128,10 @@ public sealed class HomeView : Panel
 		{
 			Children =
 			{
-				Tile(english ? "Model provider" : "模型服务", ProviderState(english), ProviderDetail()),
-				Tile(english ? "Skills on" : "启用技能", SkillCount().ToString(), english ? "Toggle them in Settings" : "可在技能设置中开关"),
-				Tile(english ? "Tools" : "可用工具", ToolCount().ToString(), english ? "Built-in plus MCP" : "含内置工具与 MCP 工具"),
+				Tile(english ? "Model provider" : "模型服务", TileValue(ProviderState(english)), ProviderDetail()),
+				Tile(english ? "Skills on" : "启用技能", TileValue(SkillCount().ToString()), english ? "Toggle them in Settings" : "可在技能设置中开关"),
+				Tile(english ? "Tools" : "可用工具", TileValue(ToolCount().ToString()), english ? "Built-in plus MCP" : "含内置工具与 MCP 工具"),
+				Tile(english ? "MCP servers" : "MCP 服务", _mcpValue, english ? "Configured servers" : "已配置的外部服务"),
 			},
 		});
 
@@ -179,7 +233,12 @@ public sealed class HomeView : Panel
 		Foreground = ChatPalette.Muted, Margin = new Thickness(2, 6, 0, 0),
 	};
 
-	private static Control Tile(string label, string value, string note) => new Border
+	private static TextBlock TileValue(string value) => new()
+	{
+		Text = value, FontSize = 20, FontWeight = FontWeight.SemiBold, Foreground = ChatPalette.Accent,
+	};
+
+	private static Control Tile(string label, TextBlock value, string note) => new Border
 	{
 		Width = 208,
 		Margin = new Thickness(0, 0, 12, 12),
@@ -192,11 +251,7 @@ public sealed class HomeView : Panel
 			Children =
 			{
 				new TextBlock {Text = label, FontSize = 11, Foreground = ChatPalette.Faint},
-				new TextBlock
-				{
-					Text = value, FontSize = 20, FontWeight = FontWeight.SemiBold,
-					Foreground = ChatPalette.Accent,
-				},
+				value,
 				new TextBlock
 				{
 					Text = note, FontSize = 11, Foreground = ChatPalette.Faint,
@@ -298,7 +353,67 @@ public sealed class HomeView : Panel
 		return button;
 	}
 
+	private Button CommunityLink(string title, string url)
+	{
+		Button button = Secondary(title, () => _ = OpenCommunityAsync(url));
+		button.Tag = url;
+		button.Margin = new Thickness(0, 0, 8, 8);
+		return button;
+	}
+
+	private async Task OpenCommunityAsync(string url)
+	{
+		try
+		{
+			await Task.Run(() => ShellOpen.OpenUrl(url), _services.ShutdownToken);
+			_communityError.IsVisible = false;
+		}
+		catch (Exception failure)
+		{
+			_communityError.Text = _english ? "Could not open the link. Please try again." : "打开链接失败，请稍后重试。";
+			_communityError.IsVisible = true;
+			_services.Logger.Write(LogSource.Backend, "warn", $"打开社区链接失败：{failure.GetType().Name}");
+		}
+	}
+
+	private async Task CopyQqAsync()
+	{
+		try
+		{
+			Avalonia.Input.Platform.IClipboard clipboard = TopLevel.GetTopLevel(this)?.Clipboard
+				?? throw new InvalidOperationException("当前窗口无法访问剪贴板");
+			await clipboard.SetTextAsync("1041616195");
+			_qqCopiedUntil = DateTimeOffset.UtcNow.AddSeconds(2);
+			_qq.Content = _english ? "Copied" : "已复制";
+			_communityError.IsVisible = false;
+		}
+		catch (Exception failure)
+		{
+			_communityError.Text = _english ? "Could not copy the QQ group number." : "复制 QQ 群号失败，请重试。";
+			_communityError.IsVisible = true;
+			_services.Logger.Write(LogSource.Backend, "warn", $"复制 QQ 群号失败：{failure.GetType().Name}");
+		}
+	}
+
 	// ── 数据 ───────────────────────────────────────────────────────────────
+
+	private async Task RefreshMcpCountAsync()
+	{
+		_readingMcp = true;
+		try
+		{
+			// 与 Web 首页一致，统计已配置服务器；SQLite 读取不占用 UI 线程。
+			_mcpCount = await Task.Run(() => _services.Mcp.GetServerConfigs().Count, _services.ShutdownToken);
+			_mcpValue.Text = _mcpCount.ToString();
+		}
+		catch (Exception failure)
+		{
+			_mcpCount = null;
+			_mcpValue.Text = "—";
+			_services.Logger.Write(LogSource.Backend, "warn", $"读取首页 MCP 统计失败：{failure.GetType().Name}");
+		}
+		finally { _readingMcp = false; }
+	}
 
 	private bool IsInstalled(string modelId)
 	{

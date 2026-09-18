@@ -125,6 +125,8 @@ export interface BridgeCommandMap {
 	settings_pick_workspace: {args: EmptyCommandArgs; result: WorkspacePickResult}
 	settings_update_tasks: {args: {tasks: WorkspaceTaskDto[]}; result: WorkspaceTasksResult}
 	settings_update_screen: {args: {enabled: boolean}; result: void}
+	/** 待决授权是否同时发系统通知。关掉时宿主会顺带清掉开始菜单快捷方式与注册表项。 */
+	settings_update_notifications: {args: {enabled: boolean}; result: void}
 	/** 授权档位。四个值都要写在类型里 —— 拼错的档位宿主会抛错，不会静默改成别的。 */
 	settings_update_permission: {args: {gear: "ask" | "session" | "trusted" | "bypass"}; result: void}
 	settings_update_expression: {args: {channel: string; enabled: boolean}; result: void}

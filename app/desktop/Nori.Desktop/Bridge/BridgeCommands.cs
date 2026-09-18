@@ -282,6 +282,19 @@ public sealed class BridgeCommands
 		/// </summary>
 		"settings_update_permission" => RequireMain(source, () => Run(() => UpdatePermissionGear(args))),
 
+		/// <summary>
+		/// 开关「待决授权也发系统通知」。
+		/// 前端调用：invoke("settings_update_notifications", {enabled: boolean})
+		/// </summary>
+		"settings_update_notifications" => RequireMain(source, () => Run(() =>
+		{
+			UpdateBoolConfig(args, "enabled", ConfigStore.KeyToastApprovals);
+			// 关掉时要把开始菜单快捷方式和注册表项清掉 —— 用户关的是「别在我机器上留东西」，
+			// 只停止发送等于留了一半。
+			Runtime.SyncNotificationRegistration();
+			Runtime.InvalidateSnapshot("workspace");
+		})),
+
 		"settings_update_screen" => RequireMain(source, () => Run(() =>
 		{
 			UpdateBoolConfig(args, "enabled", ConfigStore.KeyScreenReadingEnabled);
@@ -1845,16 +1858,11 @@ public sealed class BridgeCommands
 		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
 		if (!visible) throw new InvalidOperationException("初始化窗口不可见");
 
-		string? modelId = SupportedModelIds.Normalize(_services.Config.GetStringOr(ConfigStore.KeySelectedModel, ""));
-		bool modelValid = modelId is not null && IsKnownInstalledModel(modelId);
-		bool autoSummon = _services.Config.GetBoolOr("pet_auto_summon", true);
 		cancellationToken.ThrowIfCancellationRequested();
+		// 判定与切换都在 Runtime 上：原生初始化窗口走同一条路，两处各写一份会漂。
 		await OnUi(() =>
 		{
-			_services.Windows.Show(WindowLabels.Main);
-			if (modelValid && autoSummon && !_services.SafeMode) _services.Windows.Show(WindowLabels.Pet);
-			else _services.Windows.Hide(WindowLabels.Pet);
-			_services.Windows.Hide(WindowLabels.Init);
+			Runtime.EnterMainFromInit();
 			return (object?)null;
 		});
 		return null;

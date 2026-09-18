@@ -52,6 +52,8 @@
 
 [首轮 Actions](https://github.com/MF-Dust/Nori.Desktop/actions/runs/35358352816) 已触发。完整后端 Release 构建、Core/Desktop/PluginRuntime/Launcher 测试、覆盖率、Windows 视觉与发布冒烟以最终提交的 Actions 结果为准，未在本地执行。
 
+首轮 Linux CI 已完成全部前端门禁，后端编译发现交接首页缺少 `Avalonia.Input.Platform` 扩展方法命名空间，导致剪贴板 `SetTextAsync` 报 CS1061。已补全引用并再次提交，由后续 Actions 复验。
+
 真实 WASAPI 设备拔出、三平台音频/麦克风、Linux/macOS 隐藏音频宿主后台行为及原生 WebView 卡片需要实机验收。同步设备 Open 没有取消参数，Stop/Dispose 可请求取消，但资源最终释放需等 Open 返回。opaque sandbox 不允许卡片直接使用 localStorage，持久化应通过所属插件动作。
 
 原生视觉截图由新增 CI 步骤生成；本地没有可供查看的截图，因此不宣称已完成视觉验收。保留 Draft 状态直到后端和实机门禁确认。

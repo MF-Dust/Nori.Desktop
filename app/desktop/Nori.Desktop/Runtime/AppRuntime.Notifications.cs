@@ -44,18 +44,35 @@ public sealed partial class AppRuntime
 	/// </summary>
 	private void ShowApprovalNotice(ToolApprovalRequest request)
 	{
-		if (!ToastApprovalsEnabled) return;
-		INativeNotifier notifier = EnsureNotifier();
-		if (!notifier.Available) return;
-
-		notifier.Show(new ApprovalNotice
+		try
 		{
-			RequestId = request.RequestId,
-			ToolName = request.ToolName,
-			Description = request.Description,
-			PermissionLevel = request.PermissionLevel,
-			ArgumentSummary = SummarizeArguments(request),
-		});
+			if (!ToastApprovalsEnabled) return;
+			INativeNotifier notifier = EnsureNotifier();
+			if (!notifier.Available) return;
+
+			notifier.Show(new ApprovalNotice
+			{
+				RequestId = request.RequestId,
+				ToolName = request.ToolName,
+				Description = request.Description,
+				PermissionLevel = request.PermissionLevel,
+				ArgumentSummary = SummarizeArguments(request),
+			});
+		}
+		catch (Exception failure) { LogNotificationFailure("显示系统通知失败", failure); }
+	}
+
+	/// <summary>撤销通知失败不能中断授权收尾，待决任务必须仍能完成。</summary>
+	private void HideApprovalNotice(string requestId)
+	{
+		try { _notifier.Hide(requestId); }
+		catch (Exception failure) { LogNotificationFailure("撤销系统通知失败", failure); }
+	}
+
+	private void LogNotificationFailure(string operation, Exception failure)
+	{
+		try { Services.Logger.Write(LogSource.Backend, "warn", $"{operation}：{failure.GetType().Name}"); }
+		catch { /* 通知是辅助呈现，日志故障也不能阻断授权。 */ }
 	}
 
 	/// <summary>
@@ -150,6 +167,12 @@ public sealed partial class AppRuntime
 						RespondApprovalFromNotification(requestId, action == ToastAction.Allow);
 						break;
 					case ToastAction.Open:
+						lock (_approvalGate)
+						{
+							if (!_approvals.TryGetValue(requestId, out PendingApproval? approval)
+								|| approval.DeadlineUtc <= DateTimeOffset.UtcNow
+								|| approval.CancellationToken.IsCancellationRequested) return;
+						}
 						// 只有主动点正文才把卡片带到前台；允许/拒绝不抢焦点。
 						Services.Windows?.Show(Windows.WindowLabels.Main);
 						break;

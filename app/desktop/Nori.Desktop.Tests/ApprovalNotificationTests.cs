@@ -28,11 +28,18 @@ public partial class BridgeCommandsTests
 		public List<string> Hidden { get; } = [];
 		public bool Available { get; set; } = true;
 		public int? HideThreadId { get; private set; }
+		public bool FailOnShow { get; init; }
+		public bool FailOnHide { get; init; }
 
-		public void Show(ApprovalNotice notice) => Shown.Add(notice);
+		public void Show(ApprovalNotice notice)
+		{
+			if (FailOnShow) throw new InvalidOperationException("模拟通知显示失败");
+			Shown.Add(notice);
+		}
 		public void Hide(string requestId)
 		{
 			HideThreadId = Environment.CurrentManagedThreadId;
+			if (FailOnHide) throw new InvalidOperationException("模拟通知撤销失败");
 			Hidden.Add(requestId);
 		}
 	}
@@ -106,6 +113,35 @@ public partial class BridgeCommandsTests
 	}).WaitAsync(TimeSpan.FromSeconds(5));
 
 	[Theory]
+	[InlineData(true, false)]
+	[InlineData(false, true)]
+	[InlineData(true, true)]
+	public Task 通知呈现异常不丢失授权也不阻断完成(bool failOnShow, bool failOnHide) => WithSettingsUiAsync(async () =>
+	{
+		FakeNotifier notifier = new() {FailOnShow = failOnShow, FailOnHide = failOnHide};
+		_runtime.UseNotifierForTests(notifier);
+		using NativeChatTestSource source = new();
+		int results = 0;
+		source.Received = payload =>
+		{
+			if (payload.GetProperty("type").GetString() == "approval-result") results++;
+		};
+		Task<bool> decision = _runtime.RequestApprovalAsync(source, "session", Request(), CancellationToken.None);
+		Assert.False(decision.IsCompleted);
+
+		await ActivateToastFromBackgroundAsync(ToastActivation.Encode(ToastAction.Deny, "approval-one"));
+
+		Assert.False(await decision.WaitAsync(TimeSpan.FromSeconds(2)));
+		Assert.Equal(1, results);
+		Assert.False(_runtime.RespondApprovalFromNotification("approval-one", true));
+		Assert.False(_runtime.Permissions.Remembered("session", "writeFile"));
+		if (failOnShow)
+			Assert.Contains(_services.Logger.RecentLogs(), entry => entry.Message == "显示系统通知失败：InvalidOperationException");
+		if (failOnHide)
+			Assert.Contains(_services.Logger.RecentLogs(), entry => entry.Message == "撤销系统通知失败：InvalidOperationException");
+	});
+
+	[Theory]
 	[InlineData(true)]
 	[InlineData(false)]
 	public Task 从通知上的决定在UI线程收尾且不抢焦点(bool approved) => WithSettingsUiAsync(async () =>
@@ -169,6 +205,7 @@ public partial class BridgeCommandsTests
 	[InlineData("action=unknown&id=approval-one")]
 	[InlineData("action=allow&id=approval-missing")]
 	[InlineData("action=deny&id=approval-missing")]
+	[InlineData("action=open&id=approval-missing")]
 	public Task 后台无效通知不决定授权也不打开窗口(string arguments) => WithSettingsUiAsync(async () =>
 	{
 		FakeNotifier notifier = new();
@@ -184,6 +221,25 @@ public partial class BridgeCommandsTests
 		Assert.Equal(0, _windows.ChatShowCount);
 		await ActivateToastFromBackgroundAsync(ToastActivation.Encode(ToastAction.Deny, "approval-one"));
 		Assert.False(await decision.WaitAsync(TimeSpan.FromSeconds(2)));
+	});
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public Task 已处理或取消的通知正文不再打开窗口(bool cancelled) => WithSettingsUiAsync(async () =>
+	{
+		_runtime.UseNotifierForTests(new FakeNotifier());
+		using NativeChatTestSource source = new();
+		using CancellationTokenSource cancellation = new();
+		Task<bool> decision = _runtime.RequestApprovalAsync(source, "session", Request(), cancellation.Token);
+		if (cancelled) cancellation.Cancel();
+		else await ActivateToastFromBackgroundAsync(ToastActivation.Encode(ToastAction.Deny, "approval-one"));
+		Assert.False(await decision.WaitAsync(TimeSpan.FromSeconds(2)));
+
+		await ActivateToastFromBackgroundAsync(ToastActivation.Open("approval-one"));
+
+		Assert.False(_windows.IsWindowVisible(WindowLabels.Main));
+		Assert.Equal(0, _windows.ChatShowCount);
 	});
 
 	/// <summary>

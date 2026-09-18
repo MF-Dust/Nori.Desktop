@@ -1322,7 +1322,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		if (!_approvals.TryRemove(new KeyValuePair<string, PendingApproval>(approval.RequestId, approval))) return false;
 		approval.Dispose();
 		// 无论从哪条路结束的，屏幕上那条都要收掉 —— 留一张点了没反应的卡片比不弹更糟。
-		_notifier.Hide(approval.RequestId);
+		HideApprovalNotice(approval.RequestId);
 		// 只有用户**真的按了允许**才记。超时、取消、拒绝都不是同意 —— 把它们也记进来，
 		// 等于一次没人看见的超时换来后面整轮的静默放行。
 		if (approved) Permissions.Remember(approval.SessionId, approval.ToolName);
@@ -2038,7 +2038,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		{
 			approval.Tcs.TrySetResult(false);
 			approval.Dispose();
-			_notifier.Hide(approval.RequestId);
+			HideApprovalNotice(approval.RequestId);
 		}
 		DisposeNotifier();
 		foreach ((string _, PendingDesktopApproval approval) in _desktopApprovals)

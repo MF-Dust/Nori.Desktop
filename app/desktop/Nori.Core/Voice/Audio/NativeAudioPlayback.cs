@@ -21,6 +21,7 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 	private CancellationTokenSource? _current;
 	private IAudioDevice? _device;
 	private bool _playing;
+	private bool _disposed;
 	private double _volume = 1.0;
 
 	/// <inheritdoc />
@@ -47,46 +48,62 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 	public async Task PlayAsync(EncodedAudio audio, CancellationToken cancellationToken)
 	{
 		ArgumentNullException.ThrowIfNull(audio);
+		lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
 		PcmAudio pcm = decode(audio.Bytes, audio.Mime);
 		if (pcm.Samples.Length == 0) return;
 
-		// 新的一段顶掉旧的。语音是串行的：上一句还没播完就来了下一句，说明用户
-		// 已经不想听上一句了。
-		Stop();
-
-		CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-		IAudioDevice device = openDevice();
-		lock (_gate)
-		{
-			_current = linked;
-			_device = device;
-			device.Volume = _volume;
-		}
-		SetPlaying(true);
-
+		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		IAudioDevice? device = null;
 		try
 		{
-			await Task.Run(() => Pump(device, pcm, linked.Token), CancellationToken.None).ConfigureAwait(false);
+			lock (_gate)
+			{
+				ObjectDisposedException.ThrowIf(_disposed, this);
+				// 停旧段和预留新段必须原子完成；设备创建期间也属于这一代。
+				Stop();
+				_current = linked;
+				_device = null;
+			}
+
+			linked.Token.ThrowIfCancellationRequested();
+			device = openDevice();
+			lock (_gate)
+			{
+				if (!ReferenceEquals(_current, linked) || linked.IsCancellationRequested) return;
+				_device = device;
+				device.Volume = _volume;
+				SetPlaying(true);
+			}
+			await Task.Run(() => Pump(device, pcm, linked), CancellationToken.None).ConfigureAwait(false);
 		}
-		catch (OperationCanceledException)
+		catch (OperationCanceledException) when (linked.IsCancellationRequested)
 		{
 			// 被顶掉或被调用方取消，不是失败。
 		}
 		finally
 		{
-			lock (_gate)
+			try
 			{
-				if (ReferenceEquals(_current, linked))
+				lock (_gate)
 				{
-					_current = null;
-					_device = null;
+					if (ReferenceEquals(_current, linked))
+					{
+						_device = null;
+						SetPlaying(false);
+						if (ReferenceEquals(_current, linked))
+						{
+							_current = null;
+							// 只有当前段能合嘴，旧段收尾不能覆盖新段的口型。
+							VolumeSampled?.Invoke(0);
+						}
+					}
 				}
 			}
-			device.Dispose();
-			linked.Dispose();
-			SetPlaying(false);
-			// 收尾必须把嘴合上。少这一条，播放被打断时口型会停在张开的那一帧。
-			VolumeSampled?.Invoke(0);
+			finally
+			{
+				// 泵退出后才释放；Stop/Dispose 只负责请求停止。
+				device?.Dispose();
+			}
 		}
 	}
 
@@ -97,9 +114,12 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 	/// 和「发电平的节奏」。两者用同一个值，电平就天然对齐到正在播的那一段，
 	/// 不需要另外算时间。
 	/// </summary>
-	private void Pump(IAudioDevice device, PcmAudio pcm, CancellationToken cancellationToken)
+	private void Pump(IAudioDevice device, PcmAudio pcm, CancellationTokenSource owner)
 	{
+		CancellationToken cancellationToken = owner.Token;
+		cancellationToken.ThrowIfCancellationRequested();
 		AudioFormat actual = device.Open(pcm.SampleRate, pcm.Channels);
+		cancellationToken.ThrowIfCancellationRequested();
 		(float[] samples, float[] level) = Prepare(pcm, actual);
 
 		int frameWindow = Math.Max(1, actual.SampleRate * PcmLevel.WindowMilliseconds / 1000);
@@ -112,7 +132,11 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 			// 电平取自那条**单声道轨**，不是写给设备的缓冲。后者的声道数由设备定，
 			// 拿它算 RMS 会让嘴张多大取决于用户的音响是几声道。
 			smoothed = PcmLevel.Smooth(smoothed, PcmLevel.Rms(level.AsSpan(frame, take)));
-			VolumeSampled?.Invoke(smoothed);
+			lock (_gate)
+			{
+				if (!ReferenceEquals(_current, owner) || cancellationToken.IsCancellationRequested) return;
+				VolumeSampled?.Invoke(smoothed);
+			}
 
 			// 写会阻塞到设备吃得下，而这一窗**就是**马上要响的那一窗，所以先发后写。
 			int written = device.Write(
@@ -184,17 +208,12 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 	/// <inheritdoc />
 	public void Stop()
 	{
-		CancellationTokenSource? cancelling;
-		IAudioDevice? device;
 		lock (_gate)
 		{
-			cancelling = _current;
-			device = _device;
+			// 与摘除设备互斥，不能对已经交给收尾释放的设备调用 Stop。
+			try { _device?.Stop(); }
+			finally { _current?.Cancel(); }
 		}
-		// 先让设备把阻塞中的 Write 放出来，再取消 —— 反过来的话取消信号会卡在
-		// 一个正在等缓冲的 Write 后面。
-		device?.Stop();
-		try { cancelling?.Cancel(); } catch (ObjectDisposedException) { /* 已经收尾了 */ }
 	}
 
 	private void SetPlaying(bool playing)
@@ -206,11 +225,11 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 
 	public void Dispose()
 	{
-		Stop();
 		lock (_gate)
 		{
-			_device?.Dispose();
-			_device = null;
+			if (_disposed) return;
+			_disposed = true;
+			Stop();
 		}
 	}
 }

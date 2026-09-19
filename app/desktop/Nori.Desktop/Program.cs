@@ -51,7 +51,8 @@ internal static class Program
 				alert.ArgumentList.Add("display alert (system attribute \"NORI_ALERT_TITLE\") message (system attribute \"NORI_ALERT_MESSAGE\")");
 				alert.Environment["NORI_ALERT_TITLE"] = title;
 				alert.Environment["NORI_ALERT_MESSAGE"] = safe;
-				using System.Diagnostics.Process? process = System.Diagnostics.Process.Start(alert);
+				// 可执行文件和脚本均为固定字面量，动态文本只通过环境变量传值。
+				using System.Diagnostics.Process? process = System.Diagnostics.Process.Start(alert); // nosemgrep
 				if (process is null) throw new InvalidOperationException("无法显示启动错误");
 				process.WaitForExit(5000);
 				return;

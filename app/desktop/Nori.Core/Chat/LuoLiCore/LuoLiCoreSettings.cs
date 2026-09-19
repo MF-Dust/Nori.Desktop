@@ -57,7 +57,8 @@ public sealed class LuoLiCoreSettingsStore(ConfigStore config, Func<string, stri
 {
 	public const string KeyEnabled = "luolicore_enabled";
 	public const string KeyBaseUrl = "luolicore_base_url";
-	public const string KeyApiKey = "luolicore_api_key";
+	// 配置键名，不包含任何凭据值。
+	public const string KeyApiKey = "luolicore_api_key"; // nosemgrep
 	public const string KeySessionId = "luolicore_session_id";
 	public const string KeyModelAlias = "luolicore_model_alias";
 
@@ -78,7 +79,8 @@ public sealed class LuoLiCoreSettingsStore(ConfigStore config, Func<string, stri
 	/// </summary>
 	public const string EnvEnabled = "NORI_LUOLICORE_ENABLED";
 	public const string EnvBaseUrl = "NORI_LUOLICORE_BASE_URL";
-	public const string EnvApiKey = "NORI_LUOLICORE_API_KEY";
+	// 环境变量名，不包含任何凭据值。
+	public const string EnvApiKey = "NORI_LUOLICORE_API_KEY"; // nosemgrep
 	public const string EnvSessionId = "NORI_LUOLICORE_SESSION_ID";
 	public const string EnvModelAlias = "NORI_LUOLICORE_MODEL_ALIAS";
 

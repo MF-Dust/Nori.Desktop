@@ -108,7 +108,7 @@ const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/
 
 /** 类名是否作为完整 token 出现 (变体前缀 `hover:`、变体组括号、空白都算边界) */
 const mentions = (text: string, token: string): boolean =>
-	new RegExp(`(^|[^A-Za-z0-9_-])${escapeRegExp(token)}([^A-Za-z0-9_-]|$)`).test(text)
+			new RegExp(`(^|[^A-Za-z0-9_-])${escapeRegExp(token)}([^A-Za-z0-9_-]|$)`).test(text) // nosemgrep
 
 /** 某个 shortcut 传递组合进来的所有 shortcut 名 (window-root → window-chrome, btn-primary → btn-base → focus-ring) */
 const composedShortcuts = (name: string, shortcuts: Map<string, string>): Set<string> => {

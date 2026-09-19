@@ -92,7 +92,8 @@ public class FileLoggerTests : IDisposable
 	[Fact]
 	public void 日志会统一脱敏凭据和路径()
 	{
-		_logger.Write(LogSource.Backend, "error", "api_key=secret-value https://user:pass@example.com /home/user/nori.db");
+		// 脱敏测试必须包含会被清除的伪凭据与用户信息。
+		_logger.Write(LogSource.Backend, "error", "api_key=secret-value https://user:pass@example.com /home/user/nori.db"); // NOSONAR
 
 		string message = _logger.RecentLogs()[0].Message;
 		Assert.DoesNotContain("secret-value", message, StringComparison.Ordinal);

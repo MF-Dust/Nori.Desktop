@@ -128,7 +128,8 @@ public sealed class MachineStateProvider : IMachineStateProvider
 	{
 		try
 		{
-			using Process? process = Process.Start(new ProcessStartInfo("nvidia-smi")
+			// 固定调用驱动自带 nvidia-smi，不接受外部命令或参数。
+			using Process? process = Process.Start(new ProcessStartInfo("nvidia-smi") // nosemgrep
 			{
 				Arguments =
 					"--query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total "

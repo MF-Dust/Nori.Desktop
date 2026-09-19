@@ -48,7 +48,7 @@ public sealed class UpdateManifestTests
 	}
 
 	[Theory]
-	[InlineData("http://github.com/file.zip")] // 非 HTTPS
+	[InlineData("http://github.com/file.zip")] // NOSONAR: 非 HTTPS 拒绝样本
 	[InlineData("ftp://github.com/file.zip")]
 	[InlineData("not-a-url")]
 	public void FromJson_NonHttpsUrl_Throws(string invalidUrl)

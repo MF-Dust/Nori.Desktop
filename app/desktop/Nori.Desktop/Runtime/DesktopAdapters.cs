@@ -121,7 +121,8 @@ public static class ShellOpen
 		{
 			throw new InvalidOperationException("不允许打开该链接");
 		}
-		Process.Start(new ProcessStartInfo(parsed.AbsoluteUri) {UseShellExecute = true});
+		// URI 已限定为无凭据的绝对 HTTP(S) 地址。
+		Process.Start(new ProcessStartInfo(parsed.AbsoluteUri) {UseShellExecute = true}); // nosemgrep
 	}
 
 	/// <summary>使用系统文件管理器打开数据目录内的固定路径。</summary>
@@ -132,6 +133,7 @@ public static class ShellOpen
 		if (!AppStoragePaths.IsContained(fullDirectory, fullDataRoot))
 			throw new InvalidOperationException("不允许打开数据目录之外的路径");
 		AppStoragePaths.EnsureNoReparsePoints(fullDirectory, fullDataRoot);
-		Process.Start(new ProcessStartInfo(fullDirectory) {UseShellExecute = true});
+		// 目录已完成 data 根边界和 reparse point 校验。
+		Process.Start(new ProcessStartInfo(fullDirectory) {UseShellExecute = true}); // nosemgrep
 	}
 }

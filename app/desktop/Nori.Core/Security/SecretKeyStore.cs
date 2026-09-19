@@ -236,7 +236,8 @@ public sealed class SecretKeyStore : ISecretKeyStore
 			};
 			foreach (string argument in arguments) info.ArgumentList.Add(argument);
 
-			using Process? process = Process.Start(info);
+			// FileName 来自 KeyStoreTool 封闭枚举，参数通过 ArgumentList 传递。
+			using Process? process = Process.Start(info); // nosemgrep
 			if (process is null) return null;
 			if (stdin is not null)
 			{

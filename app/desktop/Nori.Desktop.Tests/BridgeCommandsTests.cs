@@ -1324,7 +1324,8 @@ public partial class BridgeCommandsTests : IDisposable
 		AutomationDesktopWindowSnapshot window = SingleWindow(await commands.InvokeAsync(
 			new FakeBridgeSource(WindowLabels.Main), "automation_desktop_list_windows", Args(new { })));
 
-		const string secretTask = "把窗口中的 secret-input 发送出去";
+		// 脱敏回归夹具，不是真实凭据。
+		const string secretTask = "把窗口中的 secret-input 发送出去"; // nosemgrep
 		AutomationDesktopTaskStartSnapshot start = Assert.IsType<AutomationDesktopTaskStartSnapshot>(await commands.InvokeAsync(
 			new FakeBridgeSource(WindowLabels.Main), "automation_desktop_start",
 			Args(new {task = secretTask, targetToken = window.Token})));
@@ -1800,13 +1801,13 @@ public partial class BridgeCommandsTests : IDisposable
 		await commands.InvokeAsync(new FakeBridgeSource("first-run"), "settings_update_ai", Args(new
 		{
 			baseUrl = "https://api.example.com/v1",
-			apiKey = "sk-new",
+			apiKey = "sk-new", // nosemgrep
 			model = "gpt-x",
 		}));
 		Assert.Equal("sk-new", _config.GetStringOr("llm_api_key", ""));
 
 		// 显式空串清除密钥
-		await commands.InvokeAsync(new FakeBridgeSource("main"), "settings_update_ai", Args(new {apiKey = ""}));
+		await commands.InvokeAsync(new FakeBridgeSource("main"), "settings_update_ai", Args(new {apiKey = ""})); // nosemgrep
 		Assert.False(_config.Exists("llm_api_key"));
 	}
 
@@ -1817,13 +1818,13 @@ public partial class BridgeCommandsTests : IDisposable
 		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "settings_update_ai", Args(new
 		{
 			baseUrl = "https://chat.example/v1",
-			apiKey = "chat-secret",
+			apiKey = "chat-secret", // nosemgrep
 			model = "chat-model",
 			embedding = new
 			{
 				baseUrl = "http://localhost:11434/v1",
 				model = "local-embedding",
-				apiKey = "",
+				apiKey = "", // nosemgrep
 			},
 		}));
 

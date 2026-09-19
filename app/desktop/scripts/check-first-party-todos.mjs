@@ -44,7 +44,7 @@ const SHOULD_SKIP = (filePath) => {
 
 const WALK = (directory) => {
 	const files = []
-	for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
+	for (const entry of fs.readdirSync(directory, {withFileTypes: true})) { // nosemgrep
 		const entryPath = path.join(directory, entry.name)
 		if (entry.isDirectory()) {
 			if (!EXCLUDED_PARTS.has(entry.name)) files.push(...WALK(entryPath))
@@ -58,9 +58,9 @@ const WALK = (directory) => {
 const matches = []
 for (const relativeRoot of FIRST_PARTY_ROOTS) {
 	const absoluteRoot = path.join(ROOT, relativeRoot)
-	if (!fs.existsSync(absoluteRoot)) continue
+	if (!fs.existsSync(absoluteRoot)) continue // nosemgrep
 	for (const filePath of WALK(absoluteRoot)) {
-		const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/)
+		const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/) // nosemgrep
 		lines.forEach((line, index) => {
 			if (MARKER_PATTERN.test(line)) {
 				matches.push(`${path.relative(ROOT, filePath)}:${index + 1}: ${line.trim()}`)

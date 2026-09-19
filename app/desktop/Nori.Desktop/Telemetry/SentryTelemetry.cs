@@ -190,7 +190,8 @@ public sealed class SentryTelemetry : ITelemetry
 				{
 					foreach (SentryStackFrame frame in frames)
 					{
-						frame.FileName = ScrubPath(frame.FileName);
+						// 这里只清洗遥测帧字段，不执行任何命令。
+						frame.FileName = ScrubPath(frame.FileName); // nosemgrep
 						frame.AbsolutePath = null;
 						frame.ContextLine = null;
 					}

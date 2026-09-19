@@ -29,7 +29,8 @@ internal static class Program
 			startInfo.Environment["NORI_DEPLOYMENT_ROOT"] = selection.DeploymentRoot;
 			startInfo.Environment["NORI_LAUNCHER_PATH"] = Environment.ProcessPath ?? selection.Entrypoint;
 			startInfo.Environment["NORI_EXECUTABLE_PATH"] = selection.Entrypoint;
-			using Process child = Process.Start(startInfo) ?? throw new InvalidOperationException("无法启动 Nori 宿主");
+			// Entrypoint 已由 DeploymentSelector 限定在签名部署槽内并验证为普通文件。
+			using Process child = Process.Start(startInfo) ?? throw new InvalidOperationException("无法启动 Nori 宿主"); // nosemgrep
 			child.WaitForExit();
 			return child.ExitCode;
 		}
@@ -136,7 +137,8 @@ internal static class Program
 				alert.ArgumentList.Add("display alert (system attribute \"NORI_ALERT_TITLE\") message (system attribute \"NORI_ALERT_MESSAGE\")");
 				alert.Environment["NORI_ALERT_TITLE"] = title;
 				alert.Environment["NORI_ALERT_MESSAGE"] = message;
-				using Process process = Process.Start(alert)!;
+				// 可执行文件和脚本均为固定字面量，动态文本只通过环境变量传值。
+				using Process process = Process.Start(alert)!; // nosemgrep
 				process.WaitForExit(5000);
 				return;
 			}

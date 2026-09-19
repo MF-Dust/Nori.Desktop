@@ -74,7 +74,7 @@ public sealed class NativeChatMarkdownTests
 
 	[Theory]
 	[InlineData("[文档](https://example.test/docs?x=1&amp;y=2)", "https://example.test/docs?x=1&y=2")]
-	[InlineData("[**粗体** *标签*](HTTP://example.test/docs)", "http://example.test/docs")]
+	[InlineData("[**粗体** *标签*](HTTP://example.test/docs)", "http://example.test/docs")] // NOSONAR
 	[InlineData("https://example.test/docs", "https://example.test/docs")]
 	[InlineData("<https://example.test/docs>", "https://example.test/docs")]
 	[InlineData("[文档][站点]\n\n[站点]: https://example.test/docs \"标题\"", "https://example.test/docs")]

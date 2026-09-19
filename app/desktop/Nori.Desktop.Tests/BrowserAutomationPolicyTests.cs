@@ -18,7 +18,7 @@ public sealed class BrowserAutomationPolicyTests
 	[Theory]
 	[InlineData("file:///C:/secret.txt")]
 	[InlineData("javascript:alert(1)")]
-	[InlineData("https://user:password@example.com")]
+	[InlineData("https://user:password@example.com")] // NOSONAR
 	[InlineData("")]
 	public void 拒绝危险或无效地址(string value)
 	{

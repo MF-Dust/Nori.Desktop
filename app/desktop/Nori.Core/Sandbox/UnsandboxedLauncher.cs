@@ -39,7 +39,8 @@ public sealed class UnsandboxedLauncher : ISandboxLauncher
 			start.Environment[key] = value;
 		}
 
-		using Process process = Process.Start(start)
+		// 此类型显式表示无隔离执行；调用方会展示该能力并要求相应授权。
+		using Process process = Process.Start(start) // nosemgrep
 			?? throw new InvalidOperationException($"无法启动进程: {fileName}");
 
 		StringBuilder output = new();

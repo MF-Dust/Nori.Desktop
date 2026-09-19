@@ -156,13 +156,14 @@ public sealed class ResourcePathSafetyTests : IDisposable
 	private static void RunLinkTool(string arguments)
 	{
 		bool isWindows = OperatingSystem.IsWindows();
-		ProcessStartInfo startInfo = isWindows
+		// 测试辅助程序只在固定的 cmd.exe 与 ln 中二选一。
+		ProcessStartInfo startInfo = isWindows // nosemgrep
 			? new ProcessStartInfo("cmd.exe", arguments)
 			: new ProcessStartInfo("ln", arguments);
 		startInfo.UseShellExecute = false;
 		startInfo.CreateNoWindow = true;
 		startInfo.RedirectStandardError = true;
-		using Process? process = Process.Start(startInfo)
+		using Process? process = Process.Start(startInfo) // nosemgrep
 			?? throw new InvalidOperationException("无法启动链接创建工具");
 		string error = process.StandardError.ReadToEnd();
 		process.WaitForExit(5000);

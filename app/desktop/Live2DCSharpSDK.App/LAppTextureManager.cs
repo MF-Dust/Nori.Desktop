@@ -29,7 +29,8 @@ public class LAppTextureManager(LAppDelegate lapp)
 		fixed (byte* data = pixels.Data)
 		{
 			var info = lapp.CreateTexture(model, index, pixels.Width, pixels.Height, (nint)data);
-			info.FileName = fileName;
+			// 仅记录纹理来源标签，不执行文件或进程命令。
+			info.FileName = fileName; // nosemgrep
 			_textures.Add(info);
 			return info;
 		}

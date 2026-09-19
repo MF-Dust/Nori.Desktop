@@ -81,7 +81,7 @@ public sealed class ProviderConnectionTests
 	public async Task LLM探测错误不会回传URL响应正文或本机路径()
 	{
 		using MockHandler handler = new(_ => throw new HttpRequestException(
-			"请求 https://user:password@example.test/v1 失败: response-body=private text C:\\Users\\Nori\\secret.log"));
+			"请求 https://user:password@example.test/v1 失败: response-body=private text C:\\Users\\Nori\\secret.log")); // NOSONAR
 		using HttpClient http = new(handler);
 		OpenAiEmbeddingAdapter embedding = new(http);
 		ProviderConnectionTester tester = new(http, embedding);

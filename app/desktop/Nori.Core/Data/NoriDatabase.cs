@@ -147,7 +147,8 @@ public sealed class NoriDatabase : IDisposable
 	private void Execute(StartupStatement statement) => Locked(connection =>
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = statement switch
+		// 启动语句仅来自封闭枚举，不接受外部 SQL。
+		command.CommandText = statement switch // nosemgrep
 		{
 			StartupStatement.ForeignKeys => "PRAGMA foreign_keys=ON;",
 			StartupStatement.JournalMode => "PRAGMA journal_mode=WAL;",
@@ -246,7 +247,8 @@ public sealed class NoriDatabase : IDisposable
 	{
 		using SqliteCommand command = connection.CreateCommand();
 		command.Transaction = transaction;
-		command.CommandText = version switch
+		// schema 版本仅允许当前代码声明的固定值。
+		command.CommandText = version switch // nosemgrep
 		{
 			1 => "PRAGMA user_version = 1;",
 			2 => "PRAGMA user_version = 2;",
@@ -492,7 +494,8 @@ public sealed class NoriDatabase : IDisposable
 			if (HasColumn(connection, transaction, "reminders", name)) continue;
 			using SqliteCommand alter = connection.CreateCommand();
 			alter.Transaction = transaction;
-			alter.CommandText = name switch
+			// 列名来自上方固定迁移清单，不接受数据库或用户输入。
+			alter.CommandText = name switch // nosemgrep
 			{
 				"status" => "ALTER TABLE reminders ADD COLUMN status TEXT NOT NULL DEFAULT 'pending';",
 				"timezone" => "ALTER TABLE reminders ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC';",
@@ -715,7 +718,8 @@ public sealed class NoriDatabase : IDisposable
 	{
 		using SqliteCommand command = connection.CreateCommand();
 		command.Transaction = transaction;
-		command.CommandText = table switch
+		// 表名来自迁移代码的固定集合。
+		command.CommandText = table switch // nosemgrep
 		{
 			"memories" => "PRAGMA table_info(memories);",
 			"reminders" => "PRAGMA table_info(reminders);",

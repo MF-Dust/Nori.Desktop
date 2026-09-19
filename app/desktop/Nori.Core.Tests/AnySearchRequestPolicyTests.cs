@@ -46,7 +46,7 @@ public class AnySearchRequestPolicyTests
 	public void 非HTTPS端点一律拒绝()
 	{
 		Assert.Throws<InvalidOperationException>(
-			() => AnySearchRequestPolicy.Resolve("http://api.anysearch.com/v1/search", null, "sk-stored"));
+			() => AnySearchRequestPolicy.Resolve("http://api.anysearch.com/v1/search", null, "sk-stored")); // NOSONAR
 	}
 
 	[Fact]

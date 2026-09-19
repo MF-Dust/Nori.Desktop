@@ -106,7 +106,7 @@ public sealed class ReliabilitySliceTests
 			using NoriDatabase database = NoriDatabase.Open(path);
 			ConfigStore config = new(database);
 			config.InitDefaults("test");
-			config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1"));
+			config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1")); // NOSONAR
 			await using MemoryService service = new(new MemoryStore(database), new FailingEmbedding(), config);
 
 			MemoryItem item = await service.AddAsync("即使向量服务离线也要保存这段文本");

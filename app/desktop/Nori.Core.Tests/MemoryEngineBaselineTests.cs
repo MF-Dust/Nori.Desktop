@@ -17,7 +17,7 @@ public sealed class MemoryEngineBaselineTests : IDisposable
 		_database = NoriDatabase.Open(_path);
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("test");
-		_config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1"));
+		_config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1")); // NOSONAR
 	}
 
 	[Fact]

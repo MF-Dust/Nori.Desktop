@@ -385,7 +385,8 @@ public static class CrashReporter
 				}
 				startInfo.ArgumentList.Add("--launcher-wait-start-ticks");
 				startInfo.ArgumentList.Add(startTicks.ToString());
-				using Process child = Process.Start(startInfo) ?? throw new InvalidOperationException("启动器未返回进程");
+				// 启动器与包根均由 ResolveTrusted* 完成物理路径和边界验证。
+				using Process child = Process.Start(startInfo) ?? throw new InvalidOperationException("启动器未返回进程"); // nosemgrep
 				// 启动器通常会持续等待新宿主；若它在短时间内带错误退出，不能关闭当前错误窗口。
 				if (child.WaitForExit(750) && child.ExitCode != 0)
 					throw new InvalidOperationException($"启动器退出码 {child.ExitCode}");

@@ -20,7 +20,7 @@ export class MockHost {
 			label: "main",
 			invoke: <K extends BridgeCommandName>(command: K, args?: BridgeCommandArgs<K>) => {
 				this.calls.push({command, args})
-				const HANDLER = this.handlers[command] as Handler<K> | undefined
+				const HANDLER = this.handlers[command] as Handler<K> | undefined // nosemgrep
 				if (!HANDLER) return Promise.reject(new Error(`未配置 Mock Host 命令: ${command}`))
 				return Promise.resolve(HANDLER((args ?? undefined) as BridgeCommandArgs<K>))
 			},

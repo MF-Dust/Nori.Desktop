@@ -7,11 +7,11 @@ public class UrlAccessPolicyTests
 {
 	[Theory]
 	[InlineData("https://example.com/page")]
-	[InlineData("http://api.anysearch.com/v1/search")]
+	[InlineData("http://api.anysearch.com/v1/search")] // NOSONAR
 	[InlineData("http://127.0.0.1:8080/api")]
 	[InlineData("http://localhost/x")]
-	[InlineData("http://169.254.1.1/metadata")]
-	[InlineData("http://192.168.1.10/router")]
+	[InlineData("http://169.254.1.1/metadata")] // NOSONAR
+	[InlineData("http://192.168.1.10/router")] // NOSONAR
 	public void HTTP地址不再按网络地址策略拒绝(string url) =>
 		UrlAccessPolicy.EnsurePublicHttp(new Uri(url));
 

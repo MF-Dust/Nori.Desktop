@@ -193,7 +193,8 @@ public sealed class UpdateService : IDisposable
 		start.ArgumentList.Add(process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
 		start.ArgumentList.Add("--launcher-wait-start-ticks");
 		start.ArgumentList.Add(process.StartTime.ToUniversalTime().Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture));
-		using Process? child = Process.Start(start);
+		// ResolveLauncher 只返回已验证的包根启动器路径。
+		using Process? child = Process.Start(start); // nosemgrep
 		if (child is null) throw new InvalidOperationException("无法启动 Nori 启动器");
 	}
 

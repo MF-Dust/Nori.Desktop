@@ -76,7 +76,8 @@ public sealed class MemoryTransferTests : IDisposable
 		Assert.False(invalidScore.IsValid);
 		Assert.Equal(MemoryTransferErrorCategory.InvalidItem, Assert.Single(invalidScore.Errors).Category);
 
-		const string secret = "secret-do-not-leak";
+		// 脱敏回归夹具，验证未知字段不会回显到结果。
+		const string secret = "secret-do-not-leak"; // nosemgrep
 		MemoryTransferPreview unknownField = _service.Preview(
 			"{\"version\":\"nori-memory-v1\",\"memories\":[{\"content\":\"安全内容\",\"kind\":\"general\",\"embedding\":\""
 			+ secret + "\"}]}");

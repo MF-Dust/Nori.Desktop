@@ -65,11 +65,13 @@ public sealed class AiSettingsStore(ConfigStore config)
 {
 	public const string KeyLlmProvider = "llm_provider";
 	public const string KeyLlmBaseUrl = "llm_api_base";
-	public const string KeyLlmApiKey = "llm_api_key";
+	// 配置键名，不包含任何凭据值。
+	public const string KeyLlmApiKey = "llm_api_key"; // nosemgrep
 	public const string KeyLlmModel = "llm_model";
 	public const string KeyUserPersona = "nori_user_persona";
 	public const string KeyEmbeddingBaseUrl = "embedding_api_base";
-	public const string KeyEmbeddingApiKey = "embedding_api_key";
+	// 配置键名，不包含任何凭据值。
+	public const string KeyEmbeddingApiKey = "embedding_api_key"; // nosemgrep
 	public const string KeyEmbeddingModel = "embedding_model";
 	public const string KeyEmbeddingDimensions = "embedding_dimensions";
 	public const string DefaultEmbeddingModel = "BAAI/bge-m3";

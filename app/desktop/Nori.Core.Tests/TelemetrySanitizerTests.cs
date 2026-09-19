@@ -18,7 +18,8 @@ public sealed class TelemetrySanitizerTests
 	[Fact]
 	public void 普通诊断文本会移除密钥凭据和路径()
 	{
-		string raw = "api_key=sk-secret https://user:password@example.com/v1?token=token-secret /home/user/nori.db";
+		// 脱敏测试必须包含会被清除的伪凭据与用户信息。
+		string raw = "api_key=sk-secret https://user:password@example.com/v1?token=token-secret /home/user/nori.db"; // NOSONAR
 		string scrubbed = TelemetrySanitizer.ScrubText(raw);
 
 		Assert.DoesNotContain("sk-secret", scrubbed, StringComparison.Ordinal);

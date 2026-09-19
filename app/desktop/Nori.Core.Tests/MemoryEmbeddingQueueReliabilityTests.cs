@@ -149,7 +149,7 @@ public sealed class MemoryEmbeddingQueueReliabilityTests
 	{
 		ConfigStore config = new(database);
 		config.InitDefaults("test");
-		config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1"));
+		config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1")); // NOSONAR
 		return config;
 	}
 

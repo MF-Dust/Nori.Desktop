@@ -216,7 +216,7 @@ public sealed class UpdateServiceTests : IDisposable
 	[InlineData("https://user@github.com/MF-Dust/Nori-Desktop-Pet/releases/asset")]
 	[InlineData("https://github.com:444/MF-Dust/Nori-Desktop-Pet/releases/asset")]
 	[InlineData("https://localhost/asset")]
-	[InlineData("http://github.com/MF-Dust/Nori-Desktop-Pet/releases/asset")]
+	[InlineData("http://github.com/MF-Dust/Nori-Desktop-Pet/releases/asset")] // NOSONAR
 	[InlineData("https://github.com/other/repo/releases/asset")]
 	public async Task UnsafeRedirectRejectedBeforeSecondRequest(string location)
 	{

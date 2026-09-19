@@ -20,7 +20,7 @@ public sealed class NoriHttpClientsTests
 			Exception? exception = await Record.ExceptionAsync(async () =>
 			{
 				using HttpResponseMessage response = await clients.Public.GetAsync(
-					"http://nori-network-test.invalid/", timeout.Token);
+					"http://nori-network-test.invalid/", timeout.Token); // NOSONAR
 			});
 
 			Assert.NotNull(exception);
@@ -48,7 +48,7 @@ public sealed class NoriHttpClientsTests
 			Exception? exception = await Record.ExceptionAsync(async () =>
 			{
 				using HttpResponseMessage response = await clients.Public.GetAsync(
-					"http://nori-network-test.invalid/", timeout.Token);
+					"http://nori-network-test.invalid/", timeout.Token); // NOSONAR
 			});
 
 			Assert.NotNull(exception);

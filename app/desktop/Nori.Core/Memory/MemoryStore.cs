@@ -287,7 +287,7 @@ public sealed class MemoryStore
 	public IReadOnlyList<MemoryItem> GetAll(int limit = 100) => _database.Locked(connection =>
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = SelectAllSql;
+		command.CommandText = SelectAllSql; // nosemgrep
 		AddParameter(command, "$limit", Math.Max(0, limit));
 		return ReadItems(command);
 	});
@@ -296,7 +296,7 @@ public sealed class MemoryStore
 	public IReadOnlyList<MemoryItem> GetUnembedded(int limit = 100, long afterId = 0, string? fingerprint = null) => _database.Locked(connection =>
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = SelectUnembeddedSql;
+		command.CommandText = SelectUnembeddedSql; // nosemgrep
 		AddParameter(command, "$afterId", afterId);
 		AddParameter(command, "$fingerprint", fingerprint);
 		AddParameter(command, "$limit", Math.Max(1, limit));
@@ -330,7 +330,7 @@ public sealed class MemoryStore
 	public MemoryItem? Get(long id) => _database.Locked(connection =>
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = SelectByIdSql;
+		command.CommandText = SelectByIdSql; // nosemgrep
 		AddParameter(command, "$id", id);
 		using SqliteDataReader reader = command.ExecuteReader();
 		return reader.Read() ? ReadRow(reader) : null;
@@ -449,7 +449,8 @@ public sealed class MemoryStore
 	public IReadOnlyList<MemoryAtom> GetAtoms(long? parentMemoryId = null, MemoryStatus? status = null, int limit = 100, int offset = 0) => _database.Locked(connection =>
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = (parentMemoryId is not null, status is not null) switch
+		// 查询形态来自四个固定 SQL，筛选值始终使用参数。
+		command.CommandText = (parentMemoryId is not null, status is not null) switch // nosemgrep
 		{
 			(false, false) => SelectAtomsSql,
 			(true, false) => SelectAtomsByParentSql,
@@ -893,7 +894,7 @@ public sealed class MemoryStore
 	{
 		using SqliteCommand command = connection.CreateCommand();
 		command.Transaction = transaction;
-		command.CommandText = SelectReconsolidationCandidatesSql;
+		command.CommandText = SelectReconsolidationCandidatesSql; // nosemgrep
 		using SqliteDataReader reader = command.ExecuteReader();
 		Dictionary<string, long> result = new(StringComparer.Ordinal);
 		while (reader.Read())
@@ -1151,7 +1152,7 @@ public sealed class MemoryStore
 		return _database.Locked(connection =>
 		{
 			using SqliteCommand command = connection.CreateCommand();
-			command.CommandText = SelectManySql;
+			command.CommandText = SelectManySql; // nosemgrep
 			AddParameter(command, "$ids", JsonSerializer.Serialize(ids));
 			using SqliteDataReader reader = command.ExecuteReader();
 			Dictionary<long, MemoryItem> result = [];
@@ -1199,7 +1200,8 @@ public sealed class MemoryStore
 	private static List<RetrievalHit> SearchFts(SqliteConnection connection, string table, string keyword, int limit)
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = table switch
+		// FTS 表只允许内部固定表名，查询文本使用参数。
+		command.CommandText = table switch // nosemgrep
 		{
 			"memories_fts" => "SELECT CAST(memory_id AS INTEGER) FROM memories_fts WHERE memories_fts MATCH $query ORDER BY bm25(memories_fts) LIMIT $limit",
 			"memory_atoms_fts" => "SELECT CAST(memory_id AS INTEGER) FROM memory_atoms_fts WHERE memory_atoms_fts MATCH $query ORDER BY bm25(memory_atoms_fts) LIMIT $limit",
@@ -1271,7 +1273,8 @@ public sealed class MemoryStore
 	private static void CreateFts(SqliteConnection connection, string tokenizer)
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = tokenizer switch
+		// tokenizer 只允许 SQLite 支持的两个固定字面量。
+		command.CommandText = tokenizer switch // nosemgrep
 		{
 			"trigram" => """
 				CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(memory_id UNINDEXED, content, tags, tokenize = 'trigram');

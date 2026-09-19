@@ -5,3 +5,5 @@ exclude_paths:
   - "app/desktop/Live2DCSharpSDK.App/**"
   - "app/desktop/Live2DCSharpSDK.Framework/**"
   - "app/desktop/Live2DCSharpSDK.OpenGL/**"
+  # 根级代理说明引用用户机器上的全局 RTK 指令, 不是仓库内源码依赖
+  - "AGENTS.md"

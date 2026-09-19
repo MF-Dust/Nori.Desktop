@@ -13,6 +13,7 @@ const parseArgs = (argv) => {
 		const key = argument.slice(2)
 		if (!ARGUMENT_NAMES.has(key)) throw new Error(`Unsupported argument: --${key}`)
 		if (index + 1 >= argv.length || argv[index + 1].startsWith("--")) throw new Error(`参数缺少值: --${key}`)
+		// eslint-disable-next-line -- Codacy误报：key已通过固定参数白名单校验，Map不触发对象原型写入
 		result.set(key, argv[++index])
 	}
 	return result

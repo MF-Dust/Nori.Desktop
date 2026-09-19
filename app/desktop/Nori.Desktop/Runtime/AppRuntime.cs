@@ -768,6 +768,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		}
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "诊断写入失败不能覆盖已分类的 MCP 刷新失败。")]
 	private void LogMcpRefreshFailure(string? serverId, string category)
 	{
 		string safeServerId = CapMcpLogPart(serverId, McpRefreshLogServerIdMaxCharacters);

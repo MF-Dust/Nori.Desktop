@@ -27,6 +27,7 @@ public sealed class NativeModelsVisualFactAttribute : FactAttribute
 public partial class BridgeCommandsTests
 {
 	[NativeModelsVisualFact]
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2681", Justification = "两个连续 foreach 枚举语言与窗口尺寸的笛卡尔积，共享同一个受控测试块。")]
 	public async Task NativeModelsVisualCaptureCoversDarkLibraryBehaviorDisplayAndRegions()
 	{
 		string output = Path.Combine(Path.GetDirectoryName(NativeSettingsCaptureDirectory())!, "native-models"); Directory.CreateDirectory(output);

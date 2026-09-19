@@ -11,6 +11,7 @@ for (let index = 2; index < process.argv.length; index += 2) {
 	if (!KEY.startsWith("--") || !VALUE || VALUE.startsWith("--")) throw new Error(`更新清单参数缺少值: ${KEY}`)
 	const NAME = KEY.slice(2)
 	if (!ARGUMENT_NAMES.has(NAME)) throw new Error(`Unsupported argument: ${KEY}`)
+	// eslint-disable-next-line -- Codacy误报：NAME已通过固定参数白名单校验，Map不触发对象原型写入
 	ARGS.set(NAME, VALUE)
 }
 for (const KEY of ["version", "rid", "archive-path", "publish-dir"]) {

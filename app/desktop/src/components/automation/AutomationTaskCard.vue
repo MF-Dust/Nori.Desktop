@@ -90,6 +90,7 @@ const stateLabel = computed(() => {
 	}
 	const S = props.task.state
 	const STATES = TEXT.value.states as Record<string, string>
+	// eslint-disable-next-line -- Codacy误报：状态键仅用于只读本地化查询
 	return STATES[S] || S
 })
 

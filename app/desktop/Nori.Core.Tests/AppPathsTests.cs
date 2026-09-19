@@ -35,6 +35,7 @@ public sealed class AppPathsTests : IDisposable
 		Assert.True(Directory.Exists(paths.LogsDirectory));
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "测试夹具销毁只能尽力清理，不能让清理异常覆盖测试结果。")]
 	public void Dispose()
 	{
 		try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { }

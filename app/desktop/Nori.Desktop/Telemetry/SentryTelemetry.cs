@@ -288,6 +288,7 @@ public sealed class SentryTelemetry : ITelemetry
 	{
 		private int _finished;
 
+		[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "遥测事务结束失败不能阻断调用方资源释放。")]
 		public void Dispose()
 		{
 			if (Interlocked.Exchange(ref _finished, 1) != 0) return;

@@ -60,6 +60,7 @@ public partial class BridgeCommandsTests
 	});
 
 	[NativeChatVisualFact]
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2681", Justification = "两个连续 foreach 枚举语言与窗口尺寸的笛卡尔积，共享同一个受控测试块。")]
 	public async Task NativeChatVisualCaptureCoversDarkConversationMarkdownStreamingErrorAndApproval()
 	{
 		string output = Path.Combine(Path.GetDirectoryName(NativeSettingsCaptureDirectory())!, "native-chat"); Directory.CreateDirectory(output);

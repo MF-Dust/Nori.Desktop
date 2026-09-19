@@ -15,6 +15,7 @@ public sealed class ResourcePathSafetyTests : IDisposable
 {
 	private readonly string _root = Directory.CreateTempSubdirectory("nori-rps-").FullName;
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "测试夹具销毁只能尽力清理，不能让清理异常覆盖测试结果。")]
 	public void Dispose()
 	{
 		try { Directory.Delete(_root, recursive: true); } catch { }
@@ -122,6 +123,7 @@ public sealed class ResourcePathSafetyTests : IDisposable
 	/// <summary>Windows 上 symlink 需要开发者模式或管理员特权; 创建能力探测一次并缓存。</summary>
 	private static bool? _canCreateSymbolicLinks;
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "能力探测的临时目录清理失败不能改变探测结果。")]
 	private static bool CanCreateSymbolicLinks()
 	{
 		if (_canCreateSymbolicLinks.HasValue) return _canCreateSymbolicLinks.Value;

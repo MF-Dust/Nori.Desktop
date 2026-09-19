@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia.Threading;
@@ -38,7 +39,6 @@ public sealed class PetRuntime
 	private readonly ModelParameters _modelParams = new();
 	/// <summary>行为上下文逐帧复用, 避免渲染热路径上每帧分配</summary>
 	private readonly BehaviorContext _behaviorContext = new();
-	private readonly Random _random = new();
 	private readonly Lock _qualityGate = new();
 	private readonly Lock _metricsGate = new();
 	private Live2DRenderSettings _renderSettings = Live2DRenderSettings.Normalize("arg-nori");
@@ -1153,7 +1153,7 @@ public sealed class PetRuntime
 	{
 		if (_currentModel is null || group.Names.Count == 0) return false;
 
-		int start = _random.Next(group.Names.Count);
+		int start = RandomNumberGenerator.GetInt32(group.Names.Count);
 		for (int offset = 0; offset < group.Names.Count; offset++)
 		{
 			int index = (start + offset) % group.Names.Count;
@@ -1207,7 +1207,7 @@ public sealed class PetRuntime
 		IReadOnlyList<MotionGroupInfo> candidates = MotionSelector.GetInteractionCandidates(_motionGroups);
 		if (candidates.Count == 0) return false;
 
-		int start = _random.Next(candidates.Count);
+		int start = RandomNumberGenerator.GetInt32(candidates.Count);
 		for (int offset = 0; offset < candidates.Count; offset++)
 		{
 			MotionGroupInfo group = candidates[(start + offset) % candidates.Count];
@@ -1233,7 +1233,7 @@ public sealed class PetRuntime
 		if (names.Count == 0) names = _expressionStore.AllNames();
 		if (names.Count == 0) return false;
 
-		string randomName = names[_random.Next(names.Count)];
+		string randomName = names[RandomNumberGenerator.GetInt32(names.Count)];
 		return _expressionStore.Toggle(randomName);
 	});
 

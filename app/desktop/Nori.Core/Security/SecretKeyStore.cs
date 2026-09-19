@@ -34,6 +34,12 @@ public sealed class SecretKeyStoreException(string message, Exception? innerExce
 /// </summary>
 public sealed class SecretKeyStore : ISecretKeyStore
 {
+	private enum KeyStoreTool
+	{
+		MacOsSecurity,
+		LinuxSecretTool,
+	}
+
 	/// <summary>主密钥长度 (AES-256)</summary>
 	public const int KeySize = 32;
 
@@ -162,7 +168,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 
 	private static byte[]? TryKeychainRead()
 	{
-		string? output = RunTool("security",
+		string? output = RunTool(KeyStoreTool.MacOsSecurity,
 			["find-generic-password", "-s", KeychainService, "-a", KeychainAccount, "-w"]);
 		return DecodeHex(output);
 	}
@@ -171,7 +177,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	{
 		string hex = Convert.ToHexString(key);
 		// -U: 已存在则更新
-		return RunTool("security",
+		return RunTool(KeyStoreTool.MacOsSecurity,
 			["add-generic-password", "-s", KeychainService, "-a", KeychainAccount, "-w", hex, "-U"]) is not null;
 	}
 
@@ -179,7 +185,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 
 	private static byte[]? TrySecretToolRead()
 	{
-		string? output = RunTool("secret-tool",
+		string? output = RunTool(KeyStoreTool.LinuxSecretTool,
 			["lookup", "service", KeychainService, "account", KeychainAccount]);
 		return DecodeHex(output);
 	}
@@ -187,7 +193,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	private static bool TrySecretToolWrite(byte[] key)
 	{
 		string hex = Convert.ToHexString(key);
-		return RunTool("secret-tool",
+		return RunTool(KeyStoreTool.LinuxSecretTool,
 			["store", "--label=Nori Desktop Pet", "service", KeychainService, "account", KeychainAccount],
 			stdin: hex) is not null;
 	}
@@ -210,13 +216,18 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	/// <summary>
 	/// 跑一个外部密钥库命令; 命令不存在或返回非 0 时给 null (调用方回退文件)
 	/// </summary>
-	private static string? RunTool(string fileName, string[] arguments, string? stdin = null)
+	private static string? RunTool(KeyStoreTool tool, string[] arguments, string? stdin = null)
 	{
 		try
 		{
 			ProcessStartInfo info = new()
 			{
-				FileName = fileName,
+				FileName = tool switch
+				{
+					KeyStoreTool.MacOsSecurity => "security",
+					KeyStoreTool.LinuxSecretTool => "secret-tool",
+					_ => throw new ArgumentOutOfRangeException(nameof(tool)),
+				},
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
 				RedirectStandardInput = stdin is not null,

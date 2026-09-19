@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 namespace Nori.Desktop.Live2D.Behaviors;
 
 /// <summary>
@@ -37,23 +39,23 @@ public sealed class EyeFocusBehavior : IBehaviorPlugin
 		}
 	}
 
-	private readonly Random _random = new();
 	private double _nextSaccadeAt = -1;
 	private (float X, float Y) _focusTarget = (0, 0);
 	private double _lastSaccadeAt = -1;
 
 	private double RandomSaccadeInterval()
 	{
-		double r = _random.NextDouble();
+		double r = NextUnit();
 		foreach (var (prob, baseInterval) in SaccadeDistribution)
 		{
-			if (r <= prob) return baseInterval + _random.NextDouble() * SaccadeStep;
+			if (r <= prob) return baseInterval + NextUnit() * SaccadeStep;
 		}
 		var last = SaccadeDistribution[^1];
-		return last.Base + _random.NextDouble() * SaccadeStep;
+		return last.Base + NextUnit() * SaccadeStep;
 	}
 
-	private float RandFloat(float min, float max) => min + (float)_random.NextDouble() * (max - min);
+	private static double NextUnit() => RandomNumberGenerator.GetInt32(int.MaxValue) / (double)int.MaxValue;
+	private static float RandFloat(float min, float max) => min + (float)NextUnit() * (max - min);
 	private static float Lerp(float a, float b, float t) => a + (b - a) * t;
 
 	public void Execute(BehaviorContext ctx)

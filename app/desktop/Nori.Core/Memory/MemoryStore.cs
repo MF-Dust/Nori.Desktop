@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Globalization;
 using System.Numerics.Tensors;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Nori.Core.Data;
 using Nori.Core.Embedding;
@@ -286,7 +287,7 @@ public sealed class MemoryStore
 	public IReadOnlyList<MemoryItem> GetAll(int limit = 100) => _database.Locked(connection =>
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = BaseSelect + " ORDER BY importance DESC, id DESC LIMIT $limit";
+		command.CommandText = SelectAllSql;
 		AddParameter(command, "$limit", Math.Max(0, limit));
 		return ReadItems(command);
 	});
@@ -295,15 +296,7 @@ public sealed class MemoryStore
 	public IReadOnlyList<MemoryItem> GetUnembedded(int limit = 100, long afterId = 0, string? fingerprint = null) => _database.Locked(connection =>
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = BaseSelect + """
-			 WHERE id > $afterId
-			   AND status IN ('active', 'dormant')
-			   AND (
-					   (embedding_blob IS NULL AND (embedding IS NULL OR embedding = ''))
-					   OR ($fingerprint IS NOT NULL AND (embedding_fingerprint IS NULL OR embedding_fingerprint <> $fingerprint))
-				   )
-			 ORDER BY id ASC LIMIT $limit
-			""";
+		command.CommandText = SelectUnembeddedSql;
 		AddParameter(command, "$afterId", afterId);
 		AddParameter(command, "$fingerprint", fingerprint);
 		AddParameter(command, "$limit", Math.Max(1, limit));
@@ -337,7 +330,7 @@ public sealed class MemoryStore
 	public MemoryItem? Get(long id) => _database.Locked(connection =>
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = BaseSelect + " WHERE id = $id";
+		command.CommandText = SelectByIdSql;
 		AddParameter(command, "$id", id);
 		using SqliteDataReader reader = command.ExecuteReader();
 		return reader.Read() ? ReadRow(reader) : null;
@@ -456,12 +449,15 @@ public sealed class MemoryStore
 	public IReadOnlyList<MemoryAtom> GetAtoms(long? parentMemoryId = null, MemoryStatus? status = null, int limit = 100, int offset = 0) => _database.Locked(connection =>
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		List<string> where = [];
-		if (parentMemoryId is not null) { where.Add("parent_memory_id = $parent"); AddParameter(command, "$parent", parentMemoryId.Value); }
-		if (status is not null) { where.Add("status = $status"); AddParameter(command, "$status", status.Value.ToStorage()); }
-		command.CommandText = "SELECT id, parent_memory_id, atom_type, content, importance, confidence, status, created_at, last_accessed_at, last_reinforced_at, ttl_days, expires_at, reinforcement_count, decay_type, entities, superseded_by FROM memory_atoms"
-			+ (where.Count == 0 ? "" : " WHERE " + string.Join(" AND ", where))
-			+ " ORDER BY importance DESC, id DESC LIMIT $limit OFFSET $offset";
+		command.CommandText = (parentMemoryId is not null, status is not null) switch
+		{
+			(false, false) => SelectAtomsSql,
+			(true, false) => SelectAtomsByParentSql,
+			(false, true) => SelectAtomsByStatusSql,
+			(true, true) => SelectAtomsByParentAndStatusSql,
+		};
+		if (parentMemoryId is not null) AddParameter(command, "$parent", parentMemoryId.Value);
+		if (status is not null) AddParameter(command, "$status", status.Value.ToStorage());
 		AddParameter(command, "$limit", Math.Max(0, limit));
 		AddParameter(command, "$offset", Math.Max(0, offset));
 		using SqliteDataReader reader = command.ExecuteReader();
@@ -897,7 +893,7 @@ public sealed class MemoryStore
 	{
 		using SqliteCommand command = connection.CreateCommand();
 		command.Transaction = transaction;
-		command.CommandText = BaseSelect + " WHERE status IN ('active', 'dormant', 'archived') AND superseded_by IS NULL ORDER BY updated_at DESC, id DESC";
+		command.CommandText = SelectReconsolidationCandidatesSql;
 		using SqliteDataReader reader = command.ExecuteReader();
 		Dictionary<string, long> result = new(StringComparer.Ordinal);
 		while (reader.Read())
@@ -1057,6 +1053,24 @@ public sealed class MemoryStore
 	};
 
 	private const string BaseSelect = "SELECT id, type, content, importance, source, tags, embedding, embedding_blob, created_at, updated_at, kind, canonical_summary, persona_summary, confidence, status, access_count, reinforcement_count, last_accessed_at, last_reinforced_at, ttl_days, expires_at, superseded_by, embedding_fingerprint FROM memories";
+	private const string SelectAllSql = BaseSelect + " ORDER BY importance DESC, id DESC LIMIT $limit";
+	private const string SelectByIdSql = BaseSelect + " WHERE id = $id";
+	private const string SelectManySql = BaseSelect + " WHERE id IN (SELECT CAST(value AS INTEGER) FROM json_each($ids))";
+	private const string SelectReconsolidationCandidatesSql = BaseSelect + " WHERE status IN ('active', 'dormant', 'archived') AND superseded_by IS NULL ORDER BY updated_at DESC, id DESC";
+	private const string SelectUnembeddedSql = BaseSelect + """
+		 WHERE id > $afterId
+		   AND status IN ('active', 'dormant')
+		   AND (
+			   (embedding_blob IS NULL AND (embedding IS NULL OR embedding = ''))
+			   OR ($fingerprint IS NOT NULL AND (embedding_fingerprint IS NULL OR embedding_fingerprint <> $fingerprint))
+			 )
+		 ORDER BY id ASC LIMIT $limit
+		""";
+	private const string AtomSelect = "SELECT id, parent_memory_id, atom_type, content, importance, confidence, status, created_at, last_accessed_at, last_reinforced_at, ttl_days, expires_at, reinforcement_count, decay_type, entities, superseded_by FROM memory_atoms";
+	private const string SelectAtomsSql = AtomSelect + " ORDER BY importance DESC, id DESC LIMIT $limit OFFSET $offset";
+	private const string SelectAtomsByParentSql = AtomSelect + " WHERE parent_memory_id = $parent ORDER BY importance DESC, id DESC LIMIT $limit OFFSET $offset";
+	private const string SelectAtomsByStatusSql = AtomSelect + " WHERE status = $status ORDER BY importance DESC, id DESC LIMIT $limit OFFSET $offset";
+	private const string SelectAtomsByParentAndStatusSql = AtomSelect + " WHERE parent_memory_id = $parent AND status = $status ORDER BY importance DESC, id DESC LIMIT $limit OFFSET $offset";
 
 	private static List<MemoryItem> ReadItems(SqliteCommand command)
 	{
@@ -1137,13 +1151,8 @@ public sealed class MemoryStore
 		return _database.Locked(connection =>
 		{
 			using SqliteCommand command = connection.CreateCommand();
-			string[] parameters = new string[ids.Count];
-			for (int index = 0; index < ids.Count; index++)
-			{
-				parameters[index] = $"$id{index}";
-				AddParameter(command, parameters[index], ids[index]);
-			}
-			command.CommandText = $"{BaseSelect} WHERE id IN ({string.Join(", ", parameters)})";
+			command.CommandText = SelectManySql;
+			AddParameter(command, "$ids", JsonSerializer.Serialize(ids));
 			using SqliteDataReader reader = command.ExecuteReader();
 			Dictionary<long, MemoryItem> result = [];
 			while (reader.Read())
@@ -1190,7 +1199,12 @@ public sealed class MemoryStore
 	private static List<RetrievalHit> SearchFts(SqliteConnection connection, string table, string keyword, int limit)
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = $"SELECT CAST(memory_id AS INTEGER) FROM {table} WHERE {table} MATCH $query ORDER BY bm25({table}) LIMIT $limit";
+		command.CommandText = table switch
+		{
+			"memories_fts" => "SELECT CAST(memory_id AS INTEGER) FROM memories_fts WHERE memories_fts MATCH $query ORDER BY bm25(memories_fts) LIMIT $limit",
+			"memory_atoms_fts" => "SELECT CAST(memory_id AS INTEGER) FROM memory_atoms_fts WHERE memory_atoms_fts MATCH $query ORDER BY bm25(memory_atoms_fts) LIMIT $limit",
+			_ => throw new ArgumentOutOfRangeException(nameof(table)),
+		};
 		AddParameter(command, "$query", $"\"{keyword.Replace("\"", "\"\"", StringComparison.Ordinal)}\"");
 		AddParameter(command, "$limit", Math.Max(0, limit));
 		try
@@ -1257,10 +1271,18 @@ public sealed class MemoryStore
 	private static void CreateFts(SqliteConnection connection, string tokenizer)
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = $"""
-			CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(memory_id UNINDEXED, content, tags, tokenize = '{tokenizer}');
-			CREATE VIRTUAL TABLE IF NOT EXISTS memory_atoms_fts USING fts5(memory_id UNINDEXED, content, tokenize = '{tokenizer}');
-			""";
+		command.CommandText = tokenizer switch
+		{
+			"trigram" => """
+				CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(memory_id UNINDEXED, content, tags, tokenize = 'trigram');
+				CREATE VIRTUAL TABLE IF NOT EXISTS memory_atoms_fts USING fts5(memory_id UNINDEXED, content, tokenize = 'trigram');
+				""",
+			"unicode61" => """
+				CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(memory_id UNINDEXED, content, tags, tokenize = 'unicode61');
+				CREATE VIRTUAL TABLE IF NOT EXISTS memory_atoms_fts USING fts5(memory_id UNINDEXED, content, tokenize = 'unicode61');
+				""",
+			_ => throw new ArgumentOutOfRangeException(nameof(tokenizer)),
+		};
 		command.ExecuteNonQuery();
 	}
 
@@ -1303,7 +1325,12 @@ public sealed class MemoryStore
 	{
 		using SqliteCommand command = connection.CreateCommand();
 		command.Transaction = transaction;
-		command.CommandText = $"DELETE FROM {table} WHERE memory_id = $id";
+		command.CommandText = table switch
+		{
+			"memories_fts" => "DELETE FROM memories_fts WHERE memory_id = $id",
+			"memory_atoms_fts" => "DELETE FROM memory_atoms_fts WHERE memory_id = $id",
+			_ => throw new ArgumentOutOfRangeException(nameof(table)),
+		};
 		AddParameter(command, "$id", id);
 		command.ExecuteNonQuery();
 	}

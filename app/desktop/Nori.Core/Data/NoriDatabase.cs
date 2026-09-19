@@ -11,6 +11,16 @@ namespace Nori.Core.Data;
 /// </summary>
 public sealed class NoriDatabase : IDisposable
 {
+	private enum StartupStatement
+	{
+		ForeignKeys,
+		JournalMode,
+		SynchronousMode,
+		WalAutoCheckpoint,
+		BusyTimeout,
+		Schema,
+	}
+
 	/// <summary>当前数据库结构版本</summary>
 	public const long DatabaseSchemaVersion = 7;
 
@@ -91,19 +101,19 @@ public sealed class NoriDatabase : IDisposable
 		try
 		{
 			// 外键必须在事务开始前启用, 记忆删除时由 SQLite 清理 Atom/Source/Knowledge 子记录.
-			database.Execute("PRAGMA foreign_keys=ON;");
+			database.Execute(StartupStatement.ForeignKeys);
 			// WAL: 写不阻塞读, 拖拽落盘这类高频小写不会让界面卡在 fsync 上.
-			database.Execute("PRAGMA journal_mode=WAL;");
+			database.Execute(StartupStatement.JournalMode);
 			// NORMAL 在 WAL 下仍保持崩溃一致性, 避免每次小写入都强制 fsync.
-			database.Execute("PRAGMA synchronous=NORMAL;");
+			database.Execute(StartupStatement.SynchronousMode);
 			// 由应用在可控的维护点主动 checkpoint, 不让 WAL 无限增长.
-			database.Execute("PRAGMA wal_autocheckpoint=1000;");
+			database.Execute(StartupStatement.WalAutoCheckpoint);
 			// 多线程争用单连接时等锁而不是立刻抛 "database is locked".
-			database.Execute("PRAGMA busy_timeout=5000;");
+			database.Execute(StartupStatement.BusyTimeout);
 
 			long current = ReadUserVersion(connection);
 			if (databaseExisted && current < DatabaseSchemaVersion) database.EnsureMigrationBackup();
-			database.Execute(Schema);
+			database.Execute(StartupStatement.Schema);
 			database.MigrateSchema();
 			database.OptimizeAndCheckpoint();
 			return database;
@@ -134,10 +144,19 @@ public sealed class NoriDatabase : IDisposable
 	/// <summary>
 	/// 执行不返回结果的 SQL (可含多条语句)
 	/// </summary>
-	private void Execute(string sql) => Locked(connection =>
+	private void Execute(StartupStatement statement) => Locked(connection =>
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = sql;
+		command.CommandText = statement switch
+		{
+			StartupStatement.ForeignKeys => "PRAGMA foreign_keys=ON;",
+			StartupStatement.JournalMode => "PRAGMA journal_mode=WAL;",
+			StartupStatement.SynchronousMode => "PRAGMA synchronous=NORMAL;",
+			StartupStatement.WalAutoCheckpoint => "PRAGMA wal_autocheckpoint=1000;",
+			StartupStatement.BusyTimeout => "PRAGMA busy_timeout=5000;",
+			StartupStatement.Schema => Schema,
+			_ => throw new ArgumentOutOfRangeException(nameof(statement)),
+		};
 		command.ExecuteNonQuery();
 	});
 
@@ -227,7 +246,17 @@ public sealed class NoriDatabase : IDisposable
 	{
 		using SqliteCommand command = connection.CreateCommand();
 		command.Transaction = transaction;
-		command.CommandText = $"PRAGMA user_version = {version};";
+		command.CommandText = version switch
+		{
+			1 => "PRAGMA user_version = 1;",
+			2 => "PRAGMA user_version = 2;",
+			3 => "PRAGMA user_version = 3;",
+			4 => "PRAGMA user_version = 4;",
+			5 => "PRAGMA user_version = 5;",
+			6 => "PRAGMA user_version = 6;",
+			7 => "PRAGMA user_version = 7;",
+			_ => throw new ArgumentOutOfRangeException(nameof(version)),
+		};
 		command.ExecuteNonQuery();
 	}
 
@@ -448,22 +477,32 @@ public sealed class NoriDatabase : IDisposable
 	private static void MigrateRemindersV6(SqliteConnection connection, SqliteTransaction? transaction)
 	{
 		CreateRemindersTable(connection, transaction);
-		(string Name, string Definition)[] columns =
+		string[] columns =
 		[
-			("status", "TEXT NOT NULL DEFAULT 'pending'"),
-			("timezone", "TEXT NOT NULL DEFAULT 'UTC'"),
-			("recurrence_json", "TEXT"),
-			("snoozed_until", "INTEGER"),
-			("claimed_at", "TEXT"),
-			("fired_at", "TEXT"),
-			("updated_at", "TEXT NOT NULL DEFAULT ''"),
+			"status",
+			"timezone",
+			"recurrence_json",
+			"snoozed_until",
+			"claimed_at",
+			"fired_at",
+			"updated_at",
 		];
-		foreach ((string name, string definition) in columns)
+		foreach (string name in columns)
 		{
 			if (HasColumn(connection, transaction, "reminders", name)) continue;
 			using SqliteCommand alter = connection.CreateCommand();
 			alter.Transaction = transaction;
-			alter.CommandText = $"ALTER TABLE reminders ADD COLUMN {name} {definition};";
+			alter.CommandText = name switch
+			{
+				"status" => "ALTER TABLE reminders ADD COLUMN status TEXT NOT NULL DEFAULT 'pending';",
+				"timezone" => "ALTER TABLE reminders ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC';",
+				"recurrence_json" => "ALTER TABLE reminders ADD COLUMN recurrence_json TEXT;",
+				"snoozed_until" => "ALTER TABLE reminders ADD COLUMN snoozed_until INTEGER;",
+				"claimed_at" => "ALTER TABLE reminders ADD COLUMN claimed_at TEXT;",
+				"fired_at" => "ALTER TABLE reminders ADD COLUMN fired_at TEXT;",
+				"updated_at" => "ALTER TABLE reminders ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';",
+				_ => throw new InvalidOperationException("未知提醒迁移列"),
+			};
 			alter.ExecuteNonQuery();
 		}
 
@@ -518,28 +557,44 @@ public sealed class NoriDatabase : IDisposable
 	/// </summary>
 	private static void MigrateMemoryEngineV4(SqliteConnection connection, SqliteTransaction transaction)
 	{
-		(string Name, string Definition)[] columns =
+		string[] columns =
 		[
-			("kind", "TEXT NOT NULL DEFAULT 'general'"),
-			("canonical_summary", "TEXT"),
-			("persona_summary", "TEXT"),
-			("confidence", "REAL NOT NULL DEFAULT 0.8"),
-			("status", "TEXT NOT NULL DEFAULT 'active'"),
-			("access_count", "INTEGER NOT NULL DEFAULT 0"),
-			("reinforcement_count", "INTEGER NOT NULL DEFAULT 0"),
-			("last_accessed_at", "TEXT"),
-			("last_reinforced_at", "TEXT"),
-			("ttl_days", "REAL"),
-			("expires_at", "TEXT"),
-			("superseded_by", "INTEGER"),
-			("embedding_fingerprint", "TEXT"),
+			"kind",
+			"canonical_summary",
+			"persona_summary",
+			"confidence",
+			"status",
+			"access_count",
+			"reinforcement_count",
+			"last_accessed_at",
+			"last_reinforced_at",
+			"ttl_days",
+			"expires_at",
+			"superseded_by",
+			"embedding_fingerprint",
 		];
-		foreach ((string name, string definition) in columns)
+		foreach (string name in columns)
 		{
 			if (HasColumn(connection, transaction, "memories", name)) continue;
 			using SqliteCommand alter = connection.CreateCommand();
 			alter.Transaction = transaction;
-			alter.CommandText = $"ALTER TABLE memories ADD COLUMN {name} {definition};";
+			alter.CommandText = name switch
+			{
+				"kind" => "ALTER TABLE memories ADD COLUMN kind TEXT NOT NULL DEFAULT 'general';",
+				"canonical_summary" => "ALTER TABLE memories ADD COLUMN canonical_summary TEXT;",
+				"persona_summary" => "ALTER TABLE memories ADD COLUMN persona_summary TEXT;",
+				"confidence" => "ALTER TABLE memories ADD COLUMN confidence REAL NOT NULL DEFAULT 0.8;",
+				"status" => "ALTER TABLE memories ADD COLUMN status TEXT NOT NULL DEFAULT 'active';",
+				"access_count" => "ALTER TABLE memories ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0;",
+				"reinforcement_count" => "ALTER TABLE memories ADD COLUMN reinforcement_count INTEGER NOT NULL DEFAULT 0;",
+				"last_accessed_at" => "ALTER TABLE memories ADD COLUMN last_accessed_at TEXT;",
+				"last_reinforced_at" => "ALTER TABLE memories ADD COLUMN last_reinforced_at TEXT;",
+				"ttl_days" => "ALTER TABLE memories ADD COLUMN ttl_days REAL;",
+				"expires_at" => "ALTER TABLE memories ADD COLUMN expires_at TEXT;",
+				"superseded_by" => "ALTER TABLE memories ADD COLUMN superseded_by INTEGER;",
+				"embedding_fingerprint" => "ALTER TABLE memories ADD COLUMN embedding_fingerprint TEXT;",
+				_ => throw new InvalidOperationException("未知记忆迁移列"),
+			};
 			alter.ExecuteNonQuery();
 		}
 
@@ -660,7 +715,13 @@ public sealed class NoriDatabase : IDisposable
 	{
 		using SqliteCommand command = connection.CreateCommand();
 		command.Transaction = transaction;
-		command.CommandText = $"PRAGMA table_info({table});";
+		command.CommandText = table switch
+		{
+			"memories" => "PRAGMA table_info(memories);",
+			"reminders" => "PRAGMA table_info(reminders);",
+			"knowledge_chunks" => "PRAGMA table_info(knowledge_chunks);",
+			_ => throw new ArgumentOutOfRangeException(nameof(table)),
+		};
 		using SqliteDataReader reader = command.ExecuteReader();
 		while (reader.Read())
 		{

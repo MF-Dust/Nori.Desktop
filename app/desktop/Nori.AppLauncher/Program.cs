@@ -133,7 +133,9 @@ internal static class Program
 			{
 				ProcessStartInfo alert = new("osascript") { UseShellExecute = false };
 				alert.ArgumentList.Add("-e");
-				alert.ArgumentList.Add($"display alert {AppleScriptString(title)} message {AppleScriptString(message)}");
+				alert.ArgumentList.Add("display alert (system attribute \"NORI_ALERT_TITLE\") message (system attribute \"NORI_ALERT_MESSAGE\")");
+				alert.Environment["NORI_ALERT_TITLE"] = title;
+				alert.Environment["NORI_ALERT_MESSAGE"] = message;
 				using Process process = Process.Start(alert)!;
 				process.WaitForExit(5000);
 				return;
@@ -142,8 +144,6 @@ internal static class Program
 		}
 		Console.Error.WriteLine($"{title}: {message}");
 	}
-
-	private static string AppleScriptString(string value) => "\"" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal).Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal) + "\"";
 
 	[DllImport("user32.dll", CharSet = CharSet.Unicode)]
 	private static extern int MessageBox(nint hWnd, string text, string caption, uint type);

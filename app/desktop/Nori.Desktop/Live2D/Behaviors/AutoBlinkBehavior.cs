@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 namespace Nori.Desktop.Live2D.Behaviors;
 
 /// <summary>
@@ -23,7 +25,6 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 	private const double MinDelay = 3.0;
 	private const double MaxDelay = 8.0;
 
-	private readonly Random _random = new();
 	private Phase _phase = Phase.Idle;
 	private double _progress;
 	private float _startLeft = 1.0f;
@@ -37,7 +38,8 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 		_openDurationSeconds = RandomRange(MinBlinkOpenDuration, MaxBlinkOpenDuration);
 	}
 
-	private double RandomRange(double min, double max) => min + _random.NextDouble() * (max - min);
+	private static double RandomRange(double min, double max) => min + NextUnit() * (max - min);
+	private static double NextUnit() => RandomNumberGenerator.GetInt32(int.MaxValue) / (double)int.MaxValue;
 	private static float Clamp01(float v) => Math.Clamp(v, 0.0f, 1.0f);
 	private static double EaseOutQuad(double t) => 1.0 - (1.0 - t) * (1.0 - t);
 	private static double EaseInQuad(double t) => t * t;

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Reflection;
 using Microsoft.Data.Sqlite;
 using Nori.Core.Configuration;
@@ -276,14 +277,18 @@ public sealed class KnowledgeService : IAsyncDisposable
 		}
 		terms = terms.Where(term => term.Length > 0).Distinct(StringComparer.Ordinal).Take(24).ToList();
 		using SqliteCommand command = connection.CreateCommand();
-		List<string> conditions = [];
-		for (int index = 0; index < terms.Count; index++)
-		{
-			string parameter = $"$pattern{index}";
-			conditions.Add($"content LIKE {parameter} OR heading LIKE {parameter}");
-			AddParameter(command, parameter, $"%{terms[index]}%");
-		}
-		command.CommandText = $"SELECT id, heading, subheading, content, knowledge_type, awareness FROM knowledge_chunks WHERE {string.Join(" OR ", conditions)} ORDER BY sequence ASC LIMIT $limit";
+		command.CommandText = """
+			SELECT id, heading, subheading, content, knowledge_type, awareness
+			FROM knowledge_chunks
+			WHERE EXISTS (
+				SELECT 1
+				FROM json_each($patterns) AS pattern
+				WHERE content LIKE CAST(pattern.value AS TEXT)
+				   OR heading LIKE CAST(pattern.value AS TEXT)
+			)
+			ORDER BY sequence ASC LIMIT $limit
+			""";
+		AddParameter(command, "$patterns", JsonSerializer.Serialize(terms.Select(term => $"%{term}%")));
 		AddParameter(command, "$limit", Math.Max(0, limit));
 		using SqliteDataReader reader = command.ExecuteReader();
 		return ReadKnowledgeRows(reader);

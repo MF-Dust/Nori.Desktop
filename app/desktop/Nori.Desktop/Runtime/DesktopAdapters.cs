@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
+using Nori.Core.Data;
 using Nori.Core.Tools;
 
 namespace Nori.Desktop.Runtime;
@@ -114,10 +115,23 @@ public static class ShellOpen
 {
 	public static void OpenUrl(string url)
 	{
-		if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed) || parsed.Scheme is not ("http" or "https"))
+		if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
+			|| (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps)
+			|| !string.IsNullOrEmpty(parsed.UserInfo))
 		{
-			throw new InvalidOperationException($"不允许打开的链接: {url}");
+			throw new InvalidOperationException("不允许打开该链接");
 		}
-		Process.Start(new ProcessStartInfo(parsed.ToString()) {UseShellExecute = true});
+		Process.Start(new ProcessStartInfo(parsed.AbsoluteUri) {UseShellExecute = true});
+	}
+
+	/// <summary>使用系统文件管理器打开数据目录内的固定路径。</summary>
+	public static void OpenDataDirectory(string directory, string dataRoot)
+	{
+		string fullDirectory = Path.GetFullPath(directory);
+		string fullDataRoot = Path.GetFullPath(dataRoot);
+		if (!AppStoragePaths.IsContained(fullDirectory, fullDataRoot))
+			throw new InvalidOperationException("不允许打开数据目录之外的路径");
+		AppStoragePaths.EnsureNoReparsePoints(fullDirectory, fullDataRoot);
+		Process.Start(new ProcessStartInfo(fullDirectory) {UseShellExecute = true});
 	}
 }

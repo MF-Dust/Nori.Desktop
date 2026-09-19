@@ -1,4 +1,5 @@
 ﻿// [Nori Modification] Embedded Live2DCSharpSDK with customized Update hooks for desktop pet behaviors.
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Live2DCSharpSDK.Framework;
@@ -100,8 +101,6 @@ public class LAppModel : CubismUserModel
     //LAppWavFileHandler _wavFileHandler;
 
     private readonly LAppDelegate _lapp;
-
-    private readonly Random _random = new();
 
     public LAppModel(LAppDelegate lapp, string dir, string fileName)
 		: this(lapp, LoadAssets(lapp, dir, fileName))
@@ -498,7 +497,7 @@ public class LAppModel : CubismUserModel
             return null;
         }
 
-        int no = _random.Next(motionGroup.Count);
+        int no = RandomNumberGenerator.GetInt32(motionGroup.Count);
         return StartMotion(resolvedGroup, no, priority, onFinishedMotionHandler);
     }
 

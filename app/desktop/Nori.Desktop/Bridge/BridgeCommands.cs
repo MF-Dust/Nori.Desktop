@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia;
@@ -1343,7 +1342,7 @@ public sealed class BridgeCommands
 	private object? OpenKnowledgeFolder()
 	{
 		string directory = System.IO.Path.GetDirectoryName(Runtime.Knowledge.Path) ?? _services.Paths.DataRoot;
-		Process.Start(new ProcessStartInfo(directory) {UseShellExecute = true});
+		ShellOpen.OpenDataDirectory(directory, _services.Paths.DataRoot);
 		return null;
 	}
 
@@ -2675,7 +2674,7 @@ public sealed class BridgeCommands
 	private void OpenLogFolder()
 	{
 		Directory.CreateDirectory(_services.Paths.LogsDirectory);
-		Process.Start(new ProcessStartInfo {FileName = _services.Paths.LogsDirectory, UseShellExecute = true});
+		ShellOpen.OpenDataDirectory(_services.Paths.LogsDirectory, _services.Paths.DataRoot);
 	}
 
 	/// <summary>弹出保存位置并在后台生成脱敏诊断 ZIP。</summary>

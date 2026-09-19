@@ -48,7 +48,9 @@ internal static class Program
 			{
 				System.Diagnostics.ProcessStartInfo alert = new("osascript") { UseShellExecute = false };
 				alert.ArgumentList.Add("-e");
-				alert.ArgumentList.Add($"display alert {AppleScriptString(title)} message {AppleScriptString(safe)}");
+				alert.ArgumentList.Add("display alert (system attribute \"NORI_ALERT_TITLE\") message (system attribute \"NORI_ALERT_MESSAGE\")");
+				alert.Environment["NORI_ALERT_TITLE"] = title;
+				alert.Environment["NORI_ALERT_MESSAGE"] = safe;
 				using System.Diagnostics.Process? process = System.Diagnostics.Process.Start(alert);
 				if (process is null) throw new InvalidOperationException("无法显示启动错误");
 				process.WaitForExit(5000);
@@ -58,8 +60,6 @@ internal static class Program
 		}
 		Console.Error.WriteLine($"{title}: {safe}");
 	}
-
-	private static string AppleScriptString(string value) => "\"" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal).Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal) + "\"";
 
 	[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = CharSet.Unicode)]
 	private static extern int MessageBox(nint hWnd, string text, string caption, uint type);

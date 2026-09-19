@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Embedding;
@@ -6,6 +7,7 @@ using Nori.Core.Memory;
 namespace Nori.Core.Tests;
 
 /// <summary>M0: 锁定旧 MemoryStore/MemoryService 行为，避免 v4 重构回归。</summary>
+[SuppressMessage("Security", "S5332", Justification = "HTTP 地址是内存中的模拟端点，不会发起网络请求。")]
 public sealed class MemoryEngineBaselineTests : IDisposable
 {
 	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-memory-baseline-{Guid.NewGuid():N}.db");
@@ -17,7 +19,7 @@ public sealed class MemoryEngineBaselineTests : IDisposable
 		_database = NoriDatabase.Open(_path);
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("test");
-		_config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1")); // NOSONAR
+		_config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1"));
 	}
 
 	[Fact]

@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using Nori.Core.Telemetry;
 
 namespace Nori.Core.Tests;
 
 /// <summary>遥测操作名与凭据脱敏纯函数测试。</summary>
+[SuppressMessage("Security", "S2068", Justification = "伪凭据用于验证遥测脱敏。")]
 public sealed class TelemetrySanitizerTests
 {
 	[Fact]
@@ -19,7 +21,7 @@ public sealed class TelemetrySanitizerTests
 	public void 普通诊断文本会移除密钥凭据和路径()
 	{
 		// 脱敏测试必须包含会被清除的伪凭据与用户信息。
-		string raw = "api_key=sk-secret https://user:password@example.com/v1?token=token-secret /home/user/nori.db"; // NOSONAR
+		string raw = "api_key=sk-secret https://user:password@example.com/v1?token=token-secret /home/user/nori.db";
 		string scrubbed = TelemetrySanitizer.ScrubText(raw);
 
 		Assert.DoesNotContain("sk-secret", scrubbed, StringComparison.Ordinal);

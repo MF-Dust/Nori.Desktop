@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Data.Sqlite;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
@@ -9,6 +10,7 @@ using Nori.Core.Logging;
 
 namespace Nori.Core.Tests;
 
+[SuppressMessage("Security", "S5332", Justification = "HTTP 地址是内存中的模拟端点，不会发起网络请求。")]
 public sealed class ReliabilitySliceTests
 {
 	[Fact]
@@ -106,7 +108,7 @@ public sealed class ReliabilitySliceTests
 			using NoriDatabase database = NoriDatabase.Open(path);
 			ConfigStore config = new(database);
 			config.InitDefaults("test");
-			config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1")); // NOSONAR
+			config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1"));
 			await using MemoryService service = new(new MemoryStore(database), new FailingEmbedding(), config);
 
 			MemoryItem item = await service.AddAsync("即使向量服务离线也要保存这段文本");

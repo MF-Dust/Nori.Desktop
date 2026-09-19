@@ -1,9 +1,11 @@
+using System.Diagnostics.CodeAnalysis;
 using Nori.Core.Update;
 using Xunit;
 
 namespace Nori.Core.Tests;
 
 /// <summary>更新清单解析与版本比对单元测试。</summary>
+[SuppressMessage("Security", "S5332", Justification = "HTTP 地址是更新清单拒绝测试夹具，不会发起请求。")]
 public sealed class UpdateManifestTests
 {
 	[Fact]
@@ -48,7 +50,7 @@ public sealed class UpdateManifestTests
 	}
 
 	[Theory]
-	[InlineData("http://github.com/file.zip")] // NOSONAR: 非 HTTPS 拒绝样本
+	[InlineData("http://github.com/file.zip")] // 非 HTTPS 拒绝样本
 	[InlineData("ftp://github.com/file.zip")]
 	[InlineData("not-a-url")]
 	public void FromJson_NonHttpsUrl_Throws(string invalidUrl)

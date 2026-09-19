@@ -1,9 +1,11 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Nori.Core.Network;
 
 namespace Nori.Core.Tests;
 
 [Collection("HttpClient.DefaultProxy")]
+[SuppressMessage("Security", "S5332", Justification = "保留 HTTP 测试端点以验证代理和 TLS 策略，不携带用户数据。")]
 public sealed class NoriHttpClientsTests
 {
 	[Fact]
@@ -20,7 +22,7 @@ public sealed class NoriHttpClientsTests
 			Exception? exception = await Record.ExceptionAsync(async () =>
 			{
 				using HttpResponseMessage response = await clients.Public.GetAsync(
-					"http://nori-network-test.invalid/", timeout.Token); // NOSONAR
+					"http://nori-network-test.invalid/", timeout.Token);
 			});
 
 			Assert.NotNull(exception);
@@ -48,7 +50,7 @@ public sealed class NoriHttpClientsTests
 			Exception? exception = await Record.ExceptionAsync(async () =>
 			{
 				using HttpResponseMessage response = await clients.Public.GetAsync(
-					"http://nori-network-test.invalid/", timeout.Token); // NOSONAR
+					"http://nori-network-test.invalid/", timeout.Token);
 			});
 
 			Assert.NotNull(exception);

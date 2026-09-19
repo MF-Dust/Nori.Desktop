@@ -581,7 +581,8 @@ public sealed class NoriDatabase : IDisposable
 			if (HasColumn(connection, transaction, "memories", name)) continue;
 			using SqliteCommand alter = connection.CreateCommand();
 			alter.Transaction = transaction;
-			alter.CommandText = name switch
+			// 列名来自上方固定迁移清单，不接受数据库或用户输入。
+			alter.CommandText = name switch // nosemgrep
 			{
 				"kind" => "ALTER TABLE memories ADD COLUMN kind TEXT NOT NULL DEFAULT 'general';",
 				"canonical_summary" => "ALTER TABLE memories ADD COLUMN canonical_summary TEXT;",

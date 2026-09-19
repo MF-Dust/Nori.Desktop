@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Nori.Core.Network;
 
 namespace Nori.Core.Tests;
@@ -5,6 +6,7 @@ namespace Nori.Core.Tests;
 /// <summary>
 /// AnySearch 端点/凭据策略: 存储密钥只跟随官方端点
 /// </summary>
+[SuppressMessage("Security", "S5332", Justification = "HTTP 地址是非 HTTPS 拒绝测试夹具，不会发起请求。")]
 public class AnySearchRequestPolicyTests
 {
 	[Fact]
@@ -46,7 +48,7 @@ public class AnySearchRequestPolicyTests
 	public void 非HTTPS端点一律拒绝()
 	{
 		Assert.Throws<InvalidOperationException>(
-			() => AnySearchRequestPolicy.Resolve("http://api.anysearch.com/v1/search", null, "sk-stored")); // NOSONAR
+			() => AnySearchRequestPolicy.Resolve("http://api.anysearch.com/v1/search", null, "sk-stored"));
 	}
 
 	[Fact]

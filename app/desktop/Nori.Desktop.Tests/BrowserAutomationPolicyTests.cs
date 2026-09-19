@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using Nori.Core.Automation;
 using Nori.Desktop.Automation.Browser;
 
 namespace Nori.Desktop.Tests;
 
+[SuppressMessage("Security", "S2068", Justification = "带伪凭据的 URL 用于验证浏览器自动化策略拒绝行为。")]
 public sealed class BrowserAutomationPolicyTests
 {
 	[Theory]
@@ -18,7 +20,7 @@ public sealed class BrowserAutomationPolicyTests
 	[Theory]
 	[InlineData("file:///C:/secret.txt")]
 	[InlineData("javascript:alert(1)")]
-	[InlineData("https://user:password@example.com")] // NOSONAR
+	[InlineData("https://user:password@example.com")]
 	[InlineData("")]
 	public void 拒绝危险或无效地址(string value)
 	{

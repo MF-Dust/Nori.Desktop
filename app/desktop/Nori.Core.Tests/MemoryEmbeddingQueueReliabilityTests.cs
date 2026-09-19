@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Embedding;
@@ -7,6 +8,7 @@ using Nori.Core.Memory;
 namespace Nori.Core.Tests;
 
 /// <summary>后台向量队列的容量、重试和数据库补偿测试。</summary>
+[SuppressMessage("Security", "S5332", Justification = "HTTP 地址是内存中的模拟端点，不会发起网络请求。")]
 public sealed class MemoryEmbeddingQueueReliabilityTests
 {
 	[Fact]
@@ -149,7 +151,7 @@ public sealed class MemoryEmbeddingQueueReliabilityTests
 	{
 		ConfigStore config = new(database);
 		config.InitDefaults("test");
-		config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1")); // NOSONAR
+		config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1"));
 		return config;
 	}
 

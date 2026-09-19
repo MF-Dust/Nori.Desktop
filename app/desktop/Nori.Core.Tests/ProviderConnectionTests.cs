@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Text;
 using Nori.Core.Chat;
@@ -5,6 +6,7 @@ using Nori.Core.Embedding;
 
 namespace Nori.Core.Tests;
 
+[SuppressMessage("Security", "S2068", Justification = "伪凭据用于验证连接错误脱敏。")]
 public sealed class ProviderConnectionTests
 {
 	private sealed class MockHandler(Func<HttpRequestMessage, HttpResponseMessage> handler) : HttpMessageHandler
@@ -81,7 +83,7 @@ public sealed class ProviderConnectionTests
 	public async Task LLM探测错误不会回传URL响应正文或本机路径()
 	{
 		using MockHandler handler = new(_ => throw new HttpRequestException(
-			"请求 https://user:password@example.test/v1 失败: response-body=private text C:\\Users\\Nori\\secret.log")); // NOSONAR
+			"请求 https://user:password@example.test/v1 失败: response-body=private text C:\\Users\\Nori\\secret.log"));
 		using HttpClient http = new(handler);
 		OpenAiEmbeddingAdapter embedding = new(http);
 		ProviderConnectionTester tester = new(http, embedding);

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
@@ -10,6 +11,7 @@ using Nori.Core.Update;
 namespace Nori.Core.Tests;
 
 /// <summary>真实部署上下文、网络信任边界与状态机回归。</summary>
+[SuppressMessage("Security", "S5332", Justification = "HTTP 地址是更新重定向拒绝测试夹具，不会被跟随。")]
 public sealed class UpdateServiceTests : IDisposable
 {
 	private readonly string _root = Path.Combine(Path.GetTempPath(), $"nori-update-{Guid.NewGuid():N}");
@@ -216,7 +218,7 @@ public sealed class UpdateServiceTests : IDisposable
 	[InlineData("https://user@github.com/MF-Dust/Nori-Desktop-Pet/releases/asset")]
 	[InlineData("https://github.com:444/MF-Dust/Nori-Desktop-Pet/releases/asset")]
 	[InlineData("https://localhost/asset")]
-	[InlineData("http://github.com/MF-Dust/Nori-Desktop-Pet/releases/asset")] // NOSONAR
+	[InlineData("http://github.com/MF-Dust/Nori-Desktop-Pet/releases/asset")]
 	[InlineData("https://github.com/other/repo/releases/asset")]
 	public async Task UnsafeRedirectRejectedBeforeSecondRequest(string location)
 	{

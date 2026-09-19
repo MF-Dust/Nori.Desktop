@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Nori.Core.Data;
 using Nori.Core.Logging;
 
@@ -6,6 +7,7 @@ namespace Nori.Core.Tests;
 /// <summary>
 /// 文件日志的内存环形缓冲 (调试页日志查看器的数据源)
 /// </summary>
+[SuppressMessage("Security", "S2068", Justification = "伪凭据用于验证日志脱敏。")]
 public class FileLoggerTests : IDisposable
 {
 	private readonly string _directory = Path.Combine(Path.GetTempPath(), $"nori-log-test-{Guid.NewGuid():N}");
@@ -93,7 +95,7 @@ public class FileLoggerTests : IDisposable
 	public void 日志会统一脱敏凭据和路径()
 	{
 		// 脱敏测试必须包含会被清除的伪凭据与用户信息。
-		_logger.Write(LogSource.Backend, "error", "api_key=secret-value https://user:pass@example.com /home/user/nori.db"); // NOSONAR
+		_logger.Write(LogSource.Backend, "error", "api_key=secret-value https://user:pass@example.com /home/user/nori.db");
 
 		string message = _logger.RecentLogs()[0].Message;
 		Assert.DoesNotContain("secret-value", message, StringComparison.Ordinal);

@@ -1328,7 +1328,8 @@ public sealed class MemoryStore
 	{
 		using SqliteCommand command = connection.CreateCommand();
 		command.Transaction = transaction;
-		command.CommandText = table switch
+		// FTS 表只允许内部固定表名。
+		command.CommandText = table switch // nosemgrep
 		{
 			"memories_fts" => "DELETE FROM memories_fts WHERE memory_id = $id",
 			"memory_atoms_fts" => "DELETE FROM memory_atoms_fts WHERE memory_id = $id",

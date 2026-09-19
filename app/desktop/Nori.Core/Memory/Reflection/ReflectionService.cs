@@ -7,6 +7,11 @@ namespace Nori.Core.Memory;
 /// <summary>从聊天窗口提取结构化长期记忆的后台服务。</summary>
 public sealed class ReflectionService
 {
+	private const int FailureThreshold = 3;
+	private const string FailureCursorKey = "reflection_failure_cursor";
+	private const string FailureWindowKey = "reflection_failure_window";
+	private const string FailureCountKey = "reflection_failure_count";
+	private const string LastFailureCategoryKey = "reflection_last_failure_category";
 	private const string ReflectionSystemPrompt = """
 		你是长期记忆整理器，不是聊天助手，也不要扮演 Nori。
 		你的任务是从用户和助手的对话中识别未来可能有价值的信息。
@@ -20,13 +25,21 @@ public sealed class ReflectionService
 	private readonly ChatService _chat;
 	private readonly MemoryService _memory;
 	private readonly ConfigStore _config;
+	private readonly Func<LlmProvider, HttpClient, ILlmAdapter> _adapterFactory;
 
 	public ReflectionService(HttpClient http, ChatService chat, MemoryService memory, ConfigStore config)
+		: this(http, chat, memory, config, static (provider, client) => LlmClient.CreateAdapter(provider, client))
+	{
+	}
+
+	internal ReflectionService(HttpClient http, ChatService chat, MemoryService memory, ConfigStore config,
+		Func<LlmProvider, HttpClient, ILlmAdapter> adapterFactory)
 	{
 		_http = http;
 		_chat = chat;
 		_memory = memory;
 		_config = config;
+		_adapterFactory = adapterFactory;
 	}
 
 	/// <summary>处理一批尚未整理的聊天；成功处理（包括 shouldStore=false）才推进游标。</summary>
@@ -35,7 +48,8 @@ public sealed class ReflectionService
 		if (!_memory.Settings.ReflectionEnabled) return false;
 		long cursor = ReadCursor();
 		IReadOnlyList<ChatMessage> all = _chat.GetHistory();
-		List<ChatMessage> pending = all.Where(message => message.Id > cursor).Take(64).ToList();
+		List<ChatMessage> allPending = all.Where(message => message.Id > cursor).ToList();
+		List<ChatMessage> pending = allPending.Take(64).ToList();
 		if (pending.Count == 0) return false;
 		int rounds = pending.Count(message => message.Role == "assistant");
 		int chars = pending.Sum(message => message.Content.Length);
@@ -44,16 +58,39 @@ public sealed class ReflectionService
 		long lastAssistantId = pending.LastOrDefault(message => message.Role == "assistant")?.Id ?? cursor;
 		if (lastAssistantId <= cursor) return false;
 		List<ChatMessage> window = pending.TakeWhile(message => message.Id <= lastAssistantId).ToList();
-		ReflectionResult result = await RequestReflectionAsync(window, cancellationToken).ConfigureAwait(false);
-		if (!result.ShouldStore || result.Summary.Length == 0)
+		long attemptAssistantId = lastAssistantId;
+		if (HasPausedFailure(cursor))
 		{
+			long failedWindow = ReadLong(FailureWindowKey);
+			long newestAssistantId = allPending.LastOrDefault(message => message.Role == "assistant")?.Id ?? cursor;
+			if (newestAssistantId <= failedWindow) return false;
+			attemptAssistantId = newestAssistantId;
+			// 首批达到 64 条时游标仍只推进到首批末尾；附带少量新对话仅用于打破坏输出模式，避免静默跳过中间聊天。
+			IReadOnlyList<ChatMessage> recoveryTail = allPending
+				.Where(message => message.Id > lastAssistantId && message.Id <= newestAssistantId)
+				.TakeLast(8)
+				.ToList();
+			window.AddRange(recoveryTail);
+		}
+		try
+		{
+			ReflectionResult result = await RequestReflectionAsync(window, cancellationToken).ConfigureAwait(false);
+			if (result.ShouldStore && result.Summary.Length > 0)
+			{
+				await StoreResultAsync(result, window, cancellationToken).ConfigureAwait(false);
+			}
 			AdvanceCursor(lastAssistantId);
 			return true;
 		}
-
-		await StoreResultAsync(result, window, cancellationToken).ConfigureAwait(false);
-		AdvanceCursor(lastAssistantId);
-		return true;
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			throw;
+		}
+		catch (Exception exception)
+		{
+			RecordFailure(cursor, attemptAssistantId, exception);
+			throw;
+		}
 	}
 
 	private async Task<ReflectionResult> RequestReflectionAsync(IReadOnlyList<ChatMessage> window, CancellationToken cancellationToken)
@@ -64,7 +101,7 @@ public sealed class ReflectionService
 		string apiKey = chatSettings.ApiKey;
 		string model = chatSettings.Model;
 		if (baseUrl.Length == 0 || model.Length == 0) throw new InvalidOperationException("Reflection 缺少 LLM 配置");
-		ILlmAdapter adapter = LlmClient.CreateAdapter(LlmProviderExtensions.ParseProvider(provider), _http);
+		ILlmAdapter adapter = _adapterFactory(LlmProviderExtensions.ParseProvider(provider), _http);
 		using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		timeout.CancelAfter(TimeSpan.FromSeconds(60));
 		IReadOnlyList<ChatMessageInput> messages = window.Select(message => new ChatMessageInput
@@ -73,7 +110,15 @@ public sealed class ReflectionService
 			Content = $"[{message.Id}] {message.Content}",
 		}).ToList();
 		string raw = await adapter.CompleteAsync(baseUrl.TrimEnd('/'), apiKey, model, ReflectionSystemPrompt, messages, timeout.Token).ConfigureAwait(false);
-		return ReflectionParser.Parse(raw);
+		try
+		{
+			return ReflectionParser.Parse(raw);
+		}
+		catch (ReflectionParseException exception)
+		{
+			exception.AttachRequestContext(provider, model);
+			throw;
+		}
 	}
 
 	private async Task StoreResultAsync(ReflectionResult result, IReadOnlyList<ChatMessage> window, CancellationToken cancellationToken)
@@ -166,7 +211,40 @@ public sealed class ReflectionService
 	{
 		_memory.Store.SetEngineState("reflection_cursor", id.ToString(System.Globalization.CultureInfo.InvariantCulture));
 		_memory.Store.SetEngineState("last_reflection_at", DateTimeOffset.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture));
+		ClearFailureState();
 	}
+
+	private bool HasPausedFailure(long cursor)
+	{
+		return ReadLong(FailureCursorKey) == cursor
+			&& ReadInt(FailureCountKey) >= FailureThreshold;
+	}
+
+	private void RecordFailure(long cursor, long lastAssistantId, Exception exception)
+	{
+		int failureCount = ReadLong(FailureCursorKey) == cursor ? ReadInt(FailureCountKey) : 0;
+		failureCount = failureCount == int.MaxValue ? failureCount : failureCount + 1;
+		_memory.Store.SetEngineState(FailureCursorKey, Invariant(cursor));
+		_memory.Store.SetEngineState(FailureWindowKey, Invariant(lastAssistantId));
+		_memory.Store.SetEngineState(FailureCountKey, Invariant(failureCount));
+		_memory.Store.SetEngineState(LastFailureCategoryKey, ReflectionDiagnostics.Classify(exception));
+	}
+
+	private void ClearFailureState()
+	{
+		_memory.Store.SetEngineState(FailureCursorKey, "");
+		_memory.Store.SetEngineState(FailureWindowKey, "");
+		_memory.Store.SetEngineState(FailureCountKey, "0");
+		_memory.Store.SetEngineState(LastFailureCategoryKey, "");
+	}
+
+	private long ReadLong(string key) => long.TryParse(_memory.Store.GetEngineState(key),
+		System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out long value) ? value : 0;
+
+	private int ReadInt(string key) => int.TryParse(_memory.Store.GetEngineState(key),
+		System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int value) ? value : 0;
+
+	private static string Invariant(long value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
 	private static string Normalize(string value) => string.Join(' ', value.Trim().ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 

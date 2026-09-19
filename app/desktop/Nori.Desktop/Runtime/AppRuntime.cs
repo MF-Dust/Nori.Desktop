@@ -203,7 +203,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		ReflectionService reflection = new(services.Http, services.Chat, Memory, config);
 		_reflectionWorker = new ReflectionWorker(reflection, exception =>
 		{
-			try { services.Logger.Write(LogSource.Backend, "warn", $"记忆整理失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); }
+			try { services.Logger.Write(LogSource.Backend, "warn", $"记忆整理失败: {ReflectionDiagnostics.Format(exception)}"); }
 			catch { }
 		}, () => InvalidateSnapshot("memory"));
 		Skills = new SkillService(config, services.PublicHttp);

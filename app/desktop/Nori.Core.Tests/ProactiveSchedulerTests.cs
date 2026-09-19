@@ -16,7 +16,7 @@ public sealed class ProactiveSchedulerTests
 			using NoriDatabase database = NoriDatabase.Open(path);
 			ConfigStore config = new(database);
 			config.InitDefaults("Dev");
-			FileLogger logger = new(Path.Combine(Path.GetDirectoryName(path)!, "logs"));
+			using FileLogger logger = new(Path.Combine(Path.GetDirectoryName(path)!, "logs"));
 			using ProactiveScheduler scheduler = new(new ReminderStore(database), config, logger, () => null);
 
 			Assert.Throws<InvalidOperationException>(() => scheduler.AddReminder(new string('x', 201), 15));
@@ -46,7 +46,7 @@ public sealed class ProactiveSchedulerTests
 			using NoriDatabase database = NoriDatabase.Open(path);
 			ConfigStore config = new(database);
 			config.InitDefaults("Dev");
-			FileLogger logger = new(Path.Combine(Path.GetDirectoryName(path)!, "logs"));
+			using FileLogger logger = new(Path.Combine(Path.GetDirectoryName(path)!, "logs"));
 			ReminderStore store = new(database);
 			using ProactiveScheduler scheduler = new(store, config, logger, () => null);
 			ReminderItem added = scheduler.AddReminder("推迟测试", 15);
@@ -70,7 +70,7 @@ public sealed class ProactiveSchedulerTests
 			using NoriDatabase database = NoriDatabase.Open(path);
 			ConfigStore config = new(database);
 			config.InitDefaults("Dev");
-			FileLogger logger = new(Path.Combine(Path.GetDirectoryName(path)!, "logs"));
+			using FileLogger logger = new(Path.Combine(Path.GetDirectoryName(path)!, "logs"));
 			using ProactiveScheduler scheduler = new(new ReminderStore(database), config, logger, () => null);
 			ReminderItem added = scheduler.AddReminder("时间边界", 15);
 			long tooFar = DateTimeOffset.UtcNow.AddDays(31).ToUnixTimeMilliseconds();

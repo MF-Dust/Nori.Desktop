@@ -20,6 +20,7 @@ public class FileLoggerTests : IDisposable
 
 	public void Dispose()
 	{
+		_logger.Dispose();
 		try
 		{
 			Directory.Delete(_directory, recursive: true);
@@ -75,11 +76,12 @@ public class FileLoggerTests : IDisposable
 	}
 
 	[Fact]
-	public void 清空只影响内存缓冲_不影响文件内容()
+	public async Task 清空只影响内存缓冲_不影响文件内容()
 	{
 		_logger.Initialize();
 		_logger.Write(LogSource.Backend, "warn", "清空前的一条");
-		string file = Path.Combine(_directory, $"backend_{DateTime.Now:yyyy-MM-dd}.log");
+		Assert.True(await _logger.FlushAsync());
+		string file = Assert.Single(Directory.GetFiles(_directory, "*.jsonl"));
 
 		_logger.ClearRecentLogs();
 

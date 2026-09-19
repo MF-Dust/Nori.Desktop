@@ -191,11 +191,13 @@ public sealed partial class ModelsWindow : Window
 	private void BeginBarrier()
 	{
 		if (_barrierDepth++ > 0) return;
-		_request++; _barrierWasEnabled = _root.IsEnabled; _root.IsEnabled = false;
+		// 标题栏装饰会包裹 _root，保存期间必须禁用整个内容树。
+		Control content = (Control)Content!;
+		_request++; _barrierWasEnabled = content.IsEnabled; content.IsEnabled = false;
 	}
 	private void EndBarrier()
 	{
-		if (--_barrierDepth == 0 && !_prepared) _root.IsEnabled = _barrierWasEnabled;
+		if (--_barrierDepth == 0 && !_prepared) ((Control)Content!).IsEnabled = _barrierWasEnabled;
 	}
 	private void OnStateChanged() => Dispatcher.UIThread.Post(QueueRefresh);
 	private void QueueRefresh()

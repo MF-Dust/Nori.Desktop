@@ -209,7 +209,7 @@ public sealed class PetWindow : Window
 			}
 			catch (Exception exception) when (exception is PlatformNotSupportedException or InvalidOperationException or EntryPointNotFoundException)
 			{
-				_services.Logger.Write(LogSource.Backend, "warn", $"设置伴侣窗口置顶层级失败: {exception.Message}");
+				_services.Logger.Write(LogSource.Backend, "warn", $"设置伴侣窗口置顶层级失败: {exception.GetType().Name}");
 			}
 		}
 	}
@@ -251,7 +251,7 @@ public sealed class PetWindow : Window
 		{
 			// 穿透是增强项: 失败就停掉同步并保持整窗可点, 绝不打断渲染
 			_hitShapeTimer?.Stop();
-			_services.Logger.Write(LogSource.Backend, "warn", $"伴侣窗口穿透同步失败, 已降级为整窗可点: {exception.Message}");
+			_services.Logger.Write(LogSource.Backend, "warn", $"伴侣窗口穿透同步失败, 已降级为整窗可点: {exception.GetType().Name}");
 		}
 	}
 
@@ -439,7 +439,7 @@ public sealed class PetWindow : Window
 			}
 			catch (Exception exception) when (exception is PlatformNotSupportedException or InvalidOperationException)
 			{
-				_services.Logger.Write(LogSource.Backend, "warn", $"读取伴侣窗口穿透状态失败: {exception.Message}");
+				_services.Logger.Write(LogSource.Backend, "warn", $"读取伴侣窗口穿透状态失败: {exception.GetType().Name}");
 				return;
 			}
 		}
@@ -454,7 +454,7 @@ public sealed class PetWindow : Window
 		}
 		catch (Exception exception) when (exception is InvalidOperationException or EntryPointNotFoundException or DllNotFoundException)
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"同步伴侣窗口穿透状态失败: {exception.Message}");
+			_services.Logger.Write(LogSource.Backend, "warn", $"同步伴侣窗口穿透状态失败: {exception.GetType().Name}");
 		}
 	}
 
@@ -519,7 +519,7 @@ public sealed class PetWindow : Window
 				catch (InvalidOperationException exception)
 				{
 					_isNativeDragPending = false;
-					_services.Logger.Write(LogSource.Backend, "warn", $"原生伴侣视窗拖动不可用, 改用手动拖动: {exception.Message}");
+					_services.Logger.Write(LogSource.Backend, "warn", $"原生伴侣视窗拖动不可用, 改用手动拖动: {exception.GetType().Name}");
 				}
 			}
 

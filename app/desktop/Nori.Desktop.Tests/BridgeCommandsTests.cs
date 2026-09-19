@@ -431,8 +431,9 @@ public partial class BridgeCommandsTests : IDisposable
 	{
 		_services.Update?.Dispose();
 		_runtime.DisposeAsync().GetAwaiter().GetResult();
-		_database.Dispose();
+		if (!_databaseReleasedByServices) _database.Dispose();
 		_http.Dispose();
+		_services.Logger.Dispose();
 		try
 		{
 			Directory.Delete(_tempDir, true);
@@ -2417,8 +2418,9 @@ public partial class BridgeCommandsTests : IDisposable
 			SettingsPagePresenter pagePresenter = Assert.IsType<SettingsPagePresenter>(window.FindControl<SettingsPagePresenter>("PagePresenter"));
 			NativeSettingsPagePresenter presenter = Assert.IsType<NativeSettingsPagePresenter>(pagePresenter.Content);
 			Control root = Assert.IsAssignableFrom<Control>(presenter.Content);
-			ComboBox filter = Assert.Single(root.GetLogicalDescendants().OfType<ComboBox>());
-			ScrollViewer logs = root.GetLogicalDescendants().OfType<ScrollViewer>().Single(scroll => scroll.Name == "DebugLogScroll");
+			ComboBox filter = root.GetLogicalDescendants().OfType<ComboBox>().Single(combo => combo.Name == "DebugLevelFilter");
+			ListBox logList = root.GetLogicalDescendants().OfType<ListBox>().Single(list => list.Name == "DebugLogList");
+			ScrollViewer logs = logList.GetVisualDescendants().OfType<ScrollViewer>().Single();
 			ScrollViewer pageScroll = pagePresenter.GetVisualAncestors().OfType<ScrollViewer>().First();
 			filter.SelectedIndex = 2;
 			await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
@@ -2437,8 +2439,8 @@ public partial class BridgeCommandsTests : IDisposable
 				await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
 				Assert.Empty(viewModel.ErrorMessage);
 				Assert.Same(root, presenter.Content);
-				Assert.Same(filter, Assert.Single(root.GetLogicalDescendants().OfType<ComboBox>()));
-				Assert.Same(logs, root.GetLogicalDescendants().OfType<ScrollViewer>().Single(scroll => scroll.Name == "DebugLogScroll"));
+				Assert.Same(filter, root.GetLogicalDescendants().OfType<ComboBox>().Single(combo => combo.Name == "DebugLevelFilter"));
+				Assert.Same(logs, logList.GetVisualDescendants().OfType<ScrollViewer>().Single());
 				Assert.Same(logContent, logs.Content);
 				Assert.Equal(2, filter.SelectedIndex);
 				Assert.True(filter.IsFocused);

@@ -132,7 +132,8 @@ public sealed record SmokeTestOptions(SmokeTestMode Mode, string Profile)
 public static class SmokeTestRuntime
 {
 	private static readonly TimeSpan GracefulShutdownDelay = TimeSpan.FromMilliseconds(500);
-	private static readonly TimeSpan HardExitDelay = TimeSpan.FromSeconds(5);
+	// 必须长于业务清理七秒和日志释放一秒，否则会截断正常退出的最后一批日志。
+	private static readonly TimeSpan HardExitDelay = TimeSpan.FromSeconds(10);
 	private static SmokeTestOptions? _current;
 
 	/// <summary>当前冒烟配置; 普通启动时为 null。</summary>
@@ -187,6 +188,11 @@ public static class SmokeTestRuntime
 		// CI 的无头桌面环境可能卡住原生窗口退出; 冒烟 profile 是隔离的一次性目录,
 		// 因此在等待正常清理后保留进程内硬退出兜底, 外部脚本仍有更长的 watchdog。
 		await Task.Delay(HardExitDelay).ConfigureAwait(false);
+		if (Program.Logger is { } logger)
+		{
+			logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "冒烟等待正常退出超时", "Lifecycle", "smoke.shutdown_timeout");
+			await logger.DisposeAsync().ConfigureAwait(false);
+		}
 		Environment.Exit(0);
 	}
 }

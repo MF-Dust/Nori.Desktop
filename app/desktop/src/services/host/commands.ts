@@ -1,3 +1,4 @@
+import type {LogLevel, LogEventId, RuntimeLogEntry, LoggingStatus} from "../runtime/logging"
 import type {
 	AutomationAuditRecordDto,
 	AutomationBrowserStatusDto,
@@ -90,8 +91,10 @@ export interface BridgeCommandMap {
 	window_get_state: {args: EmptyCommandArgs; result: WindowChromeState}
 	window_minimize: {args: EmptyCommandArgs; result: EmptyCommandResult}
 	window_toggle_maximized: {args: EmptyCommandArgs; result: WindowChromeState}
-	write_log: {args: {level: "info" | "warn" | "error" | "debug"; message: string}; result: EmptyCommandResult}
-	get_recent_logs: {args: EmptyCommandArgs; result: {time: string; level: string; source: string; message: string}[]}
+	write_log: {args: {level: LogLevel; message: string; eventId?: LogEventId; errorType?: string; suppressedCount?: number}; result: EmptyCommandResult}
+	get_recent_logs: {args: EmptyCommandArgs; result: RuntimeLogEntry[]}
+	get_logging_status: {args: EmptyCommandArgs; result: LoggingStatus}
+	set_logging_level: {args: {level: LogLevel}; result: EmptyCommandResult}
 	clear_recent_logs: {args: EmptyCommandArgs; result: EmptyCommandResult}
 	get_diagnostic_info: {args: EmptyCommandArgs; result: Record<string, string>}
 	export_diagnostics: {args: EmptyCommandArgs; result: {fileName: string; bytes: number; skipped: string[]} | null}

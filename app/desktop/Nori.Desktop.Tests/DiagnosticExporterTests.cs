@@ -28,7 +28,7 @@ public sealed class DiagnosticExporterTests : IDisposable
 	{
 		Directory.CreateDirectory(_directory);
 		string logDirectory = Path.Combine(_directory, "logs");
-		FileLogger logger = new(logDirectory);
+		using FileLogger logger = new(logDirectory);
 		logger.Write(LogSource.Backend, "error", "api_key=secret-value /home/user/private.db");
 		string target = Path.Combine(_directory, "diagnostics.zip");
 
@@ -67,7 +67,7 @@ public sealed class DiagnosticExporterTests : IDisposable
 	public void 大量日志导出包受大小与日志条数上限约束()
 	{
 		Directory.CreateDirectory(_directory);
-		FileLogger logger = new(Path.Combine(_directory, "logs"));
+		using FileLogger logger = new(Path.Combine(_directory, "logs"));
 		for (int index = 0; index < 500; index++)
 		{
 			string payload = Convert.ToBase64String(RandomNumberGenerator.GetBytes(768));
@@ -89,7 +89,7 @@ public sealed class DiagnosticExporterTests : IDisposable
 	public void 取消导出后不残留临时文件()
 	{
 		Directory.CreateDirectory(_directory);
-		FileLogger logger = new(Path.Combine(_directory, "logs"));
+		using FileLogger logger = new(Path.Combine(_directory, "logs"));
 		string target = Path.Combine(_directory, "cancelled.zip");
 		using CancellationTokenSource cancellation = new();
 		cancellation.Cancel();

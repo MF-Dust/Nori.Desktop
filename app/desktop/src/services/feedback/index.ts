@@ -8,6 +8,7 @@
  */
 import type {DialogApiInjection} from "naive-ui/es/dialog/src/DialogProvider"
 import type {MessageApiInjection} from "naive-ui/es/message/src/MessageProvider"
+import {ReportLogError} from "../runtime/logging"
 
 let messageApi: MessageApiInjection | null = null
 let dialogApi: DialogApiInjection | null = null
@@ -43,7 +44,7 @@ export const feedback = {
 	 * @param error 原始错误, 只写日志不直接展示
 	 */
 	error(text: string, error?: unknown): void {
-		if (error !== undefined) console.error(text, error)
+		void ReportLogError("feedback.error", error)
 		const DETAIL = error === undefined ? "" : `: ${errorText(error)}`
 		messageApi?.error(`${text}${DETAIL}`)
 	},

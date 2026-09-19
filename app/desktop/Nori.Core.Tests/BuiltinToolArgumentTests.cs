@@ -33,6 +33,7 @@ public sealed class BuiltinToolArgumentTests : IDisposable
 	private readonly ConfigStore _config;
 	private readonly ToolRegistry _tools = new();
 	private readonly ProactiveScheduler _proactive;
+	private readonly FileLogger _logger;
 	private readonly EmotionManager _emotion;
 
 	public BuiltinToolArgumentTests()
@@ -42,8 +43,9 @@ public sealed class BuiltinToolArgumentTests : IDisposable
 		_database = NoriDatabase.Open(paths.DatabasePath, paths);
 		_config = new ConfigStore(_database, new Security.SecretKeyStore(paths));
 		_emotion = new EmotionManager(_config);
+		_logger = new FileLogger(paths.LogsDirectory);
 		_proactive = new ProactiveScheduler(
-			new ReminderStore(_database), _config, new FileLogger(paths.LogsDirectory), () => null);
+			new ReminderStore(_database), _config, _logger, () => null);
 
 		using HttpClient http = new();
 		BuiltinTools.RegisterAll(_tools, new BuiltinToolDeps
@@ -245,6 +247,7 @@ public sealed class BuiltinToolArgumentTests : IDisposable
 	public void Dispose()
 	{
 		_proactive.Dispose();
+		_logger.Dispose();
 		_emotion.Dispose();
 		_database.Dispose();
 		try { Directory.Delete(_root, recursive: true); } catch { /* 临时目录清不掉不算失败 */ }

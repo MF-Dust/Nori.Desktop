@@ -8,6 +8,13 @@ public static class NativeSettingsResources
 	private static readonly IReadOnlyDictionary<string, SettingsText> Values = new Dictionary<string, SettingsText>(StringComparer.Ordinal)
 	{
 		["common.all"] = new("全部", "All"),
+		["debug.allSources"] = new("全部来源", "All sources"),
+		["debug.category"] = new("模块筛选", "Filter module"),
+		["debug.search"] = new("搜索日志", "Search logs"),
+		["debug.autoRefresh"] = new("自动刷新", "Auto refresh"),
+		["debug.minimumLevel"] = new("记录级别（重启恢复 Info）", "Record level (Info after restart)"),
+		["debug.dropped"] = new("未写入磁盘", "Dropped disk entries"),
+		["debug.writeFailures"] = new("写盘失败次数", "Write failures"),
 		["common.cancel"] = new("取消", "Cancel"),
 		["common.close"] = new("关闭", "Close"),
 		["common.confirm"] = new("确认", "Confirm"),

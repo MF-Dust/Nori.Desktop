@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {ReportLogError} from "../services/runtime/logging"
 import {computed, defineAsyncComponent, h, onBeforeUnmount, onErrorCaptured, onMounted, ref, watch} from "vue"
 import {useWindowFocus} from "@vueuse/core"
 import useLanguages from "../services/i18n/useLanguages.ts"
@@ -170,10 +171,10 @@ const togglePet = async () => {
 	try {
 		if (petVisible.value) {
 			await hideWindow("pet")
-			await RUNTIME.writeLog("info", "主窗口收起 Nori")
+			await RUNTIME.writeLog("info", "", "pet.hidden")
 		} else {
 			await showWindow("pet")
-			await RUNTIME.writeLog("info", "主窗口唤出 Nori")
+			await RUNTIME.writeLog("info", "", "pet.shown")
 		}
 	} catch (error) {
 		feedback.error(UI_I18N.value.saveFailed, error)
@@ -199,7 +200,7 @@ const navigate = (tab: "talk" | "model" | "settings") => {
 const panelError = ref("")
 onErrorCaptured((error) => {
 	panelError.value = error instanceof Error ? error.message : String(error)
-	console.error("面板异常:", error)
+	void ReportLogError("vue.error", error)
 	return false
 })
 
@@ -207,7 +208,7 @@ onMounted(async () => {
 	await RUNTIME.init()
 	// 主窗口兼任音频宿主: TTS 播放与麦克风录音都在这里 (关窗只隐藏, 所以一直在线)
 	await installAudioHost()
-	void RUNTIME.writeLog("info", "主窗口 Main 挂载完成")
+	void RUNTIME.writeLog("info", "", "app.mounted")
 })
 
 onBeforeUnmount(() => {

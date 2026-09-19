@@ -52,7 +52,7 @@ onMounted(async () => {
 // 向导状态机 (步进、守卫与提交状态全在 services/firstRun/wizard.ts)
 const WIZARD = createWizard(async () => {
 	await RUNTIME.completeFirstRun(selectedModel.value, telemetryEnabled.value)
-	await RUNTIME.writeLog("info", `初始化完成 (${appVersion.value}, model=${selectedModel.value})`)
+	await RUNTIME.writeLog("info", "", "app.initialized")
 })
 
 const state = ref(WIZARD.snapshot())

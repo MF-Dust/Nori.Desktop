@@ -37,6 +37,8 @@ public sealed class AppServices : IAsyncDisposable
 
 	/// <summary>日志</summary>
 	public required FileLogger Logger { get; init; }
+	/// <summary>生产进程在所有服务退出后统一释放日志；独立测试服务自行释放。</summary>
+	public bool ProcessOwnsLogger { get; init; }
 
 	/// <summary>错误与性能遥测; 未装配时为空实现</summary>
 	public ITelemetry Telemetry { get; set; } = NoopTelemetry.Instance;
@@ -151,7 +153,7 @@ public sealed class AppServices : IAsyncDisposable
 		if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
 		// 先停止桥接，再并行取消彼此独立的后台子系统；单个挂起项不能挡住数据库与遥测释放。
-		await DisposeStep(() => Bridge?.DisposeAsync() ?? ValueTask.CompletedTask, TimeSpan.FromSeconds(1));
+		await DisposeStep(() => Bridge?.DisposeAsync() ?? ValueTask.CompletedTask, TimeSpan.FromSeconds(1)).ConfigureAwait(false);
 		await Task.WhenAll(
 			DisposeStep(() => Runtime?.DisposeAsync() ?? ValueTask.CompletedTask, TimeSpan.FromSeconds(4)),
 			DisposeStep(() => Automation?.DisposeAsync() ?? ValueTask.CompletedTask, TimeSpan.FromSeconds(4)),
@@ -162,24 +164,25 @@ public sealed class AppServices : IAsyncDisposable
 				return ValueTask.CompletedTask;
 			}, TimeSpan.FromSeconds(1)),
 			DisposeStep(() => Mcp.DisposeAsync(), TimeSpan.FromSeconds(4)),
-			DisposeStep(() => Assets?.DisposeAsync() ?? ValueTask.CompletedTask, TimeSpan.FromSeconds(4)));
+			DisposeStep(() => Assets?.DisposeAsync() ?? ValueTask.CompletedTask, TimeSpan.FromSeconds(4))).ConfigureAwait(false);
 		await DisposeStep(() =>
 		{
 			if (_publicHttp is not null && !ReferenceEquals(_publicHttp, Http)) _publicHttp.Dispose();
 			Http.Dispose();
 			return ValueTask.CompletedTask;
-		}, TimeSpan.FromSeconds(1));
+		}, TimeSpan.FromSeconds(1)).ConfigureAwait(false);
 		await DisposeStep(() =>
 		{
 			Database.Dispose();
 			return ValueTask.CompletedTask;
-		}, TimeSpan.FromSeconds(1));
-		await DisposeStep(async () => await Telemetry.FlushAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false), TimeSpan.FromSeconds(2));
+		}, TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+		await DisposeStep(async () => await Telemetry.FlushAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false), TimeSpan.FromSeconds(2)).ConfigureAwait(false);
 		await DisposeStep(() =>
 		{
 			Telemetry.Dispose();
 			return ValueTask.CompletedTask;
-		}, TimeSpan.FromSeconds(1));
+		}, TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+		if (!ProcessOwnsLogger) await Logger.DisposeAsync().ConfigureAwait(false);
 	}
 
 	private static async Task DisposeStep(Func<ValueTask> dispose, TimeSpan timeout)

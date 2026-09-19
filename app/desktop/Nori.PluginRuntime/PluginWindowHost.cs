@@ -151,7 +151,7 @@ internal sealed partial class PluginWindowHost : IAsyncDisposable
 			}
 			catch (Exception ex)
 			{
-				_logger?.Write(LogSource.Backend, "warn", $"关闭插件窗口 [{window.Label}] 发生异常: {ex.Message}");
+				_logger?.Write(LogSource.Backend, "warn", $"关闭插件窗口 [{window.Label}] 发生异常: {ex.GetType().Name}");
 			}
 			finally
 			{
@@ -177,7 +177,7 @@ internal sealed partial class PluginWindowHost : IAsyncDisposable
 			}
 			catch (Exception ex)
 			{
-				_logger?.Write(LogSource.Backend, "warn", $"关闭插件窗口 [{window.Label}] 发生异常: {ex.Message}");
+				_logger?.Write(LogSource.Backend, "warn", $"关闭插件窗口 [{window.Label}] 发生异常: {ex.GetType().Name}");
 			}
 		}
 	}

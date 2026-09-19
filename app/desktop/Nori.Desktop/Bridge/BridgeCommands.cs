@@ -92,7 +92,7 @@ public sealed class BridgeCommands
 		})),
 
 		// invoke("write_log", {level: "info", message: "xxx"})
-		"write_log" => WriteFrontendLog(args),
+		"write_log" => WriteFrontendLog(source, args),
 
 		// invoke("get_system_language")
 		"get_system_language" => ConfigStore.SystemLanguage(),
@@ -807,7 +807,18 @@ public sealed class BridgeCommands
 			level = entry.Level,
 			source = entry.Source == LogSource.Frontend ? "frontend" : "backend",
 			message = entry.Message,
+			timestamp = entry.Timestamp,
+			sessionId = entry.SessionId,
+			sequence = entry.Sequence,
+			category = entry.Category,
+			eventId = entry.EventId,
+			windowLabel = entry.WindowLabel,
+			operationId = entry.OperationId,
+			exceptionType = entry.ExceptionType,
+			exceptionSite = entry.ExceptionSite,
 		}).ToArray()),
+		"get_logging_status" => RequireMain(source, () => GetLoggingStatus()),
+		"set_logging_level" => RequireMain(source, () => SetLoggingLevel(args)),
 		"clear_recent_logs" => RequireMain(source, () => Run(_services.Logger.ClearRecentLogs)),
 		"get_diagnostic_info" => RequireMain(source, () => DiagnosticInfo.Build(_services.PetRuntime, _services.Paths, _services.SafeMode)),
 		// invoke("export_diagnostics") → {fileName, bytes, skipped}
@@ -1681,7 +1692,7 @@ public sealed class BridgeCommands
 		}
 		catch (Exception exception)
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"读取模型互动配置失败 [{modelId}]: {exception.Message}");
+			_services.Logger.Write(LogSource.Backend, "warn", $"读取模型互动配置失败 [{modelId}]: {exception.GetType().Name}");
 			return PetInteractionConfig.Empty;
 		}
 	}
@@ -1945,7 +1956,7 @@ public sealed class BridgeCommands
 		}
 		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ResourceException)
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"检查模型资源失败 [{modelId}]: {exception.Message}");
+			_services.Logger.Write(LogSource.Backend, "warn", $"检查模型资源失败 [{modelId}]: {exception.GetType().Name}");
 			return false;
 		}
 	}
@@ -2796,15 +2807,43 @@ public sealed class BridgeCommands
 		return null;
 	}
 
-	private object? WriteFrontendLog(JsonElement args)
+	/// <summary>读取日志健康状态。前端调用：invoke("get_logging_status")</summary>
+	private object GetLoggingStatus() => _services.Logger.GetStatus();
+
+	/// <summary>临时调整日志级别。前端调用：invoke("set_logging_level", {level: "debug"})</summary>
+	private object? SetLoggingLevel(JsonElement args)
 	{
-		const int maxMessageCharacters = 16_384;
+		string level = Str(args, "level");
+		if (!FileLogger.IsLevel(level)) throw new InvalidOperationException("日志级别无效");
+		_services.Logger.SetMinimumLevel(level);
+		return null;
+	}
+
+	/// <summary>记录白名单事件，窗口身份由宿主赋值。前端调用：invoke("write_log", {level: "info", eventId: "app.mounted", message: ""})</summary>
+	private object? WriteFrontendLog(IBridgeSource source, JsonElement args)
+	{
 		string level = Str(args, "level").Trim().ToLowerInvariant();
-		if (level is not ("debug" or "info" or "warn" or "error"))
+		if (!FileLogger.IsLevel(level))
 			throw new InvalidOperationException("日志级别无效");
-		string message = Str(args, "message");
-		if (message.Length > maxMessageCharacters) message = message[..maxMessageCharacters] + "…";
-		_services.Logger.Write(LogSource.Frontend, level, message);
+		string eventId = OptionalStr(args, "eventId") ?? "";
+		string message = eventId switch
+		{
+			"vue.error" => "Vue 组件发生异常", "window.error" => "前端脚本发生异常",
+			"promise.rejection" => "前端异步操作发生异常", "resource.error" => "前端资源加载失败",
+			"feedback.error" => "前端操作失败", "logging.suppressed" => "重复前端事件已被限流",
+			"audio.error" => "前端音频操作失败", "app.initialization_failed" => "前端初始化失败",
+			"app.mounted" => "前端窗口已挂载", "app.initialized" => "前端初始化完成",
+			"pet.shown" => "显示桌宠", "pet.hidden" => "隐藏桌宠", "clipboard.copied" => "复制操作完成",
+			"diagnostics.test" => "调试日志链路正常", _ => "客户端运行事件",
+		};
+		if (message == "客户端运行事件") eventId = "client.event";
+		if (eventId == "logging.suppressed") message += $"：{Math.Clamp(OptionalInt(args, "suppressedCount") ?? 1, 1, 1_000_000)}";
+		string errorType = OptionalStr(args, "errorType") ?? "";
+		if (errorType is "Error" or "TypeError" or "RangeError" or "ReferenceError" or "SyntaxError" or "URIError" or "EvalError" or "AggregateError")
+			message += $"：{errorType}";
+		bool native = source.Label == "settings";
+		_services.Logger.Write(native ? LogSource.Backend : LogSource.Frontend, level, message,
+			native ? "NativeSettings" : "Frontend", eventId, windowLabel: source.Label);
 		return null;
 	}
 

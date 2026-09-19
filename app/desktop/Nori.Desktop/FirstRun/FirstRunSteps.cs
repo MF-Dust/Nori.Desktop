@@ -249,7 +249,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		}
 		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ResourceException)
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"检查模型资源失败 [{modelId}]: {exception.Message}");
+			_services.Logger.Write(LogSource.Backend, "warn", $"检查模型资源失败 [{modelId}]: {exception.GetType().Name}");
 			return false;
 		}
 	}

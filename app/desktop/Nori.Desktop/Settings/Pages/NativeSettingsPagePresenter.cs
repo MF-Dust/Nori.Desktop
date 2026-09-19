@@ -26,7 +26,8 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 		HorizontalContentAlignment = HorizontalAlignment.Stretch;
 		DataContextChanged += OnDataContextChanged;
 		SettingsLocalization.Changed += OnLanguageChanged;
-		AttachedToVisualTree += (_, _) => Build();
+		AttachedToVisualTree += (_, _) => { Build(); StartDebugRefresh(); };
+		DetachedFromVisualTree += (_, _) => StopDebugRefresh();
 	}
 
 	private void OnLanguageChanged()
@@ -40,6 +41,7 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 
 	private void OnDataContextChanged(object? sender, EventArgs args)
 	{
+		StopDebugRefresh();
 		if (_viewModel is not null)
 		{
 			_viewModel.PropertyChanged -= OnViewModelPropertyChanged;
@@ -234,6 +236,7 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 	public void Dispose()
 	{
 		_disposed = true;
+		StopDebugRefresh();
 		if (_viewModel is not null)
 		{
 			_viewModel.PropertyChanged -= OnViewModelPropertyChanged;

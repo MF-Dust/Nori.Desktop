@@ -105,14 +105,14 @@ internal sealed class PluginBridge : IAsyncDisposable
 		}
 		catch (JsonException exception)
 		{
-			_logger?.Write(LogSource.Backend, "warn", $"插件桥接消息解析失败 [{_pluginId}:{_windowId}]: {exception.Message}");
+			_logger?.Write(LogSource.Backend, "warn", $"插件桥接消息解析失败 [{_pluginId}:{_windowId}]: {exception.GetType().Name}");
 			return;
 		}
 
 		if (message is null) return;
 		if (!string.Equals(message.Kind, "invoke", StringComparison.Ordinal))
 		{
-			_logger?.Write(LogSource.Backend, "warn", $"未知的插件桥接消息种类 [{_pluginId}:{_windowId}]: {message.Kind}");
+			_logger?.Write(LogSource.Backend, "warn", "未知的插件桥接消息种类", "Plugin", "plugin.unknown_kind");
 			return;
 		}
 
@@ -161,7 +161,7 @@ internal sealed class PluginBridge : IAsyncDisposable
 		catch (Exception exception)
 		{
 			string error = SensitiveDataRedactor.Redact(exception.Message);
-			_logger?.Write(LogSource.Backend, "warn", $"插件命令执行失败 [{_pluginId}:{_windowId}] code={GetErrorCode(exception)} '{command}': {error}");
+			_logger?.Write(LogSource.Backend, "warn", $"插件命令执行失败 code={GetErrorCode(exception)}", "Plugin", "plugin.command_failed", exception);
 			source.PostResult(message.Id, null, error);
 		}
 	}

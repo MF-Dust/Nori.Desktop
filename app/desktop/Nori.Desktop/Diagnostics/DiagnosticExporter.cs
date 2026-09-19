@@ -60,6 +60,7 @@ public static class DiagnosticExporter
 				generatedAt = DateTimeOffset.UtcNow.ToString("O"),
 				logCount = Math.Min(logs.Count, MaxLogEntries),
 				traceCount = traces.Count,
+				logging = logger.GetStatus(),
 			};
 			var safeLogs = logs
 			.TakeLast(MaxLogEntries)
@@ -69,6 +70,15 @@ public static class DiagnosticExporter
 				level = entry.Level,
 				source = entry.Source == LogSource.Backend ? "backend" : "frontend",
 				message = Limit(SensitiveDataRedactor.Redact(entry.Message), MaxLogCharacters),
+				timestamp = entry.Timestamp,
+				sessionId = entry.SessionId,
+				sequence = entry.Sequence,
+				category = entry.Category,
+				eventId = entry.EventId,
+				windowLabel = entry.WindowLabel,
+				operationId = entry.OperationId,
+				exceptionType = entry.ExceptionType,
+				exceptionSite = entry.ExceptionSite,
 			})
 			.ToArray();
 

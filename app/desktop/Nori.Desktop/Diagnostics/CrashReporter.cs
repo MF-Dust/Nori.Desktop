@@ -31,6 +31,7 @@ namespace Nori.Desktop.Diagnostics;
 public static class CrashReporter
 {
 	private static FileLogger? _logger;
+	private static string _lastCrashMessage = "进程异常退出";
 	private static ITelemetry _telemetry = NoopTelemetry.Instance;
 	private static IClassicDesktopStyleApplicationLifetime? _lifetime;
 	private static Window? _crashWindow;
@@ -55,9 +56,10 @@ public static class CrashReporter
 	}
 
 	/// <summary>
-	/// 挂接应用共用日志器. 挂接前的兜底日志会临时 new 一个 FileLogger 尽力落盘.
+	/// 挂接进程共用日志器；未挂接时仅使用有界应急文件。
 	/// </summary>
 	public static void AttachLogger(FileLogger logger) => _logger = logger;
+	public static void DetachLogger() => _logger = null;
 
 	/// <summary>挂接遥测器; 未挂接时使用空实现。</summary>
 	public static void AttachTelemetry(ITelemetry telemetry) => _telemetry = telemetry ?? NoopTelemetry.Instance;
@@ -69,7 +71,7 @@ public static class CrashReporter
 		string message = $"{SensitiveDataRedactor.Redact(title)}: {SensitiveDataRedactor.ExceptionSummary(exception)}";
 		if (!string.IsNullOrWhiteSpace(logDirectory))
 		{
-			try { new FileLogger(logDirectory).Write(LogSource.Backend, "error", message); return; }
+			try { FileLogger.WriteEmergencyAsync(logDirectory, message).Wait(TimeSpan.FromSeconds(1)); return; }
 			catch { }
 		}
 		// 存储 marker 提交前不得创建 data 子目录；此时只保留控制台诊断。
@@ -137,7 +139,7 @@ public static class CrashReporter
 		}
 		catch (Exception failure)
 		{
-			WriteLogSafe($"崩溃窗口展示失败: {failure}");
+			WriteLogSafe($"崩溃窗口展示失败: {failure.GetType().Name}");
 		}
 		finally
 		{
@@ -184,7 +186,7 @@ public static class CrashReporter
 		}
 		catch (Exception failure)
 		{
-			WriteLogSafe($"崩溃窗口展示失败: {failure}");
+			WriteLogSafe($"崩溃窗口展示失败: {failure.GetType().Name}");
 		}
 		finally
 		{
@@ -361,7 +363,7 @@ public static class CrashReporter
 			catch (Exception failure)
 			{
 				// 剪贴板可能被其他进程占用, 不影响其余按钮
-				WriteLogSafe($"复制错误信息失败: {failure.Message}");
+				WriteLogSafe($"复制错误信息失败: {failure.GetType().Name}");
 			}
 		});
 
@@ -486,7 +488,7 @@ public static class CrashReporter
 	}
 
 	/// <summary>
-	/// 兜底专用写日志: 日志器不可用时尽力自建一个, 再失败也只能放弃
+	/// 崩溃退出阶段尽力刷新已经授权的遥测。
 	/// </summary>
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "崩溃退出阶段的遥测刷新只能尽力执行，失败不能阻断退出。")]
 	private static void FlushTelemetrySafe()
@@ -502,12 +504,26 @@ public static class CrashReporter
 
 	private static void ExitProcess(int code)
 	{
+		FlushLogsSafe();
 		if (_lifetime is not null)
 		{
 			ShutdownSafely(code);
 			return;
 		}
 		Environment.Exit(code);
+	}
+
+	private static void FlushLogsSafe()
+	{
+		try
+		{
+			if (_logger is null) return;
+			bool flushed = _logger.FlushAsync(TimeSpan.FromMilliseconds(750)).GetAwaiter().GetResult();
+			if (flushed && _logger.GetStatus().DroppedCount == 0) return;
+			if (Program.StoragePaths is { } paths)
+				FileLogger.WriteEmergencyAsync(paths.LogsDirectory, Volatile.Read(ref _lastCrashMessage)).Wait(TimeSpan.FromMilliseconds(250));
+		}
+		catch (Exception) { /* 崩溃刷新失败不能阻断退出。 */ }
 	}
 
 	private static string ResolveTrustedPackageRoot()
@@ -594,6 +610,7 @@ public static class CrashReporter
 
 	private static void WriteLogSafe(string message)
 	{
+		Volatile.Write(ref _lastCrashMessage, SensitiveDataRedactor.Redact(message));
 		try
 		{
 			if (_logger is null)
@@ -605,9 +622,10 @@ public static class CrashReporter
 				string logDirectory = Path.Combine(dataDirectory, "diagnostics", "logs");
 				if (!IsContained(logDirectory, root)) return;
 				AppStoragePaths.EnsureNoReparsePoints(logDirectory, root);
-				_logger = new FileLogger(logDirectory);
+				FileLogger.WriteEmergencyAsync(logDirectory, SensitiveDataRedactor.Redact(message)).Wait(TimeSpan.FromSeconds(1));
+				return;
 			}
-			_logger.Write(LogSource.Backend, "error", SensitiveDataRedactor.Redact(message));
+			_logger.Write(LogSource.Backend, "error", SensitiveDataRedactor.Redact(message), "Crash", "crash.report");
 		}
 		catch
 		{

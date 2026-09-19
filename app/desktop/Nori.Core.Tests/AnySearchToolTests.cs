@@ -21,6 +21,7 @@ public sealed class AnySearchToolTests : IDisposable
 	private readonly MemoryService _memory;
 	private readonly EmotionManager _emotion;
 	private readonly ProactiveScheduler _proactive;
+	private readonly FileLogger _logger;
 	private readonly RecordingHandler _handler = new();
 	private readonly HttpClient _http;
 	private readonly ToolRegistry _tools;
@@ -34,8 +35,9 @@ public sealed class AnySearchToolTests : IDisposable
 		_config = new ConfigStore(_database, new Security.SecretKeyStore(paths));
 		_memory = new MemoryService(new MemoryStore(_database), new NoEmbedding(), _config, startBackgroundWorker: false);
 		_emotion = new EmotionManager(_config);
+		_logger = new FileLogger(paths.LogsDirectory);
 		_proactive = new ProactiveScheduler(
-			new ReminderStore(_database), _config, new FileLogger(paths.LogsDirectory), () => null);
+			new ReminderStore(_database), _config, _logger, () => null);
 		_http = new HttpClient(_handler);
 		_tools = new ToolRegistry
 		{
@@ -207,6 +209,7 @@ public sealed class AnySearchToolTests : IDisposable
 	{
 		_memory.DisposeAsync().AsTask().GetAwaiter().GetResult();
 		_proactive.Dispose();
+		_logger.Dispose();
 		_emotion.Dispose();
 		_http.Dispose();
 		_database.Dispose();

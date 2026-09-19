@@ -56,8 +56,8 @@ onMounted(async () => {
 	try {
 		const LABEL = await getCurrentWindowLabel()
 		currentLabel.value = LABEL ?? ""
-		const TARGET = await navigateToOwnWindow(ROUTER)
-		await RUNTIME.writeLog("info", `窗口 ${LABEL} 已挂载, 跳转到 ${TARGET}`)
+		await navigateToOwnWindow(ROUTER)
+		await RUNTIME.writeLog("info", "", "app.mounted")
 	} catch {
 		// 非宿主环境(纯 vite 调试)忽略
 	}

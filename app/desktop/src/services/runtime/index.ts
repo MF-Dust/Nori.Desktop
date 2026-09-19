@@ -805,7 +805,7 @@ export const RUNTIME = {
 	// 伴侣 / 日志 / 调试
 	// ------------------------------------------------------------------
 
-	getRecentLogs(): Promise<{time: string; level: string; source: string; message: string}[]> {
+	getRecentLogs(): Promise<import("./logging").RuntimeLogEntry[]> {
 		return invoke("get_recent_logs")
 	},
 	clearRecentLogs(): Promise<void> {
@@ -829,8 +829,8 @@ export const RUNTIME = {
 	petPlayMotion(name?: string): Promise<boolean> {
 		return invoke("pet_play_motion", name ? {name} : {})
 	},
-	writeLog(level: "info" | "warn" | "error", message: string): Promise<void> {
-		return invoke("write_log", {level, message})
+	writeLog(level: import("./logging").LogLevel, _message: string, eventId: import("./logging").LogEventId = "client.event"): Promise<void> {
+		return invoke("write_log", {level, message: "", eventId})
 	},
 	exitApp(): Promise<void> {
 		return invoke("exit_app")

@@ -187,7 +187,7 @@ public static class TrayMenu
 		catch (Exception exception)
 		{
 			// 托盘不是必需品: 失败只记日志, 由前端补一个内建入口
-			services.Logger.Write(LogSource.Backend, "warn", $"托盘不可用, 将由主界面提供入口: {exception.Message}");
+			services.Logger.Write(LogSource.Backend, "warn", $"托盘不可用, 将由主界面提供入口: {exception.GetType().Name}");
 			Current = null;
 			_icon = null;
 			return false;

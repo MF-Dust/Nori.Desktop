@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {ReportLogError} from "../services/runtime/logging"
 import {computed} from "vue"
 import {icon, resolveIconName, type IconName, type IconMode, type IconData} from "../services/icon"
 
@@ -26,7 +27,7 @@ const renderMode = computed<IconMode>(() => {
 	if (DATA.stroke) return "stroke"
 	if (DATA.fill) return "fill"
 	if (DATA.duotone) return "duotone"
-	console.error(`图标 ${iconName.value} 不支持 ${props.mode} 模式`)
+	void ReportLogError("resource.error")
 	return "stroke"
 })
 

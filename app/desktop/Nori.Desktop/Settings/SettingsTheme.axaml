@@ -198,4 +198,17 @@
 	<Style Selector="Button.settings-nav[Tag=debug] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 5,4 L 19,4 Q 21,4 21,6 L 21,18 Q 21,20 19,20 L 5,20 Q 3,20 3,18 L 3,6 Q 3,4 5,4 Z M 7,8 L 11,12 7,16 M 13,16 L 17,16"/>
 	</Style>
+	<!-- 选项模板有自己的选中前景，不能沿用强调按钮的深色字。 -->
+	<Style Selector="ComboBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, ComboBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter, ComboBoxItem:disabled /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="ComboBoxItem:selected /template/ Border#RootPanel">
+		<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
+	</Style>
+	<Style Selector="ComboBoxItem:pointerover /template/ Border#RootPanel">
+		<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
+	</Style>
 </Styles>

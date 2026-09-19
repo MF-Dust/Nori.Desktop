@@ -111,13 +111,14 @@ public sealed partial class ModelsWindow
 	}
 	private async Task<bool> ConfirmClearAsync()
 	{
-		var dialog = Nori.Desktop.Settings.Pages.NativeSettingsDialogs.CreateWindow(T("清空全部区域", "Clear all regions"), new ContentControl());
+		var content = new ContentControl();
+		var dialog = Nori.Desktop.Settings.Pages.NativeSettingsDialogs.CreateWindow(T("清空全部区域", "Clear all regions"), content);
 		dialog.Name = "ModelsClearConfirmation"; dialog.Width = 400; dialog.MinWidth = 320; dialog.MaxWidth = Math.Max(320, Bounds.Width - 32);
 		var confirm = new Button { Content = T("清空全部", "Clear all"), MinHeight = 32 };
 		confirm.Classes.Add("danger"); confirm.Click += (_, _) => dialog.Close(true);
 		var cancel = new Button { Content = T("取消", "Cancel"), MinHeight = 32 }; cancel.Click += (_, _) => dialog.Close(false);
 		var body = Stack(Text(T("确定删除该模型的全部互动区域？此操作不可撤销。", "Delete every interaction region for this model? This cannot be undone.")), Row(cancel, confirm)); body.Margin = new Thickness(24);
-		((ContentControl)dialog.Content!).Content = body;
+		content.Content = body;
 		return await dialog.ShowDialog<bool>(this);
 	}
 }

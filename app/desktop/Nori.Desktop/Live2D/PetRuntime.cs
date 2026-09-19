@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -214,7 +214,10 @@ public sealed class PetRuntime
 	{
 		try
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"[Live2D] {message}");
+			string level = message.StartsWith("[CSM] [E]", StringComparison.Ordinal) ? "error"
+				: message.StartsWith("[CSM] [W]", StringComparison.Ordinal) ? "warn"
+				: message.StartsWith("[CSM] [I]", StringComparison.Ordinal) ? "info" : "debug";
+			_services.Logger.Write(LogSource.Backend, level, "Cubism SDK 诊断事件", "Live2D", "cubism.diagnostic");
 		}
 		catch
 		{
@@ -613,7 +616,7 @@ public sealed class PetRuntime
 
 		try
 		{
-			_services.Logger.Write(LogSource.Backend, "error", $"加载 Live2D 模型失败 [{operation.ModelId}]: {error.Message}");
+			_services.Logger.Write(LogSource.Backend, "error", $"加载 Live2D 模型失败 [{operation.ModelId}]: {error.GetType().Name}");
 		}
 		catch
 		{

@@ -212,7 +212,7 @@ const handleCommunityClick = async (link: CommunityLink) => {
 			qqTimer = setTimeout(() => {
 				qqCopied.value = false
 			}, 2000)
-			await RUNTIME.writeLog("info", `已复制 QQ 交流群号: ${link.qq}`)
+			await RUNTIME.writeLog("info", "", "clipboard.copied")
 		} catch (error) {
 			feedback.error(I18N.value.copyFailed, error)
 		}

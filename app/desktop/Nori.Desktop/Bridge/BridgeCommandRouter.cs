@@ -166,7 +166,7 @@ public sealed class BridgeCommandRouter(AppServices services)
 		if (command.StartsWith("mcp_", StringComparison.Ordinal)) return BridgeCommandDomain.Mcp;
 		if (command.StartsWith("tools_", StringComparison.Ordinal)) return BridgeCommandDomain.Tools;
 		if (command.StartsWith("plugin_", StringComparison.Ordinal)) return BridgeCommandDomain.Plugins;
-		if (command is "get_recent_logs" or "clear_recent_logs" or "get_diagnostic_info" or "export_diagnostics" or "open_log_folder" or "run_gc_collect" or "debug_crash_test")
+		if (command is "get_recent_logs" or "get_logging_status" or "set_logging_level" or "clear_recent_logs" or "get_diagnostic_info" or "export_diagnostics" or "open_log_folder" or "run_gc_collect" or "debug_crash_test")
 			return BridgeCommandDomain.Diagnostics;
 		if (command.StartsWith("chat_", StringComparison.Ordinal)
 			|| command.StartsWith("approval_", StringComparison.Ordinal)

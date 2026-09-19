@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {ReportLogError} from "../services/runtime/logging"
 import {computed, onBeforeUnmount, onMounted, ref} from "vue"
 import {useWindowFocus} from "@vueuse/core"
 import {RUNTIME} from "../services/runtime"
@@ -58,7 +59,7 @@ const startInitFlow = async (): Promise<void> => {
 		started = false
 		timedOut.value = true
 		retryError.value = I18N.value.enterFailed
-		console.error("初始化流程失败:", error)
+		void ReportLogError("app.initialization_failed", error)
 	}
 }
 

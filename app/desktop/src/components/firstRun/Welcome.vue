@@ -83,10 +83,10 @@ const handleLink = async (link: Link) => {
 			copyTimer = setTimeout(() => {
 				copiedQq.value = false
 			}, 2500)
-			await RUNTIME.writeLog("info", `复制 QQ 群号 ${link.qq} 成功`)
+			await RUNTIME.writeLog("info", "", "clipboard.copied")
 		} catch (error) {
 			feedback.error(I18N.value.links.qq.copyFailed, error)
-			await RUNTIME.writeLog("error", `复制 QQ 群号 ${link.qq} 失败`)
+			await RUNTIME.writeLog("error", "", "feedback.error")
 		}
 		return
 	}

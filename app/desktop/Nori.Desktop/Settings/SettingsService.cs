@@ -90,6 +90,8 @@ public sealed class SettingsService : IDisposable
 		"settings_get_plugin_trust",
 		"settings_set_plugin_trust",
 		"get_recent_logs",
+		"get_logging_status",
+		"set_logging_level",
 		"clear_recent_logs",
 		"get_diagnostic_info",
 		"export_diagnostics",

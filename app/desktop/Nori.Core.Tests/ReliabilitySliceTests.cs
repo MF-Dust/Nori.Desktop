@@ -283,7 +283,8 @@ public sealed class ProactiveReliabilityTests
 			config.Set("proactive_idle_minutes", new ConfigValue.Integer(1));
 			List<ProactiveMessage> messages = [];
 			double? idle = 61;
-			using ProactiveScheduler scheduler = new(new ReminderStore(database), config, new FileLogger(logPath), () => idle);
+			using FileLogger logger = new(logPath);
+			using ProactiveScheduler scheduler = new(new ReminderStore(database), config, logger, () => idle);
 			scheduler.Message += messages.Add;
 
 			scheduler.TickForTests(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
@@ -316,7 +317,7 @@ public sealed class ProactiveReliabilityTests
 			config.Set("language", new ConfigValue.Text("en-US"));
 			config.Set("proactive_idle_enabled", new ConfigValue.Boolean(false));
 			config.Set("proactive_daily_greeting", new ConfigValue.Boolean(true));
-			FileLogger logger = new(logPath);
+			using FileLogger logger = new(logPath);
 			DateTime localDate = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.Local).Date;
 			DateTime localMorning = localDate.AddHours(8).AddMinutes(30);
 			DateTime utcMorning = TimeZoneInfo.ConvertTimeToUtc(localMorning, TimeZoneInfo.Local);

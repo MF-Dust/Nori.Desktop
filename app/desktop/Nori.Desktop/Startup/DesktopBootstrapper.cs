@@ -74,10 +74,10 @@ internal sealed class DesktopBootstrapper
 		bool safeMode = Program.Options?.SafeMode == true;
 		AppStoragePaths paths = Program.StoragePaths ?? throw new InvalidOperationException("存储路径尚未初始化");
 
-		FileLogger logger = new(paths.LogsDirectory);
+		FileLogger logger = Program.Logger ?? throw new InvalidOperationException("日志系统尚未初始化");
 		logger.Initialize();
 		CrashReporter.AttachLogger(logger); // 兜底日志与应用共用同一个写入器
-		logger.Write(LogSource.Backend, "info", "日志系统初始化完成");
+		logger.Write(LogSource.Backend, "info", "日志系统初始化完成", "Lifecycle", "logging.ready");
 
 		// 先挂接但保持关闭。数据库中的明确同意状态读取完成前, Native Sentry 不得初始化,
 		// 这样 WebView/数据库探测等启动失败始终只留在本机。
@@ -113,7 +113,7 @@ internal sealed class DesktopBootstrapper
 			or UnauthorizedAccessException
 			or Microsoft.Data.Sqlite.SqliteException)
 		{
-			logger.Write(LogSource.Backend, "error", $"数据库打开或迁移失败: {SensitiveDataRedactor.ExceptionSummary(exception)}");
+			logger.Write(LogSource.Backend, "error", "数据库打开或迁移失败", "Lifecycle", "database.open_failed", exception);
 			CrashReporter.ReportStartupFatal("数据库打开或迁移失败", SensitiveDataRedactor.ExceptionSummary(exception));
 			return;
 		}
@@ -139,7 +139,7 @@ internal sealed class DesktopBootstrapper
 		// 只有完成配置初始化并确认 consent=granted 后才允许初始化 Native Sentry。
 		telemetry.Configure(config.GetTelemetryConsent() == TelemetryConsent.Granted);
 		using ITelemetryTransaction startupTransaction = telemetry.StartTransaction("app.startup");
-		logger.Write(LogSource.Backend, "info", "数据库已打开");
+		logger.Write(LogSource.Backend, "info", "数据库已打开", "Lifecycle", "database.ready");
 
 		// 默认校验服务器证书。自签名/私有部署的大模型端点可通过 allow_insecure_tls 显式放开。
 		bool insecureTls = ParseBoolFlag(config.GetStringOr("allow_insecure_tls", "")) ?? false;
@@ -179,9 +179,10 @@ internal sealed class DesktopBootstrapper
 				BridgeFailure failure = BridgeFailureClassifier.Classify(exception);
 				if (failure.Telemetry)
 					telemetry.CaptureException(exception, "plugin.failure", tags: PluginFailureTags(exception, failure.Tags));
-				logger.Write(LogSource.Backend, failure.LogLevel, $"插件 {exception.Code}: {exception.Message}");
+				logger.Write(LogSource.Backend, failure.LogLevel, $"插件 {exception.Code}: {exception.GetType().Name}");
 			},
-			OnLog = (descriptor, message, exception) => logger.Write(LogSource.Backend, "info", $"插件 [{descriptor.Id}@{descriptor.Version}] {message}"),
+			OnLog = (descriptor, message, exception) => logger.Write(LogSource.Backend, exception is null ? "info" : "warn",
+				$"插件运行事件 [{LogEntry.SafeIdentifier(descriptor.Id)}@{LogEntry.SafeIdentifier(descriptor.Version.ToString())}]", "Plugin", "plugin.runtime", exception),
 		});
 		_startupPluginRuntime = pluginRuntime;
 		assetServer = await AssetServer.StartAsync(new AssetServerOptions
@@ -214,6 +215,7 @@ internal sealed class DesktopBootstrapper
 			Config = config,
 			AiSettings = new AiSettingsStore(config),
 			Logger = logger,
+			ProcessOwnsLogger = true,
 			Telemetry = telemetry,
 			Paths = paths,
 			Resources = new ResourceManager(paths),
@@ -281,7 +283,7 @@ internal sealed class DesktopBootstrapper
 
 			// 首次启动显示向导, 否则直接进初始化窗口
 			bool firstRun = config.IsFirstRun();
-			logger.Write(LogSource.Backend, "info", firstRun ? "首次启动应用" : "应用启动完成");
+			logger.Write(LogSource.Backend, "info", firstRun ? "首次启动应用" : "应用启动完成", "Lifecycle", "app.ready");
 			bool activationPending = Program.ConsumePendingActivation()
 				|| Interlocked.Exchange(ref _secondInstanceActivationPending, 0) == 1;
 			if (firstRun)
@@ -320,7 +322,8 @@ internal sealed class DesktopBootstrapper
 
 	private async Task ShutdownAsync()
 	{
-		try { await ShutdownCoreAsync().WaitAsync(TimeSpan.FromSeconds(8)).ConfigureAwait(false); }
+		// 进程入口为日志最终释放预留一秒。
+		try { await ShutdownCoreAsync().WaitAsync(TimeSpan.FromSeconds(7)).ConfigureAwait(false); }
 		catch (TimeoutException) { }
 		catch (Exception exception) { WriteShutdownFailure(exception); }
 	}
@@ -368,7 +371,7 @@ internal sealed class DesktopBootstrapper
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "关闭诊断记录失败不能阻断进程退出。")]
 	private static void WriteShutdownFailure(Exception exception)
 	{
-		try { System.Diagnostics.Debug.WriteLine($"Nori 关闭流程失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
+		try { Program.Logger?.Write(LogSource.Backend, "warn", "应用关闭流程失败", "Lifecycle", "app.shutdown_failed", exception); } catch { }
 	}
 
 	/// <summary>

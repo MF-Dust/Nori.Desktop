@@ -17,6 +17,7 @@ internal static class Program
 
 	internal static StartupOptions? Options { get; private set; }
 	internal static AppStoragePaths? StoragePaths { get; private set; }
+	internal static Nori.Core.Logging.FileLogger? Logger { get; private set; }
 
 	internal static bool ConsumePendingActivation() => Interlocked.Exchange(ref _activationPending, 0) == 1;
 
@@ -138,6 +139,8 @@ internal static class Program
 		{
 			AppStoragePaths paths = StoragePaths ?? throw new InvalidOperationException("存储路径尚未初始化");
 			StorageBootstrapper.Bootstrap(paths, ProductVersion.Current, RuntimeRid());
+			Logger = new Nori.Core.Logging.FileLogger(paths.LogsDirectory);
+			CrashReporter.AttachLogger(Logger);
 			BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 		}
 		catch (Exception exception)
@@ -148,6 +151,14 @@ internal static class Program
 			ShowStartupError("存储初始化失败", summary);
 			Environment.ExitCode = 1;
 		}
+		finally
+		{
+			Logger?.Write(Nori.Core.Logging.LogSource.Backend, "info", "应用退出", "Lifecycle", "app.shutdown");
+			Logger?.Dispose();
+			Avalonia.Logging.Logger.Sink = null;
+			CrashReporter.DetachLogger();
+			Logger = null;
+		}
 	}
 
 	/// <summary>
@@ -155,5 +166,9 @@ internal static class Program
 	/// </summary>
 	public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
 		.UsePlatformDetect()
-		.LogToTrace();
+		.LogToTrace()
+		.AfterSetup(_ =>
+		{
+			if (Logger is { } logger) Avalonia.Logging.Logger.Sink = new AvaloniaLogSink(logger);
+		});
 }

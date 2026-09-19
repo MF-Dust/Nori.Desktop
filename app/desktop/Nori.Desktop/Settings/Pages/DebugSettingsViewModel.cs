@@ -3,7 +3,11 @@ using System.Text.Json;
 namespace Nori.Desktop.Settings.Pages;
 
 /// <summary>宿主日志条目。</summary>
-public sealed record DebugLogItem(string Time, string Level, string Source, string Message);
+public sealed record DebugLogItem(string Time, string Level, string Source, string Message,
+	long Sequence = 0, string Category = "", string EventId = "", string WindowLabel = "", string ExceptionType = "")
+{
+	public string DisplayText => $"[{Time}] [{Level}] [{Source}/{Category}] [{EventId}] {Message}";
+}
 
 /// <summary>诊断导出结果。</summary>
 public sealed record DiagnosticExportItem(string FileName, long Bytes, IReadOnlyList<string> Skipped);
@@ -14,6 +18,14 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 	private IReadOnlyList<DebugLogItem> _logs = [];
 	private IReadOnlyDictionary<string, string> _diagnostic = new Dictionary<string, string>(StringComparer.Ordinal);
 	private string _levelFilter = "all";
+	private string _sourceFilter = "all";
+	private string _categoryFilter = "";
+	private string _searchText = "";
+	private string _minimumLevel = "info";
+	private bool _autoRefresh = true;
+	private string _healthText = "";
+	private long _logRequest;
+	private bool _refreshingLogs;
 	private bool _crashTestsAvailable;
 	private long? _releasedBytes;
 
@@ -45,10 +57,23 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 		get => _levelFilter;
 		set
 		{
-			string next = value is "error" or "warn" or "info" ? value : "all";
+			string next = Nori.Core.Logging.FileLogger.IsLevel(value) ? value : "all";
 			if (!SetProperty(ref _levelFilter, next)) return;
 			NotifyChanged(nameof(FilteredLogs));
 		}
+	}
+
+	public string SourceFilter { get => _sourceFilter; set { if (SetProperty(ref _sourceFilter, value)) NotifyChanged(nameof(FilteredLogs)); } }
+	public string CategoryFilter { get => _categoryFilter; set { if (SetProperty(ref _categoryFilter, value)) NotifyChanged(nameof(FilteredLogs)); } }
+	public string SearchText { get => _searchText; set { if (SetProperty(ref _searchText, value)) NotifyChanged(nameof(FilteredLogs)); } }
+	public string MinimumLevel { get => _minimumLevel; private set => SetProperty(ref _minimumLevel, value); }
+	public bool AutoRefresh { get => _autoRefresh; set => SetProperty(ref _autoRefresh, value); }
+	public string HealthText { get => _healthText; private set => SetProperty(ref _healthText, value); }
+
+	public async Task SetMinimumLevelAsync(string level)
+	{
+		await ExecuteAsync("set_logging_level", new { level }).ConfigureAwait(true);
+		MinimumLevel = level;
 	}
 
 	/// <summary>是否允许危险崩溃探针。</summary>
@@ -66,8 +91,11 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 	}
 
 	/// <summary>过滤后的日志。</summary>
-	public IReadOnlyList<DebugLogItem> FilteredLogs =>
-		LevelFilter == "all" ? Logs : Logs.Where(item => string.Equals(item.Level, LevelFilter, StringComparison.OrdinalIgnoreCase)).ToArray();
+	public IReadOnlyList<DebugLogItem> FilteredLogs => Logs.Where(item =>
+		(LevelFilter == "all" || item.Level.Equals(LevelFilter, StringComparison.OrdinalIgnoreCase))
+		&& (SourceFilter == "all" || item.Source.Equals(SourceFilter, StringComparison.OrdinalIgnoreCase))
+		&& (CategoryFilter.Length == 0 || item.Category.Contains(CategoryFilter, StringComparison.OrdinalIgnoreCase))
+		&& (SearchText.Length == 0 || item.DisplayText.Contains(SearchText, StringComparison.OrdinalIgnoreCase))).ToArray();
 
 	/// <inheritdoc />
 	public override async Task RefreshAsync(CancellationToken cancellationToken = default)
@@ -102,12 +130,13 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 	public async Task ClearLogsAsync(CancellationToken cancellationToken = default)
 	{
 		await ExecuteAsync("clear_recent_logs", cancellationToken: cancellationToken).ConfigureAwait(true);
+		_logRequest++;
 		Logs = [];
 	}
 
-	/// <summary>把当前日志复制到剪贴板。</summary>
+	/// <summary>把当前筛选结果复制到剪贴板。</summary>
 	public Task CopyLogsAsync(CancellationToken cancellationToken = default) => CopyTextAsync(
-		string.Join(Environment.NewLine, FilteredLogs.Select(item => $"[{item.Time}] [{item.Level}] [{item.Source}] {item.Message}")),
+		string.Join(Environment.NewLine, FilteredLogs.Select(item => item.DisplayText)),
 		cancellationToken);
 
 	/// <summary>把当前诊断信息复制到剪贴板。</summary>
@@ -144,7 +173,7 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>写入一条调试日志。</summary>
 	public async Task WriteTestLogAsync(CancellationToken cancellationToken = default)
 	{
-		await ExecuteAsync("write_log", new {level = "warn", message = "调试页测试日志: 原生设置页到宿主日志链路正常"}, cancellationToken).ConfigureAwait(true);
+		await ExecuteAsync("write_log", new {level = "warn", eventId = "diagnostics.test", message = ""}, cancellationToken).ConfigureAwait(true);
 		await RefreshLogsCoreAsync(cancellationToken).ConfigureAwait(true);
 	}
 
@@ -158,12 +187,27 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 
 	private async Task RefreshLogsCoreAsync(CancellationToken cancellationToken)
 	{
-		JsonElement result = await ExecuteAsync("get_recent_logs", cancellationToken: cancellationToken).ConfigureAwait(true);
-		Logs = SettingsJson.RootArray(result).Select(value => new DebugLogItem(
-			SettingsJson.String(value, "time"),
-			SettingsJson.String(value, "level"),
-			SettingsJson.String(value, "source"),
-			SettingsJson.String(value, "message"))).ToArray();
+		if (_refreshingLogs) return;
+		_refreshingLogs = true;
+		long request = ++_logRequest;
+		try
+		{
+			JsonElement result = await Service.ExecuteAsync("get_recent_logs", cancellationToken: cancellationToken).ConfigureAwait(true);
+			if (request != _logRequest) return;
+			Logs = SettingsJson.RootArray(result).Select(value => new DebugLogItem(
+				SettingsJson.String(value, "time"),
+				SettingsJson.String(value, "level"),
+				SettingsJson.String(value, "source"),
+				SettingsJson.String(value, "message"), SettingsJson.Long(value, "sequence"),
+				SettingsJson.String(value, "category"), SettingsJson.String(value, "eventId"),
+				SettingsJson.String(value, "windowLabel"), SettingsJson.String(value, "exceptionType"))).ToArray();
+			JsonElement status = await Service.ExecuteAsync("get_logging_status", cancellationToken: cancellationToken).ConfigureAwait(true);
+			MinimumLevel = SettingsJson.String(status, "minimumLevel", "info");
+			string error = SettingsJson.String(status, "lastError");
+			HealthText = $"{NativeSettingsResources.Get("debug.dropped")}: {SettingsJson.Long(status, "droppedCount")} · {NativeSettingsResources.Get("debug.writeFailures")}: {SettingsJson.Long(status, "writeFailureCount")}"
+				+ (error.Length == 0 ? "" : $" · {error}");
+		}
+		finally { _refreshingLogs = false; }
 	}
 
 	private async Task RefreshDiagnosticCoreAsync(CancellationToken cancellationToken)

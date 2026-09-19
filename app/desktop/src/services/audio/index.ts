@@ -6,6 +6,7 @@
  */
 import {invoke} from "../host/invoke"
 import {listen, type UnlistenFn} from "../host/event"
+import {ReportLogError} from "../runtime/logging"
 
 /** 音量采样间隔 (ms)，与原生后端一致。 */
 const LEVEL_INTERVAL_MS = 60
@@ -327,7 +328,7 @@ const startRecording = async (payload: RecordStartPayload): Promise<void> => {
 		recordToken = ""
 		recorderChunks = []
 		recordingGeneration += 1
-		console.error("启动录音失败:", error)
+		void ReportLogError("audio.error", error)
 		reportRecordingFailure(payload.token, error)
 	}
 }
@@ -378,7 +379,7 @@ const stopRecording = async (payload?: RecordStopPayload): Promise<void> => {
 		if (!RESPONSE.ok) throw new Error(`录音上传失败: HTTP ${RESPONSE.status}`)
 	} catch (error) {
 		recorderChunks = []
-		console.error("上传录音失败:", error)
+		void ReportLogError("audio.error", error)
 		reportRecordingFailure(TOKEN, error, true)
 	} finally {
 		stopStream(STREAM)

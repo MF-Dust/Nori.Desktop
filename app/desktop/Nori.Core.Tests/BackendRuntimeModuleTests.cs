@@ -25,10 +25,12 @@ public class BackendRuntimeModuleTests : IDisposable
 	private readonly string _tempDir = Path.Combine(Path.GetTempPath(), $"nori-runtime-{Guid.NewGuid():N}");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
+	private readonly FileLogger _logger;
 
 	public BackendRuntimeModuleTests()
 	{
 		Directory.CreateDirectory(_tempDir);
+		_logger = new FileLogger(Path.Combine(_tempDir, "logs"));
 		_database = NoriDatabase.Open(_dbPath);
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("0.1.0");
@@ -37,6 +39,7 @@ public class BackendRuntimeModuleTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
+		_logger.Dispose();
 		try
 		{
 			File.Delete(_dbPath);
@@ -301,7 +304,7 @@ public class BackendRuntimeModuleTests : IDisposable
 			Memory = new MemoryService(new MemoryStore(_database), new EmbeddingStub(), _config),
 			Emotion = new EmotionManager(_config),
 			Proactive = new ProactiveScheduler(new ReminderStore(_database), _config,
-				new FileLogger(Path.Combine(_tempDir, "logs")), () => null),
+				_logger, () => null),
 			SystemInfo = new StubSystemInfo(),
 			Fetcher = new StubFetcher(),
 			Http = new HttpClient(),
@@ -324,7 +327,7 @@ public class BackendRuntimeModuleTests : IDisposable
 			Memory = new MemoryService(new MemoryStore(_database), new EmbeddingStub(), _config),
 			Emotion = new EmotionManager(_config),
 			Proactive = new ProactiveScheduler(new ReminderStore(_database), _config,
-				new FileLogger(Path.Combine(_tempDir, "logs")), () => null),
+				_logger, () => null),
 			SystemInfo = new StubSystemInfo(),
 			Fetcher = new StubFetcher(),
 			Http = new HttpClient(),
@@ -357,7 +360,7 @@ public class BackendRuntimeModuleTests : IDisposable
 			Memory = new MemoryService(new MemoryStore(_database), new EmbeddingStub(), _config),
 			Emotion = new EmotionManager(_config),
 			Proactive = new ProactiveScheduler(new ReminderStore(_database), _config,
-				new FileLogger(Path.Combine(_tempDir, "logs")), () => null),
+				_logger, () => null),
 			SystemInfo = new StubSystemInfo(),
 			Fetcher = new StubFetcher(),
 			Http = new HttpClient(),

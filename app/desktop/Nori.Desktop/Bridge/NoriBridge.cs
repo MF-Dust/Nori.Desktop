@@ -36,7 +36,7 @@ public sealed class NoriBridge(AppServices services)
 		}
 		catch (JsonException exception)
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"桥接消息解析失败: {exception.Message}");
+			_services.Logger.Write(LogSource.Backend, "warn", "桥接消息解析失败", "Bridge", "bridge.parse_failed", exception);
 			return;
 		}
 		if (message is null) return;
@@ -60,7 +60,7 @@ public sealed class NoriBridge(AppServices services)
 				}
 				break;
 			default:
-				_services.Logger.Write(LogSource.Backend, "warn", $"未知的桥接消息种类: {message.Kind}");
+				_services.Logger.Write(LogSource.Backend, "warn", "未知的桥接消息种类", "Bridge", "bridge.unknown_kind");
 				break;
 		}
 	}
@@ -103,6 +103,7 @@ public sealed class NoriBridge(AppServices services)
 	private async Task HandleInvokeAsync(NoriWindow source, BridgeMessage message, CancellationToken cancellationToken)
 	{
 		string cmd = message.Cmd ?? "";
+		string operationId = Guid.NewGuid().ToString("N");
 		using ITelemetryTransaction transaction = _services.Telemetry.StartTransaction($"bridge.{cmd}");
 		try
 		{
@@ -119,7 +120,8 @@ public sealed class NoriBridge(AppServices services)
 		{
 			BridgeFailure failure = BridgeFailureClassifier.Classify(exception);
 			if (failure.Telemetry) _services.Telemetry.CaptureException(exception, $"bridge.{cmd}", tags: failure.Tags);
-			_services.Logger.Write(LogSource.Backend, failure.LogLevel, $"命令执行失败: {cmd}: {SensitiveDataRedactor.ExceptionSummary(exception)}");
+			_services.Logger.Write(LogSource.Backend, failure.LogLevel, $"{BridgeCommandRouter.Classify(cmd)} 命令执行失败",
+				"Bridge", "bridge.command_failed", exception, source.Label, operationId);
 			source.PostResult(message.Id, null, SensitiveDataRedactor.Redact(exception.Message));
 		}
 	}

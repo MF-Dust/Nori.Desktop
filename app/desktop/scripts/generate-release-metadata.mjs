@@ -8,12 +8,12 @@ const ARGUMENT_NAMES = new Set(["publish-dir", "version", "rid", "output-dir"])
 const parseArgs = (argv) => {
 	const result = new Map()
 	for (let index = 0; index < argv.length; index++) {
+		// eslint-disable-next-line -- Codacy误报：index由循环边界约束，只读取命令行参数
 		const argument = argv[index]
 		if (!argument.startsWith("--")) throw new Error(`无法识别参数: ${argument}`)
 		const key = argument.slice(2)
 		if (!ARGUMENT_NAMES.has(key)) throw new Error(`Unsupported argument: --${key}`)
 		if (index + 1 >= argv.length || argv[index + 1].startsWith("--")) throw new Error(`参数缺少值: --${key}`)
-		// eslint-disable-next-line -- Codacy误报：key已通过固定参数白名单校验，Map不触发对象原型写入
 		result.set(key, argv[++index])
 	}
 	return result

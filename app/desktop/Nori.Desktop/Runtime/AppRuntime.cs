@@ -1082,6 +1082,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			? new WorkspaceAccess("")
 			: new WorkspaceAccess(Services.Config.GetStringOr(ConfigStore.KeyWorkspaceRoot, ""));
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "工具失败诊断写入失败不能覆盖原始工具错误。")]
 	private ToolRegistry BuildToolRegistry(bool audioAvailable)
 	{
 		ToolRegistry registry = new()

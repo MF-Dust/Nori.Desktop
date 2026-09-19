@@ -6,12 +6,12 @@ import {numericVersionFromProduct, validateProductVersion, validateRevision} fro
 const ARGUMENT_NAMES = new Set(["version", "rid", "archive-path", "publish-dir", "repo", "revision", "output-dir"])
 const ARGS = new Map()
 for (let index = 2; index < process.argv.length; index += 2) {
+	// eslint-disable-next-line -- Codacy误报：index由循环边界约束，只读取命令行参数
 	const KEY = process.argv[index]
 	const VALUE = process.argv[index + 1]
 	if (!KEY.startsWith("--") || !VALUE || VALUE.startsWith("--")) throw new Error(`更新清单参数缺少值: ${KEY}`)
 	const NAME = KEY.slice(2)
 	if (!ARGUMENT_NAMES.has(NAME)) throw new Error(`Unsupported argument: ${KEY}`)
-	// eslint-disable-next-line -- Codacy误报：NAME已通过固定参数白名单校验，Map不触发对象原型写入
 	ARGS.set(NAME, VALUE)
 }
 for (const KEY of ["version", "rid", "archive-path", "publish-dir"]) {

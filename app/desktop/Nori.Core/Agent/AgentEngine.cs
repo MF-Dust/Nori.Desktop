@@ -331,7 +331,7 @@ public sealed class AgentEngine
 					callbacks.OnToolExecuted?.Invoke(name, result.Result, result.Error);
 					WriteTrace(sessionId, "tool", toolClock.ElapsedMilliseconds, currentIteration, name,
 						result.Error is null ? "completed" : "error",
-						result.Error is null ? null : "tool_error");
+						result.Error is null ? null : result.Diagnostic?.Category ?? "tool_error");
 					return result;
 				}
 				catch (Exception exception)

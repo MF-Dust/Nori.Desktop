@@ -1075,7 +1075,14 @@ public sealed partial class AppRuntime : IAsyncDisposable
 
 	private ToolRegistry BuildToolRegistry(bool audioAvailable)
 	{
-		ToolRegistry registry = new();
+		ToolRegistry registry = new()
+		{
+			FailureDiagnostic = (tool, diagnostic) =>
+			{
+				try { Services.Logger.Write(LogSource.Backend, "warn", $"工具调用失败: {diagnostic.ToLogMessage(tool)}"); }
+				catch { }
+			},
+		};
 		BuiltinTools.RegisterAll(registry, new BuiltinToolDeps
 		{
 			Memory = Memory,

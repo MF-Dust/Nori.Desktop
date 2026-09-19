@@ -277,25 +277,33 @@ public static class BuiltinTools
 			"使用 AnySearch 搜索引擎在互联网上搜索特定关键词、技术文档、新闻与实时信息", "safe",
 			Schema(
 				Text("query", "搜索关键词或查询短句 (例如: 'Go 1.26 release notes')"),
-				Text("tag", "搜索分类标签 (可选，例如: 'code.doc', 'web', 'general', 'news')", required: false)),
+				Text("tag", "可选垂直搜索能力标签，格式为 domain.sub_domain，例如 code.doc。普通网页、新闻或综合搜索无需填写，AnySearch 会自动选择数据源。", required: false)),
 			async (args, ctx) =>
 			{
 				string query = RequireString(args, "query");
-				string tag = OptionalString(args, "tag") ?? "general";
+				string? tag = NormalizeAnySearchTag(OptionalString(args, "tag"));
 				CancellationToken ct = ctx.CancellationToken;
 
 				// 端点/凭据绑定由策略决定: 存储密钥只允许发往官方端点, 自定义端点必须显式携带 key
-				AnySearchRequest resolved = AnySearchRequestPolicy.Resolve(
-					OptionalString(args, "endpoint") ?? deps.Config.Get("anysearch_api_base")?.ToStorage(),
-					OptionalString(args, "apiKey"),
-					deps.Config.Get("anysearch_api_key")?.ToStorage());
-				UrlAccessPolicy.EnsurePublicHttp(resolved.Endpoint);
+				AnySearchRequest resolved;
+				try
+				{
+					resolved = AnySearchRequestPolicy.Resolve(
+						OptionalString(args, "endpoint") ?? deps.Config.Get("anysearch_api_base")?.ToStorage(),
+						OptionalString(args, "apiKey"),
+						deps.Config.Get("anysearch_api_key")?.ToStorage());
+					UrlAccessPolicy.EnsurePublicHttp(resolved.Endpoint);
+				}
+				catch (InvalidOperationException exception)
+				{
+					throw AnySearchError.Configuration(exception);
+				}
 
 				JsonObject payload = new()
 				{
 					["query"] = query,
-					["tag"] = tag,
 				};
+				if (tag is not null) payload["tag"] = tag;
 
 				using HttpRequestMessage httpRequest = new(HttpMethod.Post, resolved.Endpoint)
 				{
@@ -313,19 +321,38 @@ public static class BuiltinTools
 				}
 				catch (HttpRequestException exception)
 				{
-					throw UrlAccessPolicy.Translate(exception, resolved.Endpoint);
+					throw AnySearchError.Network(exception);
 				}
 				using (response)
 				{
-					string body = await UrlAccessPolicy.ReadCappedTextAsync(
-						response.Content, UrlAccessPolicy.MaxResponseBytes, ct);
+					string body;
+					try
+					{
+						body = await UrlAccessPolicy.ReadCappedTextAsync(
+							response.Content, UrlAccessPolicy.MaxResponseBytes, ct);
+					}
+					catch (InvalidOperationException exception)
+					{
+						throw AnySearchError.ResponseTooLarge(exception);
+					}
 					if (!response.IsSuccessStatusCode)
 					{
-						throw new HttpRequestException($"AnySearch API 返回 HTTP {(int)response.StatusCode}: {body}");
+						throw AnySearchError.Parse(response.StatusCode, body);
 					}
 					return JsonNode.Parse(body) ?? body;
 				}
 			});
+	}
+
+	private static string? NormalizeAnySearchTag(string? value)
+	{
+		string? tag = value?.Trim();
+		if (string.IsNullOrWhiteSpace(tag)) return null;
+		return tag.Equals("general", StringComparison.OrdinalIgnoreCase)
+			|| tag.Equals("web", StringComparison.OrdinalIgnoreCase)
+			|| tag.Equals("news", StringComparison.OrdinalIgnoreCase)
+			? null
+			: tag;
 	}
 
 	/// <summary>构造对象参数 Schema</summary>

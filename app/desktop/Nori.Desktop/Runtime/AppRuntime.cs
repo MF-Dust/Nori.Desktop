@@ -2136,6 +2136,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		}
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "后台任务的遥测和日志失败不能覆盖已观察到的原始异常。")]
 	private async Task ObserveBackgroundAsync(Func<Task> operation, string name)
 	{
 		try { await operation().ConfigureAwait(false); }

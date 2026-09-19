@@ -41,6 +41,22 @@ public partial class BridgeCommandsTests
 	});
 
 	[Fact]
+	public Task NativeGeneralExposesQuickChatToggle() => WithSettingsUiAsync(() =>
+	{
+		using SettingsService service = new(_services, new Window());
+		using GeneralSettingsPage page = new(service);
+		SettingsFieldViewModel field = page.Sections.SelectMany(section => section.Fields)
+			.Single(item => item.Key == "quickChatEnabled");
+		using JsonDocument disabled = JsonDocument.Parse("""{"general":{"quickChatEnabled":false}}""");
+		page.ApplySnapshot(disabled.RootElement);
+		Assert.False(field.Boolean);
+		using JsonDocument enabled = JsonDocument.Parse("""{"general":{"quickChatEnabled":true}}""");
+		page.ApplySnapshot(enabled.RootElement);
+		Assert.True(field.Boolean);
+		return Task.CompletedTask;
+	});
+
+	[Fact]
 	public Task NativeUpdaterShowsProgressAndGatesActions() => WithSettingsUiAsync(() =>
 	{
 		using SettingsService service = new(_services, new Window());

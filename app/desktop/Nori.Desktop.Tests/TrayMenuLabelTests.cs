@@ -24,6 +24,14 @@ public sealed class TrayMenuLabelTests
 	public void 切换那条写的是这次点下去会发生什么(bool petVisible, bool english, string expected) =>
 		Assert.Equal(expected, TrayMenu.ToggleLabel(petVisible, english));
 
+	[Theory]
+	[InlineData(true, false, "快捷聊天：开启")]
+	[InlineData(false, false, "快捷聊天：关闭")]
+	[InlineData(true, true, "Quick Chat: On")]
+	[InlineData(false, true, "Quick Chat: Off")]
+	public void 快捷聊天菜单项显示当前开关状态(bool enabled, bool english, string expected) =>
+		Assert.Equal(expected, TrayMenu.QuickChatLabel(enabled, english));
+
 	/// <summary>
 	/// 一条菜单项里不能同时出现两个互斥的动作。
 	///

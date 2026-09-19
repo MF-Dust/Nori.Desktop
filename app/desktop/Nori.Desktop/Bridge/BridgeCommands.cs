@@ -237,19 +237,20 @@ public sealed class BridgeCommands
 				Runtime.InvalidateSnapshot("voice");
 			})),
 
-		// invoke("settings_update_general", {language?, petAutoSummon?, sidebarCollapsed?, autoCheckUpdates?, telemetryEnabled?})
+		// invoke("settings_update_general", {language?, petAutoSummon?, quickChatEnabled?, sidebarCollapsed?, autoCheckUpdates?, telemetryEnabled?})
 		"settings_update_general" => RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () =>
 			Run(() =>
 			{
 				UpdateOptionalConfig(args, "language", ConfigStore.KeyLanguage);
 				UpdateBoolConfig(args, "petAutoSummon", "pet_auto_summon");
+				UpdateBoolConfig(args, "quickChatEnabled", ConfigStore.KeyQuickChatEnabled);
 				UpdateBoolConfig(args, "sidebarCollapsed", "ui_sidebar_collapsed");
 				UpdateBoolConfig(args, "autoCheckUpdates", "auto_check_updates");
 				UpdateTelemetryConsent(source, args);
 				_services.Telemetry.Configure(_services.Config.GetTelemetryConsent() == TelemetryConsent.Granted);
 				// 托盘菜单是另一棵原生控件树, 不吃前端快照。语言改了要单独推给它,
 				// 否则会一直停在启动那一刻的语言上。
-				Tray.TrayMenu.Refresh();
+				Avalonia.Threading.Dispatcher.UIThread.Post(Tray.TrayMenu.Refresh);
 				Runtime.InvalidateSnapshot("general", "telemetry");
 			})),
 
@@ -1090,7 +1091,7 @@ public sealed class BridgeCommands
 			}
 
 			_services.Chat.ClearHistory();
-			Runtime.InvalidateSnapshot("chat");
+			Runtime.NotifyChatHistoryChanged();
 			return new ClearChatResult(
 				remoteReset,
 				_services.SafeMode && hadRemoteSession

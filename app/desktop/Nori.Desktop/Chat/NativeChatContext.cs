@@ -6,6 +6,9 @@ using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Chat;
 
+/// <summary>宿主内部固定的聊天表面，不接受外部传入任意来源标签。</summary>
+internal enum NativeChatSurface { Full, QuickChat }
+
 /// <summary>原生对话来源，不冒充主 WebView；后台只读取缓存的可见性。</summary>
 internal sealed class NativeChatContext : INativeChatSource, IDisposable
 {
@@ -15,8 +18,9 @@ internal sealed class NativeChatContext : INativeChatSource, IDisposable
 	private int _visible;
 	private int _disposed;
 
-	public NativeChatContext(Window owner, Action<string, object?> onEvent)
+	public NativeChatContext(Window owner, Action<string, object?> onEvent, NativeChatSurface surface = NativeChatSurface.Full)
 	{
+		Surface = surface;
 		_owner = owner;
 		_onEvent = onEvent;
 		LifetimeToken = _lifetime.Token;
@@ -24,7 +28,8 @@ internal sealed class NativeChatContext : INativeChatSource, IDisposable
 		_owner.PropertyChanged += OnOwnerPropertyChanged;
 	}
 
-	public string Label => WindowLabels.Chat;
+	public NativeChatSurface Surface { get; }
+	public string Label => Surface == NativeChatSurface.QuickChat ? WindowLabels.QuickChat : WindowLabels.Chat;
 	public bool IsVisible => Volatile.Read(ref _visible) != 0;
 	public Window? Self => _owner;
 	public CancellationToken LifetimeToken { get; }

@@ -3,6 +3,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Nori.Desktop.QuickChat;
 using Nori.Core.Assets;
 using Nori.Core.Data;
 using Nori.Desktop.Bridge;
@@ -23,6 +26,7 @@ public sealed class WindowManager : IWindowManager
 	private readonly Dictionary<string, Window> _windows = [];
 	private readonly ConcurrentDictionary<string, bool> _visible = new();
 	private PetWindow? _petWindow;
+	private QuickChatController? _quickChat;
 	private NoriWindow? _audioHost;
 	private AppServices? _services;
 	private int _shutdownRequested;
@@ -131,6 +135,7 @@ public sealed class WindowManager : IWindowManager
 	/// </summary>
 	private void TrackVisibility(string label, Window window)
 	{
+		window.AddHandler(InputElement.KeyDownEvent, OnQuickChatShortcut, RoutingStrategies.Tunnel);
 		_visible[label] = window.IsVisible;
 		window.PropertyChanged += (_, args) =>
 		{
@@ -170,6 +175,7 @@ public sealed class WindowManager : IWindowManager
 	/// </summary>
 	public void Show(string label)
 	{
+		if (label == WindowLabels.Pet) EnsureQuickChat();
 		if (label == WindowLabels.Settings)
 		{
 			ShowSettings();
@@ -192,6 +198,7 @@ public sealed class WindowManager : IWindowManager
 		}
 		if (Get(label) is not { } window) return;
 		window.Show();
+		if (window is QuickChatWindow) return;
 		if (window is PetWindow pet)
 		{
 			// 伴侣视窗不抢当前应用焦点；点击穿透由分层样式实现，窗口保持置顶。
@@ -200,6 +207,25 @@ public sealed class WindowManager : IWindowManager
 			return;
 		}
 		window.Activate();
+	}
+
+	private void EnsureQuickChat()
+	{
+		if (_quickChat is not null || _petWindow is null || _services?.Runtime is null) return;
+		_quickChat = new QuickChatController(_services, _petWindow, window =>
+		{
+			_windows[WindowLabels.QuickChat] = window;
+			TrackVisibility(WindowLabels.QuickChat, window);
+		}, window =>
+		{
+			if (ReferenceEquals(Get(WindowLabels.QuickChat), window)) _windows.Remove(WindowLabels.QuickChat);
+		});
+	}
+
+	private void OnQuickChatShortcut(object? sender, KeyEventArgs args)
+	{
+		KeyModifiers modifier = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
+		if (args.Key == Key.K && args.KeyModifiers == modifier && _quickChat?.FocusComposer() == true) args.Handled = true;
 	}
 
 	/// <inheritdoc />
@@ -485,6 +511,7 @@ public sealed class WindowManager : IWindowManager
 				if (models is not null) await models.PrepareShutdownAsync();
 				failureOwner = Get(WindowLabels.Chat);
 				if (failureOwner is ChatWindow chat) await chat.PrepareShutdownAsync();
+				if (_quickChat is not null) await _quickChat.ShutdownAsync();
 			}
 			catch (Exception exception)
 			{

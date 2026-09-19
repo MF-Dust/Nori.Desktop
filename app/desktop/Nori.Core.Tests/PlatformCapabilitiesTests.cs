@@ -78,6 +78,7 @@ public class PlatformCapabilitiesTests
 		Assert.False(capabilities.SupportsHitThrough);
 		Assert.False(capabilities.SupportsTopmost);
 		Assert.False(capabilities.SupportsTray);
+		Assert.True(services.PrefersReducedMotion);
 		Assert.Equal(SessionType.Unknown, services.Session);
 
 		// 伴侣视窗每 ~10Hz 会调一次穿透切换: 不支持时必须静默忽略, 不能打断渲染循环
@@ -87,6 +88,12 @@ public class PlatformCapabilitiesTests
 		// 光标与拖动被前端按能力标志禁用; 万一调到要能明确报错便于定位
 		Assert.Throws<PlatformNotSupportedException>(() => services.GetCursorPosition());
 		Assert.Throws<PlatformNotSupportedException>(() => services.StartWindowDrag(1234));
+	}
+
+	[Fact]
+	public void CurrentPlatformExposesReducedMotionPreference()
+	{
+		_ = PlatformServices.Current.PrefersReducedMotion;
 	}
 
 	[Fact]

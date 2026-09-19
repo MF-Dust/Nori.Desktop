@@ -56,6 +56,7 @@ public sealed class PetWindow : Window
 	private PixelPoint _dragStartWinPos;
 	private bool _isNativeDragPending;
 	private PixelPoint _nativeDragStartWinPos;
+	private bool _closed;
 
 	public bool AllowClose { get; set; }
 
@@ -146,6 +147,11 @@ public sealed class PetWindow : Window
 	/// <summary>显示伴侣短句气泡。</summary>
 	/// <summary>语音气泡。情绪表达通道要改它的描边色。</summary>
 	public PetSpeechOverlay SpeechOverlay => _speechOverlay;
+	public PetQuickChatLayout QuickChatLayout => _runtime.QuickChatLayout;
+	public Point QuickChatComposerAnchor => new(QuickChatLayout.ComposerAnchor.X, QuickChatLayout.ComposerAnchor.Y);
+
+	/// <summary>切换固定的 Quick Chat 头像视口。</summary>
+	public void SetQuickChatPresentation(bool enabled) => _runtime.SetQuickChatPresentation(enabled);
 
 	public void ShowSpeech(string text)
 	{
@@ -160,9 +166,18 @@ public sealed class PetWindow : Window
 	/// <summary>清除伴侣短句气泡。</summary>
 	public void ClearSpeech() => _speechOverlay.ClearText();
 
-	private void OnRuntimeModelChanged() => Dispatcher.UIThread.Post(ApplyWindowSize);
+	private void OnRuntimeModelChanged() => QueueWindowSizeUpdate();
 
-	private void OnRuntimeLayoutChanged() => Dispatcher.UIThread.Post(ApplyWindowSize);
+	private void OnRuntimeLayoutChanged() => QueueWindowSizeUpdate();
+
+	private void QueueWindowSizeUpdate()
+	{
+		if (_closed) return;
+		Dispatcher.UIThread.Post(() =>
+		{
+			if (!_closed) ApplyWindowSize();
+		});
+	}
 
 	private void OnOpened(object? sender, EventArgs e)
 	{
@@ -241,6 +256,7 @@ public sealed class PetWindow : Window
 
 	private void OnClosed(object? sender, EventArgs e)
 	{
+		_closed = true;
 		_glControl.PauseRenderLoop();
 		_speechOverlay.ClearText();
 		_cursorTrackingTimer.Stop();
@@ -267,6 +283,7 @@ public sealed class PetWindow : Window
 	/// </summary>
 	public void ApplyWindowSize()
 	{
+		if (_closed) return;
 		var model = _runtime.CurrentModel;
 		// GetCanvasWidth() 返回的是 Unit (通常 2.0), 尺寸计算要的是像素画布
 		double rawW = model?.Model.GetCanvasWidthPixel() ?? PetSizing.DefaultPetWidth;
@@ -284,7 +301,9 @@ public sealed class PetWindow : Window
 		double screenDipW = screen is not null ? screen.WorkingArea.Width / screenScale : 1920;
 		double screenDipH = screen is not null ? screen.WorkingArea.Height / screenScale : 1080;
 
-		var (targetPhysW, targetPhysH) = PetSizing.CalculateWindowSize(rawW, rawH, _runtime.UserScale, screenDipW, screenDipH, scale);
+		(int targetPhysW, int targetPhysH) = _runtime.PresentationMode == PetPresentationMode.QuickChat
+			? PetSizing.CalculatePresentationWindowSize(_runtime.QuickChatLayout, screenDipW, screenDipH, scale)
+			: PetSizing.CalculateWindowSize(rawW, rawH, _runtime.UserScale, screenDipW, screenDipH, scale);
 
 		// 首次显示时 Bounds 还是 0, 此时不做居中换算, 否则窗口会整体偏移半个身位
 		double oldPhysW = Bounds.Width > 0 ? Bounds.Width * scale : targetPhysW;

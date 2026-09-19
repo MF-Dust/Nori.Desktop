@@ -104,6 +104,9 @@ public static class WindowLabels
 	/// <summary>按需创建的原生对话窗口。</summary>
 	public const string Chat = "chat";
 
+	/// <summary>独立于完整聊天的可信原生快捷聊天表面。</summary>
+	public const string QuickChat = "quick-chat";
+
 	/// <summary>首次运行向导</summary>
 	public const string FirstRun = "first-run";
 

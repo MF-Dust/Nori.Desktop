@@ -67,6 +67,8 @@ public sealed class PetRuntime
 	private readonly Lock _interactionGate = new();
 	private PetInteractionConfig _interactionConfig = PetInteractionConfig.Empty;
 	private PetViewportMapping? _viewportMapping;
+	private PetDrawableGeometry? _presentationGeometry;
+	private int _presentationMode;
 
 	// ---- 后台模型准备 (世代归属) ----
 	//
@@ -94,6 +96,9 @@ public sealed class PetRuntime
 	public float RenderScale { get; private set; } = Live2DRenderSettings.DefaultRenderScale;
 	public string QualityMode { get; private set; } = Live2DRenderSettings.DefaultQualityMode;
 	public int MaxFps { get; private set; }
+	public PetPresentationMode PresentationMode => (PetPresentationMode)Volatile.Read(ref _presentationMode);
+	public PetPresentationProfile Presentation => PetPresentation.ForModel(_currentModelId);
+	public PetQuickChatLayout QuickChatLayout => PetPresentation.ScaleQuickChatLayout(Presentation.Layout, UserScale);
 
 	/// <summary>当前质量策略的有效目标 FPS。</summary>
 	public int EffectiveFps
@@ -133,6 +138,17 @@ public sealed class PetRuntime
 
 	/// <summary>缩放变化: 伴侣视窗据此重算窗口尺寸</summary>
 	public event Action? LayoutChanged;
+
+	/// <summary>
+	/// 切换 Quick Chat 固定头像展示。该状态只改变窗口与投影，不改写用户的模型缩放配置。
+	/// </summary>
+	public void SetQuickChatPresentation(bool enabled)
+	{
+		PetPresentationMode next = enabled ? PetPresentationMode.QuickChat : PetPresentationMode.Ordinary;
+		if (Interlocked.Exchange(ref _presentationMode, (int)next) == (int)next) return;
+		lock (_interactionGate) _viewportMapping = null;
+		LayoutChanged?.Invoke();
+	}
 
 	public PetRuntime(AppServices services) : this(services, previewMode: false)
 	{
@@ -275,6 +291,7 @@ public sealed class PetRuntime
 		lock (_prepareGate) CancelPendingModelLoadLocked();
 		// 同上: 释放交给 manager, PetGlControl 随后的 _lapp.Dispose() 会走到 ReleaseAllModel()
 		_currentModel = null;
+		_presentationGeometry = null;
 		lock (_interactionGate) _viewportMapping = null;
 		_app?.Live2dManager.ReleaseAllModel();
 		_app = null;
@@ -745,6 +762,7 @@ public sealed class PetRuntime
 				try
 				{
 					_currentModel = candidate;
+					_presentationGeometry = null;
 					_currentModelId = prepared.ModelId;
 					_currentModelDir = prepared.ModelDir;
 					candidate.CustomValueUpdate = true;
@@ -774,6 +792,7 @@ public sealed class PetRuntime
 				{
 					failure = exception;
 					_currentModel = previousModel;
+					_presentationGeometry = null;
 					_currentModelId = previousModelId;
 					_currentModelDir = previousModelDir;
 					_motionGroups = previousMotionGroups;
@@ -949,45 +968,99 @@ public sealed class PetRuntime
 		float canvasUnitW = _currentModel.Model.GetCanvasWidth();
 		float canvasUnitH = _currentModel.Model.GetCanvasHeight();
 
-		float aspectWindow = (float)viewportWidth / viewportHeight;
-		float aspectModel = canvasPixelW > 0 && canvasPixelH > 0 ? canvasPixelW / canvasPixelH : 1.0f;
+		_currentModel.RandomMotion = IdleAnimationEnabled;
+		_currentModel.Update();
 
-		float scaleX = (float)viewportHeight / viewportWidth;
-		float scaleY = 1.0f;
-
-		// 此时模型正好占满窗口高度; 只有模型比窗口更宽时才需要整体缩小,
-		// 保证任何窗口比例下模型都完整可见 (安全基准尺寸的上下限收口会让两者略有出入)
-		if (aspectModel > aspectWindow)
+		float modelScaleX = _currentModel.ModelMatrix.GetScaleX();
+		float modelScaleY = _currentModel.ModelMatrix.GetScaleY();
+		float modelTranslateX = _currentModel.ModelMatrix.GetTranslateX();
+		float modelTranslateY = _currentModel.ModelMatrix.GetTranslateY();
+		PetViewportProjection projection;
+		if (!_previewMode && PresentationMode == PetPresentationMode.QuickChat)
 		{
-			float fit = aspectWindow / aspectModel;
-			scaleX *= fit;
-			scaleY *= fit;
+			_presentationGeometry ??= MeasureDrawableGeometry(_currentModel, canvasUnitW, canvasUnitH);
+			PetPresentationProfile presentation = Presentation with {Layout = QuickChatLayout};
+			projection = PetPresentation.CalculateQuickChatProjection(
+				canvasUnitW,
+				canvasUnitH,
+				modelScaleX,
+				modelScaleY,
+				modelTranslateX,
+				modelTranslateY,
+				_presentationGeometry.Value,
+				presentation);
 		}
-		if (_previewMode)
+		else
 		{
-			scaleX *= UserScale;
-			scaleY *= UserScale;
+			projection = PetViewportMapping.CalculateFitProjection(
+				viewportWidth,
+				viewportHeight,
+				canvasPixelW,
+				canvasPixelH,
+				_previewMode ? UserScale : 1);
 		}
 
-		_projectionMatrix.Scale(scaleX, scaleY);
+		_projectionMatrix.Scale((float)projection.ScaleX, (float)projection.ScaleY);
+		_projectionMatrix.TranslateX((float)projection.TranslateX);
+		_projectionMatrix.TranslateY((float)projection.TranslateY);
 		// 绘制使用物理像素，但 Avalonia 指针和叠加层使用 DIP；最终变换相同，
 		// 映射视口必须保存逻辑尺寸，否则高 DPI 下点击区域会缩到左上角。
-		PetViewportMapping mapping = PetViewportMapping.FromFinalTransform(
+		PetViewportMapping mapping = PetViewportMapping.FromProjection(
 			clientViewportWidth,
 			clientViewportHeight,
 			// ModelMatrix 由 Cubism 的 Unit 画布尺寸构造；这里必须使用同一单位。
 			canvasUnitW,
 			canvasUnitH,
-			scaleX * _currentModel.ModelMatrix.GetScaleX(),
-			scaleY * _currentModel.ModelMatrix.GetScaleY(),
-			scaleX * _currentModel.ModelMatrix.GetTranslateX(),
-			scaleY * _currentModel.ModelMatrix.GetTranslateY());
+			projection,
+			modelScaleX,
+			modelScaleY,
+			modelTranslateX,
+			modelTranslateY);
 		lock (_interactionGate) _viewportMapping = mapping;
 
-		_currentModel.RandomMotion = IdleAnimationEnabled;
-		_currentModel.Update();
 		_currentModel.Draw(_projectionMatrix);
 		FrameRendered?.Invoke();
+	}
+
+	/// <summary>从当前 Drawable 顶点提取实际可见范围，过滤全透明图层。</summary>
+	private static unsafe PetDrawableGeometry MeasureDrawableGeometry(
+		LAppModel model,
+		float canvasWidth,
+		float canvasHeight)
+	{
+		if (canvasWidth <= 0 || canvasHeight <= 0) return PetDrawableGeometry.FullCanvas;
+		double minX = double.PositiveInfinity;
+		double minY = double.PositiveInfinity;
+		double maxX = double.NegativeInfinity;
+		double maxY = double.NegativeInfinity;
+		for (int drawableIndex = 0; drawableIndex < model.Model.GetDrawableCount(); drawableIndex++)
+		{
+			if (model.Model.GetDrawableOpacity(drawableIndex) <= 0.001f) continue;
+			int count = model.Model.GetDrawableVertexCount(drawableIndex);
+			float* vertices = model.Model.GetDrawableVertices(drawableIndex);
+			for (int vertexIndex = 0; vertexIndex < count; vertexIndex++)
+			{
+				double x = vertices[vertexIndex * 2];
+				double y = vertices[vertexIndex * 2 + 1];
+				if (!double.IsFinite(x) || !double.IsFinite(y)) continue;
+				minX = Math.Min(minX, x);
+				maxX = Math.Max(maxX, x);
+				minY = Math.Min(minY, y);
+				maxY = Math.Max(maxY, y);
+			}
+		}
+
+		if (!double.IsFinite(minX) || !double.IsFinite(minY)
+			|| maxX <= minX || maxY <= minY)
+		{
+			return PetDrawableGeometry.FullCanvas;
+		}
+
+		double left = (minX + canvasWidth / 2) / canvasWidth;
+		double top = (canvasHeight / 2 - maxY) / canvasHeight;
+		double width = (maxX - minX) / canvasWidth;
+		double height = (maxY - minY) / canvasHeight;
+		return new PetDrawableGeometry(new PetNormalizedRect(left, top, width, height));
 	}
 
 	/// <summary>获取最新一帧完整模型画布的 Avalonia 逻辑像素矩形。</summary>
@@ -1020,8 +1093,37 @@ public sealed class PetRuntime
 	private void LookAtCore(float clientX, float clientY, float windowW, float windowH)
 	{
 		if (_currentModel is null || !EyeTrackingEnabled || windowW <= 0 || windowH <= 0) return;
-		float normX = Math.Clamp((clientX / windowW) * 2.0f - 1.0f, -1.0f, 1.0f);
-		float normY = Math.Clamp(-((clientY / windowH) * 2.0f - 1.0f), -1.0f, 1.0f);
+		PetViewportMapping? mapping;
+		lock (_interactionGate) mapping = _viewportMapping;
+		float normX;
+		float normY;
+		if (mapping is { } current
+			&& current.TryMapClientToModelPlane(clientX, clientY, out double modelX, out double modelY))
+		{
+			if (!_previewMode
+				&& PresentationMode == PetPresentationMode.QuickChat
+				&& _presentationGeometry is { } geometry)
+			{
+				PetPresentationProfile presentation = Presentation with {Layout = QuickChatLayout};
+				(double x, double y) = PetPresentation.NormalizeQuickChatLookAt(
+					modelX,
+					modelY,
+					geometry,
+					presentation);
+				normX = (float)x;
+				normY = (float)y;
+			}
+			else
+			{
+				normX = Math.Clamp((float)((modelX - 0.5) * 2), -1, 1);
+				normY = Math.Clamp((float)((0.5 - modelY) * 2), -1, 1);
+			}
+		}
+		else
+		{
+			normX = Math.Clamp(clientX / windowW * 2 - 1, -1, 1);
+			normY = Math.Clamp(1 - clientY / windowH * 2, -1, 1);
+		}
 		_currentModel.SetDragging(normX, normY);
 	}
 

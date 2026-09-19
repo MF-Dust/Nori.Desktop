@@ -14,6 +14,23 @@ public static class PetSizing
 	public const double MinPetBaseWidth = 240;
 	public const double MinPetBaseHeight = 320;
 
+	/// <summary>计算固定展示视口的物理像素尺寸。</summary>
+	public static (int Width, int Height) CalculatePresentationWindowSize(
+		PetQuickChatLayout layout,
+		double screenWidth,
+		double screenHeight,
+		double renderScaling)
+	{
+		double scaleFactor = renderScaling > 0 && double.IsFinite(renderScaling) ? renderScaling : 1;
+		double screenW = screenWidth > 0 && double.IsFinite(screenWidth) ? screenWidth : 1920;
+		double screenH = screenHeight > 0 && double.IsFinite(screenHeight) ? screenHeight : 1080;
+		int maxPhysicalW = Math.Max(80, (int)Math.Round(screenW * scaleFactor));
+		int maxPhysicalH = Math.Max(80, (int)Math.Round(screenH * scaleFactor));
+		int targetPhysicalW = Math.Max(80, (int)Math.Round(layout.ViewportWidth * scaleFactor));
+		int targetPhysicalH = Math.Max(80, (int)Math.Round(layout.ViewportHeight * scaleFactor));
+		return (Math.Min(maxPhysicalW, targetPhysicalW), Math.Min(maxPhysicalH, targetPhysicalH));
+	}
+
 	/// <summary>
 	/// 计算安全基准视口尺寸 (DIP)
 	///

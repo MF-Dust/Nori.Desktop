@@ -80,4 +80,17 @@ public class PetSizingTests
 		Assert.Equal(1600, width);
 		Assert.Equal(2080, height);
 	}
+
+	[Fact]
+	public void QuickChatWindowSizeUsesFixedPresentationViewportAtHighDpi()
+	{
+		var (width, height) = PetSizing.CalculatePresentationWindowSize(
+			PetQuickChatLayout.Default,
+			1920,
+			1080,
+			2);
+
+		Assert.Equal(560, width);
+		Assert.Equal(380, height);
+	}
 }

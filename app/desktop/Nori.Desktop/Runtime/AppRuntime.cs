@@ -1210,6 +1210,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			}
 			// 终结事件意味着引擎与落库已结束，清空/下一轮不再被自动朗读占用。
 			PostAgentEvent(session.Source, terminal);
+			NotifyChatHistoryChanged();
 			if (final is not null) await AutoSpeakAsync(final.Text, final.Emotion, lifetimeToken);
 		});
 		session.Worker = worker;
@@ -1218,6 +1219,13 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	}
 
 	private int _sessionCounter;
+	private long _chatHistoryRevision;
+	internal long ChatHistoryRevision => Interlocked.Read(ref _chatHistoryRevision);
+	internal void NotifyChatHistoryChanged()
+	{
+		Interlocked.Increment(ref _chatHistoryRevision);
+		InvalidateSnapshot("chat");
+	}
 
 	private async Task AutoSpeakAsync(string text, string? messageEmotion, CancellationToken ct)
 	{
@@ -1639,6 +1647,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			{
 				language = config.GetStringOr("language", "zh-CN"),
 				petAutoSummon = ParseBoolFlag(config.GetStringOr("pet_auto_summon", "true")) ?? true,
+				quickChatEnabled = ParseBoolFlag(config.GetStringOr(ConfigStore.KeyQuickChatEnabled, "true")) ?? true,
 				sidebarCollapsed = ParseBoolFlag(config.GetStringOr("ui_sidebar_collapsed", "")) ?? false,
 				autoCheckUpdates = config.GetBoolOr("auto_check_updates", true),
 			},
@@ -1941,7 +1950,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			PostAgentEvent(source.Label, payload);
 			return;
 		}
-		if (native.Label != WindowLabels.Chat || native.LifetimeToken.IsCancellationRequested) return;
+		if (!Nori.Desktop.Chat.NativeChatService.IsTrustedSource(native) || native.LifetimeToken.IsCancellationRequested) return;
 		try { source.PostEvent(AgentEventName, payload); }
 		catch { /* 窗口退出不影响会话收尾。 */ }
 	}

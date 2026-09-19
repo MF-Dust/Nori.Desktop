@@ -104,6 +104,9 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// <summary>旧版布尔遥测开关, 只用于迁移和兼容读取。</summary>
 	public const string KeyTelemetryEnabled = "telemetry_enabled";
 
+	/// <summary>配置键: 快捷聊天开关。</summary>
+	public const string KeyQuickChatEnabled = "quick_chat_enabled";
+
 	/// <summary>MCP stdio 环境变量的独立敏感配置键前缀。</summary>
 	public const string McpEnvironmentKeyPrefix = "mcp_server_env_";
 
@@ -334,6 +337,9 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 		};
 	}
 
+	/// <summary>读取快捷聊天开关，缺失或非法值按默认开启处理。</summary>
+	public bool GetQuickChatEnabled() => GetBoolOr(KeyQuickChatEnabled, true);
+
 	/// <summary>读取明确的遥测同意状态; 非法或缺失值都 fail-closed 为 unset。</summary>
 	public TelemetryConsent GetTelemetryConsent()
 	{
@@ -370,6 +376,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 				(KeySelectedModel, new ConfigValue.Text(DefaultModel)),
 				(KeyFirstRunCompleted, new ConfigValue.Boolean(false)),
 				(KeyTelemetryConsent, new ConfigValue.Text(ConfigValidation.TelemetryConsentStorage(TelemetryConsent.Unset))),
+				(KeyQuickChatEnabled, new ConfigValue.Boolean(true)),
 				("memory_enabled", new ConfigValue.Boolean(true)),
 				("memory_reflection_enabled", new ConfigValue.Boolean(true)),
 				("memory_reflection_rounds", new ConfigValue.Integer(8)),

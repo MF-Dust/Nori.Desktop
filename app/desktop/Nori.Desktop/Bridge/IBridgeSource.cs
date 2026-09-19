@@ -49,5 +49,6 @@ internal interface INativeModelSource : IBridgeSource
 /// <summary>原生对话窗口的可信来源；生命周期用于取消已离开的来源请求。</summary>
 internal interface INativeChatSource : IBridgeSource
 {
+	Nori.Desktop.Chat.NativeChatSurface Surface => Nori.Desktop.Chat.NativeChatSurface.Full;
 	CancellationToken LifetimeToken { get; }
 }

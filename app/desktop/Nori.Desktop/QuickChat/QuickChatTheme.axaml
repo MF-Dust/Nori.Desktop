@@ -1,0 +1,110 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+	<Style Selector="TextBox.quick-composer">
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="FocusAdorner" Value="{x:Null}"/>
+		<Setter Property="Foreground" Value="#FEFEFE"/>
+		<Setter Property="CaretBrush" Value="#CAF5F1"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="CornerRadius" Value="0"/>
+		<Setter Property="Padding" Value="0"/>
+		<Setter Property="FontSize" Value="14"/>
+		<Setter Property="FontWeight" Value="Medium"/>
+		<Setter Property="MinHeight" Value="20"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+		<Setter Property="Template">
+			<ControlTemplate>
+				<ScrollViewer Name="PART_ScrollViewer"
+					HorizontalScrollBarVisibility="Hidden"
+					VerticalScrollBarVisibility="Hidden"
+					Background="Transparent">
+					<TextPresenter Name="PART_TextPresenter"
+						Text="{TemplateBinding Text, Mode=TwoWay}"
+						CaretBlinkInterval="{TemplateBinding CaretBlinkInterval}"
+						CaretIndex="{TemplateBinding CaretIndex}"
+						SelectionStart="{TemplateBinding SelectionStart}"
+						SelectionEnd="{TemplateBinding SelectionEnd}"
+						TextAlignment="{TemplateBinding TextAlignment}"
+						TextWrapping="{TemplateBinding TextWrapping}"
+						LineHeight="{TemplateBinding LineHeight}"
+						LetterSpacing="{TemplateBinding LetterSpacing}"
+						SelectionBrush="{TemplateBinding SelectionBrush}"
+						SelectionForegroundBrush="{TemplateBinding SelectionForegroundBrush}"
+						CaretBrush="{TemplateBinding CaretBrush}"
+						HorizontalAlignment="Stretch"
+						VerticalAlignment="Center"/>
+				</ScrollViewer>
+			</ControlTemplate>
+		</Setter>
+	</Style>
+	<Style Selector="TextBox.quick-composer:focus">
+		<Setter Property="Foreground" Value="#56565F"/>
+		<Setter Property="CaretBrush" Value="#56565F"/>
+	</Style>
+	<Style Selector="Button.quick-send">
+		<Setter Property="Width" Value="28"/>
+		<Setter Property="Height" Value="28"/>
+		<Setter Property="MinWidth" Value="28"/>
+		<Setter Property="MinHeight" Value="28"/>
+		<Setter Property="Padding" Value="0"/>
+		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="BorderThickness" Value="0"/>
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="Foreground" Value="#80D2E8E9"/>
+		<Setter Property="FontSize" Value="20"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="HorizontalContentAlignment" Value="Center"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+		<Setter Property="Template">
+			<ControlTemplate>
+				<ContentPresenter Name="QuickChatSendPresenter"
+					Background="{TemplateBinding Background}"
+					BorderBrush="{TemplateBinding BorderBrush}"
+					BorderThickness="{TemplateBinding BorderThickness}"
+					CornerRadius="{TemplateBinding CornerRadius}"
+					Content="{TemplateBinding Content}"
+					Padding="{TemplateBinding Padding}"
+					HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+					VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+			</ControlTemplate>
+		</Setter>
+	</Style>
+	<Style Selector="Button.quick-send.filled">
+		<Setter Property="Background">
+			<LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+				<GradientStop Color="#D2E8E9" Offset="0"/>
+				<GradientStop Color="#CAF5F1" Offset="1"/>
+			</LinearGradientBrush>
+		</Setter>
+		<Setter Property="Foreground" Value="#56565F"/>
+	</Style>
+	<Style Selector="Button.quick-send:focus-visible">
+		<Setter Property="BorderBrush" Value="#D2E8E9"/>
+		<Setter Property="BorderThickness" Value="2"/>
+	</Style>
+	<Style Selector="Button.quick-send:disabled">
+		<Setter Property="Opacity" Value="0.3"/>
+	</Style>
+	<Style Selector="Button.quick-approval">
+		<Setter Property="MinHeight" Value="26"/>
+		<Setter Property="Padding" Value="9,4"/>
+		<Setter Property="CornerRadius" Value="7"/>
+		<Setter Property="FontSize" Value="11"/>
+		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="Background" Value="#18D2E8E9"/>
+		<Setter Property="Foreground" Value="#E8E8EC"/>
+		<Setter Property="BorderBrush" Value="#30D2E8E9"/>
+		<Setter Property="BorderThickness" Value="1"/>
+	</Style>
+	<Style Selector="Button.quick-approval:pointerover, Button.quick-approval:pressed">
+		<Setter Property="Background" Value="#30D2E8E9"/>
+		<Setter Property="BorderBrush" Value="#80D2E8E9"/>
+	</Style>
+	<Style Selector="Button.quick-approval.allow">
+		<Setter Property="Background" Value="#D2E8E9"/>
+		<Setter Property="Foreground" Value="#3D3D47"/>
+	</Style>
+	<Style Selector="Button.quick-approval.deny">
+		<Setter Property="Foreground" Value="#FFD9DC"/>
+		<Setter Property="BorderBrush" Value="#70FF6B72"/>
+	</Style>
+</Styles>

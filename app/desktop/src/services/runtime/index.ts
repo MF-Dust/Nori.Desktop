@@ -420,7 +420,7 @@ export const RUNTIME = {
 	cloneIndexTtsVoice(filePath?: string): Promise<{voiceId: string}> {
 		return invoke("indextts_clone_voice", {filePath})
 	},
-	updateGeneral(patch: Partial<{language: string; petAutoSummon: boolean; sidebarCollapsed: boolean; autoCheckUpdates: boolean; telemetryEnabled: boolean}>): Promise<void> {
+	updateGeneral(patch: Partial<{language: string; petAutoSummon: boolean; quickChatEnabled: boolean; sidebarCollapsed: boolean; autoCheckUpdates: boolean; telemetryEnabled: boolean}>): Promise<void> {
 		return invoke("settings_update_general", patch)
 	},
 	checkUpdate(): Promise<UpdaterCheckResultDto> {

@@ -22,6 +22,9 @@ public sealed class UnsupportedPlatformServices : IPlatformServices
 	};
 
 	/// <inheritdoc />
+	public bool PrefersReducedMotion => true;
+
+	/// <inheritdoc />
 	public (double X, double Y) GetCursorPosition() =>
 		throw new PlatformNotSupportedException("当前平台不支持读取全局光标位置");
 

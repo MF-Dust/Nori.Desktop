@@ -170,6 +170,28 @@ internal sealed class NativeChatState
 		HasMoreHistory = rows.Length >= limit; Changed?.Invoke(); return true;
 	}
 	internal void InvalidateHistory() { _generation++; _historyRequest++; LoadingHistory = false; }
+
+	/// <summary>合并其他原生表面新增的真实历史，保留已经加载的较早页与草稿。</summary>
+	internal void MergeLatestHistory(JsonElement page)
+	{
+		if (Sending || page.ValueKind != JsonValueKind.Array) return;
+		if (page.GetArrayLength() == 0) { Clear(""); return; }
+		foreach (JsonElement row in page.EnumerateArray().OrderBy(row => NativeChatJson.Id(row, "id")))
+		{
+			long id = NativeChatJson.Id(row, "id");
+			string role = NativeChatJson.S(row, "role"), text = NativeChatJson.S(row, "content");
+			if (id <= 0 || role is not ("user" or "assistant") || !_historyIds.Add(id)) continue;
+			NativeChatMessage? local = Messages.FirstOrDefault(message =>
+				!long.TryParse(message.Key, out _) && message.Role == role && message.Content == text);
+			if (local is not null) Messages.Remove(local);
+			int index = 0;
+			while (index < Messages.Count
+				&& long.TryParse(Messages[index].Key, out long existingId) && existingId < id) index++;
+			Messages.Insert(index, new NativeChatMessage(id.ToString(System.Globalization.CultureInfo.InvariantCulture), role, text));
+			OldestId = OldestId == 0 ? id : Math.Min(OldestId, id);
+		}
+		Changed?.Invoke();
+	}
 	internal void Clear(string note)
 	{
 		if (Sending) throw new InvalidOperationException("请先停止生成，再清空记录");

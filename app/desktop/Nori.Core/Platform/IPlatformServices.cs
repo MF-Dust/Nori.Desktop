@@ -65,6 +65,9 @@ public interface IPlatformServices
 	/// <summary>当前平台的能力标志</summary>
 	PlatformCapabilities Capabilities { get; }
 
+	/// <summary>系统是否要求减少动画；无法可靠读取时默认返回 true。</summary>
+	bool PrefersReducedMotion { get; }
+
 	/// <summary>
 	/// 获取全局光标位置 (物理像素, 相对屏幕左上角)
 	/// </summary>

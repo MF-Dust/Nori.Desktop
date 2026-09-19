@@ -154,6 +154,9 @@ public sealed class LinuxPlatformServices : IPlatformServices
 	public PlatformCapabilities Capabilities { get; }
 
 	/// <inheritdoc />
+	public bool PrefersReducedMotion => true;
+
+	/// <inheritdoc />
 	public (double X, double Y) GetCursorPosition()
 	{
 		nint root = DefaultRootWindow(_display);

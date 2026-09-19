@@ -30,6 +30,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 	private bool _preparing;
 	private bool _clearing;
 	private long _snapshotRequest;
+	private long _historyRevision = -1;
 	private Task? _startOperation;
 	private Task? _voiceOperation;
 	private string _voiceState = "idle";
@@ -78,7 +79,23 @@ public sealed partial class ChatView : UserControl, IDisposable
 			JsonElement snapshot = await _service.GetSnapshotAsync(_lifetime.Token);
 			if (_disposed || request != _snapshotRequest) return;
 			ApplySnapshot(snapshot);
-			if (!_loadedHistory && !_state.LoadingHistory && !_state.Sending) await LoadHistoryAsync(false);
+			if (!_loadedHistory && !_state.LoadingHistory && !_state.Sending)
+			{
+				long revision = _service.HistoryRevision;
+				await LoadHistoryAsync(false);
+				_historyRevision = revision;
+			}
+			else if (_loadedHistory && !_state.LoadingHistory && !_state.Sending && _historyRevision != _service.HistoryRevision)
+			{
+				long revision = _service.HistoryRevision;
+				JsonElement latest = await ExecuteAsync("chat_history_page", new { limit = 200 }, _lifetime.Token);
+				if (!_disposed && request == _snapshotRequest && !_state.Sending)
+				{
+					_state.MergeLatestHistory(latest);
+					_historyRevision = revision;
+					FlushRender();
+				}
+			}
 		}
 		catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
 		catch (Exception exception) { if (!_disposed && request == _snapshotRequest) ReportFailure(exception); }

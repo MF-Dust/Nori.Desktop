@@ -23,6 +23,9 @@ public sealed class GeneralSettingsPage : SettingsPageBase
 		AddField(startup, "petAutoSummon", new("启动时显示伴侣", "Show pet on startup"), new("启动后自动显示桌面伴侣窗口。", "Show the desktop pet automatically after startup."), SettingsEditorKind.Boolean,
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, true, "general", "petAutoSummon"), true,
 			(value, token) => ExecuteAsync("settings_update_general", new { petAutoSummon = Convert.ToBoolean(value) }, token));
+		AddField(startup, "quickChatEnabled", new("快捷聊天", "Quick Chat"), new("显示跟随伴侣的快捷输入栏，并使用上半身构图。关闭后恢复普通桌宠。", "Show a quick input bar beside the pet with an upper-body view. Turn off to restore the ordinary pet."), SettingsEditorKind.Boolean,
+			snapshot => SettingsSnapshotReader.Boolean(snapshot, true, "general", "quickChatEnabled"), true,
+			(value, token) => ExecuteAsync("settings_update_general", new { quickChatEnabled = Convert.ToBoolean(value) }, token));
 		AddField(startup, "clickThrough", new("点击穿透", "Click through"), new("启用后可让鼠标穿过伴侣窗口。", "Allow the pointer to pass through the pet window."), SettingsEditorKind.Boolean,
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "behaviors", "clickThrough"), false,
 			(value, token) => ExecuteAsync("model_set_behavior", new { clickThrough = Convert.ToBoolean(value) }, token));

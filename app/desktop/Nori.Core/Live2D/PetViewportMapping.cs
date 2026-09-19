@@ -3,6 +3,18 @@ namespace Nori.Core.Live2D;
 /// <summary>模型画布在窗口中的可视矩形。</summary>
 public readonly record struct PetViewportRect(double Left, double Top, double Width, double Height);
 
+/// <summary>在模型矩阵之前应用的视口投影。</summary>
+public readonly record struct PetViewportProjection(
+	double ScaleX,
+	double ScaleY,
+	double TranslateX = 0,
+	double TranslateY = 0)
+{
+	public bool IsValid => double.IsFinite(ScaleX) && double.IsFinite(ScaleY)
+		&& double.IsFinite(TranslateX) && double.IsFinite(TranslateY)
+		&& Math.Abs(ScaleX) > 1e-9 && Math.Abs(ScaleY) > 1e-9;
+}
+
 /// <summary>窗口 DIP 与模型画布归一化坐标之间的纯函数映射。</summary>
 public readonly record struct PetViewportMapping
 {
@@ -58,27 +70,73 @@ public readonly record struct PetViewportMapping
 			return default;
 		}
 
-		double aspectWindow = viewportWidth / viewportHeight;
-		double aspectModel = canvasWidth / canvasHeight;
-		double projectionScaleX = viewportHeight / viewportWidth;
-		double projectionScaleY = 1.0;
-		if (aspectModel > aspectWindow)
-		{
-			double fit = aspectWindow / aspectModel;
-			projectionScaleX *= fit;
-			projectionScaleY *= fit;
-		}
-
-		return new PetViewportMapping(
+		PetViewportProjection projection = CalculateFitProjection(
+			viewportWidth,
+			viewportHeight,
+			canvasWidth,
+			canvasHeight);
+		return FromProjection(
 			viewportWidth,
 			viewportHeight,
 			canvasWidth,
 			canvasHeight,
-			projectionScaleX * modelScaleX,
-			projectionScaleY * modelScaleY,
-			projectionScaleX * modelTranslateX,
-			projectionScaleY * modelTranslateY);
+			projection,
+			modelScaleX,
+			modelScaleY,
+			modelTranslateX,
+			modelTranslateY);
 	}
+
+	/// <summary>计算普通桌宠的完整模型适配投影。</summary>
+	public static PetViewportProjection CalculateFitProjection(
+		double viewportWidth,
+		double viewportHeight,
+		double canvasWidth,
+		double canvasHeight,
+		double presentationScale = 1)
+	{
+		if (!double.IsFinite(viewportWidth) || !double.IsFinite(viewportHeight)
+			|| !double.IsFinite(canvasWidth) || !double.IsFinite(canvasHeight)
+			|| !double.IsFinite(presentationScale)
+			|| viewportWidth <= 0 || viewportHeight <= 0 || canvasWidth <= 0 || canvasHeight <= 0
+			|| presentationScale <= 0)
+		{
+			return default;
+		}
+
+		double aspectWindow = viewportWidth / viewportHeight;
+		double aspectModel = canvasWidth / canvasHeight;
+		double scaleX = viewportHeight / viewportWidth;
+		double scaleY = 1;
+		if (aspectModel > aspectWindow)
+		{
+			double fit = aspectWindow / aspectModel;
+			scaleX *= fit;
+			scaleY *= fit;
+		}
+		return new PetViewportProjection(scaleX * presentationScale, scaleY * presentationScale);
+	}
+
+	/// <summary>用绘制采用的同一份投影与模型矩阵创建输入映射。</summary>
+	public static PetViewportMapping FromProjection(
+		double viewportWidth,
+		double viewportHeight,
+		double canvasWidth,
+		double canvasHeight,
+		PetViewportProjection projection,
+		double modelScaleX,
+		double modelScaleY,
+		double modelTranslateX = 0,
+		double modelTranslateY = 0) =>
+		FromFinalTransform(
+			viewportWidth,
+			viewportHeight,
+			canvasWidth,
+			canvasHeight,
+			projection.ScaleX * modelScaleX,
+			projection.ScaleY * modelScaleY,
+			projection.ScaleX * modelTranslateX + projection.TranslateX,
+			projection.ScaleY * modelTranslateY + projection.TranslateY);
 
 	/// <summary>从已计算的最终变换创建映射，便于纯测试和特殊布局复用。</summary>
 	public static PetViewportMapping FromFinalTransform(
@@ -113,21 +171,9 @@ public readonly record struct PetViewportMapping
 	/// <summary>把窗口 DIP 坐标转换为模型画布归一化坐标。</summary>
 	public bool TryMapClientToModel(double clientX, double clientY, out double modelX, out double modelY)
 	{
-		modelX = 0;
-		modelY = 0;
-		if (!IsValid || !double.IsFinite(clientX) || !double.IsFinite(clientY)
-			|| clientX < 0 || clientX > ViewportWidth || clientY < 0 || clientY > ViewportHeight)
-		{
-			return false;
-		}
-
-		double ndcX = clientX / ViewportWidth * 2.0 - 1.0;
-		double ndcY = -((clientY / ViewportHeight * 2.0) - 1.0);
-		double canvasX = (ndcX - FinalTranslateX) / FinalScaleX;
-		double canvasY = (ndcY - FinalTranslateY) / FinalScaleY;
-		modelX = (canvasX + CanvasWidth / 2.0) / CanvasWidth;
-		modelY = (CanvasHeight / 2.0 - canvasY) / CanvasHeight;
-		if (modelX < -CoordinateEpsilon || modelX > 1 + CoordinateEpsilon
+		if (clientX < 0 || clientX > ViewportWidth || clientY < 0 || clientY > ViewportHeight
+			|| !TryMapClientToModelPlane(clientX, clientY, out modelX, out modelY)
+			|| modelX < -CoordinateEpsilon || modelX > 1 + CoordinateEpsilon
 			|| modelY < -CoordinateEpsilon || modelY > 1 + CoordinateEpsilon)
 		{
 			modelX = 0;
@@ -138,6 +184,28 @@ public readonly record struct PetViewportMapping
 		modelX = Math.Clamp(modelX, 0, 1);
 		modelY = Math.Clamp(modelY, 0, 1);
 		return true;
+	}
+
+	/// <summary>
+	/// 把窗口坐标转换到无限延伸的模型画布平面。
+	/// 眼神追踪使用它，让裁切、平移后的视图仍以模型自身坐标计算方向。
+	/// </summary>
+	public bool TryMapClientToModelPlane(double clientX, double clientY, out double modelX, out double modelY)
+	{
+		modelX = 0;
+		modelY = 0;
+		if (!IsValid || !double.IsFinite(clientX) || !double.IsFinite(clientY))
+		{
+			return false;
+		}
+
+		double ndcX = clientX / ViewportWidth * 2 - 1;
+		double ndcY = 1 - clientY / ViewportHeight * 2;
+		double canvasX = (ndcX - FinalTranslateX) / FinalScaleX;
+		double canvasY = (ndcY - FinalTranslateY) / FinalScaleY;
+		modelX = (canvasX + CanvasWidth / 2) / CanvasWidth;
+		modelY = (CanvasHeight / 2 - canvasY) / CanvasHeight;
+		return double.IsFinite(modelX) && double.IsFinite(modelY);
 	}
 
 	/// <summary>把模型画布内的归一化矩形转换为窗口 DIP 矩形。</summary>

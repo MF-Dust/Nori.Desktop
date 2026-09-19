@@ -83,6 +83,8 @@ export interface AppInfo {
 export interface GeneralState {
 	language: string
 	petAutoSummon: boolean
+	/** 是否启用快捷聊天入口 */
+	quickChatEnabled: boolean
 	/** 主界面侧边栏是否折叠 */
 	sidebarCollapsed: boolean
 	/** 启动时是否自动检查更新 */

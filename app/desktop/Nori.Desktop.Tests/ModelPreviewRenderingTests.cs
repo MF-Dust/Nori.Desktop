@@ -180,6 +180,30 @@ public sealed class ModelPreviewRenderingTests
 public partial class BridgeCommandsTests
 {
 	[Fact]
+	public void QuickChat展示切换不改写用户缩放并发布布局变化()
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		var runtime = new PetRuntime(fixture._services);
+		runtime.UserScale = 1.75f;
+		int layoutChanges = 0;
+		runtime.LayoutChanged += () => layoutChanges++;
+
+		runtime.SetQuickChatPresentation(true);
+		runtime.SetQuickChatPresentation(true);
+
+		Assert.Equal(PetPresentationMode.QuickChat, runtime.PresentationMode);
+		Assert.Equal(1.75f, runtime.UserScale);
+		Assert.Equal(282, runtime.QuickChatLayout.ViewportHeight, 8);
+		Assert.Equal(82, runtime.QuickChatLayout.VisualCenterX);
+		Assert.Equal(1, layoutChanges);
+
+		runtime.SetQuickChatPresentation(false);
+		Assert.Equal(PetPresentationMode.Ordinary, runtime.PresentationMode);
+		Assert.Equal(1.75f, runtime.UserScale);
+		Assert.Equal(2, layoutChanges);
+	}
+
+	[Fact]
 	public void 预览运行时忽略全局模型选择热更新()
 	{
 		using BridgeCommandsTests fixture = new();

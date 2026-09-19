@@ -69,8 +69,19 @@ public class ConfigStoreTests : IDisposable
 		Assert.Equal("0.1.0", _config.GetStringOr(ConfigStore.KeyAppVersion, ""));
 		Assert.NotEqual("", _config.GetStringOr(ConfigStore.KeyInstalledAt, ""));
 		Assert.True(_config.Exists(ConfigStore.KeyLanguage));
+		Assert.True(_config.GetQuickChatEnabled());
 		Assert.False(_config.GetBoolOr(ConfigStore.KeyTelemetryEnabled, false));
 		Assert.Equal(TelemetryConsent.Unset, _config.GetTelemetryConsent());
+	}
+
+	[Fact]
+	public void 快捷聊天开关支持持久化并按默认开启()
+	{
+		Assert.True(_config.GetQuickChatEnabled());
+		_config.Set(ConfigStore.KeyQuickChatEnabled, new ConfigValue.Boolean(false));
+		Assert.False(_config.GetQuickChatEnabled());
+		_config.Set(ConfigStore.KeyQuickChatEnabled, new ConfigValue.Text("true"));
+		Assert.True(_config.GetQuickChatEnabled());
 	}
 
 	[Fact]

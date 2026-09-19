@@ -56,4 +56,60 @@ public sealed class PetViewportMappingTests
 		Assert.Equal(0.5, x, 10);
 		Assert.Equal(0.5, y, 10);
 	}
+
+	[Fact]
+	public void ProjectionTranslationParticipatesInForwardAndReverseMapping()
+	{
+		var projection = new PetViewportProjection(1.5, 2, -0.25, 0.3);
+		PetViewportMapping mapping = PetViewportMapping.FromProjection(
+			300,
+			200,
+			1,
+			1,
+			projection,
+			0.8,
+			0.8,
+			0.1,
+			-0.05);
+
+		Assert.True(mapping.TryMapNormalizedRectToClient(0.4, 0.3, 0.2, 0.4, out PetViewportRect rect));
+		Assert.True(mapping.TryMapClientToModel(
+			rect.Left + rect.Width / 2,
+			rect.Top + rect.Height / 2,
+			out double x,
+			out double y));
+		Assert.Equal(0.5, x, 10);
+		Assert.Equal(0.5, y, 10);
+	}
+
+	[Fact]
+	public void OrdinaryFitProjectionRemainsEquivalentToLegacyCreate()
+	{
+		PetViewportMapping legacy = PetViewportMapping.Create(500, 500, 1, 2, 1, 1);
+		PetViewportProjection projection = PetViewportMapping.CalculateFitProjection(500, 500, 1, 2);
+		PetViewportMapping composed = PetViewportMapping.FromProjection(500, 500, 1, 2, projection, 1, 1);
+
+		Assert.Equal(legacy, composed);
+		Assert.Equal(new PetViewportRect(125, 0, 250, 500), composed.ModelRect);
+	}
+
+	[Fact]
+	public void UnboundedPlaneMappingSupportsGlobalCursorOutsideWindow()
+	{
+		PetViewportMapping mapping = PetViewportMapping.FromFinalTransform(
+			280,
+			150,
+			1,
+			2,
+			1,
+			1,
+			-0.4,
+			0.25);
+
+		Assert.True(mapping.TryMapClientToModelPlane(-40, 190, out double x, out double y));
+		Assert.True(double.IsFinite(x));
+		Assert.True(double.IsFinite(y));
+		Assert.False(mapping.TryMapClientToModel(-40, 190, out _, out _));
+		Assert.False(mapping.TryMapClientToModelPlane(double.NaN, 20, out _, out _));
+	}
 }

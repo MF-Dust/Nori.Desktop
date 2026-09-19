@@ -46,6 +46,10 @@ public sealed class MacPlatformServices : IPlatformServices
 	private static extern nint SendPtr(nint receiver, nint selector);
 
 	[DllImport(ObjC, EntryPoint = "objc_msgSend")]
+	[return: MarshalAs(UnmanagedType.I1)]
+	private static extern bool SendBool(nint receiver, nint selector);
+
+	[DllImport(ObjC, EntryPoint = "objc_msgSend")]
 	private static extern void SendVoidBool(nint receiver, nint selector, [MarshalAs(UnmanagedType.I1)] bool value);
 
 	[DllImport(ObjC, EntryPoint = "objc_msgSend")]
@@ -81,6 +85,24 @@ public sealed class MacPlatformServices : IPlatformServices
 		SupportsTopmost = true,
 		SupportsTray = true,
 	};
+
+	/// <inheritdoc />
+	public bool PrefersReducedMotion
+	{
+		get
+		{
+			try
+			{
+				EnsureAppKitLoaded();
+				nint workspace = SendPtr(GetClass("NSWorkspace"), GetSelector("sharedWorkspace"));
+				return workspace == 0 || SendBool(workspace, GetSelector("accessibilityDisplayShouldReduceMotion"));
+			}
+			catch (DllNotFoundException)
+			{
+				return true;
+			}
+		}
+	}
 
 	/// <inheritdoc />
 	public (double X, double Y) GetCursorPosition()

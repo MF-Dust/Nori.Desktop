@@ -6,7 +6,8 @@ param(
 	[ValidateSet("first-run", "initialized")]
 	[string] $Mode = "first-run",
 
-	[string] $Profile = "",
+	[Alias("Profile")]
+	[string] $ProfilePath = "",
 	[string] $ExpectedVersion = "",
 	[switch] $SafeMode,
 	[int] $TimeoutSeconds = 30
@@ -22,28 +23,28 @@ if ($TimeoutSeconds -lt 5 -or $TimeoutSeconds -gt 300) {
 	throw "TimeoutSeconds 必须在 5 到 300 之间"
 }
 
-$ownsProfile = [string]::IsNullOrWhiteSpace($Profile)
+$ownsProfile = [string]::IsNullOrWhiteSpace($ProfilePath)
 if ($ownsProfile) {
-	$Profile = Join-Path ([IO.Path]::GetTempPath()) ("nori-smoke-{0}" -f ([Guid]::NewGuid().ToString("N")))
+	$ProfilePath = Join-Path ([IO.Path]::GetTempPath()) ("nori-smoke-{0}" -f ([Guid]::NewGuid().ToString("N")))
 }
-$profile = [IO.Path]::GetFullPath($Profile)
-$ancestor = [IO.Directory]::GetParent($profile)
+$resolvedProfile = [IO.Path]::GetFullPath($ProfilePath)
+$ancestor = [IO.Directory]::GetParent($resolvedProfile)
 while ($null -ne $ancestor) {
 	if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "profile 祖先目录包含 reparse point: $($ancestor.FullName)" }
 	$ancestor = $ancestor.Parent
 }
-if (Test-Path -LiteralPath $profile) {
-	$item = Get-Item -LiteralPath $profile -Force
-	if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "profile 不能是文件或 reparse point: $profile" }
-	if (@(Get-ChildItem -LiteralPath $profile -Force).Count -ne 0) { throw "profile 必须是此前不存在或完全为空的目录, 不会删除已有内容: $profile" }
+if (Test-Path -LiteralPath $resolvedProfile) {
+	$item = Get-Item -LiteralPath $resolvedProfile -Force
+	if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "profile 不能是文件或 reparse point: $resolvedProfile" }
+	if (@(Get-ChildItem -LiteralPath $resolvedProfile -Force).Count -ne 0) { throw "profile 必须是此前不存在或完全为空的目录, 不会删除已有内容: $resolvedProfile" }
 } else {
-	New-Item -ItemType Directory -Path $profile -Force | Out-Null
+	New-Item -ItemType Directory -Path $resolvedProfile -Force | Out-Null
 }
-$databasePath = Join-Path $profile "data\core\database\nori.db"
+$databasePath = Join-Path $resolvedProfile "data\core\database\nori.db"
 if (Test-Path -LiteralPath $databasePath) {
 	throw "profile 不是隔离的临时目录, 已存在 nori.db: $databasePath"
 }
-$readinessPath = Join-Path $profile "readiness.json"
+$readinessPath = Join-Path $resolvedProfile "readiness.json"
 $logToken = [Guid]::NewGuid().ToString("N")
 $stdoutPath = Join-Path ([IO.Path]::GetTempPath()) "nori-smoke-$logToken.stdout.log"
 $stderrPath = Join-Path ([IO.Path]::GetTempPath()) "nori-smoke-$logToken.stderr.log"
@@ -52,7 +53,7 @@ Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyCo
 $process = $null
 try {
 	$workingDirectory = Split-Path -Parent $binary
-	$arguments = "--smoke-test $Mode --profile `"$profile`""
+	$arguments = "--smoke-test $Mode --profile `"$resolvedProfile`""
 	if ($SafeMode) { $arguments += " --safe-mode" }
 	$process = Start-Process -FilePath $binary -ArgumentList $arguments -WorkingDirectory $workingDirectory `
 		-RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru
@@ -82,7 +83,7 @@ try {
 	if ($null -eq $ready.safe_mode -or [bool]$ready.safe_mode -ne [bool]$SafeMode) {
 		throw "readiness safe_mode 不匹配: $($ready.safe_mode) != $SafeMode"
 	}
-	$expectedDataDir = [IO.Path]::GetFullPath((Join-Path $profile "data"))
+	$expectedDataDir = [IO.Path]::GetFullPath((Join-Path $resolvedProfile "data"))
 	$actualDataDir = [IO.Path]::GetFullPath([string]$ready.data_dir)
 	if (-not [StringComparer]::OrdinalIgnoreCase.Equals($actualDataDir, $expectedDataDir)) {
 		throw "冒烟程序使用了 profile 之外的数据目录: $actualDataDir"
@@ -106,7 +107,7 @@ finally {
 		Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
 	}
 	Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
-	if ($ownsProfile -and (Test-Path -LiteralPath $profile)) {
-		Remove-Item -LiteralPath $profile -Recurse -Force -ErrorAction SilentlyContinue
+	if ($ownsProfile -and (Test-Path -LiteralPath $resolvedProfile)) {
+		Remove-Item -LiteralPath $resolvedProfile -Recurse -Force -ErrorAction SilentlyContinue
 	}
 }

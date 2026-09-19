@@ -2,3 +2,6 @@
 # 生成锁文件由 pnpm 与依赖审计维护, 不参与源码模式扫描
 exclude_paths:
   - "app/desktop/pnpm-lock.yaml"
+  - "app/desktop/Live2DCSharpSDK.App/**"
+  - "app/desktop/Live2DCSharpSDK.Framework/**"
+  - "app/desktop/Live2DCSharpSDK.OpenGL/**"

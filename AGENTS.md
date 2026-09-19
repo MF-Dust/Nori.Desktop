@@ -10,9 +10,10 @@ Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12
 
 ### Key Architectural Pillars
 - **Root Entry & Slot Deployment (`Nori.AppLauncher`)**: The stable root binary `Nori` selects and launches an immutable deployment slot (`app-<version>-<revision>`) validated by `deployment.json`. The launcher does not own locks or update slots; all runtime state resides in `<PackageRoot>/data`.
-- **Four Windows Architecture (`Nori.Desktop/Windows`)**:
-  - Three WebViews: `first-run` (wizard), `init` (loading/splash), and `main` (control panel, settings, chat, and audio host). Windows are borderless (`WindowDecorations.None`) and transparent. Closing a window hides it; `main` is persistent for the app lifetime.
+- **Window Architecture (`Nori.Desktop/Windows`)**:
+  - Three WebViews: `first-run` (wizard), `init` (loading/splash), and `main` (control panel, chat, and audio host). Windows are borderless (`WindowDecorations.None`) and transparent. Closing a window hides it; `main` is persistent for the app lifetime.
   - Native Desk Pet (`pet`): An Avalonia `PetWindow` running native OpenGL ES 2.0 via `Live2DCSharpSDK` and Cubism Core. It renders directly to the desktop (no webview airspace clipping or transparency limitations).
+  - Native Settings: `SettingsWindow` hosts Avalonia settings pages; inspect this native path for settings UI work.
 - **Native Live2D Desk Pet vs. Web Preview**:
   - `PetWindow` + `PetGlControl`: Native C# pipeline (`AutoBlink`, `EyeFocus`, `BeatSync`, `LipSync`, `ExpressionStore`, `ExpressionBehavior`). Alpha mask sampling (~10Hz) computes a single bounding rectangle for hit-testing (`WM_NCHITTEST` on Windows, `XShape` on Linux X11, `setIgnoresMouseEvents:` on macOS, degraded whole-window hit on Wayland).
   - Web Preview (`ModelManagement.vue`): PixiJS + `pixi-live2d-display` previewing local models through the loopback asset server.
@@ -49,8 +50,8 @@ Nori-Desktop-Pet/
 │   ├── 技术.md                 # Architecture, IPC bridge, window models, and contracts
 │   ├── 跨平台.md               # OS support matrix, platform degradation, and requirements
 │   └── plugin-system.md        # Plugin runtime architecture and SDK specifications
-├── Nori.slnx                   # Solution file covering all .NET projects
 ├── app/desktop/                # Primary application workspace
+│   ├── Nori.slnx               # Solution file covering all .NET projects
 │   ├── Live2D/                 # Cubism Native Core and model definitions
 │   ├── Live2DCSharpSDK.*/      # Ported Live2D C# OpenGL rendering engine
 │   ├── Nori.AppLauncher/       # Dependency-free root launcher and deployment slot selector
@@ -80,7 +81,7 @@ Nori-Desktop-Pet/
 
 ## 3. Build, Test, and Development Commands
 
-All development commands must be run from `app/desktop/`. Use **pnpm** exclusively.
+Run application build, test, and development commands from `app/desktop/`. Use **pnpm** for frontend package management and scripts; use `dotnet` for .NET commands. Follow the global RTK command wrapper rule.
 
 ### Prerequisites
 - .NET 10 SDK (ASP.NET Core Runtime 10)
@@ -108,7 +109,11 @@ pnpm build
 dotnet run --project Nori.Desktop
 ```
 
-### Verification Gates (Must pass in CI)
+### Local Verification
+
+本地按改动范围运行必要检查：纯文档修改检查内容与格式；单端修改验证该端；跨端契约或共享构建变更验证两端。全量门禁保留在 CI。需要覆盖率时，以覆盖率测试替代同范围普通测试。检查通过后，仅因新增修改、失败或未解决风险重跑。
+
+### Verification Gates (CI command reference)
 
 ```bash
 # 1. Source code annotation gate (fails on forbidden TODO/FIXME comments in first-party code)
@@ -152,7 +157,7 @@ publish.bat
 - **Indentation**: **Tabs**, not spaces, across `.ts`, `.vue`, `.cs`, and `.less`.
 - **Line Endings**: LF.
 - **Quotes**: Double quotes (`"`) across TypeScript, Vue, and C#.
-- **Language**: Comments, XML doc comments, logs, and user-facing messages must be in **Chinese**.
+- **Language**: Comments, XML doc comments, and logs use **Chinese**. UI text follows the i18n contract and the selected locale; host error messages remain readable Chinese.
 
 ### Frontend (Vue 3, TypeScript, UnoCSS)
 - **Component Setup**: Always use `<script setup lang="ts">`. Component files must use `PascalCase.vue`.
@@ -181,6 +186,7 @@ publish.bat
 - **Bridge Commands**:
   - Commands use `snake_case` with verb-first naming (e.g., `ui_get_snapshot`, `settings_update_ai`, `window_show`).
   - Every command must be registered in `BridgeCommands.InvokeAsync`'s switch.
+  - Implement host commands in `BridgeCommands.cs` and add corresponding typed functions in `src/services/runtime/`.
   - Every command requires an XML `///` doc comment displaying an invocation example:
     ```csharp
     /// <summary>
@@ -239,25 +245,17 @@ Common types:
 
 ### Pull Request Rules
 1. **Scope**: Keep pull requests atomic and focused on a single task. Avoid mixing unrelated refactors.
-2. **Local Gate Verification**: Ensure `pnpm check:todo`, `pnpm lint`, `pnpm build`, `pnpm test`, `dotnet build`, and `dotnet test` all pass locally before opening a PR.
+2. **Local Gate Verification**: Follow Local Verification above and report the checks actually run. CI owns the full gate; do not run unrelated local suites solely to open a PR.
 3. **Artifact Cleanup**: Never commit debug probes (`__probe*`), temporary scripts, logs, or scratch files. Remove debug `console.log` statements (retain `console.error` for legitimate error paths).
-4. **Visual Changes**: If modifying UI or Live2D layouts, include screenshots or screen recordings at minimum resolutions (720×480 and 1080p).
+4. **Visual Changes**: Verify the affected interface through screenshots or interaction. Layout, scaling, and responsive changes require checks at 720×480 and 1080p; other visual changes need evidence for the affected view.
 
 ---
 
-## 7. Agent-Specific Instructions & Guardrails
+## 7. Additional Guardrails
 
-When modifying this repository, autonomous agents must adhere to the following checklist:
+The coding rules above are the single source for formatting, i18n, bridge registration, and typed runtime access.
 
-1. **Tabs Only**: Verify your editor or tool does not substitute tabs with spaces in `.ts`, `.vue`, `.cs`, or `.less`.
-2. **No Scoped Styles**: Never introduce `<style scoped>` in `.vue` files. Use UnoCSS utilities and atomic UI components.
-3. **i18n Purity**: If adding UI text, update `zh-CN.ts`, `en-US.ts`, and `useLanguages.ts` in lockstep. Never hardcode strings in `<template>`.
-4. **Bridge Command Registration**: When adding a C# bridge command:
-   - Implement the logic in `BridgeCommands.cs`.
-   - Add the case to the `InvokeAsync` switch statement.
-   - Add XML doc comments showing `invoke(...)`.
-   - Add corresponding typed functions in `src/services/runtime/`.
-5. **No Direct `window.__nori`**: Components must strictly use `src/services/runtime/` or `src/services/host/`.
-6. **Vite Base URL**: Never change `base: "./"` in `vite.config.ts`. An absolute base will break the AssetServer's secret prefix and result in blank webview windows.
-7. **NativeControlHost Manifest**: Never remove `<supportedOS>` entries from `Nori.Desktop/app.manifest`; doing so breaks WebView2 native control hosting.
-8. **Treat Warnings as Errors**: C# projects enforce `TreatWarningsAsErrors`. Do not leave unused imports, unhandled nullable warnings, or missing XML doc tags on public APIs.
+- **Vite Base URL**: Preserve `base: "./"` in `vite.config.ts`; an absolute base breaks the AssetServer secret prefix.
+- **NativeControlHost Manifest**: Preserve `<supportedOS>` entries in `Nori.Desktop/app.manifest` for WebView2 hosting.
+- **Treat Warnings as Errors**: Respect the C# projects' `TreatWarningsAsErrors` setting.
+- **Completion**: Complete the requested scope and its relevant verification. Report unrelated findings without automatically expanding the change. Ask only when necessary information or authorization is missing; reuse authorization already provided.

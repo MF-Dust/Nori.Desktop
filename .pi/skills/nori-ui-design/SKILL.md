@@ -10,14 +10,7 @@ description: >
 
 # Nori UI Design
 
-Before making frontend design changes:
-
-1. Read `CLAUDE.md`.
-2. Read `docs/规范.md`.
-3. Inspect the existing component.
-4. When relevant, inspect existing tokens, UnoCSS shortcuts, theme overrides,
-   and `App*` UI components.
-5. Read the relevant files under `references/`.
+Inspect the target component first. Consult the relevant sections of `docs/规范.md` for affected styling conventions; inspect tokens, UnoCSS shortcuts, theme overrides, and `App*` components when the change uses them. Read only the reference needed for the current layout, interaction, or motion decision. Do not load `CLAUDE.md` or all references as a fixed prerequisite.
 
 Repository rules override this skill.
 
@@ -48,11 +41,4 @@ It must not resemble a generic SaaS admin dashboard.
 
 ## Verification
 
-From `app/desktop`:
-
-```bash
-pnpm build
-pnpm test
-```
-
-Follow any additional verification requirements in `CLAUDE.md` and `docs/规范.md`.
+Follow `AGENTS.md` → Local Verification. For visual changes, inspect the affected interface; do not run unrelated backend checks for a frontend-only change.

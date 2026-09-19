@@ -40,8 +40,10 @@ public partial class BridgeCommandsTests
 		await VisualUiSession.Value.Dispatch(async () =>
 		{
 			using BridgeCommandsTests fixture = new(safeMode: false);
+			fixture.InstallKnownModel("arg-nori");
+			fixture._windows.SetVisible(WindowLabels.Pet, true);
 			foreach (string language in new[] {"zh-CN", "en-US"})
-			foreach (var size in new[] {(Width: 720, Height: 480), (Width: 1920, Height: 1080)})
+			foreach (var size in new[] {(Width: 720, Height: 480), (Width: 960, Height: 640), (Width: 1920, Height: 1080)})
 			{
 				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(language));
 				MainWindow window = new(MainDefinition(), fixture._services);
@@ -57,6 +59,23 @@ public partial class BridgeCommandsTests
 
 					using WriteableBitmap frame = Assert.IsType<WriteableBitmap>(window.CaptureRenderedFrame());
 					frame.Save(Path.Combine(outputDirectory, $"main-{language}-{size.Width}x{size.Height}.png"), PngBitmapEncoderOptions.Default);
+					if (size.Width == 720)
+					{
+						ScrollViewer scroll = window.GetLogicalDescendants().OfType<ScrollViewer>().Single(control => control.Name == "HomeScroll");
+						scroll.ScrollToEnd();
+						await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
+						AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+						using WriteableBitmap bottom = Assert.IsType<WriteableBitmap>(window.CaptureRenderedFrame());
+						bottom.Save(Path.Combine(outputDirectory, $"main-{language}-720x480-scrolled.png"), PngBitmapEncoderOptions.Default);
+						fixture._config.Set("ui_sidebar_collapsed", new ConfigValue.Boolean(true));
+						window.RefreshForTests();
+						scroll.ScrollToHome();
+						await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
+						AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+						using WriteableBitmap collapsed = Assert.IsType<WriteableBitmap>(window.CaptureRenderedFrame());
+						collapsed.Save(Path.Combine(outputDirectory, $"main-{language}-720x480-collapsed.png"), PngBitmapEncoderOptions.Default);
+						fixture._config.Set("ui_sidebar_collapsed", new ConfigValue.Boolean(false));
+					}
 				}
 				finally
 				{
@@ -69,6 +88,37 @@ public partial class BridgeCommandsTests
 	}
 
 	// ── 接线 ───────────────────────────────────────────────────────────────
+
+	[Fact]
+	public async Task 首页刷新保留入口和键盘焦点且折叠侧栏持久化()
+	{
+		await WithSettingsUiAsync(async () =>
+		{
+			using BridgeCommandsTests fixture = new(safeMode: false);
+			MainWindow window = new(MainDefinition(), fixture._services);
+			try
+			{
+				window.Show();
+				Button chat = window.GetLogicalDescendants().OfType<Button>().Single(button => button.Name == "Launcher_chat");
+				chat.Focus();
+				window.RefreshForTests();
+				Assert.Same(chat, window.GetLogicalDescendants().OfType<Button>().Single(button => button.Name == "Launcher_chat"));
+				Assert.True(chat.IsFocused);
+				Button shortcut = window.GetLogicalDescendants().OfType<Button>().First(button => button.Name == "HomeShortcut");
+				window.RefreshForTests();
+				Assert.Same(shortcut, window.GetLogicalDescendants().OfType<Button>().First(button => button.Name == "HomeShortcut"));
+				Button collapse = window.GetLogicalDescendants().OfType<Button>().Single(button => button.Name == "CollapseSidebar");
+				collapse.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+				await WaitUntilAsync(() => fixture._config.GetBoolOr("ui_sidebar_collapsed", false));
+				window.RefreshForTests();
+				Assert.Equal("展开侧栏", Avalonia.Automation.AutomationProperties.GetName(collapse));
+				Assert.Equal(["对话", "模型", "记忆", "设置"], window.LauncherLabelsForTests);
+				chat.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+				Assert.True(fixture._windows.IsWindowVisible(WindowLabels.Chat));
+			}
+			finally { window.AllowClose = true; window.Close(); }
+		});
+	}
 
 	[Fact]
 	public async Task 首页快捷入口支持键盘且默认不创建网页控件()

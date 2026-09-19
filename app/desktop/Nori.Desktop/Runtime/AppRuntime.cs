@@ -203,7 +203,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		ReflectionService reflection = new(services.Http, services.Chat, Memory, config);
 		_reflectionWorker = new ReflectionWorker(reflection, exception =>
 		{
-			try { services.Logger.Write(LogSource.Backend, "warn", $"记忆整理失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); }
+			try { services.Logger.Write(LogSource.Backend, "warn", $"记忆整理失败: {ReflectionDiagnostics.Format(exception)}"); }
 			catch { }
 		}, () => InvalidateSnapshot("memory"));
 		Skills = new SkillService(config, services.PublicHttp);
@@ -1075,7 +1075,14 @@ public sealed partial class AppRuntime : IAsyncDisposable
 
 	private ToolRegistry BuildToolRegistry(bool audioAvailable)
 	{
-		ToolRegistry registry = new();
+		ToolRegistry registry = new()
+		{
+			FailureDiagnostic = (tool, diagnostic) =>
+			{
+				try { Services.Logger.Write(LogSource.Backend, "warn", $"工具调用失败: {diagnostic.ToLogMessage(tool)}"); }
+				catch { }
+			},
+		};
 		BuiltinTools.RegisterAll(registry, new BuiltinToolDeps
 		{
 			Memory = Memory,

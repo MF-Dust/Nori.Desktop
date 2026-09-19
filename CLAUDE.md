@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Two independent deliverables, no shared build:
 
 - `app/desktop/` — the Nori desktop pet. **.NET 10 + Avalonia 12 host** (`Nori.Desktop/`, `Nori.Core/`, C#) + Vue 3 SPA (`src/`, TypeScript + **UnoCSS**) rendered in Avalonia's **cross-platform NativeWebView** (WebView2 on Windows, WKWebView on macOS, WebKitGTK on Linux). This is where nearly all work happens.
-- `docs/` — Chinese design docs. `规范.md` is a binding style contract, not advice — read it before touching frontend or C# code. `技术.md` is the module/tech map (and records the pet-window transparency verification), `跨平台.md` the platform support matrix + degradation table, `开发任务清单.md` the roadmap, `windows.md` an Avalonia window-property reference.
+- `docs/` — Chinese design docs. `规范.md` is the binding style contract; consult the sections relevant to the changed code. `技术.md` is the module/tech map (and records the pet-window transparency verification), `跨平台.md` the platform support matrix + degradation table, `开发任务清单.md` the roadmap, `windows.md` an Avalonia window-property reference.
 - `Nori.AppLauncher/` is the dependency-free stable root entry (`Nori`). It selects only a validated `app-<numeric-version>-<revision>` slot; it never updates/deletes slots or owns the single-instance lock. Published data is created only at `<PackageRoot>/data` and is never included in a package.
 
 `README.md` contains the project overview, current stabilization boundary and development gates.
@@ -36,7 +36,7 @@ NORI_DEV=1 dotnet run --project Nori.Desktop # dev: points the WebView at vite o
 pnpm dev                                      # vite only; must be running for NORI_DEV=1
 ```
 
-`规范.md` requires `pnpm build`, `dotnet build` and `dotnet test` to pass before a change is considered done. `tsconfig.json` sets `noUnusedLocals`/`noUnusedParameters`; the C# projects set `TreatWarningsAsErrors`.
+Local verification follows `AGENTS.md` → Local Verification; consult `docs/规范.md` for affected coding conventions. `tsconfig.json` sets `noUnusedLocals`/`noUnusedParameters`; the C# projects set `TreatWarningsAsErrors`.
 
 ### Stabilization contracts
 
@@ -48,11 +48,13 @@ pnpm dev                                      # vite only; must be running for N
 
 ## Architecture
 
-### Four windows, three NativeWebView + one native OpenGL
+### WebView windows, native pet, and native settings
 
-`Nori.Desktop/Windows/WindowDefinition.cs` declares four windows — `first-run`, `init`, `main`, `pet` — all created hidden, borderless (`WindowDecorations.None`) and transparent.
+`Nori.Desktop/Windows/WindowDefinition.cs` declares the four base windows — `first-run`, `init`, `main`, `pet` — all created hidden, borderless (`WindowDecorations.None`) and transparent.
 - Three windows (`first-run`, `init`, `main`) are `NoriWindow` hosting `NativeWebView` and loading the Vue bundle. `main` doubles as the **audio host** (see below) — it only hides on close, so it is always alive.
 - The desktop pet (`pet`) is a native Avalonia `PetWindow` hosting `PetGlControl` (OpenGL via `Live2DCSharpSDK`), bypassing webview airspace and window-region clipping issues completely. Same code on all three desktops.
+
+The settings interface uses native Avalonia `SettingsWindow`, created by `WindowManager`; settings UI work should inspect that path.
 
 1. `App.cs` reads `first_run_completed` from SQLite and shows `first-run` or `init`.
 2. The host navigates each webview to `…/app/index.html?window=<label>`.

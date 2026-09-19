@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Nori.Core.Agent;
+using Nori.Core.Security;
 
 namespace Nori.Core.Tools;
 
@@ -34,9 +35,54 @@ public sealed class RegisteredTool
 /// <summary>
 /// 工具执行结果
 /// </summary>
-public sealed record ToolResult(object? Result, string? Error)
+public sealed record ToolResult(object? Result, string? Error, ToolFailureDiagnostic? Diagnostic = null)
 {
 	public bool IsSuccess => Error is null;
+}
+
+/// <summary>可安全写入工具 Trace 与本地日志的固定失败字段。</summary>
+public sealed record ToolFailureDiagnostic
+{
+	public string Category { get; }
+	public int? StatusCode { get; }
+	public string? Code { get; }
+	public string? RequestId { get; }
+
+	public ToolFailureDiagnostic(string category, int? statusCode = null, string? code = null, string? requestId = null)
+	{
+		Category = SafeToken(category, 48) ?? "upstream";
+		StatusCode = statusCode is >= 100 and <= 599 ? statusCode : null;
+		Code = SafeToken(code, 64);
+		RequestId = SafeToken(requestId, 128);
+	}
+
+	public string ToLogMessage(string toolName)
+	{
+		List<string> fields = [$"tool={SafeToken(toolName, 80) ?? "unknown"}", $"category={Category}"];
+		if (StatusCode is { } status) fields.Add($"status={status}");
+		if (Code is {Length: > 0} code) fields.Add($"code={code}");
+		if (RequestId is {Length: > 0} requestId) fields.Add($"request_id={requestId}");
+		return SensitiveDataRedactor.Redact(string.Join(' ', fields));
+	}
+
+	private static string? SafeToken(string? value, int maxLength)
+	{
+		if (string.IsNullOrWhiteSpace(value)) return null;
+		string trimmed = value.Trim();
+		if (trimmed.Length > maxLength) trimmed = trimmed[..maxLength];
+		return trimmed.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' or ':')
+			? trimmed
+			: null;
+	}
+}
+
+/// <summary>允许领域异常向工具入口提供不含正文的稳定分类。</summary>
+public interface IToolFailureException
+{
+	string Category { get; }
+	int? StatusCode { get; }
+	string? Code { get; }
+	string? RequestId { get; }
 }
 
 /// <summary>
@@ -53,6 +99,9 @@ public sealed class ToolRegistry
 	private readonly Lock _gate = new();
 	private Dictionary<string, RegisteredTool> _tools = [];
 	private readonly HashSet<string> _disabled = [];
+
+	/// <summary>工具失败后的安全结构化诊断出口；回调异常不会影响工具结果。</summary>
+	public Action<string, ToolFailureDiagnostic>? FailureDiagnostic { get; init; }
 
 	/// <summary>注册一个工具 (重名覆盖)</summary>
 	public void Register(RegisteredTool tool)
@@ -316,7 +365,19 @@ public sealed class ToolRegistry
 		}
 		catch (Exception exception)
 		{
-			return new ToolResult(null, ToolLimits.CapError(exception.Message));
+			ToolFailureDiagnostic? diagnostic = exception is IToolFailureException details
+				? new ToolFailureDiagnostic(details.Category, details.StatusCode, details.Code, details.RequestId)
+				: null;
+			if (diagnostic is not null)
+			{
+				try { FailureDiagnostic?.Invoke(name, diagnostic); }
+				catch
+				{
+					// 诊断出口失败不得覆盖原始工具错误或改变模型可见结果。
+				}
+			}
+			string error = SensitiveDataRedactor.Redact(ToolLimits.CapError(exception.Message));
+			return new ToolResult(null, error, diagnostic);
 		}
 	}
 }

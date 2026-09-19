@@ -371,7 +371,10 @@ public sealed class ToolRegistry
 			if (diagnostic is not null)
 			{
 				try { FailureDiagnostic?.Invoke(name, diagnostic); }
-				catch { }
+				catch
+				{
+					// 诊断出口失败不得覆盖原始工具错误或改变模型可见结果。
+				}
 			}
 			string error = SensitiveDataRedactor.Redact(ToolLimits.CapError(exception.Message));
 			return new ToolResult(null, error, diagnostic);

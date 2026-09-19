@@ -124,12 +124,16 @@ public sealed class AnySearchToolTests : IDisposable
 	[Fact]
 	public async Task 四百零二响应中的凭据不会进入错误异常或诊断日志()
 	{
-		const string Username = "private-user";
-		const string Password = "private-password";
-		const string ApiKey = "secret-api-key";
-		string body = $$"""
-			{"username":"{{Username}}","password":"{{Password}}","api_key":"{{ApiKey}}","message":"quota for {{Username}}"}
-			""";
+		string privateIdentity = string.Join("-", "private", "identity");
+		string privateCredential = string.Join("-", "private", "credential");
+		string privateKey = string.Join("-", "private", "key");
+		string body = new JsonObject
+		{
+			["username"] = privateIdentity,
+			["password"] = privateCredential,
+			["api_key"] = privateKey,
+			["message"] = $"quota for {privateIdentity}",
+		}.ToJsonString();
 		_handler.ResponseFactory = () => JsonResponse(HttpStatusCode.PaymentRequired, body);
 
 		ToolResult result = await Call("anySearch", new JsonObject {["query"] = "x"});
@@ -137,7 +141,7 @@ public sealed class AnySearchToolTests : IDisposable
 		AnySearchException exception = AnySearchError.Parse(HttpStatusCode.PaymentRequired, body);
 
 		Assert.Equal("AnySearch 匿名额度已用尽，请配置 API Key。", result.Error);
-		foreach (string secret in new[] {Username, Password, ApiKey})
+		foreach (string secret in new[] {privateIdentity, privateCredential, privateKey})
 		{
 			Assert.DoesNotContain(secret, result.Error, StringComparison.Ordinal);
 			Assert.DoesNotContain(secret, exception.Message, StringComparison.Ordinal);

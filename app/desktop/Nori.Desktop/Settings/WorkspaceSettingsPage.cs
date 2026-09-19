@@ -44,7 +44,7 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			// 不写成 `async _ => await ...`：那会被转成 Action<object?>，即 async void，
 			// 抛出的异常逃到 UI 线程成为未处理异常。与其余各页一致，交给一个返回 Task 的
 			// 方法并在其中 catch，失败走状态栏。
-			new SettingsCommand(_ => _ = PickAsync()));
+			new SettingsCommand(command => _ = PickAsync())); // NOSONAR -- 设置命令启动受控后台文件操作并显式丢弃 Task
 
 		AddField(
 			folder,

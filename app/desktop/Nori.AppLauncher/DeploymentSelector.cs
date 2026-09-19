@@ -59,7 +59,7 @@ public static class DeploymentSelector
 
 	public static DeploymentManifest ReadManifest(string deploymentRoot)
 	{
-		string path = Path.Combine(deploymentRoot, "deployment.json");
+		string path = Path.Combine(deploymentRoot, "deployment.json"); // NOSONAR: deploymentRoot 来自已解析的应用槽目录，后续 IsReparse 校验并限制固定文件名。
 		if (!File.Exists(path) || IsReparse(path)) throw new InvalidOperationException($"部署 manifest 不存在或无效: {path}");
 		using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
 		JsonElement root = document.RootElement;

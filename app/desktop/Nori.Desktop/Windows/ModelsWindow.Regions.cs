@@ -89,8 +89,10 @@ public sealed partial class ModelsWindow
 	private void BuildRegionEditor()
 	{
 		if (_regionEditor is null) return;
-		foreach (Action action in _regionBindings) _adjustBindings.Remove(action); _regionBindings.Clear();
-		foreach (Action action in _regionLocalize) _adjustLocalize.Remove(action); _regionLocalize.Clear();
+		foreach (Action action in _regionBindings) _adjustBindings.Remove(action);
+		_regionBindings.Clear();
+		foreach (Action action in _regionLocalize) _adjustLocalize.Remove(action);
+		_regionLocalize.Clear();
 		bool previous = _buildingAdjust; _buildingAdjust = true;
 		int bindingStart = _adjustBindings.Count, localStart = _adjustLocalize.Count;
 		try

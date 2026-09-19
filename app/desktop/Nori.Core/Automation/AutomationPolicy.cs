@@ -89,6 +89,8 @@ public sealed record AutomationPolicy
 				error = "滚动增量不能为零"; return false;
 			case ScrollAction scroll when Math.Abs((long)scroll.DeltaX) > MaxScrollDelta || Math.Abs((long)scroll.DeltaY) > MaxScrollDelta:
 				error = "滚动增量超出策略限制"; return false;
+			default:
+				break;
 		}
 		error = null;
 		return true;

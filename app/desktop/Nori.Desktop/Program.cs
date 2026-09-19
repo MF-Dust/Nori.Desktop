@@ -57,7 +57,7 @@ internal static class Program
 				process.WaitForExit(5000);
 				return;
 			}
-			catch { }
+			catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		}
 		Console.Error.WriteLine($"{title}: {safe}");
 	}

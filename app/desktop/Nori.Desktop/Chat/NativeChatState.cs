@@ -103,6 +103,7 @@ internal sealed class NativeChatState
 				_response?.Replace(NativeChatJson.S(NativeChatJson.P(payload, "message"), "text")); Finish(false); break;
 			case "cancelled": Status = "cancelled"; Finish(true); break;
 			case "error": Error = NativeChatJson.S(payload, "error"); Finish(true); break;
+			default: break;
 		}
 		Changed?.Invoke();
 	}
@@ -123,7 +124,13 @@ internal sealed class NativeChatState
 		ExecutingTool = ""; AgentState = "idle"; Approvals.Clear(); _earlyEvents.Clear();
 	}
 
-	internal void RequestCancel() { if (!Sending) return; CancelRequested = true; Status = "stopping"; Changed?.Invoke(); }
+	internal void RequestCancel()
+	{
+		if (!Sending) return;
+		CancelRequested = true;
+		Status = "stopping";
+		Changed?.Invoke();
+	}
 	internal void CancelFailed(Exception exception) { CancelRequested = false; SetError(exception.Message); }
 	internal void SetError(string error) { Error = error; Changed?.Invoke(); }
 	internal void SetStatus(string status) { Error = ""; Status = status; Changed?.Invoke(); }

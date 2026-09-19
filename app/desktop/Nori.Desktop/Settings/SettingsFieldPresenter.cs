@@ -344,6 +344,8 @@ public sealed class SettingsFieldPresenter : ContentControl
 					UpdateOptions();
 				}
 				break;
+			default:
+				break;
 		}
 	}
 

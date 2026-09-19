@@ -101,11 +101,11 @@ public sealed class PetGlControl : OpenGlControlBase
 			}
 			catch
 			{
-				try { _runtime.OnGlDeinit(); } catch { }
-				try { _lapp?.Dispose(); } catch { }
+				try { _runtime.OnGlDeinit(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+				try { _lapp?.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 				_lapp = null;
 				DisposeRenderTargets();
-				try { _textureQuad?.Dispose(); } catch { }
+				try { _textureQuad?.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 				_textureQuad = null;
 				_glApi = null;
 				CubismFramework.CleanUp();

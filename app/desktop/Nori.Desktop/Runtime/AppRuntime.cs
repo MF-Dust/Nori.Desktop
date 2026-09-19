@@ -47,7 +47,7 @@ namespace Nori.Desktop.Runtime;
 ///
 /// 秘密纪律: 快照只返回 hasApiKey 等脱敏标记, 明文绝不回传事件/日志/错误。
 /// </summary>
-public sealed partial class AppRuntime : IAsyncDisposable
+public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 timer 已在 Dispose 或 DisposeAsync 中释放，属于分析器误报
 {
 	/// <summary>工具授权等待超时 (秒); 超时一律 fail-closed 拒绝</summary>
 	public const int ApprovalTimeoutSeconds = 60;
@@ -194,7 +194,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		// 嵌入批处理恢复期的单轮失败降级为 warn 日志, 连续多轮失败才由 MemoryService 升级为 Error 遥测。
 		Memory.EmbeddingDiagnostic = (severity, message) =>
 		{
-			try { services.Logger.Write(LogSource.Backend, severity, message); } catch { }
+			try { services.Logger.Write(LogSource.Backend, severity, message); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		};
 		Knowledge = new KnowledgeService(services.Database, Memory, config, services.Paths.KnowledgePath);
 		Knowledge.StatusChanged = () => InvalidateSnapshot("memory");
@@ -526,7 +526,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		}
 		catch (Exception exception)
 		{
-			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣 AI 互动失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
+			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣 AI 互动失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 			PostActivePetInteractionFallback(trigger, requestCts);
 		}
 		finally
@@ -549,7 +549,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		if (!IsCurrentPetInteraction(trigger)) return;
 		if (!string.IsNullOrWhiteSpace(reaction.Emotion) && EmotionTypes.IsValid(reaction.Emotion))
 		{
-			try { Emotion.SetEmotion(reaction.Emotion); } catch { }
+			try { Emotion.SetEmotion(reaction.Emotion); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		}
 		if (!string.IsNullOrWhiteSpace(reaction.Motion)) Services.PetRuntime.PlayMotionByName(reaction.Motion);
 		if (!string.IsNullOrWhiteSpace(reaction.Expression)) Services.PetRuntime.PlayExpression(reaction.Expression);
@@ -634,7 +634,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		}
 		catch (Exception exception)
 		{
-			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣互动朗读失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
+			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣互动朗读失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		}
 		finally
 		{
@@ -710,7 +710,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			foreach (McpServerStatusInfo server in servers.Where(server =>
 				string.Equals(server.Status, "connected", StringComparison.OrdinalIgnoreCase)))
 			{
-				failureServerId = server.ServerId;
+				failureServerId = server.ServerId; // NOSONAR -- 异常路径需要保留最近服务端 ID 用于脱敏诊断
 				foreach (McpToolDefinition definition in server.Tools)
 				{
 					ct.ThrowIfCancellationRequested();
@@ -794,7 +794,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	{
 		_pluginToolsRefreshTimer?.Dispose();
 		_pluginToolsRefreshTimer = new Timer(
-			_ => { _ = RefreshPluginToolsAsync(); },
+			timerState => { _ = RefreshPluginToolsAsync(); }, // NOSONAR -- timer 回调触发受控后台刷新并显式丢弃 Task
 			null, PluginToolsRefreshDebounceMs, Timeout.Infinite);
 	}
 
@@ -834,7 +834,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		{
 			// 只记录类别与摘要, 不写入插件参数或结果
 			try { Services.Logger.Write(LogSource.Backend, "warn", $"插件工具刷新失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); }
-			catch { }
+			catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		}
 		finally
 		{
@@ -2064,16 +2064,16 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		await WaitBoundedAsync(_backgroundTasks.Keys.ToArray(), TimeSpan.FromSeconds(5)).ConfigureAwait(false);
 		_backgroundTasks.Clear();
 
-		try { await _reflectionWorker.DisposeAsync().ConfigureAwait(false); } catch { }
-		try { await Knowledge.DisposeAsync().ConfigureAwait(false); } catch { }
-		try { Proactive.Dispose(); } catch { }
-		try { Emotion.Dispose(); } catch { }
+		try { await _reflectionWorker.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { await Knowledge.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { Proactive.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { Emotion.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		// Voice.Dispose 会逆向释放 _playback; 录音票据要单独作废
-		try { _recorder.Dispose(); } catch { }
-		try { Voice.Dispose(); } catch { }
+		try { _recorder.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { Voice.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		// 音频宿主通道最后解除: 让所有 WaitUntilReadyAsync 等待者立即结束而不是等超时
-		try { _audioChannel.Dispose(); } catch { }
-		try { if (Services.Automation is not null) await Services.Automation.DisposeAsync().ConfigureAwait(false); } catch { }
+		try { _audioChannel.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { if (Services.Automation is not null) await Services.Automation.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		_petInteractionGate.Dispose();
 		_pluginToolsRefreshTimer?.Dispose();
 		_pluginToolsRefreshGate.Dispose();
@@ -2163,7 +2163,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	}
 
 	/// <summary>待决桌面视觉授权请求；只保存动作种类和任务标识。</summary>
-	private sealed class PendingDesktopApproval(AutomationApprovalRequest request, TaskCompletionSource<bool> tcs) : IDisposable
+	private sealed class PendingDesktopApproval(AutomationApprovalRequest request, TaskCompletionSource<bool> tcs) : IDisposable // NOSONAR -- 该 timer 已在 Dispose 或 DisposeAsync 中释放，属于分析器误报
 	{
 		public AutomationApprovalRequest Request { get; } = request;
 		public TaskCompletionSource<bool> Tcs { get; } = tcs;

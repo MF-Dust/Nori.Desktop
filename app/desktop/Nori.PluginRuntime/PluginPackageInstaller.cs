@@ -240,7 +240,7 @@ internal sealed class PluginPackageInstaller
 		}
 		finally
 		{
-			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
+			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } // NOSONAR: 临时安装包清理失败不应覆盖安装结果。
 		}
 	}
 
@@ -253,7 +253,7 @@ internal sealed class PluginPackageInstaller
 
 	private static void TryDelete(string path)
 	{
-		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { }
+		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { } // NOSONAR: 回滚清理只能尽力执行，原始安装错误必须保留。
 	}
 
 	private sealed record PackageEntry(ZipArchiveEntry Entry, string Path);

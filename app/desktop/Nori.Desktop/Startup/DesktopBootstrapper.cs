@@ -337,36 +337,36 @@ internal sealed class DesktopBootstrapper
 
 		if (_startupPluginRuntime is not null)
 		{
-			try { await _startupPluginRuntime.DisposeAsync().ConfigureAwait(false); } catch { }
+			try { await _startupPluginRuntime.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 			_startupPluginRuntime = null;
 		}
-		try { _startupUpdate?.Dispose(); } catch { }
+		try { _startupUpdate?.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		_startupUpdate = null;
 		if (_startupMcp is not null)
 		{
-			try { await _startupMcp.DisposeAsync().ConfigureAwait(false); } catch { }
+			try { await _startupMcp.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 			_startupMcp = null;
 		}
 		if (_startupAssets is not null)
 		{
-			try { await _startupAssets.DisposeAsync().ConfigureAwait(false); } catch { }
+			try { await _startupAssets.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 			_startupAssets = null;
 		}
-		try { _startupHttpClients?.Dispose(); } catch { }
+		try { _startupHttpClients?.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		_startupHttpClients = null;
-		try { _startupDatabase?.Dispose(); } catch { }
+		try { _startupDatabase?.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		_startupDatabase = null;
 		if (_startupTelemetry is not null)
 		{
-			try { await _startupTelemetry.FlushAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); } catch { }
-			try { _startupTelemetry.Dispose(); } catch { }
+			try { await _startupTelemetry.FlushAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			try { _startupTelemetry.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 			_startupTelemetry = null;
 		}
 	}
 
 	private static void WriteShutdownFailure(Exception exception)
 	{
-		try { System.Diagnostics.Debug.WriteLine($"Nori 关闭流程失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
+		try { System.Diagnostics.Debug.WriteLine($"Nori 关闭流程失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 	}
 
 	/// <summary>

@@ -13,7 +13,7 @@ namespace Nori.Desktop.Runtime;
 public sealed class DesktopSystemInfo(Nori.Core.Configuration.ConfigStore config) : ISystemInfoProvider
 {
 	[StructLayout(LayoutKind.Sequential)]
-	private struct SystemPowerStatus
+	private struct SystemPowerStatus // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public byte ACLineStatus;
 		public byte BatteryFlag;

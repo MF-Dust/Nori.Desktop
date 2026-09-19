@@ -150,7 +150,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 			}
 			finally
 			{
-				try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
+				try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } // NOSONAR -- 临时资源清理失败不能覆盖原始异常
 			}
 		}
 		catch (SecretKeyStoreException)

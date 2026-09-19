@@ -140,20 +140,20 @@ public sealed class PlaywrightEdgeBrowserRunner : IAsyncDisposable
 
 	private static void AttachPageHandlers(IPage page, BrowserSafetySignals safetySignals)
 	{
-		page.Dialog += (_, dialog) =>
+		page.Dialog += (sender, dialog) =>
 		{
 			safetySignals.Report(BrowserAutomationPolicy.PauseReason.PermissionDialog);
-			_ = DismissDialogAsync(dialog);
+			_ = DismissDialogAsync(dialog); // NOSONAR -- 事件回调必须显式丢弃受控异步清理任务
 		};
-		page.FileChooser += (_, chooser) =>
+		page.FileChooser += (sender, chooser) =>
 		{
 			safetySignals.Report(BrowserAutomationPolicy.PauseReason.FileChooser);
-			_ = CancelFileChooserAsync(chooser);
+			_ = CancelFileChooserAsync(chooser); // NOSONAR -- 事件回调必须显式丢弃受控异步清理任务
 		};
-		page.Download += (_, download) =>
+		page.Download += (sender, download) =>
 		{
 			safetySignals.Report(BrowserAutomationPolicy.PauseReason.Download);
-			_ = CancelDownloadAsync(download);
+			_ = CancelDownloadAsync(download); // NOSONAR -- 事件回调必须显式丢弃受控异步清理任务
 		};
 	}
 

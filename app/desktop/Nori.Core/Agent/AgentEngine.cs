@@ -479,6 +479,8 @@ public sealed class AgentEngine
 							SetState(AgentRunState.Thinking);
 							break;
 						}
+						default:
+							break;
 					}
 				}
 

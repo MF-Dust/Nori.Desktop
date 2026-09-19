@@ -62,10 +62,10 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 		AddField(general, "ttsAutoPlay", new("自动朗读", "Auto play"), new("让对话回复自动播放语音。", "Play speech automatically for chat replies."), SettingsEditorKind.Boolean,
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "voice", "ttsAutoPlay"), false,
 			(value, token) => ExecuteAsync("settings_update_voice", new { ttsAutoPlay = Convert.ToBoolean(value) }, token));
-		_previewCommand = new SettingsCommand(_ => _ = TestVoiceAsync(), _ => !_previewing && !_speaking);
+		_previewCommand = new SettingsCommand(command => _ = TestVoiceAsync(), canExecute => !_previewing && !_speaking); // NOSONAR -- 设置命令启动受控后台语音操作并显式丢弃 Task
 		AddAction(general, "testVoice", new("试听当前声音", "Preview voice"), new("使用当前 TTS 配置播放一条测试语音。", "Play a sample with the current TTS configuration."), _previewCommand);
-		AddAction(general, "stopVoice", new("停止播放", "Stop playback"), new("停止当前语音播放。", "Stop the current speech."), new SettingsCommand(_ => _ = StopVoiceAsync()));
-		_notice = AddAction(general, "ackVoiceNotice", new("已了解语音配置迁移", "Dismiss voice migration notice"), new("旧版浏览器语音配置已停用，当前由宿主语音服务合成和播放。", "Legacy browser speech settings are no longer used. The host now synthesizes and plays speech."), new SettingsCommand(_ => _ = AcknowledgeVoiceNoticeAsync()));
+		AddAction(general, "stopVoice", new("停止播放", "Stop playback"), new("停止当前语音播放。", "Stop the current speech."), new SettingsCommand(command => _ = StopVoiceAsync())); // NOSONAR -- 设置命令启动受控后台语音操作并显式丢弃 Task
+		_notice = AddAction(general, "ackVoiceNotice", new("已了解语音配置迁移", "Dismiss voice migration notice"), new("旧版浏览器语音配置已停用，当前由宿主语音服务合成和播放。", "Legacy browser speech settings are no longer used. The host now synthesizes and plays speech."), new SettingsCommand(command => _ = AcknowledgeVoiceNoticeAsync())); // NOSONAR -- 设置命令启动受控后台操作并显式丢弃 Task
 
 		SettingsSectionViewModel gpt = _gptSection = AddSection(new("GPT-SoVITS", "GPT-SoVITS"));
 		AddField(gpt, "gptsovitsBaseUrl", new("服务地址", "Service URL"), new("GPT-SoVITS API 地址。", "GPT-SoVITS API endpoint."), SettingsEditorKind.Text,
@@ -89,8 +89,8 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			snapshot => SettingsSnapshotReader.Number(snapshot, 0.3, "voice", "indexttsEmoAlpha"), 0.3,
 			(value, token) => ExecuteAsync("settings_update_voice", new { indexttsEmoAlpha = Convert.ToDouble(value).ToString(System.Globalization.CultureInfo.InvariantCulture) }, token),
 			minimum: 0, maximum: 1, increment: 0.01);
-		AddAction(index, "pickIndexTemplate", new("选择模板音频", "Pick template audio"), new("选择用于 IndexTTS-2 克隆的本地音频文件。", "Choose local audio for IndexTTS-2 voice cloning."), new SettingsCommand(_ => _ = PickIndexTemplateAsync()));
-		_cloneCommand = new SettingsCommand(_ => _ = CloneIndexVoiceAsync(), _ => !_cloning);
+		AddAction(index, "pickIndexTemplate", new("选择模板音频", "Pick template audio"), new("选择用于 IndexTTS-2 克隆的本地音频文件。", "Choose local audio for IndexTTS-2 voice cloning."), new SettingsCommand(command => _ = PickIndexTemplateAsync())); // NOSONAR -- 设置命令启动受控后台文件操作并显式丢弃 Task
+		_cloneCommand = new SettingsCommand(command => _ = CloneIndexVoiceAsync(), canExecute => !_cloning); // NOSONAR -- 设置命令启动受控后台语音操作并显式丢弃 Task
 		AddAction(index, "cloneIndexVoice", new("克隆声音", "Clone voice"), new("使用模板音频创建声音配置。", "Create a voice configuration from the template audio."), _cloneCommand);
 
 		SettingsSectionViewModel stt = AddSection(new("语音识别", "Speech to text"));

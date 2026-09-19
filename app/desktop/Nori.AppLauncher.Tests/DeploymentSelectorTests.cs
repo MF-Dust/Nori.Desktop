@@ -86,6 +86,6 @@ public sealed class DeploymentSelectorTests : IDisposable
 
 	public void Dispose()
 	{
-		try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { }
+		try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { } // NOSONAR: 测试夹具销毁阶段只能尽力清理，不能让清理异常覆盖测试结果。
 	}
 }

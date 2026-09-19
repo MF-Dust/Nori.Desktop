@@ -170,7 +170,7 @@ public sealed class MemoryService : IDisposable
 			catch (Exception exception)
 			{
 				try { _services.Logger.Write(LogSource.Backend, "warn", $"记忆窗口状态通知失败: {exception.GetType().Name}"); }
-				catch { }
+				catch { } // NOSONAR -- 通知或后台回调失败必须隔离，避免业务流程中断
 			}
 		}
 	}

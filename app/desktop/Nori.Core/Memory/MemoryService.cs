@@ -624,7 +624,7 @@ public sealed class MemoryService : IAsyncDisposable
 	private async Task DisposeEmbeddingResourcesWhenWorkerStopsAsync(Task worker)
 	{
 		try { await worker.ConfigureAwait(false); }
-		catch { }
+		catch { } // NOSONAR -- 通知或后台回调失败必须隔离，避免业务流程中断
 		finally { DisposeEmbeddingResources(); }
 	}
 

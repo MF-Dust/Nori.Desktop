@@ -166,6 +166,7 @@ public partial class BridgeCommandsTests
 				case "hide": host.Hide(); break;
 				case "detach": host.Content = null; break;
 				case "dispose": preview.Dispose(); break;
+				default: break;
 			}
 			await Assert.ThrowsAnyAsync<OperationCanceledException>(() => load.WaitAsync(TimeSpan.FromSeconds(3)));
 			Assert.False(preview.IsReady);

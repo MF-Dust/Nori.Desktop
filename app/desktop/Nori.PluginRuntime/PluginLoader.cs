@@ -31,12 +31,12 @@ internal sealed class PluginLoader
 		}
 		catch (PluginException)
 		{
-			try { loadContext.Unload(); } catch { }
+			try { loadContext.Unload(); } catch { } // NOSONAR: 加载失败后的卸载只能尽力执行，必须保留原始插件错误。
 			throw;
 		}
 		catch (Exception exception)
 		{
-			try { loadContext.Unload(); } catch { }
+			try { loadContext.Unload(); } catch { } // NOSONAR: 加载失败后的卸载只能尽力执行，必须保留原始插件错误。
 			throw new PluginException(PluginErrorCodes.EntryTypeNotFound, "插件入口加载失败", exception);
 		}
 	}

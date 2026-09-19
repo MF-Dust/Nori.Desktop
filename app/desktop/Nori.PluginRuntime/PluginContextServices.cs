@@ -249,7 +249,7 @@ internal sealed class JsonPluginStorage : IPluginStorage
 		}
 		finally
 		{
-			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
+			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } // NOSONAR: 临时文件清理失败不应覆盖已完成的导出结果。
 		}
 	}
 
@@ -359,9 +359,9 @@ internal sealed class PluginContext : IPluginContext
 
 	internal void Revoke()
 	{
-		try { StoppingSource.Cancel(throwOnFirstException: false); } catch { }
-		try { ContributionRegistry.RevokeAll(); } catch { }
-		try { CapabilityRegistry.Dispose(); } catch { }
+		try { StoppingSource.Cancel(throwOnFirstException: false); } catch { } // NOSONAR: 撤销阶段必须继续释放其余插件资源。
+		try { ContributionRegistry.RevokeAll(); } catch { } // NOSONAR: 撤销阶段必须继续释放其余插件资源。
+		try { CapabilityRegistry.Dispose(); } catch { } // NOSONAR: 撤销阶段必须继续释放其余插件资源。
 	}
 
 	internal void Dispose()

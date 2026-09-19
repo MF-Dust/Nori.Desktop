@@ -48,7 +48,7 @@ public sealed class ReflectionWorker : IAsyncDisposable
 					if (await _service.ReflectPendingAsync(_cts.Token).ConfigureAwait(false))
 					{
 						try { _onCompleted?.Invoke(); }
-						catch { }
+						catch { } // NOSONAR -- 通知或后台回调失败必须隔离，避免业务流程中断
 						// 处理期间可能又有完整轮次进入队列，下一次循环继续检查持久化游标。
 					}
 				}

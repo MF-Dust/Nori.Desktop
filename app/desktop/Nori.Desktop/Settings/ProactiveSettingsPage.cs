@@ -62,8 +62,8 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 		};
 		_repeatDaily = AddField(reminders, "repeatDaily", new("每天重复", "Repeat daily"), new("让提醒每天在相同时间触发。", "Repeat the reminder at the same time every day."), SettingsEditorKind.Boolean,
 			_ => _repeatDaily?.Boolean ?? false, false, (_, _) => Task.FromResult(default(JsonElement)));
-		_addCommand = new SettingsCommand(_ => _ = AddReminderAsync(), _ => !_safeMode && !_adding && !_refreshing && !_cancelling);
-		_refreshCommand = new SettingsCommand(_ => _ = RefreshRemindersAsync(), _ => !_refreshing && !_adding && !_cancelling);
+		_addCommand = new SettingsCommand(command => _ = AddReminderAsync(), canExecute => !_safeMode && !_adding && !_refreshing && !_cancelling); // NOSONAR -- 命令回调启动受控后台操作并显式丢弃 Task
+		_refreshCommand = new SettingsCommand(command => _ = RefreshRemindersAsync(), canExecute => !_refreshing && !_adding && !_cancelling); // NOSONAR -- 命令回调启动受控后台操作并显式丢弃 Task
 		AddAction(reminders, "addReminder", new("添加提醒", "Add reminder"), new("保存后会立即出现在下方列表。", "The reminder appears in the list after saving."), _addCommand);
 		AddAction(reminders, "refreshReminders", new("刷新提醒", "Refresh reminders"), new("从运行时重新读取提醒列表。", "Read reminders from the runtime again."), _refreshCommand);
 	}
@@ -194,7 +194,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 		{
 			// 用户取消或窗口关闭时仍尽力撤销，避免保留与用户意图不符的单次提醒。
 			try { await execute("reminder_cancel", new {id}, CancellationToken.None).ConfigureAwait(false); }
-			catch { }
+			catch { } // NOSONAR -- 补偿性清理失败不能覆盖原始异常
 			throw;
 		}
 	}

@@ -221,7 +221,7 @@ internal static class ToastNativeApi
 	}
 
 	[StructLayout(LayoutKind.Sequential, Pack = 4)]
-	internal struct PropertyKey(Guid formatId, uint propertyId) : IEquatable<PropertyKey>
+	internal struct PropertyKey(Guid formatId, uint propertyId) : IEquatable<PropertyKey> // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		internal Guid FormatId = formatId;
 		internal uint PropertyId = propertyId;

@@ -395,7 +395,14 @@ public sealed class UpdateService : IDisposable
 			}
 		}
 		catch (OperationCanceledException) when (source.IsCancellationRequested) { }
-		finally { lock (_stateLock) { if (_schedulerCts == source) _schedulerCts = null; source.Dispose(); } }
+		finally
+		{
+			lock (_stateLock)
+			{
+				if (_schedulerCts == source) _schedulerCts = null;
+				source.Dispose();
+			}
+		}
 	}
 
 	private void SetFailure(bool cancelled, string message) => SetStatus(CurrentStatus with { State = cancelled ? UpdaterState.Cancelled : UpdaterState.Error, Message = message });

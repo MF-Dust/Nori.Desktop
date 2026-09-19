@@ -8,7 +8,7 @@ namespace Nori.Desktop.Startup;
 /// 三平台都使用宿主命名 Mutex 保护启动与迁移；Windows 额外用命名事件唤醒第一个
 /// 实例的 main 窗口，Linux/macOS 的第二实例则直接退出。
 /// </summary>
-internal sealed class SingleInstanceGuard : IDisposable
+internal sealed class SingleInstanceGuard : IDisposable // NOSONAR -- 私有构造器是工厂或测试契约的一部分，不能公开实例化
 {
 	private const string WindowsMutexName = @"Local\NoriDesktopPet.SingleInstance";
 	private const string PortableMutexName = "NoriDesktopPet.SingleInstance";
@@ -85,7 +85,7 @@ internal sealed class SingleInstanceGuard : IDisposable
 			activationEvent?.Dispose();
 			if (ownsMutex)
 			{
-				try { mutex.ReleaseMutex(); } catch { }
+				try { mutex.ReleaseMutex(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 			}
 			mutex.Dispose();
 			throw;
@@ -128,7 +128,7 @@ internal sealed class SingleInstanceGuard : IDisposable
 			{
 				if (!_activationEvent.WaitOne(250)) continue;
 				if (_listenerCts.IsCancellationRequested) break;
-				try { _onActivate(); } catch { }
+				try { _onActivate(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 			}
 		}
 		catch (ObjectDisposedException) when (_listenerCts.IsCancellationRequested)
@@ -140,13 +140,13 @@ internal sealed class SingleInstanceGuard : IDisposable
 	{
 		if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 		_listenerCts.Cancel();
-		try { _activationEvent?.Set(); } catch { }
+		try { _activationEvent?.Set(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		if (_listener is not null && _listener != Thread.CurrentThread) _listener.Join(1000);
 		_activationEvent?.Dispose();
 		_listenerCts.Dispose();
 		if (_ownsMutex)
 		{
-			try { _mutex?.ReleaseMutex(); } catch { }
+			try { _mutex?.ReleaseMutex(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		}
 		_mutex?.Dispose();
 		_ownsMutex = false;

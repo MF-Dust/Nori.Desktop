@@ -1371,6 +1371,8 @@ public sealed class AutomationRuntime : IAsyncDisposable
 						_approvalRequestId = null;
 						_actionKinds = [];
 						break;
+					default:
+						break;
 				}
 			}
 		}
@@ -1428,6 +1430,8 @@ public sealed class AutomationRuntime : IAsyncDisposable
 						_errorCategory = _category;
 						_approvalRequestId = null;
 						_actionKinds = [];
+						break;
+					default:
 						break;
 				}
 			}

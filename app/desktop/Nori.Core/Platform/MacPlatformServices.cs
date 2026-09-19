@@ -19,14 +19,14 @@ public sealed class MacPlatformServices : IPlatformServices
 	private const string AppKit = "/System/Library/Frameworks/AppKit.framework/AppKit";
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct CGPoint
+	private struct CGPoint // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public double X;
 		public double Y;
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct CGRect
+	private struct CGRect // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public double X;
 		public double Y;

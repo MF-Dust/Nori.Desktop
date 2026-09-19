@@ -69,10 +69,10 @@ public static class CrashReporter
 		if (!string.IsNullOrWhiteSpace(logDirectory))
 		{
 			try { new FileLogger(logDirectory).Write(LogSource.Backend, "error", message); return; }
-			catch { }
+			catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		}
 		// 存储 marker 提交前不得创建 data 子目录；此时只保留控制台诊断。
-		try { Console.Error.WriteLine(message); } catch { }
+		try { Console.Error.WriteLine(message); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 	}
 
 	/// <summary>
@@ -80,7 +80,7 @@ public static class CrashReporter
 	/// 取代裸的 <c>_ = SomeAsync()</c>, 让异常在发生当下就有上下文地落盘,
 	/// 而不是拖到 GC 时变成一条没有时间线的 UnobservedTaskException.
 	/// </summary>
-	public static async void Forget(Task task, string what)
+	public static async void Forget(Task task, string what) // NOSONAR -- 这是受控的 UI 或后台 fire-and-forget 入口，内部已观察异常
 	{
 		try
 		{
@@ -244,7 +244,7 @@ public static class CrashReporter
 		{
 			Report(exception, eventArgs.IsTerminating);
 		}
-		catch
+		catch // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		{
 			// 兜底自身都失败了, 只能放弃: 进程即将终止或已不可救
 			if (eventArgs.IsTerminating) ExitProcess(1);

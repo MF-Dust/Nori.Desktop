@@ -70,6 +70,8 @@ public sealed class BehaviorPipeline
 			case PipelineStage.Final:
 				_finalPlugins.Add(plugin);
 				break;
+			default:
+				break;
 		}
 	}
 

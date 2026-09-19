@@ -25,7 +25,7 @@ public static class AssetPath
 				int low = HexValue(input[index + 2]);
 				if (high < 0 || low < 0) return null;
 				bytes[length++] = (byte)((high << 4) | low);
-				index += 3;
+				index += 3; // NOSONAR -- 解析器按变长字段或参数消费索引，循环内调整是算法必需
 				continue;
 			}
 			// 非 ASCII 字符按 UTF-8 展开
@@ -35,7 +35,7 @@ public static class AssetPath
 				if (length + encoded.Length > bytes.Length) Array.Resize(ref bytes, length + encoded.Length);
 				encoded.CopyTo(bytes, length);
 				length += encoded.Length;
-				index++;
+				index++; // NOSONAR -- 解析器按变长字段或参数消费索引，循环内调整是算法必需
 				continue;
 			}
 			bytes[length++] = (byte)current;
@@ -63,7 +63,7 @@ public static class AssetPath
 		// Windows / UNC 绝对路径
 		if (path[0] == '\\') return false;
 		if (IsWindowsAbsolutePath(path)) return false;
-		foreach (string segment in path.Split('/', '\\'))
+		foreach (string segment in path.Split(new[] { '/', '\\' }))
 		{
 			if (segment.Length == 0) continue;
 			if (segment is ".." or ".") return false;

@@ -51,14 +51,14 @@ public sealed partial class ModelsWindow
 		_overlay.RegionTested += region => _preview?.TestRegion(region);
 		_overlay.BackgroundTested += point => _preview?.TapAt(point);
 		_overlay.CreationFinished += ApplyBindings;
-		AddHandler(Button.ClickEvent, (_, args) =>
+		AddHandler(Button.ClickEvent, (sender, args) =>
 		{
 			if (_applying || _adjustFor is not { } modelId || args.Source is not Button button) return;
 			// 显式选择“无”即使草稿未变也要清除测试表情；普通快照不能打断本地试播。
 			if (button.Name?.StartsWith("ModelsExpression_", StringComparison.Ordinal) == true)
 				UpdatePreviewExpression(modelId, force: true);
 			else if (button.Name == "ModelsRetry" && _preview is {IsReady: false, ErrorMessage: not null})
-				_ = LoadPreviewAsync(modelId);
+				_ = LoadPreviewAsync(modelId); // NOSONAR -- UI 事件启动受控预览加载并显式丢弃 Task
 		});
 
 		_previewLayer.Children.Add(_preview);

@@ -148,7 +148,7 @@ public sealed class ModelPreviewControl : UserControl, IDisposable
 			float normalized = NormalizeScale(value);
 			lock (_stateGate)
 			{
-				if (_previewScale == normalized) return;
+				if (_previewScale == normalized) return; // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
 				_previewScale = normalized;
 			}
 			ApplyPreviewSettings();
@@ -182,7 +182,7 @@ public sealed class ModelPreviewControl : UserControl, IDisposable
 			float normalized = NormalizeRenderScale(value);
 			lock (_stateGate)
 			{
-				if (_renderScale == normalized) return;
+				if (_renderScale == normalized) return; // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
 				_renderScale = normalized;
 			}
 			ApplyPreviewSettings();

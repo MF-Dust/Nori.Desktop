@@ -344,7 +344,7 @@ public sealed class KnowledgeService : IAsyncDisposable
 	{
 		lock (_gate) _status = status;
 		try { StatusChanged?.Invoke(); }
-		catch { }
+		catch { } // NOSONAR -- 通知或后台回调失败必须隔离，避免业务流程中断
 	}
 
 	private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));

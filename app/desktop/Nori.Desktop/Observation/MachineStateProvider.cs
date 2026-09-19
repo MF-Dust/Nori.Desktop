@@ -182,7 +182,7 @@ public sealed class MachineStateProvider : IMachineStateProvider
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct MemoryStatusEx
+	private struct MemoryStatusEx // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public uint Length;
 		public uint MemoryLoad;
@@ -196,7 +196,7 @@ public sealed class MachineStateProvider : IMachineStateProvider
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct FileTime
+	private struct FileTime // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public uint Low;
 		public uint High;

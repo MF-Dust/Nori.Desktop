@@ -46,7 +46,7 @@ public sealed record SmokeTestOptions(SmokeTestMode Mode, string Profile)
 				error = "--smoke-test 必须带且只能带一个 --profile <temp>";
 				return false;
 			}
-			profile = args[++index];
+			profile = args[++index]; // NOSONAR -- 解析器按变长字段或参数消费索引，循环内调整是算法必需
 		}
 
 		if (string.IsNullOrWhiteSpace(profile))
@@ -180,7 +180,7 @@ public static class SmokeTestRuntime
 	private static async Task ExitAfterCheckpointAsync(IWindowManager windowManager)
 	{
 		await Task.Delay(GracefulShutdownDelay).ConfigureAwait(false);
-		try { windowManager.Shutdown(); } catch { }
+		try { windowManager.Shutdown(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 
 		// CI 的无头桌面环境可能卡住原生窗口退出; 冒烟 profile 是隔离的一次性目录,
 		// 因此在等待正常清理后保留进程内硬退出兜底, 外部脚本仍有更长的 watchdog。

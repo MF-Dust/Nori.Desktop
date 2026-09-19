@@ -12,7 +12,11 @@ public sealed class WindowsScreenshotService
 	private readonly WindowsWindowService _windows;
 	private readonly IWindowsScreenCaptureNativeApi _native;
 	public WindowsScreenshotService(WindowsWindowService? windows = null, IWindowsScreenCaptureNativeApi? native = null) { _windows = windows ?? new(); _native = native ?? CreateNative(); }
-	private static IWindowsScreenCaptureNativeApi CreateNative() { if (OperatingSystem.IsWindows()) return new Win32ScreenCaptureNativeApi(); return new UnsupportedCaptureNativeApi(); }
+	private static IWindowsScreenCaptureNativeApi CreateNative()
+	{
+		if (OperatingSystem.IsWindows()) return new Win32ScreenCaptureNativeApi();
+		return new UnsupportedCaptureNativeApi();
+	}
 	public WindowsAutomationAvailability Availability => WindowsAutomationAvailability.Current;
 
 	/// <summary>捕获并编码为内存中的 PNG/JPEG，不写入文件。</summary>
@@ -56,8 +60,21 @@ public sealed class WindowsScreenshotService
 		private readonly MemoryStream _inner = new();
 		public override bool CanRead => false; public override bool CanSeek => false; public override bool CanWrite => true; public override long Length => _inner.Length; public override long Position { get => _inner.Position; set => throw new NotSupportedException(); }
 		public override void Flush() => _inner.Flush(); public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException(); public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException(); public override void SetLength(long value) => throw new NotSupportedException();
-		public override void Write(byte[] buffer, int offset, int count) { if (_inner.Length > max - count) throw new LimitException(); _inner.Write(buffer, offset, count); }
-		public override void Write(ReadOnlySpan<byte> buffer) { if (_inner.Length > max - buffer.Length) throw new LimitException(); _inner.Write(buffer); }
-		public byte[] ToArray() => _inner.ToArray(); protected override void Dispose(bool disposing) { if (disposing) _inner.Dispose(); base.Dispose(disposing); }
+		public override void Write(byte[] buffer, int offset, int count)
+		{
+			if (_inner.Length > max - count) throw new LimitException();
+			_inner.Write(buffer, offset, count);
+		}
+		public override void Write(ReadOnlySpan<byte> buffer)
+		{
+			if (_inner.Length > max - buffer.Length) throw new LimitException();
+			_inner.Write(buffer);
+		}
+		public byte[] ToArray() => _inner.ToArray();
+		protected override void Dispose(bool disposing)
+		{
+			if (disposing) _inner.Dispose();
+			base.Dispose(disposing);
+		}
 	}
 }

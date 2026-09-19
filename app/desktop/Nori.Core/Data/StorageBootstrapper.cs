@@ -123,7 +123,7 @@ public static class StorageBootstrapper
 		}
 		finally
 		{
-			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
+			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } // NOSONAR -- 临时资源清理失败不能覆盖原始异常
 		}
 	}
 
@@ -142,6 +142,6 @@ public static class StorageBootstrapper
 
 	private static void TryDeleteDirectory(string path)
 	{
-		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { }
+		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { } // NOSONAR -- 临时资源清理失败不能覆盖原始异常
 	}
 }

@@ -466,7 +466,7 @@ public sealed class WindowManager : IWindowManager
 				failureOwner = settings;
 				if (settings is not null && !await settings.FlushPendingSavesAsync())
 					throw new InvalidOperationException("设置保存失败，请检查后重试");
-				failureOwner = memory;
+				failureOwner = memory; // NOSONAR -- 保留当前窗口用于失败时恢复可编辑上下文
 				if (memory is not null && !await memory.FlushPendingSavesAsync())
 					throw new InvalidOperationException("记忆保存失败，请检查后重试");
 				failureOwner = models;
@@ -477,10 +477,10 @@ public sealed class WindowManager : IWindowManager
 				if (failureOwner is ChatWindow recordingChat) await recordingChat.Body.PrepareHideAsync();
 				failureOwner = memory;
 				if (memory is not null) await memory.PrepareShutdownAsync();
-				failureOwner = settings;
+				failureOwner = settings; // NOSONAR -- 保留当前窗口用于失败时恢复可编辑上下文
 				if (settings is not null) await settings.PrepareShutdownAsync();
 				// 模型窗口最后释放；此前任一窗口失败时，模型编辑上下文仍可复用。
-				failureOwner = models;
+				failureOwner = models; // NOSONAR -- 保留当前窗口用于失败时恢复可编辑上下文
 				if (models is not null) await models.PrepareShutdownAsync();
 				failureOwner = Get(WindowLabels.Chat);
 				if (failureOwner is ChatWindow chat) await chat.PrepareShutdownAsync();

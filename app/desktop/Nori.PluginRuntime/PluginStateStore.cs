@@ -115,7 +115,7 @@ internal sealed class PluginStateStore
 		}
 		finally
 		{
-			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
+			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } // NOSONAR: 临时状态文件清理失败不应覆盖已完成的持久化结果。
 		}
 	}
 

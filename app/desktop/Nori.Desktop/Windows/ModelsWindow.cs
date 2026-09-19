@@ -166,7 +166,9 @@ public sealed partial class ModelsWindow : Window
 	/// <summary>在窗口内显示宿主失败；保存失败时重新显示原草稿。</summary>
 	public void ReportHostFailure(Exception exception)
 	{
-		ShowError(exception); if (!IsVisible) Show(); Activate();
+		ShowError(exception);
+		if (!IsVisible) Show();
+		Activate();
 	}
 	private async void OnClosing(object? sender, WindowClosingEventArgs args)
 	{
@@ -181,7 +183,8 @@ public sealed partial class ModelsWindow : Window
 	protected override void OnClosed(EventArgs e)
 	{
 		_lifetime.Cancel(); _service.StateChanged -= OnStateChanged; DisposePreview(); _service.Dispose();
-		foreach (var bitmap in _thumbnails) bitmap.Dispose(); _thumbnails.Clear();
+		foreach (var bitmap in _thumbnails) bitmap.Dispose();
+		_thumbnails.Clear();
 		base.OnClosed(e);
 	}
 	private void BeginBarrier()
@@ -267,7 +270,11 @@ public sealed partial class ModelsWindow : Window
 	{
 		Title = T("Nori · 模型", "Nori · Models"); UpdateHeading();
 		bool previous = _applying; _applying = true;
-		try { foreach (Action action in _localize.Concat(_adjustLocalize).ToArray()) action(); ApplyBindings(); }
+		try
+		{
+			foreach (Action action in _localize.Concat(_adjustLocalize).ToArray()) action();
+			ApplyBindings();
+		}
 		finally { _applying = previous; }
 	}
 	private void ApplyBindings()

@@ -33,7 +33,7 @@ public sealed class LinuxPlatformServices : IPlatformServices
 	private const long SubstructureRedirectMask = 1L << 20;
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct XRectangle
+	private struct XRectangle // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public short X;
 		public short Y;
@@ -42,7 +42,7 @@ public sealed class LinuxPlatformServices : IPlatformServices
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct XClientMessageEvent
+	private struct XClientMessageEvent // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public int Type;
 		public nuint Serial;

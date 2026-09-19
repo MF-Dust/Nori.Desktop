@@ -118,7 +118,7 @@ public sealed class AppStoragePaths
 		}
 		finally
 		{
-			try { if (File.Exists(probe)) File.Delete(probe); } catch { }
+			try { if (File.Exists(probe)) File.Delete(probe); } catch { } // NOSONAR -- 临时资源清理失败不能覆盖原始异常
 		}
 	}
 

@@ -12,7 +12,7 @@ namespace Nori.Desktop.Runtime;
 public static class SystemIdleTime
 {
 	[StructLayout(LayoutKind.Sequential)]
-	private struct LastInputInfo
+	private struct LastInputInfo // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public uint CbSize;
 		public uint DwTime;

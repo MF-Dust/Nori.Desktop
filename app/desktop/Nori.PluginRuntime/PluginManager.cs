@@ -543,9 +543,9 @@ internal sealed class PluginManager : IAsyncDisposable
 		}
 
 		handle.State = PluginLifecycleState.Stopping;
-		try { handle.StopSource?.Cancel(throwOnFirstException: false); } catch { }
-		try { handle.Contributions.RevokeAll(); } catch { }
-		try { handle.Context?.Revoke(); } catch { }
+		try { handle.StopSource?.Cancel(throwOnFirstException: false); } catch { } // NOSONAR: 停止阶段必须继续撤销其余资源，不能让一个插件异常阻断卸载。
+		try { handle.Contributions.RevokeAll(); } catch { } // NOSONAR: 停止阶段必须继续撤销其余资源，不能让一个插件异常阻断卸载。
+		try { handle.Context?.Revoke(); } catch { } // NOSONAR: 停止阶段必须继续撤销其余资源，不能让一个插件异常阻断卸载。
 
 		PluginException? failure = null;
 		if (_options.ClosePluginWindowsAsync is not null)
@@ -662,7 +662,7 @@ internal sealed class PluginManager : IAsyncDisposable
 			Report(new PluginException(PluginErrorCodes.UnloadPendingRestart, "插件程序集无法卸载", exception), handle);
 			return false;
 		}
-		context = null;
+		context = null; // NOSONAR: 清除局部引用以便弱引用卸载检查，避免 GC 保留插件加载上下文。
 		for (int index = 0; index < 10 && weak.IsAlive; index++)
 		{
 			GC.Collect();
@@ -925,7 +925,7 @@ internal sealed class PluginManager : IAsyncDisposable
 				$"{_options.HostApiVersion.Major}.{_options.HostApiVersion.Minor}",
 				_options.HostVersion.ToString()));
 		}
-		catch { }
+		catch { /* 插件窗口关闭失败不应阻断版本提示。 */ } // NOSONAR: 关闭辅助窗口属于尽力清理，主流程仍需完成。
 	}
 
 	private void EnsureNotDisposed()

@@ -74,23 +74,24 @@ internal static class Program
 		waitPid = null;
 		waitStartTicks = null;
 		forwarded = [];
-		for (int index = 0; index < args.Length; index++)
+		for (int index = 0; index < args.Length;)
 		{
-			if (args[index].Equals(WaitPidArgument, StringComparison.Ordinal))
+			string argument = args[index++];
+			if (argument.Equals(WaitPidArgument, StringComparison.Ordinal))
 			{
-				if (waitPid is not null || index + 1 >= args.Length || !int.TryParse(args[++index], out int pid) || pid <= 0)
+				if (waitPid is not null || index >= args.Length || !int.TryParse(args[index++], out int pid) || pid <= 0)
 					throw new ArgumentException("--launcher-wait-pid 必须带一个正整数 PID 且只能指定一次");
 				waitPid = pid;
 				continue;
 			}
-			if (args[index].Equals("--launcher-wait-start-ticks", StringComparison.Ordinal))
+			if (argument.Equals("--launcher-wait-start-ticks", StringComparison.Ordinal))
 			{
-				if (waitStartTicks is not null || index + 1 >= args.Length || !long.TryParse(args[++index], out long ticks) || ticks <= 0)
+				if (waitStartTicks is not null || index >= args.Length || !long.TryParse(args[index++], out long ticks) || ticks <= 0)
 					throw new ArgumentException("--launcher-wait-start-ticks 必须带一个正整数且只能指定一次");
 				waitStartTicks = ticks;
 				continue;
 			}
-			forwarded.Add(args[index]);
+			forwarded.Add(argument);
 		}
 		if (waitStartTicks is not null && waitPid is null) throw new ArgumentException("--launcher-wait-start-ticks 必须配合 --launcher-wait-pid");
 		if (waitPid is not null && waitStartTicks is null) throw new ArgumentException("--launcher-wait-pid 必须同时带 --launcher-wait-start-ticks");
@@ -142,7 +143,7 @@ internal static class Program
 				process.WaitForExit(5000);
 				return;
 			}
-			catch { }
+			catch { /* 进程已退出或无法查询时，启动器仍需输出原始错误。 */ } // NOSONAR: 此处故意忽略等待进程的清理异常，避免遮蔽启动失败。
 		}
 		Console.Error.WriteLine($"{title}: {message}");
 	}

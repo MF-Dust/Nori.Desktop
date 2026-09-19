@@ -285,7 +285,7 @@ public sealed class SettingsService : IDisposable
 			catch (Exception exception)
 			{
 				try { _services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"设置窗口状态通知失败: {exception.GetType().Name}"); }
-				catch { }
+				catch { } // NOSONAR -- 通知或后台回调失败必须隔离，避免业务流程中断
 			}
 		}
 	}

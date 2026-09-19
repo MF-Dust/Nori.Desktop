@@ -99,7 +99,7 @@ public sealed class WebViewAudioPlayback(MediaExchange media, Func<string, strin
 		}
 		catch (OperationCanceledException)
 		{
-			try { channel.Post("nori:audio-stop", null); } catch { }
+			try { channel.Post("nori:audio-stop", null); } catch { } // NOSONAR -- 音频通道已进入停止阶段，通知失败不能阻断资源释放
 			throw;
 		}
 		catch (TimeoutException)
@@ -257,7 +257,7 @@ public sealed class WebViewMicrophoneRecorder(MediaExchange media, Func<string, 
 			// 作废票据并解除 StartAsync 的等待; 前端随后对旧 token 的回报都会因 token 不匹配被忽略。
 			media.CancelUpload(token);
 			pendingStart?.TrySetCanceled();
-			try { channel.Post("nori:audio-record-stop", new {token}); } catch { }
+			try { channel.Post("nori:audio-record-stop", new {token}); } catch { } // NOSONAR -- 音频通道已进入停止阶段，通知失败不能阻断资源释放
 			return new RecordedAudio([], "audio/wav", "speech.wav");
 		}
 

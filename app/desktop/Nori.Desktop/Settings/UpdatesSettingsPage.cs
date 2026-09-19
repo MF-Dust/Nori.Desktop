@@ -124,7 +124,7 @@ public sealed class UpdatesSettingsPage : SettingsPageBase
 			read, "", (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
 
 	private void Action(SettingsSectionViewModel section, string key, SettingsText label, SettingsText description, Func<Task> action) =>
-		_fields[key] = AddAction(section, key, label, description, new SettingsCommand(_ => _ = action()));
+		_fields[key] = AddAction(section, key, label, description, new SettingsCommand(command => _ = action())); // NOSONAR -- 设置命令按 UI 约定启动后台操作并显式丢弃 Task
 
 	private static string Value(JsonElement snapshot, string name) => SettingsSnapshotReader.String(snapshot, "", "updater", name);
 	private static string Text(string chinese, string english) => SettingsLocalization.IsEnglish ? english : chinese;

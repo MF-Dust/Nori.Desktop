@@ -56,7 +56,7 @@ internal sealed class PluginStartupRecoveryStore
 		}
 		finally
 		{
-			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
+			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } // NOSONAR: 临时恢复文件清理失败不应覆盖恢复结果。
 		}
 	}
 

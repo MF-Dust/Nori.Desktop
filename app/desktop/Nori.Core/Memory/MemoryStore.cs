@@ -699,8 +699,11 @@ public sealed class MemoryStore
 			command.Transaction = transaction;
 			command.CommandText = "DELETE FROM memories";
 			command.ExecuteNonQuery();
-			if (_ftsAvailable) command.CommandText = "DELETE FROM memories_fts; DELETE FROM memory_atoms_fts;";
-			if (_ftsAvailable) command.ExecuteNonQuery();
+			if (_ftsAvailable)
+			{
+				command.CommandText = "DELETE FROM memories_fts; DELETE FROM memory_atoms_fts;";
+				command.ExecuteNonQuery();
+			}
 			transaction.Commit();
 		});
 	}

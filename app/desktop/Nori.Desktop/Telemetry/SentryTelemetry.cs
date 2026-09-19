@@ -123,7 +123,7 @@ public sealed class SentryTelemetry : ITelemetry
 			lock (_gate) enabled = _enabled && !_disposed;
 			if (enabled) await SentrySdk.FlushAsync(timeout).ConfigureAwait(false);
 		}
-		catch
+		catch // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		{
 			// 退出阶段不再抛出遥测异常。
 		}

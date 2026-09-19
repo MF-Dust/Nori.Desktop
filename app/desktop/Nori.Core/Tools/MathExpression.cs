@@ -114,11 +114,11 @@ public static class MathExpression
 							left *= right;
 							break;
 						case '/':
-							if (right == 0) throw Error("除数不能为零");
+							if (right == 0) throw Error("除数不能为零"); // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
 							left /= right;
 							break;
 						default:
-							if (right == 0) throw Error("取模除数不能为零");
+							if (right == 0) throw Error("取模除数不能为零"); // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
 							left %= right;
 							break;
 					}

@@ -163,15 +163,19 @@ public static class UpdateExtractor
 			{
 				if (Directory.Exists(fullStaging)) Directory.Delete(fullStaging, recursive: true);
 			}
-			catch { }
+			catch { } // NOSONAR -- 临时资源清理失败不能覆盖原始异常
 		}
 	}
 
 	/// <summary>读取并验证槽内的 deployment.json 元数据与入口有效性。</summary>
 	public static SlotManifest ReadAndValidateManifest(string slotDirectory, string expectedRid)
 	{
-		EnsureNoReparsePoints(slotDirectory);
-		string manifestPath = Path.Combine(slotDirectory, "deployment.json");
+		string fullSlotDirectory = Path.GetFullPath(slotDirectory);
+		string slotName = Path.GetFileName(Path.TrimEndingDirectorySeparator(fullSlotDirectory));
+		if (slotName.Length == 0 || slotName is "." or "..")
+			throw new InvalidOperationException("部署槽目录名无效");
+		EnsureNoReparsePoints(fullSlotDirectory);
+		string manifestPath = Path.Combine(fullSlotDirectory, "deployment.json");
 		EnsureNoReparsePoints(manifestPath);
 		if (File.Exists(manifestPath) && new FileInfo(manifestPath).Length > 1024 * 1024)
 			throw new InvalidOperationException("部署清单大小超过限制");

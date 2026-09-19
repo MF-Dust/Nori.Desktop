@@ -242,7 +242,12 @@ public sealed partial class ChatView
 			button.Content = row;
 		}
 		else button.Content = text;
-		Localize(() => { if (text is not null) text.Text = label(); AutomationProperties.SetName(button, label()); ToolTip.SetTip(button, label()); });
+		Localize(() =>
+		{
+			if (text is not null) text.Text = label();
+			AutomationProperties.SetName(button, label());
+			ToolTip.SetTip(button, label());
+		});
 		button.Click += (_, _) =>
 		{
 			try { Run(action()); }

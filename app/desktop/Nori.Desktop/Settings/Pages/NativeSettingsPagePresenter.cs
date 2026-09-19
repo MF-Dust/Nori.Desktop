@@ -126,6 +126,8 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 				case DebugSettingsViewModel debug:
 					BuildDebug(root, debug);
 					break;
+				default:
+					break;
 			}
 			Content = root;
 		}

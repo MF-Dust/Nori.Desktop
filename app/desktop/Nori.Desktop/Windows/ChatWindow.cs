@@ -47,7 +47,9 @@ public sealed class ChatWindow : Window
 	public void ReportHostFailure(Exception exception)
 	{
 		if (!Dispatcher.UIThread.CheckAccess()) { Dispatcher.UIThread.Post(() => ReportHostFailure(exception)); return; }
-		Body.ReportFailure(exception); if (!IsVisible) Show(); Activate();
+		Body.ReportFailure(exception);
+		if (!IsVisible) Show();
+		Activate();
 	}
 
 	private void UpdateTitle() => Title = Body.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? "Nori · Chat" : "Nori · 对话";

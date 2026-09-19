@@ -314,6 +314,6 @@ public sealed class PluginManagementTests
 
 	private static void DeleteDirectory(string path)
 	{
-		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { }
+		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { } // NOSONAR: 测试夹具销毁阶段只能尽力清理，不能让清理异常覆盖测试结果。
 	}
 }

@@ -801,7 +801,7 @@ public sealed class PetRuntime
 					_appliedMaskBufferSize = 0;
 					if (previousModel is not null)
 					{
-						try { ApplyRenderQualityOnGlThread(); } catch { }
+						try { ApplyRenderQualityOnGlThread(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 					}
 				}
 			}
@@ -819,7 +819,7 @@ public sealed class PetRuntime
 			return;
 		}
 
-		try { _services.Logger.Write(LogSource.Backend, "info", $"成功加载 Live2D 模型: {prepared.ModelId}"); } catch { }
+		try { _services.Logger.Write(LogSource.Backend, "info", $"成功加载 Live2D 模型: {prepared.ModelId}"); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
 		try { ModelChanged?.Invoke(); }
 		catch (Exception exception) { WriteCubismLog($"模型变更事件处理异常: {exception.Message}"); }
 	}
@@ -1115,6 +1115,8 @@ public sealed class PetRuntime
 			case PetInteractionActionMode.Selected:
 				PlayMotionExact(region.Motion.Group ?? "", region.Motion.Name ?? "");
 				break;
+			default:
+				break;
 		}
 
 		if (!ExpressionEnabled) return;
@@ -1125,6 +1127,8 @@ public sealed class PetRuntime
 				break;
 			case PetInteractionActionMode.Selected:
 				PlayExpression(region.Expression.Name ?? "");
+				break;
+			default:
 				break;
 		}
 	}

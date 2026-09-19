@@ -113,8 +113,10 @@ public sealed partial class ModelsWindow
 		string id = SelectedModel;
 		bool available = id.Length > 0 && Installed(_snapshot, id) && _metadata.ContainsKey(id);
 		if (_displayFor == id && _selectedDisplayHasMetadata == available && _selectedDisplay.Content is not null) return;
-		foreach (Action bind in _selectedBindings) _bindings.Remove(bind); _selectedBindings.Clear();
-		foreach (Action local in _selectedLocalize) _localize.Remove(local); _selectedLocalize.Clear();
+		foreach (Action bind in _selectedBindings) _bindings.Remove(bind);
+		_selectedBindings.Clear();
+		foreach (Action local in _selectedLocalize) _localize.Remove(local);
+		_selectedLocalize.Clear();
 		_displayFor = id; _selectedDisplayHasMetadata = available;
 		int bindingStart = _bindings.Count, localStart = _localize.Count;
 		_selectedDisplay.Content = available

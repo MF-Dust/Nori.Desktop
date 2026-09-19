@@ -429,7 +429,7 @@ public sealed partial class NativeSettingsPagePresenter
 			await viewModel.UninstallAsync(skill).ConfigureAwait(true);
 	}
 
-	private bool UpdateComplexPage()
+	private bool UpdateComplexPage() // NOSONAR -- 调用方使用返回值决定是否跳过完整重建
 	{
 		if (_complexBody is null || _complexOwner != _viewModel || _complexRoot != _root
 			|| _complexState is null || _complexRender is null || _viewModel is null) return false;

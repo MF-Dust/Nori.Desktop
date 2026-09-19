@@ -112,7 +112,7 @@ internal static class AppContainerNativeApi
 	internal static extern bool TerminateProcess(IntPtr handle, uint exitCode);
 
 	[StructLayout(LayoutKind.Sequential)]
-	internal struct SecurityCapabilities
+	internal struct SecurityCapabilities // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public IntPtr AppContainerSid;
 		public IntPtr Capabilities;
@@ -121,14 +121,14 @@ internal static class AppContainerNativeApi
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	internal struct SidAndAttributes
+	internal struct SidAndAttributes // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public IntPtr Sid;
 		public uint Attributes;
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	internal struct SecurityAttributes
+	internal struct SecurityAttributes // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public int Length;
 		public IntPtr SecurityDescriptor;
@@ -136,7 +136,7 @@ internal static class AppContainerNativeApi
 	}
 
 	[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-	internal struct StartupInfo
+	internal struct StartupInfo // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public int Size;
 		public IntPtr Reserved;
@@ -159,14 +159,14 @@ internal static class AppContainerNativeApi
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	internal struct StartupInfoEx
+	internal struct StartupInfoEx // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public StartupInfo StartupInfo;
 		public IntPtr AttributeList;
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	internal struct ProcessInformation
+	internal struct ProcessInformation // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
 	{
 		public IntPtr Process;
 		public IntPtr Thread;

@@ -83,8 +83,8 @@ public sealed class BeatSyncBehavior : IBehaviorPlugin
 
 	public void UpdateTargets(double now)
 	{
-		float currentY = TargetY != 0 ? TargetY : _baseY;
-		float currentZ = TargetZ != 0 ? TargetZ : _baseZ;
+		float currentY = TargetY != 0 ? TargetY : _baseY; // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
+		float currentZ = TargetZ != 0 ? TargetZ : _baseZ; // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
 
 		while (_segments.Count > 0)
 		{

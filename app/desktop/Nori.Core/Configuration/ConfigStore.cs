@@ -697,7 +697,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 			}
 			catch
 			{
-				try { transaction.Rollback(); } catch { }
+				try { transaction.Rollback(); } catch { } // NOSONAR -- 事务回滚是补偿操作，回滚异常不能覆盖原始错误
 				throw;
 			}
 		});

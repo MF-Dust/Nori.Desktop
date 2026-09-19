@@ -233,7 +233,7 @@ const play = async (payload: PlayPayload): Promise<void> => {
 		NODE.connect(gain as GainNode)
 		source = NODE
 		const TOKEN = payload.token
-		NODE.onended = () => finishPlayback(TOKEN, GENERATION)
+		NODE.onended = () => { finishPlayback(TOKEN, GENERATION) }
 		levelTimer = setInterval(() => {
 			if (isCurrentPlayback(TOKEN, GENERATION)) void invoke("audio_level", {level: readLevel()}).catch(() => {})
 		}, LEVEL_INTERVAL_MS)
@@ -255,7 +255,7 @@ const reportRecordingFailure = (token: string, error: unknown, upload = false) =
 }
 
 const stopStream = (stream: MediaStream | null) => {
-	stream?.getTracks().forEach(track => track.stop())
+	stream?.getTracks().forEach(track => { track.stop() })
 }
 
 /** 宿主卸载时只取消录音，不上传可能不完整的半截数据。 */
@@ -350,8 +350,8 @@ const stopRecording = async (payload?: RecordStopPayload): Promise<void> => {
 	recordingStopping = true
 	try {
 		await new Promise<void>((resolve, reject) => {
-			ACTIVE.onstop = () => resolve()
-			ACTIVE.onerror = () => reject(new Error("MediaRecorder 录音失败"))
+			ACTIVE.onstop = () => { resolve() }
+			ACTIVE.onerror = () => { reject(new Error("MediaRecorder 录音失败")) }
 			try {
 				ACTIVE.stop()
 			} catch (error) {
@@ -395,7 +395,7 @@ export const installAudioHost = async (): Promise<void> => {
 	const NEXT_UNLISTENERS: UnlistenFn[] = []
 	try {
 		NEXT_UNLISTENERS.push(await listen<PlayPayload>("nori:audio-play", ({payload}) => void play(payload)))
-		NEXT_UNLISTENERS.push(await listen("nori:audio-stop", () => cancelPlayback()))
+		NEXT_UNLISTENERS.push(await listen("nori:audio-stop", () => { cancelPlayback() }))
 		NEXT_UNLISTENERS.push(await listen<RecordStartPayload>("nori:audio-record-start", ({payload}) => void startRecording(payload)))
 		NEXT_UNLISTENERS.push(await listen<RecordStopPayload>("nori:audio-record-stop", ({payload}) => void stopRecording(payload)))
 		unlisteners = NEXT_UNLISTENERS

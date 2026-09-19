@@ -79,7 +79,7 @@ const LAUNCHERS = computed<{
 
 /** 那个窗口此刻开着没有。开着就点亮，而不是画一个假的「已选中」。 */
 const isWindowOpen = (key: "chat" | "models" | "memory" | "settings") =>
-	RUNTIME.snapshot.value?.windows?.[key] ?? false
+	RUNTIME.snapshot.value?.windows[key] ?? false
 
 // 常驻快照通知不会丢失后台检查结果，也不会强制弹窗或抢焦点。
 const UPDATE = computed(() => RUNTIME.snapshot.value?.updater)
@@ -108,19 +108,25 @@ const openNativeSettings = async (page?: string) => {
 }
 
 const openNativeModels = () => {
-	void RUNTIME.openModels().catch(error => feedback.error(UI_I18N.value.loadFailed, error))
+	void RUNTIME.openModels().catch(error => { feedback.error(UI_I18N.value.loadFailed, error) })
 }
 
 const openNativeChat = () => {
-	void RUNTIME.openChat().catch(error => feedback.error(UI_I18N.value.loadFailed, error))
+	void RUNTIME.openChat().catch(error => { feedback.error(UI_I18N.value.loadFailed, error) })
 }
 
 /** 打开对应的窗口。已经开着的会被带到前面来，这是各个 open* 自己的行为。 */
 const openWindow = (key: Exclude<NavKey, "home">) => {
-	if (key === "talk") return openNativeChat()
-	if (key === "model") return openNativeModels()
+	if (key === "talk") {
+		openNativeChat()
+		return
+	}
+	if (key === "model") {
+		openNativeModels()
+		return
+	}
 	if (key === "memory") {
-		void RUNTIME.openMemory().catch(error => feedback.error(UI_I18N.value.loadFailed, error))
+		void RUNTIME.openMemory().catch(error => { feedback.error(UI_I18N.value.loadFailed, error) })
 		return
 	}
 	void openNativeSettings()

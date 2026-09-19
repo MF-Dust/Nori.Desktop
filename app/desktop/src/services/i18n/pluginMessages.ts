@@ -33,6 +33,15 @@ export interface PluginSettingsMessages {
 	}
 }
 
+export interface LocaleMessageTree {
+	[key: string]: string | LocaleMessageTree
+}
+
+const isLocaleMessageTree = (value: unknown): value is LocaleMessageTree => {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return false
+	return Object.values(value).every(item => typeof item === "string" || isLocaleMessageTree(item))
+}
+
 export const PLUGIN_MESSAGES: Record<"zh-CN" | "en-US", PluginSettingsMessages> = {
 	"zh-CN": {
 		plugins: {
@@ -70,15 +79,18 @@ export const PLUGIN_MESSAGES: Record<"zh-CN" | "en-US", PluginSettingsMessages> 
 	},
 }
 
-export const mergePluginMessages = (locale: string, source: any): any => {
+export const mergePluginMessages = (locale: string, source: unknown): LocaleMessageTree => {
+	if (!isLocaleMessageTree(source)) throw new TypeError("语言资源格式无效")
 	const additions = PLUGIN_MESSAGES[locale as "zh-CN" | "en-US"]
 	if (!additions) return source
+	const views = isLocaleMessageTree(source.views) ? source.views : {}
+	const main = isLocaleMessageTree(views.main) ? views.main : {}
 	return {
 		...source,
 		views: {
-			...(source?.views ?? {}),
+			...views,
 			main: {
-				...(source?.views?.main ?? {}),
+				...main,
 				plugins: additions.plugins,
 			},
 		},

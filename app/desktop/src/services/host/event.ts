@@ -23,7 +23,7 @@ export interface HostEvent<T> {
 export const listen = async <T = unknown>(event: string, handler: (message: HostEvent<T>) => void): Promise<UnlistenFn> => {
 	const HOST = host()
 	if (!HOST) return () => {}
-	return HOST.listen(event, (message) => handler(message as HostEvent<T>))
+	return HOST.listen(event, (message) => { handler(message as HostEvent<T>) })
 }
 
 /**

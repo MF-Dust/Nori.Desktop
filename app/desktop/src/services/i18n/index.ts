@@ -7,7 +7,11 @@ import {mergePluginMessages} from "./pluginMessages"
  */
 export type LanguageType = string
 
-const MESSAGES: Record<string, () => Promise<any>> = import.meta.glob("./locales/*.ts")
+interface LocaleModule {
+	default: unknown
+}
+
+const MESSAGES = import.meta.glob<LocaleModule>("./locales/*.ts")
 
 /**
  * 获取系统语言, 映射到可用的 locale 文件名 (宿主不可用时回退浏览器语言)

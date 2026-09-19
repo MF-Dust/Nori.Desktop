@@ -314,12 +314,12 @@ export const RUNTIME = {
 
 	/** Agent 会话事件 (仅发起会话的窗口会收到) */
 	onAgentEvent(handler: (payload: AgentEventPayload) => void): Promise<UnlistenFn> {
-		return listen<AgentEventPayload>("nori:agent-event", ({payload}) => handler(payload))
+		return listen<AgentEventPayload>("nori:agent-event", ({payload}) => { handler(payload) })
 	},
 
 	/** 主动交互消息 (挂机关怀/日程问候/提醒触发) */
 	onProactiveMessage(handler: (text: string) => void): Promise<UnlistenFn> {
-		return listen<{text: string}>("nori:proactive-message", ({payload}) => handler(payload.text))
+		return listen<{text: string}>("nori:proactive-message", ({payload}) => { handler(payload.text) })
 	},
 
 	/**

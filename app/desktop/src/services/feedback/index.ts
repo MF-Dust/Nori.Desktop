@@ -56,10 +56,10 @@ export const feedback = {
 				content: options.content,
 				positiveText: options.positiveText,
 				negativeText: options.negativeText,
-				onPositiveClick: () => resolve(true),
-				onNegativeClick: () => resolve(false),
-				onClose: () => resolve(false),
-				onMaskClick: () => resolve(false),
+				onPositiveClick: () => { resolve(true) },
+				onNegativeClick: () => { resolve(false) },
+				onClose: () => { resolve(false) },
+				onMaskClick: () => { resolve(false) },
 			})
 		})
 	},

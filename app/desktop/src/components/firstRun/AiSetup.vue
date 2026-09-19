@@ -53,7 +53,7 @@ const API_KEY_PLACEHOLDER = computed(() => {
 const canFetch = computed(() => !fetching.value && draft.value.apiKey.trim().length > 0)
 
 /** 每次改动都把草稿抬给 FirstRunView (它负责在离开这一步时保存) */
-const push = () => emit("draft", {...draft.value})
+const push = () => { emit("draft", {...draft.value}) }
 
 const onProviderChange = (value: AiProviderKey) => {
 	draft.value.provider = value

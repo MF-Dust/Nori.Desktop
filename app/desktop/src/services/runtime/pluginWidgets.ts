@@ -85,6 +85,8 @@ export class PluginWidgetBridge {
 		const reply = (result: unknown, error?: string): void => {
 			if (!isCurrent()) return
 			// sandbox 的 opaque origin 只能使用 *；目标始终是已验证的单个窗口。
+			// Codacy误报：sandbox iframe使用opaque origin，只能使用*；消息接收方已绑定并校验。
+			// nosemgrep: wildcard is required for sandbox opaque origins
 			SOURCE.postMessage({source: "nori-plugin-widget-host", requestId: CALL.requestId, result, error}, "*")
 		}
 		try {

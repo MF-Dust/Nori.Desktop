@@ -16,19 +16,25 @@ try {
 		const PUBLISH = join(TEMP, RID)
 		const SLOT = "app-1.0.4-7"
 		const ENTRY = join(PUBLISH, SLOT, ENTRYPOINT)
+		// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时目录
 		mkdirSync(dirname(ENTRY), {recursive: true})
+		// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
 		writeFileSync(ENTRY, "程序")
+		// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
 		writeFileSync(join(PUBLISH, ".current"), `${SLOT}\n`)
 		const DEPLOYMENT = {
 			schema_version: 1, product_version: "1.0.4-codename", numeric_version: "1.0.4", revision: 7, rid: RID, entrypoint: ENTRYPOINT,
 		}
+		// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
 		writeFileSync(join(PUBLISH, SLOT, "deployment.json"), JSON.stringify(DEPLOYMENT))
 		const ARCHIVE = join(TEMP, `nori-1.0.4-${RID}.${EXTENSION}`)
 		const CONTENT = "更新包内容 fixture"
+		// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时归档
 		writeFileSync(ARCHIVE, CONTENT)
 		const ARGS = [SCRIPT, "--version", "1.0.4-codename", "--rid", RID, "--archive-path", ARCHIVE, "--publish-dir", PUBLISH, "--output-dir", TEMP]
 		const RESULT = spawnSync(process.execPath, ARGS, {encoding: "utf8"})
 		assert.equal(RESULT.status, 0, RESULT.stderr)
+		// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
 		const MANIFEST = JSON.parse(readFileSync(join(TEMP, `UPDATE-${RID}.json`), "utf8"))
 		assert.equal(MANIFEST.schema_version, 1)
 		assert.equal(MANIFEST.revision, 7)
@@ -45,6 +51,7 @@ try {
 		for (const EXTRA of [["--revision", "0"], ["--revision", "7bad"], ["--version", "1.0.5-other"], ["--version", "Dev"], ["--rid", "osx-x64"]]) {
 			assert.notEqual(spawnSync(process.execPath, [...ARGS, ...EXTRA], {encoding: "utf8"}).status, 0, EXTRA.join(" "))
 		}
+		// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
 		writeFileSync(join(PUBLISH, SLOT, "deployment.json"), JSON.stringify({...DEPLOYMENT, entrypoint: "../outside"}))
 		assert.notEqual(spawnSync(process.execPath, ARGS, {encoding: "utf8"}).status, 0)
 	}

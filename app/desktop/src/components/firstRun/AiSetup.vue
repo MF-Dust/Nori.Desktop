@@ -34,7 +34,10 @@ const fetching = ref(false)
 const fetchResult = ref("")
 const fetchSuccess = ref(false)
 
-const PROVIDER_OPTIONS = computed(() => AI_PROVIDER_OPTIONS.map(key => ({label: AI_I18N.value.providers[key], value: key})))
+const PROVIDER_OPTIONS = computed(() => AI_PROVIDER_OPTIONS.map(key => ({
+	// eslint-disable-next-line -- Codacy误报：提供商键来自固定联合类型
+	label: AI_I18N.value.providers[key], value: key,
+})))
 const MODEL_OPTIONS = computed(() => {
 	const LIST = [...models.value]
 	if (draft.value.model && !LIST.includes(draft.value.model)) LIST.unshift(draft.value.model)

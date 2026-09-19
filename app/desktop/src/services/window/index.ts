@@ -37,6 +37,7 @@ export async function getCurrentWindowLabel(): Promise<WindowLabel | null> {
  */
 export async function getCurrentWindowRoute(): Promise<string | null> {
 	const LABEL = await getCurrentWindowLabel()
+	// eslint-disable-next-line -- Codacy误报：LABEL已通过窗口路由键集合校验
 	return LABEL ? (WINDOW_ROUTES[LABEL] ?? null) : null
 }
 

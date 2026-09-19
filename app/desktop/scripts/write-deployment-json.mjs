@@ -16,6 +16,7 @@ if (!output || !/^(win|linux|osx)-[A-Za-z0-9-]+$/.test(rid ?? "") || !entrypoint
 	process.exit(2);
 }
 const revisionNumber = Number(revision);
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- output是发布流程显式目标
 writeFileSync(output, JSON.stringify({
 	schema_version: 1,
 	product_version: productVersion,

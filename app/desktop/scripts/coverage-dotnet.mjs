@@ -33,6 +33,7 @@ const DOTNET_OPTIONS = [...SUPPORTED_OPTIONS].filter(option => OPTIONS.has(optio
 
 // 每次从干净目录开始，保证本地与 CI 都能得到可定位的 Cobertura 产物。
 rmSync(COVERAGE_ROOT, {recursive: true, force: true})
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- 输出目录由脚本固定计算
 mkdirSync(COVERAGE_ROOT, {recursive: true})
 
 for (const PROJECT of PROJECTS) {

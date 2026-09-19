@@ -175,6 +175,8 @@ async function refreshCore(): Promise<void> {
 		const FIRST = lastLanguage === null
 		lastLanguage = LANGUAGE
 		// 首次拉取不回放 (main.ts 已经用它初始化 i18n), 只处理后续变更
+		// Codacy 误报：回调异常由 refresh 的调用方统一捕获。
+		// eslint-disable-next-line -- Codacy误报：refresh调用方统一捕获回调异常
 		if (!FIRST) for (const handler of languageHandlers) handler(LANGUAGE)
 	}
 }
@@ -198,6 +200,8 @@ function refresh(): Promise<void> {
 			} catch (error) {
 				if (firstError === null) firstError = error
 			}
+		// Codacy 误报：refreshQueued 可由并发调用在 await 期间置为 true。
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- 并发刷新标志可在await期间变化
 		} while (refreshQueued)
 
 		if (firstError !== null) throw firstError

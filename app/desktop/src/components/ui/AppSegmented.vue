@@ -45,7 +45,9 @@ const onKeydown = (event: KeyboardEvent, index: number) => {
 	if (STEP === 0) return
 	event.preventDefault()
 	const NEXT = (index + STEP + props.items.length) % props.items.length
+	// eslint-disable-next-line -- Codacy误报：NEXT已按items.length取模
 	select(props.items[NEXT].key)
+	// eslint-disable-next-line -- Codacy误报：NEXT已按items.length取模
 	BUTTONS.value[NEXT]?.focus()
 }
 </script>

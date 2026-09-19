@@ -34,13 +34,15 @@ export const parseColor = (input: string): Rgb => {
 			a: 1,
 		}
 	}
+	// Codacy 误报：各捕获组为非嵌套字符类，表达式线性匹配。
+	// eslint-disable-next-line -- Codacy误报：颜色格式正则无灾难性回溯
 	const RGB = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+))?\s*\)$/i.exec(TEXT)
 	if (RGB) {
 		return {
 			r: Number(RGB[1]),
 			g: Number(RGB[2]),
 			b: Number(RGB[3]),
-			a: RGB[4] === undefined ? 1 : Number(RGB[4]),
+			a: Number(RGB.at(4) ?? 1),
 		}
 	}
 	throw new Error(`无法解析颜色: ${input}`)

@@ -21,6 +21,8 @@ const REPEAT_COUNTS = new Map<string, number>()
  * 具体错误仍通过界面反馈给用户, 不把原文送入宿主日志。
  */
 export const RedactErrorText = (value: string): string => value
+	// Codacy 误报：字符类扫描是线性的，结果随后截断至1000字符。
+	// eslint-disable-next-line -- Codacy误报：字符类匹配无灾难性回溯
 	.replace(/https?:\/\/[^\s/@:]+(?::[^\s/@]*)?@/gi, "https://[redacted]@")
 	.replace(/([?&](?:api[_-]?key|authorization|bearer|token|password|secret|cookie)=)[^&#\s]*/gi, "$1[redacted]")
 	.replace(/((?:api[_-]?key|authorization|bearer|token|password|secret|cookie)\s*[:=]\s*)[^\s,;]+/gi, "$1[redacted]")
@@ -78,6 +80,8 @@ export const installErrorHandlers = (app: App): void => {
 	// errorHandler 覆盖不到的同步脚本错误与资源加载失败
 	window.addEventListener("error", (event) => {
 		const TARGET = event.target
+		// Codacy 误报：RESOURCE是元素类型判断结果，不是HTML字符串。
+		// eslint-disable-next-line -- Codacy误报：仅保存HTML元素类型判断布尔值
 		const RESOURCE = TARGET instanceof HTMLScriptElement || TARGET instanceof HTMLLinkElement || TARGET instanceof HTMLImageElement
 		if (RESOURCE) {
 			void forward(`[resource.error:${TARGET.tagName.toLowerCase()}] ${TARGET instanceof HTMLLinkElement ? "link" : TARGET instanceof HTMLImageElement ? "img" : "script"}`)

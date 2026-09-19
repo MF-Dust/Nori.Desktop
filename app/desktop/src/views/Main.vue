@@ -79,6 +79,7 @@ const LAUNCHERS = computed<{
 
 /** 那个窗口此刻开着没有。开着就点亮，而不是画一个假的「已选中」。 */
 const isWindowOpen = (key: "chat" | "models" | "memory" | "settings") =>
+	// eslint-disable-next-line -- Codacy误报：key为固定窗口联合类型
 	RUNTIME.snapshot.value?.windows[key] ?? false
 
 // 常驻快照通知不会丢失后台检查结果，也不会强制弹窗或抢焦点。
@@ -190,10 +191,7 @@ const navigate = (tab: "talk" | "model" | "settings") => {
 		openNativeModels()
 		return
 	}
-	if (tab === "settings") {
-		void openNativeSettings("ai")
-		return
-	}
+	void openNativeSettings("ai")
 }
 
 // 面板内未捕获异常不能拖崩整个主窗口

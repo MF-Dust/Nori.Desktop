@@ -87,6 +87,8 @@ export const isSupportedAudioMime = (mime: string | null | undefined): boolean =
 
 /** 选择浏览器实际支持的 MediaRecorder MIME。 */
 export const chooseRecordingMime = (mediaRecorder: typeof MediaRecorder | undefined = globalThis.MediaRecorder): string => {
+	// Codacy 误报：这是 WebView 能力探测，运行时确实可能没有 MediaRecorder。
+	// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- WebView运行时能力可缺失
 	if (!mediaRecorder) throw new Error("当前 WebView 不支持 MediaRecorder")
 	for (const MIME of RECORDING_MIME_CANDIDATES) {
 		if (typeof mediaRecorder.isTypeSupported !== "function" || mediaRecorder.isTypeSupported(MIME)) return MIME
@@ -292,6 +294,8 @@ const startRecording = async (payload: RecordStartPayload): Promise<void> => {
 	recorderChunks = []
 	let acquiredStream: MediaStream | null = null
 	try {
+		// Codacy 误报：不同 WebView 的媒体能力在运行时可缺失。
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- WebView运行时能力可缺失
 		if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前 WebView 不支持麦克风")
 		acquiredStream = await navigator.mediaDevices.getUserMedia({audio: true})
 		if (!audioHostInstalled || GENERATION !== recordingGeneration || recordToken !== payload.token) {
@@ -355,7 +359,7 @@ const stopRecording = async (payload?: RecordStopPayload): Promise<void> => {
 			try {
 				ACTIVE.stop()
 			} catch (error) {
-				reject(error)
+				reject(error instanceof Error ? error : new Error(String(error)))
 			}
 		})
 		const MIME = normalizeAudioMime(ACTIVE.mimeType || recorderChunks[0]?.type)
@@ -424,6 +428,7 @@ export const uninstallAudioHost = (): void => {
 /** 供测试使用的纯函数：由时域样本算 RMS 电平。 */
 export const computeLevel = (samples: ArrayLike<number>): number => {
 	let sum = 0
+	// eslint-disable-next-line -- Codacy误报：数组索引由受控循环边界产生
 	for (let index = 0; index < samples.length; index += 1) sum += samples[index] * samples[index]
 	if (samples.length === 0) return 0
 	return Math.min(1, Math.sqrt(sum / samples.length) * 3)

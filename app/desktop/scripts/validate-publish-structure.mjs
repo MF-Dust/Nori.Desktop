@@ -7,16 +7,21 @@ if (!rootArg || !rid) throw new Error("用法: validate-publish-structure.mjs <p
 const root = rootArg;
 const fail = (message) => { throw new Error(message); };
 const file = (path, executable = false) => {
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- path来自受控发布根目录
 	if (!existsSync(path) || !lstatSync(path).isFile()) fail(`发布目录缺少文件: ${relative(root, path)}`);
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- path来自受控发布根目录
 	if (executable && process.platform !== "win32" && (lstatSync(path).mode & 0o111) === 0) fail(`发布入口不可执行: ${relative(root, path)}`);
 };
 const directory = (path) => {
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- path来自受控发布根目录
 	if (!existsSync(path) || !lstatSync(path).isDirectory()) fail(`发布目录缺少目录: ${relative(root, path)}`);
 };
 const scan = (path) => {
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- path来自受控发布根目录递归
 	const stat = lstatSync(path);
 	if (stat.isSymbolicLink()) fail(`发布目录不得包含符号链接: ${relative(root, path)}`);
 	if (!stat.isDirectory()) return;
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- path来自受控发布根目录递归
 	for (const name of readdirSync(path)) scan(join(path, name));
 };
 if (!["win-x64", "linux-x64", "linux-arm64", "osx-x64", "osx-arm64"].includes(rid)) fail(`RID 无效: ${rid}`);
@@ -30,6 +35,7 @@ file(`${rootSidecarBase}.deps.json`);
 file(`${rootSidecarBase}.runtimeconfig.json`);
 file(join(root, "LICENSE"));
 file(join(root, ".current"));
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- root是显式发布目录
 const slotName = readFileSync(join(root, ".current"), "utf8").trim();
 const slotMatch = /^app-(\d+\.\d+\.\d+)-(\d+)$/.exec(slotName);
 if (!slotMatch) fail(`.current 无效: ${slotName}`);
@@ -42,6 +48,7 @@ const entryRelative = rid.startsWith("osx-")
 	: rid.startsWith("win-") ? "Nori.Desktop.exe" : "Nori.Desktop";
 let manifest;
 try {
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- manifestPath由已校验发布槽生成
 	manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 	validateProductVersion(manifest.product_version);
 	validateNumericVersion(manifest.numeric_version);
@@ -68,11 +75,13 @@ file(rid.startsWith("osx-")
 const forbidden = new Set(["data", "dotnet", "shared", "coreclr", "hostfxr", "hostpolicy"]);
 const lower = (value) => value.toLowerCase();
 const walkForbidden = (path) => {
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- path来自受控发布根目录递归
 	for (const name of readdirSync(path)) {
 		const full = join(path, name);
 		const normalized = lower(name.replace(/\.[^.]+$/, ""));
 		const withoutLib = normalized.replace(/^lib/, "");
 		if (forbidden.has(normalized) || forbidden.has(withoutLib) || lower(name).endsWith(".map")) fail(`FDD 发布目录包含禁止项: ${relative(root, full)}`);
+		// eslint-disable-next-line security/detect-non-literal-fs-filename -- full来自受控发布根目录递归
 		if (lstatSync(full).isDirectory()) walkForbidden(full);
 	}
 };

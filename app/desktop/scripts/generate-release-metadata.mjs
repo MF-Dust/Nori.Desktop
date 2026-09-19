@@ -4,12 +4,14 @@ import path from "node:path"
 import {validateProductVersion} from "./version-validation.mjs"
 
 const ROOT = process.cwd()
+const ARGUMENT_NAMES = new Set(["publish-dir", "version", "rid", "output-dir"])
 const parseArgs = (argv) => {
-	const result = {}
+	const result = Object.create(null)
 	for (let index = 0; index < argv.length; index++) {
 		const argument = argv[index]
 		if (!argument.startsWith("--")) throw new Error(`无法识别参数: ${argument}`)
 		const key = argument.slice(2)
+		if (!ARGUMENT_NAMES.has(key)) throw new Error(`Unsupported argument: --${key}`)
 		if (index + 1 >= argv.length || argv[index + 1].startsWith("--")) throw new Error(`参数缺少值: --${key}`)
 		result[key] = argv[++index]
 	}
@@ -17,12 +19,14 @@ const parseArgs = (argv) => {
 }
 
 const writeJson = (filePath, value) => {
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- 发布元数据输出路径由发布参数生成
 	fs.writeFileSync(filePath, `${JSON.stringify(value, null, "\t")}\n`, "utf8") // nosemgrep
 }
 
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "bin", "obj", "dist", "coverage"])
 const walkFiles = (directory) => {
 	const result = []
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- directory来自受控发布目录遍历
 	for (const entry of fs.readdirSync(directory, {withFileTypes: true})) { // nosemgrep
 		const entryPath = path.join(directory, entry.name)
 		if (entry.isDirectory()) {
@@ -34,6 +38,7 @@ const walkFiles = (directory) => {
 
 const sha256 = (filePath) => {
 	const hash = crypto.createHash("sha256")
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- filePath来自受控发布目录遍历
 	hash.update(fs.readFileSync(filePath)) // nosemgrep
 	return hash.digest("hex")
 }
@@ -46,6 +51,7 @@ const packageEntries = [
 
 const csprojEntries = []
 for (const filePath of walkFiles(ROOT).filter((file) => file.endsWith(".csproj") && !file.includes(`${path.sep}obj${path.sep}`) && !file.includes(`${path.sep}bin${path.sep}`))) {
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- filePath来自受控项目文件遍历
 	const contents = fs.readFileSync(filePath, "utf8") // nosemgrep
 	for (const match of contents.matchAll(/<PackageReference\s+Include="([^"]+)"\s+Version="([^"]+)"/g)) {
 		csprojEntries.push({name: match[1], version: match[2], scope: "runtime", ecosystem: "NuGet"})
@@ -94,7 +100,9 @@ const rid = args.rid ?? "win-x64"
 const outputDir = path.resolve(args["output-dir"] ?? "bin/release")
 if (!version || !args["publish-dir"]) throw new Error("需要 --publish-dir、--version")
 validateProductVersion(version)
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- publishDir是发布流程显式目录
 if (!fs.existsSync(publishDir)) throw new Error(`发布目录不存在: ${publishDir}`) // nosemgrep
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- outputDir是发布流程显式目录
 fs.mkdirSync(outputDir, {recursive: true}) // nosemgrep
 
 const files = walkFiles(publishDir)
@@ -192,5 +200,6 @@ const markdown = [
 	"项目自身许可证见仓库根目录 LICENSE。未确认条目不会被此文件推断为任何具体许可证。",
 	"",
 ].join("\n")
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- outputDir是发布流程显式目录
 fs.writeFileSync(path.join(outputDir, "THIRD-PARTY-NOTICES.md"), markdown, "utf8") // nosemgrep
 console.log(`已生成发布元数据: ${outputDir}`)

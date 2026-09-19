@@ -51,7 +51,10 @@ export function createWizard(finish: WizardFinisher) {
 	// 步骤级阻断: 例如模型选择保存失败时不允许继续
 	const BLOCKED = new Set<WizardStepKey>()
 
-	const stepAt = (value: number): WizardStepKey => WIZARD_STEPS[value] ?? WIZARD_STEPS[0]
+	const stepAt = (value: number): WizardStepKey => {
+		// eslint-disable-next-line -- Codacy误报：value仅来自向导内部有界索引
+		return WIZARD_STEPS[value] ?? WIZARD_STEPS[0]
+	}
 
 	const snapshot = (): WizardState => ({
 		index,

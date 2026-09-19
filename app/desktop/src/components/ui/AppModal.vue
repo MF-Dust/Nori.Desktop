@@ -42,7 +42,7 @@ const focusableElements = (): HTMLElement[] => {
 
 const focusFirst = async (): Promise<void> => {
 	await nextTick()
-	const FIRST = focusableElements()[0]
+	const FIRST = focusableElements().at(0)
 	;(FIRST ?? MODAL_ROOT.value)?.focus()
 }
 

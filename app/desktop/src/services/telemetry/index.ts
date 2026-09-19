@@ -87,13 +87,12 @@ const scrubReplayValue = (value: unknown, key = ""): unknown => {
 		}
 		return value
 	}
-	const RESULT: RecordValue = {...value}
-	for (const [CHILD_KEY, CHILD_VALUE] of Object.entries(RESULT)) {
-		RESULT[CHILD_KEY] = REPLAY_URL_KEY.test(CHILD_KEY)
+	return Object.fromEntries(Object.entries(value).map(([CHILD_KEY, CHILD_VALUE]) => [
+		CHILD_KEY,
+		REPLAY_URL_KEY.test(CHILD_KEY)
 			? Array.isArray(CHILD_VALUE) ? CHILD_VALUE.map(() => SCRUBBED_URL) : SCRUBBED_URL
-			: scrubReplayValue(CHILD_VALUE, CHILD_KEY)
-	}
-	return RESULT
+			: scrubReplayValue(CHILD_VALUE, CHILD_KEY),
+	])) as RecordValue
 }
 
 /** Replay event processor: URLs and paths are fixed, replay IDs stay linkable. */

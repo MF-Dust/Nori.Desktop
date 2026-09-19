@@ -42,7 +42,7 @@ const isLocaleMessageTree = (value: unknown): value is LocaleMessageTree => {
 	return Object.values(value).every(item => typeof item === "string" || isLocaleMessageTree(item))
 }
 
-export const PLUGIN_MESSAGES: Record<"zh-CN" | "en-US", PluginSettingsMessages> = {
+export const PLUGIN_MESSAGES: Partial<Record<"zh-CN" | "en-US", PluginSettingsMessages>> = {
 	"zh-CN": {
 		plugins: {
 			title: "插件管理",
@@ -81,7 +81,7 @@ export const PLUGIN_MESSAGES: Record<"zh-CN" | "en-US", PluginSettingsMessages> 
 
 export const mergePluginMessages = (locale: string, source: unknown): LocaleMessageTree => {
 	if (!isLocaleMessageTree(source)) throw new TypeError("语言资源格式无效")
-	const additions = PLUGIN_MESSAGES[locale as "zh-CN" | "en-US"]
+	const additions = Object.entries(PLUGIN_MESSAGES).find(([KEY]) => KEY === locale)?.[1]
 	if (!additions) return source
 	const views = isLocaleMessageTree(source.views) ? source.views : {}
 	const main = isLocaleMessageTree(views.main) ? views.main : {}

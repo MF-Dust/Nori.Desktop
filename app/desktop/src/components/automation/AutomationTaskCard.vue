@@ -39,6 +39,8 @@ const displayTitle = computed(() => {
 const taskKindLabel = computed(() => {
 	const K = props.task.taskKind || ""
 	const KINDS = TEXT.value.taskKinds as Record<string, string>
+	// Codacy 误报：键来自后端枚举，仅用于只读本地化查询。
+	// eslint-disable-next-line -- Codacy误报：后端枚举只读查询
 	return KINDS[K] || (K ? K : null)
 })
 
@@ -57,6 +59,7 @@ const isSafePagePaused = computed(() =>
 const pauseReasonLabel = computed(() => {
 	if (!props.task.pauseReason) return null
 	const REASONS = TEXT.value.pauseReasons as Record<string, string>
+	// eslint-disable-next-line -- Codacy误报：后端枚举只读查询
 	return REASONS[props.task.pauseReason] || props.task.pauseReason
 })
 
@@ -116,6 +119,7 @@ const formatTime = (timeStr?: string | null) => {
 const actionKindLabels = computed(() => {
 	const KINDS = props.task.actionKinds || []
 	const MAP = TEXT.value.actionKinds as Record<string, string>
+	// eslint-disable-next-line -- Codacy误报：后端枚举只读查询
 	return KINDS.map(k => MAP[k] || MAP.unknown || k)
 })
 

@@ -44,6 +44,8 @@ const SHOULD_SKIP = (filePath) => {
 
 const WALK = (directory) => {
 	const files = []
+	// Codacy误报：directory只由固定first-party根目录递归生成。
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- 受控源码扫描路径
 	for (const entry of fs.readdirSync(directory, {withFileTypes: true})) { // nosemgrep
 		const entryPath = path.join(directory, entry.name)
 		if (entry.isDirectory()) {
@@ -58,8 +60,10 @@ const WALK = (directory) => {
 const matches = []
 for (const relativeRoot of FIRST_PARTY_ROOTS) {
 	const absoluteRoot = path.join(ROOT, relativeRoot)
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- absoluteRoot来自固定根目录清单
 	if (!fs.existsSync(absoluteRoot)) continue // nosemgrep
 	for (const filePath of WALK(absoluteRoot)) {
+		// eslint-disable-next-line security/detect-non-literal-fs-filename -- filePath来自受控源码遍历
 		const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/) // nosemgrep
 		lines.forEach((line, index) => {
 			if (MARKER_PATTERN.test(line)) {

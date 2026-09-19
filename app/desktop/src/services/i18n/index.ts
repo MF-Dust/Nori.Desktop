@@ -11,7 +11,7 @@ interface LocaleModule {
 	default: unknown
 }
 
-const MESSAGES = import.meta.glob<LocaleModule>("./locales/*.ts")
+const MESSAGES = new Map(Object.entries(import.meta.glob<LocaleModule>("./locales/*.ts")))
 
 /**
  * 获取系统语言, 映射到可用的 locale 文件名 (宿主不可用时回退浏览器语言)
@@ -19,10 +19,10 @@ const MESSAGES = import.meta.glob<LocaleModule>("./locales/*.ts")
 const getSystemLanguage = (): string => {
 	let lang = navigator.language || "zh-CN"
 	const KEY = `./locales/${lang}.ts`
-	if (MESSAGES[KEY]) return lang
+	if (MESSAGES.has(KEY)) return lang
 	const PREFIX = lang.split("-")[0]
 	const PREFIX_KEY = `./locales/${PREFIX}.ts`
-	if (MESSAGES[PREFIX_KEY]) return PREFIX
+	if (MESSAGES.has(PREFIX_KEY)) return PREFIX
 	return "zh-CN"
 }
 
@@ -42,7 +42,7 @@ const useLanguage = {
 	 * 初始化: 优先使用后端快照中的持久化语言, 缺省回退系统语言
 	 */
 	async init(savedLanguage?: string): Promise<void> {
-		const LANG = savedLanguage && MESSAGES[`./locales/${savedLanguage}.ts`] ? savedLanguage : getSystemLanguage()
+		const LANG = savedLanguage && MESSAGES.has(`./locales/${savedLanguage}.ts`) ? savedLanguage : getSystemLanguage()
 		await this.setLanguage(LANG)
 	},
 	/**
@@ -63,14 +63,14 @@ const useLanguage = {
 	 * 获取可用语言列表
 	 */
 	getLanguages(): string[] {
-		return Object.keys(MESSAGES).map((key) => key.replace("./locales/", "").replace(".ts", ""))
+		return [...MESSAGES.keys()].map((key) => key.replace("./locales/", "").replace(".ts", ""))
 	},
 	/**
 	 * 获取 loader
 	 */
 	getLoader(lang: string) {
 		const KEY = `./locales/${lang}.ts`
-		return MESSAGES[KEY]
+		return MESSAGES.get(KEY)
 	}
 }
 

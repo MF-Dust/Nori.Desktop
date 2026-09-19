@@ -15,25 +15,26 @@ const language = useLanguage
 const I18N = computed(() => useLanguages().components.firstRun.languageSelect)
 
 // 语言 code → 本地国旗图片 (来自 flagcdn 下载, 存于 src/assets/images/flags)
-const FLAG_MAP: Record<string, string> = {
-	"zh-CN": zhCn,
-	"zh": zhCn,
-	"en": enGb,
-	"en-US": enUs,
-}
+const FLAG_MAP = new Map<string, string>([
+	["zh-CN", zhCn],
+	["zh", zhCn],
+	["en", enGb],
+	["en-US", enUs],
+])
 
 // 语言 code → 显示名称 (fallback 用 Intl.DisplayNames)
-const NAME_MAP: Record<string, {name: string; sub: string}> = {
-	"zh-CN": {name: "简体中文", sub: "Chinese (Simplified)"},
-	"zh": {name: "简体中文", sub: "Chinese (Simplified)"},
-	"en": {name: "English", sub: "English (UK)"},
-	"en-US": {name: "English (US)", sub: "American English"},
-}
+const NAME_MAP = new Map<string, {name: string; sub: string}>([
+	["zh-CN", {name: "简体中文", sub: "Chinese (Simplified)"}],
+	["zh", {name: "简体中文", sub: "Chinese (Simplified)"}],
+	["en", {name: "English", sub: "English (UK)"}],
+	["en-US", {name: "English (US)", sub: "American English"}],
+])
 
-const flagOf = (code: string): string => FLAG_MAP[code] ?? FLAG_MAP[code.split("-")[0]] ?? ""
+const flagOf = (code: string): string => FLAG_MAP.get(code) ?? FLAG_MAP.get(code.split("-")[0]) ?? ""
 
 const nameInfoOf = (code: string): {name: string; sub: string} => {
-	if (NAME_MAP[code]) return NAME_MAP[code]
+	const NAME = NAME_MAP.get(code)
+	if (NAME) return NAME
 	const autoName = new Intl.DisplayNames([code], {type: "language"}).of(code.split("-")[0]) || code
 	return {name: autoName, sub: code}
 }

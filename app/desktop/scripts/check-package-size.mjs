@@ -20,6 +20,7 @@ const target = resolve(targetArg)
 const files = []
 
 const sizeOf = async path => {
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- path是显式构建检查目标
 	const info = await stat(path)
 	if (info.isFile()) {
 		files.push({path: relative(target, path) || path, size: info.size})
@@ -27,6 +28,7 @@ const sizeOf = async path => {
 	}
 	if (!info.isDirectory()) return 0
 	let total = 0
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- path是显式构建检查目标
 	for (const entry of await readdir(path, {withFileTypes: true})) {
 		if (entry.isSymbolicLink()) continue
 		total += await sizeOf(resolve(path, entry.name))
@@ -40,6 +42,7 @@ try {
 	const summary = `${label}: ${mib.toFixed(2)} MiB / budget ${maxMiB.toFixed(2)} MiB`
 	console.log(`[package-size] ${summary}`)
 	if (process.env.GITHUB_STEP_SUMMARY) {
+		// eslint-disable-next-line security/detect-non-literal-fs-filename -- GitHub提供的摘要文件路径
 		await appendFile(process.env.GITHUB_STEP_SUMMARY, `- ${summary}\n`, "utf8")
 	}
 	if (mib > maxMiB) {

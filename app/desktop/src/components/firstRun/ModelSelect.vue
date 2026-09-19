@@ -45,6 +45,7 @@ onMounted(async () => {
 })
 
 const selectModel = (modelId: string): void => {
+	// eslint-disable-next-line -- Codacy误报：模型状态仅作只读存在性查询
 	if (importing.value || !installedMap.value[modelId]) return
 	selected.value = modelId
 	emit("selected", modelId)

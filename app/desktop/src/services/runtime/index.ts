@@ -171,12 +171,12 @@ async function refreshCore(): Promise<void> {
 	const NEXT_SNAPSHOT = await invoke("ui_get_snapshot")
 	SNAPSHOT.value = NEXT_SNAPSHOT
 	const LANGUAGE = NEXT_SNAPSHOT.general.language
+	// Codacy误报：语言变更回调由refresh调用方统一捕获。
+	// eslint-disable-next-line -- Codacy误报：refresh调用方统一捕获回调异常
 	if (LANGUAGE && LANGUAGE !== lastLanguage) {
 		const FIRST = lastLanguage === null
 		lastLanguage = LANGUAGE
 		// 首次拉取不回放 (main.ts 已经用它初始化 i18n), 只处理后续变更
-		// Codacy 误报：回调异常由 refresh 的调用方统一捕获。
-		// eslint-disable-next-line -- Codacy误报：refresh调用方统一捕获回调异常
 		if (!FIRST) for (const handler of languageHandlers) handler(LANGUAGE)
 	}
 }

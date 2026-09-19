@@ -97,6 +97,7 @@ const stateLabel = computed(() => {
 const failureReasonText = computed(() => {
 	if (!props.task.failureCode) return null
 	const ERRORS = TEXT.value.errors as Record<string, string>
+	// eslint-disable-next-line -- Codacy误报：错误码只读本地化查询
 	return ERRORS[props.task.failureCode] || props.task.failureCode
 })
 

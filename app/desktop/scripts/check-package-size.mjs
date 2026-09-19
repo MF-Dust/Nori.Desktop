@@ -12,6 +12,7 @@ const label = value("--label") || "publish"
 const maxMiB = Number(value("--max-mib") || "80")
 
 if (!targetArg || !Number.isFinite(maxMiB) || maxMiB <= 0) {
+	// eslint-disable-next-line -- Codacy误报：这是固定用法提示文本，不包含HTML变量
 	console.error("usage: node check-package-size.mjs --path <file-or-dir> [--label name] [--max-mib 80]")
 	process.exit(2)
 }

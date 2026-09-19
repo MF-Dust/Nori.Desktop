@@ -86,8 +86,7 @@ export class PluginWidgetBridge {
 			if (!isCurrent()) return
 			// sandbox 的 opaque origin 只能使用 *；目标始终是已验证的单个窗口。
 			// Codacy误报：sandbox iframe使用opaque origin，只能使用*；消息接收方已绑定并校验。
-			// nosemgrep: wildcard is required for sandbox opaque origins
-			SOURCE.postMessage({source: "nori-plugin-widget-host", requestId: CALL.requestId, result, error}, "*")
+			SOURCE.postMessage({source: "nori-plugin-widget-host", requestId: CALL.requestId, result, error}, "*") // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration
 		}
 		try {
 			if (CALL.pluginId !== undefined && CALL.pluginId !== BINDING.widget.pluginId) {

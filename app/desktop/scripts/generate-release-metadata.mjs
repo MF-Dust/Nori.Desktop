@@ -6,14 +6,14 @@ import {validateProductVersion} from "./version-validation.mjs"
 const ROOT = process.cwd()
 const ARGUMENT_NAMES = new Set(["publish-dir", "version", "rid", "output-dir"])
 const parseArgs = (argv) => {
-	const result = Object.create(null)
+	const result = new Map()
 	for (let index = 0; index < argv.length; index++) {
 		const argument = argv[index]
 		if (!argument.startsWith("--")) throw new Error(`无法识别参数: ${argument}`)
 		const key = argument.slice(2)
 		if (!ARGUMENT_NAMES.has(key)) throw new Error(`Unsupported argument: --${key}`)
 		if (index + 1 >= argv.length || argv[index + 1].startsWith("--")) throw new Error(`参数缺少值: --${key}`)
-		result[key] = argv[++index]
+		result.set(key, argv[++index])
 	}
 	return result
 }
@@ -94,11 +94,12 @@ for (const entry of csprojEntries) {
 for (const component of declared.components) addComponent(component)
 
 const args = parseArgs(process.argv.slice(2))
-const publishDir = path.resolve(args["publish-dir"] ?? "")
-const version = args.version
-const rid = args.rid ?? "win-x64"
-const outputDir = path.resolve(args["output-dir"] ?? "bin/release")
-if (!version || !args["publish-dir"]) throw new Error("需要 --publish-dir、--version")
+const PUBLISH_ARG = args.get("publish-dir")
+const publishDir = path.resolve(PUBLISH_ARG ?? "")
+const version = args.get("version")
+const rid = args.get("rid") ?? "win-x64"
+const outputDir = path.resolve(args.get("output-dir") ?? "bin/release")
+if (!version || !PUBLISH_ARG) throw new Error("需要 --publish-dir、--version")
 validateProductVersion(version)
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- publishDir是发布流程显式目录
 if (!fs.existsSync(publishDir)) throw new Error(`发布目录不存在: ${publishDir}`) // nosemgrep

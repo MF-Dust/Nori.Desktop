@@ -124,6 +124,7 @@ internal static class NativeSettingsDialogs
 		MaxWidth = 720,
 		SizeToContent = SizeToContent.Height,
 		CanResize = true,
+		CanMinimize = false,
 		WindowStartupLocation = WindowStartupLocation.CenterOwner,
 		Content = content,
 		};
@@ -131,6 +132,7 @@ internal static class NativeSettingsDialogs
 		{
 			Source = new Uri("avares://Nori.Desktop/Settings/SettingsTheme.axaml"),
 		});
+		Nori.Desktop.Windows.NativeWindowChrome.Attach(dialog, () => NativeSettingsResources.Get("common.close") == "Close");
 		return dialog;
 	}
 }

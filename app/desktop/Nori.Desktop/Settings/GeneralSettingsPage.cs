@@ -19,6 +19,11 @@ public sealed class GeneralSettingsPage : SettingsPageBase
 				new("en-US", new("English", "English")),
 			]);
 
+		SettingsSectionViewModel appearance = AddSection(new("外观", "Appearance"));
+		AddField(appearance, "backgroundBlurEnabled", new("背景模糊", "Background blur"), new("为窗口启用系统背景模糊；不支持时使用深色背景。", "Use system background blur for windows, with a dark background when unavailable."), SettingsEditorKind.Boolean,
+			snapshot => SettingsSnapshotReader.Boolean(snapshot, true, "general", "backgroundBlurEnabled"), true,
+			(value, token) => ExecuteAsync("settings_update_general", new { backgroundBlurEnabled = Convert.ToBoolean(value) }, token));
+
 		SettingsSectionViewModel startup = AddSection(new("启动与窗口", "Startup and window"));
 		AddField(startup, "petAutoSummon", new("启动时显示伴侣", "Show pet on startup"), new("启动后自动显示桌面伴侣窗口。", "Show the desktop pet automatically after startup."), SettingsEditorKind.Boolean,
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, true, "general", "petAutoSummon"), true,

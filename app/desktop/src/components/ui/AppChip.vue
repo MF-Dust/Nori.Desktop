@@ -28,16 +28,16 @@ const TONE_CLASS = computed(() => ({
 
 const DOT_CLASS = computed(() => ({
 	neutral: "bg-text-faint",
-	teal: "bg-nori-teal-bright shadow-[0_0_0.6rem_var(--glow-teal)]",
-	success: "bg-success shadow-[0_0_0.6rem_var(--success)]",
-	warning: "bg-warning shadow-[0_0_0.6rem_var(--warning)]",
+	teal: "bg-nori-teal-bright",
+	success: "bg-success",
+	warning: "bg-warning",
 	danger: "bg-danger-text",
 }[props.tone]))
 </script>
 
 <template>
 	<span :class="TONE_CLASS">
-		<span v-if="dot" class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors duration-300" :class="DOT_CLASS"/>
+		<span v-if="dot" class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors duration-200" :class="DOT_CLASS"/>
 		<Icon v-if="icon" :name="icon" :mode="iconMode" :size="12" class="shrink-0"/>
 		<slot/>
 	</span>

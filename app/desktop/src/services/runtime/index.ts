@@ -62,6 +62,7 @@ import type {
 	UpdaterCheckResultDto,
 	UpdaterInstallResultDto,
 	VisionProbeResult,
+	WindowChromeState,
 } from "./types"
 
 export type {
@@ -149,6 +150,7 @@ export type {
 	UsageMetrics,
 	VisionProbeResult,
 	VoiceState,
+	WindowChromeState,
 	UiSnapshot,
 } from "./types"
 
@@ -420,8 +422,38 @@ export const RUNTIME = {
 	cloneIndexTtsVoice(filePath?: string): Promise<{voiceId: string}> {
 		return invoke("indextts_clone_voice", {filePath})
 	},
-	updateGeneral(patch: Partial<{language: string; petAutoSummon: boolean; quickChatEnabled: boolean; sidebarCollapsed: boolean; autoCheckUpdates: boolean; telemetryEnabled: boolean}>): Promise<void> {
+	updateGeneral(patch: Partial<{language: string; petAutoSummon: boolean; quickChatEnabled: boolean; backgroundBlurEnabled: boolean; sidebarCollapsed: boolean; autoCheckUpdates: boolean; telemetryEnabled: boolean}>): Promise<void> {
 		return invoke("settings_update_general", patch)
+	},
+
+	/** 获取当前宿主窗口实际启用的系统背景模糊状态。 */
+	windowBackdropState(): Promise<{active: boolean}> {
+		return invoke("window_get_backdrop_state")
+	},
+
+	/** 只在宿主实际获得或清除背景模糊后通知。 */
+	onWindowBackdrop(handler: (state: {active: boolean}) => void): Promise<UnlistenFn> {
+		return listen<{active: boolean}>("nori:window-backdrop", ({payload}) => { handler(payload) })
+	},
+
+	/** 最小化当前宿主窗口，不接受其他窗口标签。 */
+	minimizeWindow(): Promise<void> {
+		return invoke("window_minimize")
+	},
+
+	/** 切换当前宿主窗口的最大化状态。 */
+	toggleWindowMaximized(): Promise<WindowChromeState> {
+		return invoke("window_toggle_maximized")
+	},
+
+	/** 获取当前宿主窗口标题栏状态。 */
+	windowState(): Promise<WindowChromeState> {
+		return invoke("window_get_state")
+	},
+
+	/** 监听系统快捷键、标题栏和窗口能力变化导致的状态更新。 */
+	onWindowState(handler: (state: WindowChromeState) => void): Promise<UnlistenFn> {
+		return listen<WindowChromeState>("nori:window-state", ({payload}) => { handler(payload) })
 	},
 	checkUpdate(): Promise<UpdaterCheckResultDto> {
 		return invoke("updater_check")

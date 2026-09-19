@@ -57,7 +57,6 @@ const SUMMARY = computed<{icon: IconName; label: string; value: string}[]>(() =>
 <template>
 	<section key="ready" data-first-run-step="ready" class="w-full flex flex-col items-center gap-2 px-7 py-1.5 my-auto text-center">
 		<div class="relative w-[6.5rem] h-[6.5rem] flex items-center justify-center">
-			<span class="absolute -inset-2 rounded-full bg-[radial-gradient(circle,var(--glow-teal-strong)_0%,var(--glow-teal-soft)_55%,transparent_70%)] animate-glow-pulse pointer-events-none"/>
 			<img class="relative w-[5.5rem] h-[5.5rem] object-contain animate-breathe" :src="logo" alt="Nori"/>
 		</div>
 
@@ -70,7 +69,7 @@ const SUMMARY = computed<{icon: IconName; label: string; value: string}[]>(() =>
 			<p class="text-xs text-text-body leading-relaxed max-w-[36rem]">{{ I18N.desc }}</p>
 		</div>
 
-		<div class="w-full max-w-[42rem] flex items-center justify-around gap-2 px-3 py-1.5 surface-card backdrop-blur-[0.8rem]">
+		<div class="w-full max-w-[42rem] flex items-center justify-around gap-2 px-3 py-1.5 surface-card">
 			<template v-for="(item, index) in SUMMARY" :key="item.label">
 				<span v-if="index > 0" class="w-[0.1rem] h-5 bg-line-subtle shrink-0"/>
 				<div class="flex items-center gap-2 text-left">

@@ -68,7 +68,7 @@ const onKeydown = (event: KeyboardEvent, index: number) => {
 			:class="[
 				SIZE_CLASS,
 				item.key === modelValue
-					? 'bg-nori-teal-bright/15 text-nori-teal-bright font-600 shadow-glow'
+					? 'bg-nori-teal-bright/15 text-nori-teal-bright font-600'
 					: 'text-text-muted hover:(bg-overlay-6 text-text-primary)',
 			]"
 			:aria-selected="item.key === modelValue"

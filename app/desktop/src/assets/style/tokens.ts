@@ -4,62 +4,65 @@
  * uno.config.ts、naiveTheme.ts 与 theme.less 的 :root 变量全部派生自这里。
  * 三处一致性由 tests/theme/tokens-sync.test.ts 看守, 任何一处漂移都会红。
  *
- * 配色纪律: 深海蓝 / 青绿的色相与品牌色数值不变, 只把不满足 4.5:1 对比度的
- * 次级文字 (--text-muted / --text-faint) 与 naive 的占位/禁用色提亮。
+ * 参考 Nori.Web 的深灰蓝、低饱和青色与薄荷色对话。
+ * Web 与原生资源由 scripts/sync-design-tokens.mjs 同步，文字优先满足可读性。
  */
 
 /** 颜色令牌 (键即 CSS 变量名去掉 -- 前缀) */
 export const COLORS = {
-	// 品牌 (不变)
-	"nori-teal": "#5eead4",
-	"nori-teal-bright": "#7de3ff",
-	"nori-teal-soft": "#7fd4e8",
+	// 品牌与交互强调
+	"nori-teal": "#77c6d4",
+	"nori-teal-bright": "#9ed2d2",
+	"nori-teal-soft": "#b6d5d9",
 
-	// 深色背景层级 (焕新为 #171B22 底色)
-	"bg-base": "#171B22",
-	"bg-abyss": "#13171f",
-	"bg-deep": "#1c212a",
-	"bg-panel": "#242f3d",
+	// 深灰蓝背景层级
+	"bg-base": "#161a22",
+	"bg-abyss": "#13171e",
+	"bg-deep": "#1b2029",
+	"bg-panel": "#272e39",
 
 	// 玻璃拟态表面
-	"bg-card": "rgba(28, 35, 47, 0.65)",
-	"bg-card-hover": "rgba(36, 47, 61, 0.78)",
-	"bg-card-active": "rgba(42, 54, 70, 0.88)",
-	"bg-glass": "rgba(23, 27, 34, 0.8)",
-	"bg-glass-modal": "rgba(19, 23, 31, 0.95)",
+	"bg-card": "rgba(30, 35, 45, 0.92)",
+	"bg-card-hover": "rgba(39, 46, 57, 0.94)",
+	"bg-card-active": "rgba(45, 55, 65, 0.96)",
+	"bg-glass": "rgba(22, 26, 34, 0.86)",
+	"bg-glass-modal": "rgba(22, 26, 34, 0.96)",
+	"bg-sidebar": "rgba(19, 23, 30, 0.55)",
+	"bg-input": "#252c36",
+	"bg-selection": "#293e46",
 
-	// 文字: primary/body 不变, muted/faint 提亮到 ≥4.5:1
-	"text-primary": "#ecf8ff",
-	"text-body": "#cfdde5",
-	"text-muted": "#9db2c0",
-	"text-faint": "#8398a8",
+	// 次级文字在玻璃覆盖最亮背景时仍可读
+	"text-primary": "#e8efef",
+	"text-body": "#cedbdc",
+	"text-muted": "#a7b9bf",
+	"text-faint": "#95a9b1",
 
-	// 边框 / 分隔 (不变)
-	"line-subtle": "rgba(125, 227, 255, 0.12)",
-	"line-strong": "rgba(125, 227, 255, 0.28)",
-	"line-glow": "rgba(94, 234, 212, 0.45)",
+	// 边框 / 分隔
+	"line-subtle": "rgba(158, 210, 210, 0.16)",
+	"line-strong": "rgba(158, 210, 210, 0.30)",
+	"line-glow": "rgba(158, 210, 210, 0.45)",
 
 	// 状态色: danger 只做填充/描边, 文字用 danger-text (纯 #fb3c44 当文字在浅面板上只有 3.9:1)
-	"success": "#20e090",
+	"success": "#80c9aa",
 	"warning": "#f1b24a",
 	"danger": "#fb3c44",
-	"danger-text": "#ff6b72",
+	"danger-text": "#ff7d84",
 
-	// 光晕 (不变)
-	"glow-teal": "rgba(125, 227, 255, 0.45)",
-	"glow-teal-soft": "rgba(125, 227, 255, 0.18)",
-	"glow-teal-strong": "rgba(94, 234, 212, 0.65)",
+	// 克制的焦点光晕
+	"glow-teal": "rgba(158, 210, 210, 0.20)",
+	"glow-teal-soft": "rgba(158, 210, 210, 0.08)",
+	"glow-teal-strong": "rgba(158, 210, 210, 0.30)",
 
 	// 前景语义: 亮青绿填充上的深色文字 (对比度由 contrast.test.ts 看守)
-	"on-teal": "#03101c",
+	"on-teal": "#16232b",
 	// 占位符与禁用态: 占位 ≥4.5:1, 禁用 ≥3:1
-	"text-placeholder": "rgba(157, 178, 192, 0.75)",
-	"text-disabled": "#6a8496",
+	"text-placeholder": "#95a9b1",
+	"text-disabled": "#798f99",
 
 	// 品牌交互态 (按下 / info 悬停按下)
-	"nori-teal-pressed": "#2dd4bf",
-	"info-hover": "#a5f3fc",
-	"info-pressed": "#38bdf8",
+	"nori-teal-pressed": "#64b1c0",
+	"info-hover": "#b6dfe1",
+	"info-pressed": "#6aafbc",
 
 	// 中性叠加层: 玻璃面上的浅色覆盖, 数字即不透明度百分比
 	"overlay-2": "rgba(255, 255, 255, 0.02)",
@@ -70,20 +73,29 @@ export const COLORS = {
 	"overlay-20": "rgba(255, 255, 255, 0.2)",
 
 	// 浮层背景 (下拉菜单 / 气泡 / 提示条)
-	"bg-popover": "rgba(23, 27, 34, 0.96)",
-	"bg-menu": "rgba(21, 25, 33, 0.96)",
-	"bg-tooltip": "rgba(19, 23, 31, 0.95)",
+	"bg-popover": "rgba(30, 35, 45, 0.98)",
+	"bg-menu": "rgba(22, 26, 34, 0.98)",
+	"bg-tooltip": "rgba(30, 35, 45, 0.98)",
+	"scrim": "rgba(3, 6, 12, 0.65)",
 
 	// 视觉焕新控件与对话令牌
 	"slider-fill": "#77c6d4",
-	"slider-fill-hover": "#8de0ee",
-	"window-focus-border": "#9bd4de",
-	"window-focus-glow": "rgba(155, 212, 222, 0.25)",
-	"chat-user-bg": "#454752",
-	"chat-user-text": "#ffffff",
-	"chat-ai-bg": "#b8d7d8",
-	"chat-ai-text": "#111827",
-	"chat-ai-border": "rgba(155, 196, 197, 0.5)",
+	"slider-fill-hover": "#9ed2d2",
+	"window-focus-border": "#9ed2d2",
+	"window-focus-glow": "rgba(158, 210, 210, 0.14)",
+	"chat-user-bg": "#3d3d47",
+	"chat-user-bg-end": "#4a4a55",
+	"chat-user-text": "#e8e8ec",
+	"chat-ai-bg": "#d2e8e9",
+	"chat-ai-bg-end": "#caf5f1",
+	"chat-ai-text": "#45454f",
+	"chat-ai-border": "rgba(254, 254, 254, 0.44)",
+	"chat-composer": "#56565f",
+	"chat-white": "#fefefe",
+	"chat-focus-placeholder": "#32616d",
+	"chat-approval-danger": "#b01521",
+	"chat-markdown-link": "#0369a1",
+	"chat-markdown-quote": "#4a7c82",
 	"traffic-close": "#ff5f56",
 	"traffic-close-hover": "#e0443e",
 	"traffic-minimize": "#ffbd2e",
@@ -109,11 +121,11 @@ export const RADIUS = {
  */
 export const SHADOWS = {
 	soft: "0 0.8rem 2.4rem rgba(0, 0, 0, 0.35)",
-	glow: "0 0 2rem rgba(125, 227, 255, 0.2)",
-	window: "0 1.2rem 3.6rem rgba(0, 0, 0, 0.65)",
-	"elev-1": "0 0.2rem 0.8rem rgba(0, 0, 0, 0.32), 0 0 0.1rem rgba(125, 227, 255, 0.08)",
-	"elev-2": "0 0.8rem 2.4rem rgba(0, 0, 0, 0.48), 0 0 1.6rem rgba(125, 227, 255, 0.1)",
-	"elev-3": "0 1.6rem 4rem rgba(0, 0, 0, 0.7), 0 0 2.4rem rgba(94, 234, 212, 0.14)",
+	glow: "0 0 1.2rem rgba(158, 210, 210, 0.08)",
+	window: "0 0.8rem 3.2rem rgba(0, 0, 0, 0.35)",
+	"elev-1": "0 0.2rem 0.8rem rgba(0, 0, 0, 0.16)",
+	"elev-2": "0 0.4rem 1.6rem rgba(0, 0, 0, 0.24)",
+	"elev-3": "0 0.8rem 3.2rem rgba(0, 0, 0, 0.35)",
 } as const
 
 /**
@@ -122,7 +134,7 @@ export const SHADOWS = {
  * 最小档位 1.15rem: 旧代码里 1rem / 1.05rem 的说明文字在深色玻璃上几乎不可读。
  */
 export const FONT_SIZES = {
-	xs: ["1.15rem", "1.5"],
+	xs: ["1.2rem", "1.5"],
 	sm: ["1.2rem", "1.55"],
 	base: ["1.3rem", "1.6"],
 	md: ["1.4rem", "1.55"],

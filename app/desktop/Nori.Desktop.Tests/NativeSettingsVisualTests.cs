@@ -59,7 +59,7 @@ public partial class BridgeCommandsTests
 			for (int index = 0; index < 8; index++)
 				fixture._services.Logger.Write(LogSource.Backend, index % 3 == 0 ? "warn" : "info", $"Synthetic visual verification message {index + 1:D2}");
 
-			foreach ((int width, int height) in new[] {(720, 480), (1920, 1080)})
+			foreach ((int width, int height) in new[] {(720, 480), (1040, 720), (1920, 1080)})
 			foreach (ThemeVariant theme in new[] {ThemeVariant.Dark})
 			foreach (string scenario in new[] {"ai", "voice", "proactive", "skills", "skills-marketplace", "mcp", "mcp-tools", "automation", "plugins", "general", "updates", "debug", "about"})
 			{
@@ -154,7 +154,7 @@ public partial class BridgeCommandsTests
 			SettingsLocalization.SetLanguage("zh-CN");
 			return true;
 		}, CancellationToken.None);
-		Assert.Equal(26, manifest.Count);
+		Assert.Equal(39, manifest.Count);
 	}
 
 	private static int NativeSettingsSampledColors(WriteableBitmap frame)

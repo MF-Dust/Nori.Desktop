@@ -23,6 +23,16 @@ public sealed class NoriWindow : Window, IBridgeSource
 	/// <summary>窗口标签</summary>
 	public string Label { get; }
 
+	/// <summary>当前窗口实际获得的系统背景模糊状态。</summary>
+	internal bool BackdropActive { get; private set; }
+
+	internal void SetBackdropActive(bool active)
+	{
+		if (BackdropActive == active) return;
+		BackdropActive = active;
+		PostEvent("nori:window-backdrop", new { active });
+	}
+
 	/// <summary>底层 Avalonia 窗口 (即自身)</summary>
 	public Window? Self => this;
 
@@ -53,11 +63,7 @@ public sealed class NoriWindow : Window, IBridgeSource
 		CanResize = definition.CanResize;
 		Topmost = definition.Topmost;
 		ShowInTaskbar = definition.ShowInTaskbar;
-		// WebView 无法在 Wayland/不支持原生拖动的平台接管标题栏时, 明确退回系统标题栏,
-		// 不留下一个既不能拖也没有任何提示的无边框窗口。
-		WindowDecorations = PlatformServices.Current.Capabilities.SupportsWindowDrag
-			? WindowDecorations.None
-			: WindowDecorations.Full;
+		WindowDecorations = WindowDecorations.None;
 		Background = Brushes.Transparent;
 		TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
 		WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -70,9 +76,20 @@ public sealed class NoriWindow : Window, IBridgeSource
 		_webView.EnvironmentRequested += OnEnvironmentRequested;
 		_webView.WebMessageReceived += OnWebMessageReceived;
 		_webView.NavigationCompleted += OnNavigationCompleted;
-		Content = _webView;
+		// 原生 WebView 会覆盖 Avalonia 命中测试；留出可命中的宿主边缘。
+		Content = Label == WindowLabels.AudioHost ? _webView : new Border
+		{
+			Padding = CanResize ? new Thickness(5) : default, Background = Brushes.Transparent, Child = _webView,
+		};
+		if (Label != WindowLabels.AudioHost) NativeWindowChrome.EnableBorderlessResize(this);
 		_scriptDispatcher = new WebViewScriptDispatcher(script => _webView.InvokeScript(script));
 
+		PropertyChanged += (_, args) =>
+		{
+			if (args.Property != WindowStateProperty && args.Property != CanResizeProperty) return;
+			if (Content is Border frame) frame.Padding = CanResize && WindowState == WindowState.Normal ? new Thickness(5) : default;
+			if (Label != WindowLabels.AudioHost) PostWindowState();
+		};
 		_webView.Source = new Uri(url);
 
 		// 窗口移动 / DPI 变化时主动推度量, 前端据此免掉每帧的位置与缩放往返。
@@ -203,7 +220,14 @@ public sealed class NoriWindow : Window, IBridgeSource
 		}
 		// 页面就绪后先给一份度量, 免得首次调用还要往返
 		PostMetrics();
+		PostEvent("nori:window-backdrop", new { active = BackdropActive });
+		PostWindowState();
 	}
+
+	private void PostWindowState() => PostEvent("nori:window-state", new
+	{
+		maximized = WindowState == WindowState.Maximized, canResize = CanResize,
+	});
 
 	/// <summary>
 	/// 窗口原生句柄, 供平台服务发起拖动

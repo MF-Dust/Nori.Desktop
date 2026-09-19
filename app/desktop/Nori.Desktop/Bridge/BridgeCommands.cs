@@ -97,6 +97,12 @@ public sealed class BridgeCommands
 		// invoke("get_system_language")
 		"get_system_language" => ConfigStore.SystemLanguage(),
 
+		/// <summary>
+		/// 获取当前页面所属窗口实际生效的系统背景模糊。
+		/// 前端调用：invoke("window_get_backdrop_state")
+		/// </summary>
+		"window_get_backdrop_state" => await OnUi(() => (object)new { active = source is NoriWindow window && window.BackdropActive }),
+
 		/// invoke("complete_first_run", {modelId: "arg-nori", telemetryEnabled: true})
 		"complete_first_run" => await CompleteFirstRunAsync(source, args, cancellationToken),
 
@@ -237,13 +243,22 @@ public sealed class BridgeCommands
 				Runtime.InvalidateSnapshot("voice");
 			})),
 
-		// invoke("settings_update_general", {language?, petAutoSummon?, quickChatEnabled?, sidebarCollapsed?, autoCheckUpdates?, telemetryEnabled?})
+		/// <summary>
+		/// 更新常规设置并同步窗口外观。
+		/// 前端调用：invoke("settings_update_general", {backgroundBlurEnabled: true})
+		/// </summary>
 		"settings_update_general" => RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () =>
 			Run(() =>
 			{
 				UpdateOptionalConfig(args, "language", ConfigStore.KeyLanguage);
 				UpdateBoolConfig(args, "petAutoSummon", "pet_auto_summon");
 				UpdateBoolConfig(args, "quickChatEnabled", ConfigStore.KeyQuickChatEnabled);
+				UpdateBoolConfig(args, "backgroundBlurEnabled", ConfigStore.KeyBackgroundBlurEnabled);
+				if (args.TryGetProperty("backgroundBlurEnabled", out _))
+				{
+					bool blurEnabled = _services.Config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true);
+					Avalonia.Threading.Dispatcher.UIThread.Post(() => _services.Windows.UpdateBackgroundBlurEnabled(blurEnabled));
+				}
 				UpdateBoolConfig(args, "sidebarCollapsed", "ui_sidebar_collapsed");
 				UpdateBoolConfig(args, "autoCheckUpdates", "auto_check_updates");
 				UpdateTelemetryConsent(source, args);
@@ -754,6 +769,21 @@ public sealed class BridgeCommands
 		"window_show" => await OnUi(() => ShowWindow(source, args)),
 		"window_hide" => await OnUi(() => HideWindow(source, args)),
 		"window_close" => await OnUi(() => CloseWindow(source, args)),
+		/// <summary>
+		/// 最小化发起调用的宿主窗口。
+		/// 前端调用：invoke("window_minimize")
+		/// </summary>
+		"window_minimize" => await OnUi(() => Run(() => MinimizeSourceWindow(source))),
+		/// <summary>
+		/// 在当前宿主窗口的最大化和普通状态间切换，返回实际窗口状态。
+		/// 前端调用：invoke("window_toggle_maximized")
+		/// </summary>
+		"window_toggle_maximized" => await OnUi(() => ToggleSourceWindowMaximized(source)),
+		/// <summary>
+		/// 读取当前宿主窗口的最大化状态与缩放能力。
+		/// 前端调用：invoke("window_get_state")
+		/// </summary>
+		"window_get_state" => await OnUi(() => SourceWindowState(RequireSourceWindow(source))),
 		"window_focus" => await OnUi(() => Run(() => Target(source, args).Activate())),
 		"window_is_visible" => await OnUi(() => (object?)Target(source, args).IsVisible),
 		"window_scale_factor" => await OnUi(() => (object?)Target(source, args).RenderScaling),
@@ -837,6 +867,35 @@ public sealed class BridgeCommands
 			throw new InvalidOperationException("命令来源窗口无权执行此操作");
 		return factory();
 	}
+
+	private static NoriWindow RequireSourceWindow(IBridgeSource source)
+	{
+		if (source is not NoriWindow window
+			|| source.Label is not (WindowLabels.Main or WindowLabels.FirstRun or WindowLabels.Init))
+			throw new InvalidOperationException("此操作仅允许当前宿主窗口调用");
+		return window;
+	}
+
+	private static void MinimizeSourceWindow(IBridgeSource source)
+	{
+		NoriWindow window = RequireSourceWindow(source);
+		if (!window.CanMinimize) throw new InvalidOperationException("当前窗口不支持最小化");
+		window.WindowState = WindowState.Minimized;
+	}
+
+	private static object ToggleSourceWindowMaximized(IBridgeSource source)
+	{
+		NoriWindow window = RequireSourceWindow(source);
+		if (!window.CanResize) throw new InvalidOperationException("当前窗口不支持调整大小");
+		window.WindowState = window.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+		return SourceWindowState(window);
+	}
+
+	private static object SourceWindowState(NoriWindow window) => new
+	{
+		maximized = window.WindowState == WindowState.Maximized,
+		canResize = window.CanResize,
+	};
 
 	private async Task<object?> OpenSettingsAsync(IBridgeSource source, JsonElement args)
 	{

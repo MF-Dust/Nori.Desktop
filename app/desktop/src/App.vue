@@ -11,12 +11,14 @@ import AppModal from "./components/ui/AppModal.vue"
 import Icon from "./components/Icon.vue"
 import useLanguages from "./services/i18n/useLanguages.ts"
 import {errorText, feedback} from "./services/feedback"
+import {BindWindowBackdrop} from "./services/theme/windowBackdrop"
 
 const ROUTER = useRouter()
 const I18N = computed(() => useLanguages().components.ui.state)
 const retryingBootstrap = ref(false)
 const currentLabel = ref("")
 const decidingTelemetry = ref(false)
+let stopBackdropSync: (() => void) | undefined
 const telemetryConsentRequired = computed(() =>
 	currentLabel.value === "main" && RUNTIME.snapshot.value?.telemetry.consent === "unset")
 const bootstrapErrorText = computed(() => {
@@ -49,6 +51,7 @@ const decideTelemetry = async (enabled: boolean): Promise<void> => {
 }
 
 onMounted(async () => {
+	stopBackdropSync = BindWindowBackdrop(document.documentElement.style)
 	// 窗口导航: 按当前窗口 label 跳转到对应页面 (纯浏览器调试时跳过)
 	try {
 		const LABEL = await getCurrentWindowLabel()
@@ -68,6 +71,7 @@ const stopLanguageSync = RUNTIME.onLanguageChanged((language) => {
 
 onBeforeUnmount(() => {
 	stopLanguageSync()
+	stopBackdropSync?.()
 })
 </script>
 

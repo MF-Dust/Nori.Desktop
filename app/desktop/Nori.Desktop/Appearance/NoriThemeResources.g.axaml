@@ -1,0 +1,140 @@
+<!-- 自动生成；来源：src/assets/style/tokens.ts。请使用 pnpm theme:sync 同步。 -->
+<ResourceDictionary xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+	<Color x:Key="NoriNoriTealColor">#77C6D4</Color>
+	<SolidColorBrush x:Key="NoriNoriTealBrush" Color="{StaticResource NoriNoriTealColor}"/>
+	<Color x:Key="NoriNoriTealBrightColor">#9ED2D2</Color>
+	<SolidColorBrush x:Key="NoriNoriTealBrightBrush" Color="{StaticResource NoriNoriTealBrightColor}"/>
+	<Color x:Key="NoriNoriTealSoftColor">#B6D5D9</Color>
+	<SolidColorBrush x:Key="NoriNoriTealSoftBrush" Color="{StaticResource NoriNoriTealSoftColor}"/>
+	<Color x:Key="NoriBgBaseColor">#161A22</Color>
+	<SolidColorBrush x:Key="NoriBgBaseBrush" Color="{StaticResource NoriBgBaseColor}"/>
+	<Color x:Key="NoriBgAbyssColor">#13171E</Color>
+	<SolidColorBrush x:Key="NoriBgAbyssBrush" Color="{StaticResource NoriBgAbyssColor}"/>
+	<Color x:Key="NoriBgDeepColor">#1B2029</Color>
+	<SolidColorBrush x:Key="NoriBgDeepBrush" Color="{StaticResource NoriBgDeepColor}"/>
+	<Color x:Key="NoriBgPanelColor">#272E39</Color>
+	<SolidColorBrush x:Key="NoriBgPanelBrush" Color="{StaticResource NoriBgPanelColor}"/>
+	<Color x:Key="NoriBgCardColor">#EB1E232D</Color>
+	<SolidColorBrush x:Key="NoriBgCardBrush" Color="{StaticResource NoriBgCardColor}"/>
+	<Color x:Key="NoriBgCardHoverColor">#F0272E39</Color>
+	<SolidColorBrush x:Key="NoriBgCardHoverBrush" Color="{StaticResource NoriBgCardHoverColor}"/>
+	<Color x:Key="NoriBgCardActiveColor">#F52D3741</Color>
+	<SolidColorBrush x:Key="NoriBgCardActiveBrush" Color="{StaticResource NoriBgCardActiveColor}"/>
+	<Color x:Key="NoriBgGlassColor">#DB161A22</Color>
+	<SolidColorBrush x:Key="NoriBgGlassBrush" Color="{StaticResource NoriBgGlassColor}"/>
+	<Color x:Key="NoriBgGlassModalColor">#F5161A22</Color>
+	<SolidColorBrush x:Key="NoriBgGlassModalBrush" Color="{StaticResource NoriBgGlassModalColor}"/>
+	<Color x:Key="NoriBgSidebarColor">#8C13171E</Color>
+	<SolidColorBrush x:Key="NoriBgSidebarBrush" Color="{StaticResource NoriBgSidebarColor}"/>
+	<Color x:Key="NoriBgInputColor">#252C36</Color>
+	<SolidColorBrush x:Key="NoriBgInputBrush" Color="{StaticResource NoriBgInputColor}"/>
+	<Color x:Key="NoriBgSelectionColor">#293E46</Color>
+	<SolidColorBrush x:Key="NoriBgSelectionBrush" Color="{StaticResource NoriBgSelectionColor}"/>
+	<Color x:Key="NoriTextPrimaryColor">#E8EFEF</Color>
+	<SolidColorBrush x:Key="NoriTextPrimaryBrush" Color="{StaticResource NoriTextPrimaryColor}"/>
+	<Color x:Key="NoriTextBodyColor">#CEDBDC</Color>
+	<SolidColorBrush x:Key="NoriTextBodyBrush" Color="{StaticResource NoriTextBodyColor}"/>
+	<Color x:Key="NoriTextMutedColor">#A7B9BF</Color>
+	<SolidColorBrush x:Key="NoriTextMutedBrush" Color="{StaticResource NoriTextMutedColor}"/>
+	<Color x:Key="NoriTextFaintColor">#95A9B1</Color>
+	<SolidColorBrush x:Key="NoriTextFaintBrush" Color="{StaticResource NoriTextFaintColor}"/>
+	<Color x:Key="NoriLineSubtleColor">#299ED2D2</Color>
+	<SolidColorBrush x:Key="NoriLineSubtleBrush" Color="{StaticResource NoriLineSubtleColor}"/>
+	<Color x:Key="NoriLineStrongColor">#4D9ED2D2</Color>
+	<SolidColorBrush x:Key="NoriLineStrongBrush" Color="{StaticResource NoriLineStrongColor}"/>
+	<Color x:Key="NoriLineGlowColor">#739ED2D2</Color>
+	<SolidColorBrush x:Key="NoriLineGlowBrush" Color="{StaticResource NoriLineGlowColor}"/>
+	<Color x:Key="NoriSuccessColor">#80C9AA</Color>
+	<SolidColorBrush x:Key="NoriSuccessBrush" Color="{StaticResource NoriSuccessColor}"/>
+	<Color x:Key="NoriWarningColor">#F1B24A</Color>
+	<SolidColorBrush x:Key="NoriWarningBrush" Color="{StaticResource NoriWarningColor}"/>
+	<Color x:Key="NoriDangerColor">#FB3C44</Color>
+	<SolidColorBrush x:Key="NoriDangerBrush" Color="{StaticResource NoriDangerColor}"/>
+	<Color x:Key="NoriDangerTextColor">#FF7D84</Color>
+	<SolidColorBrush x:Key="NoriDangerTextBrush" Color="{StaticResource NoriDangerTextColor}"/>
+	<Color x:Key="NoriGlowTealColor">#339ED2D2</Color>
+	<SolidColorBrush x:Key="NoriGlowTealBrush" Color="{StaticResource NoriGlowTealColor}"/>
+	<Color x:Key="NoriGlowTealSoftColor">#149ED2D2</Color>
+	<SolidColorBrush x:Key="NoriGlowTealSoftBrush" Color="{StaticResource NoriGlowTealSoftColor}"/>
+	<Color x:Key="NoriGlowTealStrongColor">#4D9ED2D2</Color>
+	<SolidColorBrush x:Key="NoriGlowTealStrongBrush" Color="{StaticResource NoriGlowTealStrongColor}"/>
+	<Color x:Key="NoriOnTealColor">#16232B</Color>
+	<SolidColorBrush x:Key="NoriOnTealBrush" Color="{StaticResource NoriOnTealColor}"/>
+	<Color x:Key="NoriTextPlaceholderColor">#95A9B1</Color>
+	<SolidColorBrush x:Key="NoriTextPlaceholderBrush" Color="{StaticResource NoriTextPlaceholderColor}"/>
+	<Color x:Key="NoriTextDisabledColor">#798F99</Color>
+	<SolidColorBrush x:Key="NoriTextDisabledBrush" Color="{StaticResource NoriTextDisabledColor}"/>
+	<Color x:Key="NoriNoriTealPressedColor">#64B1C0</Color>
+	<SolidColorBrush x:Key="NoriNoriTealPressedBrush" Color="{StaticResource NoriNoriTealPressedColor}"/>
+	<Color x:Key="NoriInfoHoverColor">#B6DFE1</Color>
+	<SolidColorBrush x:Key="NoriInfoHoverBrush" Color="{StaticResource NoriInfoHoverColor}"/>
+	<Color x:Key="NoriInfoPressedColor">#6AAFBC</Color>
+	<SolidColorBrush x:Key="NoriInfoPressedBrush" Color="{StaticResource NoriInfoPressedColor}"/>
+	<Color x:Key="NoriOverlay2Color">#05FFFFFF</Color>
+	<SolidColorBrush x:Key="NoriOverlay2Brush" Color="{StaticResource NoriOverlay2Color}"/>
+	<Color x:Key="NoriOverlay4Color">#0AFFFFFF</Color>
+	<SolidColorBrush x:Key="NoriOverlay4Brush" Color="{StaticResource NoriOverlay4Color}"/>
+	<Color x:Key="NoriOverlay6Color">#0FFFFFFF</Color>
+	<SolidColorBrush x:Key="NoriOverlay6Brush" Color="{StaticResource NoriOverlay6Color}"/>
+	<Color x:Key="NoriOverlay8Color">#14FFFFFF</Color>
+	<SolidColorBrush x:Key="NoriOverlay8Brush" Color="{StaticResource NoriOverlay8Color}"/>
+	<Color x:Key="NoriOverlay12Color">#1FFFFFFF</Color>
+	<SolidColorBrush x:Key="NoriOverlay12Brush" Color="{StaticResource NoriOverlay12Color}"/>
+	<Color x:Key="NoriOverlay20Color">#33FFFFFF</Color>
+	<SolidColorBrush x:Key="NoriOverlay20Brush" Color="{StaticResource NoriOverlay20Color}"/>
+	<Color x:Key="NoriBgPopoverColor">#FA1E232D</Color>
+	<SolidColorBrush x:Key="NoriBgPopoverBrush" Color="{StaticResource NoriBgPopoverColor}"/>
+	<Color x:Key="NoriBgMenuColor">#FA161A22</Color>
+	<SolidColorBrush x:Key="NoriBgMenuBrush" Color="{StaticResource NoriBgMenuColor}"/>
+	<Color x:Key="NoriBgTooltipColor">#FA1E232D</Color>
+	<SolidColorBrush x:Key="NoriBgTooltipBrush" Color="{StaticResource NoriBgTooltipColor}"/>
+	<Color x:Key="NoriScrimColor">#A603060C</Color>
+	<SolidColorBrush x:Key="NoriScrimBrush" Color="{StaticResource NoriScrimColor}"/>
+	<Color x:Key="NoriSliderFillColor">#77C6D4</Color>
+	<SolidColorBrush x:Key="NoriSliderFillBrush" Color="{StaticResource NoriSliderFillColor}"/>
+	<Color x:Key="NoriSliderFillHoverColor">#9ED2D2</Color>
+	<SolidColorBrush x:Key="NoriSliderFillHoverBrush" Color="{StaticResource NoriSliderFillHoverColor}"/>
+	<Color x:Key="NoriWindowFocusBorderColor">#9ED2D2</Color>
+	<SolidColorBrush x:Key="NoriWindowFocusBorderBrush" Color="{StaticResource NoriWindowFocusBorderColor}"/>
+	<Color x:Key="NoriWindowFocusGlowColor">#249ED2D2</Color>
+	<SolidColorBrush x:Key="NoriWindowFocusGlowBrush" Color="{StaticResource NoriWindowFocusGlowColor}"/>
+	<Color x:Key="NoriChatUserBgColor">#3D3D47</Color>
+	<SolidColorBrush x:Key="NoriChatUserBgBrush" Color="{StaticResource NoriChatUserBgColor}"/>
+	<Color x:Key="NoriChatUserBgEndColor">#4A4A55</Color>
+	<SolidColorBrush x:Key="NoriChatUserBgEndBrush" Color="{StaticResource NoriChatUserBgEndColor}"/>
+	<Color x:Key="NoriChatUserTextColor">#E8E8EC</Color>
+	<SolidColorBrush x:Key="NoriChatUserTextBrush" Color="{StaticResource NoriChatUserTextColor}"/>
+	<Color x:Key="NoriChatAiBgColor">#D2E8E9</Color>
+	<SolidColorBrush x:Key="NoriChatAiBgBrush" Color="{StaticResource NoriChatAiBgColor}"/>
+	<Color x:Key="NoriChatAiBgEndColor">#CAF5F1</Color>
+	<SolidColorBrush x:Key="NoriChatAiBgEndBrush" Color="{StaticResource NoriChatAiBgEndColor}"/>
+	<Color x:Key="NoriChatAiTextColor">#45454F</Color>
+	<SolidColorBrush x:Key="NoriChatAiTextBrush" Color="{StaticResource NoriChatAiTextColor}"/>
+	<Color x:Key="NoriChatAiBorderColor">#70FEFEFE</Color>
+	<SolidColorBrush x:Key="NoriChatAiBorderBrush" Color="{StaticResource NoriChatAiBorderColor}"/>
+	<Color x:Key="NoriChatComposerColor">#56565F</Color>
+	<SolidColorBrush x:Key="NoriChatComposerBrush" Color="{StaticResource NoriChatComposerColor}"/>
+	<Color x:Key="NoriChatWhiteColor">#FEFEFE</Color>
+	<SolidColorBrush x:Key="NoriChatWhiteBrush" Color="{StaticResource NoriChatWhiteColor}"/>
+	<Color x:Key="NoriChatFocusPlaceholderColor">#32616D</Color>
+	<SolidColorBrush x:Key="NoriChatFocusPlaceholderBrush" Color="{StaticResource NoriChatFocusPlaceholderColor}"/>
+	<Color x:Key="NoriChatApprovalDangerColor">#B01521</Color>
+	<SolidColorBrush x:Key="NoriChatApprovalDangerBrush" Color="{StaticResource NoriChatApprovalDangerColor}"/>
+	<Color x:Key="NoriChatMarkdownLinkColor">#0369A1</Color>
+	<SolidColorBrush x:Key="NoriChatMarkdownLinkBrush" Color="{StaticResource NoriChatMarkdownLinkColor}"/>
+	<Color x:Key="NoriChatMarkdownQuoteColor">#4A7C82</Color>
+	<SolidColorBrush x:Key="NoriChatMarkdownQuoteBrush" Color="{StaticResource NoriChatMarkdownQuoteColor}"/>
+	<Color x:Key="NoriTrafficCloseColor">#FF5F56</Color>
+	<SolidColorBrush x:Key="NoriTrafficCloseBrush" Color="{StaticResource NoriTrafficCloseColor}"/>
+	<Color x:Key="NoriTrafficCloseHoverColor">#E0443E</Color>
+	<SolidColorBrush x:Key="NoriTrafficCloseHoverBrush" Color="{StaticResource NoriTrafficCloseHoverColor}"/>
+	<Color x:Key="NoriTrafficMinimizeColor">#FFBD2E</Color>
+	<SolidColorBrush x:Key="NoriTrafficMinimizeBrush" Color="{StaticResource NoriTrafficMinimizeColor}"/>
+	<Color x:Key="NoriTrafficMinimizeHoverColor">#DEA123</Color>
+	<SolidColorBrush x:Key="NoriTrafficMinimizeHoverBrush" Color="{StaticResource NoriTrafficMinimizeHoverColor}"/>
+	<Color x:Key="NoriTrafficZoomColor">#27C93F</Color>
+	<SolidColorBrush x:Key="NoriTrafficZoomBrush" Color="{StaticResource NoriTrafficZoomColor}"/>
+	<Color x:Key="NoriTrafficZoomHoverColor">#1AAB29</Color>
+	<SolidColorBrush x:Key="NoriTrafficZoomHoverBrush" Color="{StaticResource NoriTrafficZoomHoverColor}"/>
+	<StaticResource x:Key="NoriWindowSurfaceBrush" ResourceKey="NoriBgBaseBrush"/>
+</ResourceDictionary>

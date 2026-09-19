@@ -30,7 +30,7 @@ const toggle = () => {
 		role="switch"
 		class="btn-base relative w-[4.4rem] h-[2.4rem] shrink-0 rounded-pill border transition-all duration-200"
 		:class="modelValue
-			? 'bg-nori-teal border-nori-teal shadow-[0_0_1.2rem_var(--glow-teal-soft)]'
+			? 'bg-nori-teal border-nori-teal'
 			: 'bg-overlay-8 border-line-subtle hover:not-disabled:border-line-strong'"
 		:aria-checked="modelValue"
 		:aria-label="label"

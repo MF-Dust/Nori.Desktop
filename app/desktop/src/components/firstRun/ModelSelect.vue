@@ -91,17 +91,17 @@ const importModel = async (sourceKind: "zip" | "folder"): Promise<void> => {
 				:key="model.id"
 				type="button"
 				class="group relative w-[14.5rem] flex flex-col items-center gap-1.5 p-2 pb-2 rounded-md overflow-hidden
-					border-2 border-line-subtle bg-overlay-4 transition-all duration-250 focus-ring
-					hover:not-disabled:(bg-nori-teal-bright/8 border-nori-teal-soft -translate-y-[0.2rem] shadow-[0_0.8rem_2.4rem_rgba(0,0,0,0.35)])
+					border-2 border-line-subtle bg-overlay-4 transition-all duration-200 focus-ring
+					hover:not-disabled:(bg-nori-teal-bright/8 border-nori-teal-soft shadow-elev-1)
 					disabled:(opacity-45 cursor-not-allowed)"
-				:class="selected === model.id ? 'border-nori-teal bg-nori-teal-bright/12 shadow-[0_0.8rem_2.4rem_rgba(0,0,0,0.4),0_0_2rem_var(--glow-teal)]' : ''"
+				:class="selected === model.id ? 'border-nori-teal bg-nori-teal-bright/12' : ''"
 				:disabled="!installedMap[model.id] || Boolean(importing)"
 				:aria-pressed="selected === model.id"
 				@click="selectModel(model.id)"
 			>
 				<span class="relative w-full aspect-[3/4] max-h-[12.5rem] rounded-sm overflow-hidden border border-line-subtle bg-black/30">
 					<img
-						class="w-full h-full object-cover object-top transition-transform duration-300 group-hover:scale-103"
+						class="w-full h-full object-cover object-top transition-transform duration-200 group-hover:scale-103"
 						:src="model.thumb"
 						:alt="model.name"
 					/>
@@ -113,7 +113,7 @@ const importModel = async (sourceKind: "zip" | "folder"): Promise<void> => {
 					<span
 						v-else
 						class="absolute top-2 right-2 w-[2rem] h-[2rem] rounded-full flex items-center justify-center
-							bg-nori-teal text-on-teal shadow-[0_0.2rem_0.8rem_rgba(0,0,0,0.4)] transition-all duration-200"
+							bg-nori-teal text-on-teal shadow-elev-1 transition-all duration-200"
 						:class="selected === model.id ? 'opacity-100 scale-100' : 'opacity-0 scale-60'"
 					>
 						<Icon name="check" :size="11"/>

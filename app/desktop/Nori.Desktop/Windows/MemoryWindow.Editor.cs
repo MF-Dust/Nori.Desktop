@@ -178,6 +178,7 @@ public sealed partial class MemoryWindow
 			finally { confirmClosing = false; }
 		};
 		dialog.Closed += (_, _) => { _editor = null; _editorDirty = null; _discardEditor = null; _editorLocalize = null; };
+		NativeWindowChrome.Attach(dialog, () => _language.StartsWith("en", StringComparison.OrdinalIgnoreCase));
 		_ = dialog.ShowDialog(this);
 		Success();
 	}
@@ -190,6 +191,7 @@ public sealed partial class MemoryWindow
 			MaxHeight = Math.Max(360, Height - 30), WindowStartupLocation = WindowStartupLocation.CenterOwner,
 			RequestedThemeVariant = ThemeVariant.Dark, ShowInTaskbar = false,
 		};
+		dialog.CanMinimize = false;
 		dialog.Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/Settings/SettingsTheme.axaml") });
 		return dialog;
 	}
@@ -220,6 +222,7 @@ public sealed partial class MemoryWindow
 		};
 		dialog.Closed += (_, _) => _confirmationLocalizers.Remove(dialog);
 		dialog.Content = new Border { Padding = new Thickness(24), Child = Stack(title, description, Row(cancel, confirm)) };
+		NativeWindowChrome.Attach(dialog, () => _language.StartsWith("en", StringComparison.OrdinalIgnoreCase));
 		return await dialog.ShowDialog<bool>(owner ?? this);
 	}
 

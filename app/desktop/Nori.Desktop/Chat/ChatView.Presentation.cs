@@ -1,3 +1,4 @@
+using Nori.Desktop.Appearance;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -18,13 +19,13 @@ public sealed partial class ChatView
 		Name = "ChatComposer", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 40, MaxHeight = 120,
 		Padding = new Thickness(12, 9), VerticalContentAlignment = VerticalAlignment.Center,
 	};
-	private readonly TextBlock _modelLabel = Text("", 11.5);
-	private readonly TextBlock _usageLabel = Text("", 11.5);
-	private readonly TextBlock _cacheLabel = Text("", 11.5);
-	private readonly TextBlock _toolsLabel = Text("", 11.5);
+	private readonly TextBlock _modelLabel = Text("", 12);
+	private readonly TextBlock _usageLabel = Text("", 12);
+	private readonly TextBlock _cacheLabel = Text("", 12);
+	private readonly TextBlock _toolsLabel = Text("", 12);
 	private readonly TextBlock _statusText = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, MaxHeight = 72 };
 	private readonly TextBlock _toolStatus = Text("", 12);
-	private readonly TextBlock _voiceTime = Text("", 11.5);
+	private readonly TextBlock _voiceTime = Text("", 12);
 	private Border _statusBar = null!;
 	private Control _empty = null!;
 	private TextBlock _emptyTitle = null!;
@@ -46,8 +47,8 @@ public sealed partial class ChatView
 		Resources["ChatMutedBrush"] = ChatPalette.Muted; Resources["ChatLineBrush"] = ChatPalette.Line;
 		Resources["ChatAccentBrush"] = ChatPalette.Accent; Resources["ChatOnTealBrush"] = ChatPalette.OnTeal;
 		Resources["ChatDangerBrush"] = ChatPalette.Danger;
-		Background = ChatPalette.Background; Foreground = ChatPalette.Primary;
-		FontFamily = new FontFamily("Microsoft YaHei UI, PingFang SC, Noto Sans CJK SC, sans-serif"); FontSize = 13;
+		Background = Brushes.Transparent; Foreground = ChatPalette.Primary;
+		FontFamily = NoriTypography.System; FontSize = 13;
 	}
 
 	private void BuildShell()
@@ -107,7 +108,7 @@ public sealed partial class ChatView
 		var footer = new Border { Name = "ChatComposeBar", Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(18, 14), Child = composer };
 		Grid.SetRow(footer, 3); _main.Children.Add(footer);
 		_root.Children.Add(_main);
-		Content = new Border { Background = ChatPalette.Background, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16), ClipToBounds = true, Child = _root };
+		Content = new Border { Background = Brushes.Transparent, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16), ClipToBounds = true, Child = _root };
 		Localize(() =>
 		{
 			_composer.PlaceholderText = T("输入消息, 回车发送", "Type a message, press Enter to send…");

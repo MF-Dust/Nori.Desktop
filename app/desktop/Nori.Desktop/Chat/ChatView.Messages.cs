@@ -1,3 +1,4 @@
+using Nori.Desktop.Appearance;
 using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Automation;
@@ -122,7 +123,7 @@ public sealed partial class ChatView
 				var bubble = new Border
 				{
 					Name = user ? "ChatUserBubble" : "ChatAssistantBubble", Padding = new Thickness(18, 12),
-					CornerRadius = user ? new CornerRadius(14, 14, 4, 14) : new CornerRadius(14, 14, 14, 4),
+					CornerRadius = user ? new CornerRadius(16, 16, 4, 16) : new CornerRadius(16, 16, 16, 4),
 					Background = user ? ChatPalette.UserBackground : ChatPalette.AssistantBackground,
 					BorderBrush = user ? ChatPalette.Line : ChatPalette.AssistantBorder, BorderThickness = new Thickness(1), Child = Body(slice),
 				};
@@ -143,7 +144,7 @@ public sealed partial class ChatView
 		{
 			if (text.Length == 0 && _message.Streaming) return new TextBlock { Text = "…", Foreground = ChatPalette.AssistantText, FontSize = 13 };
 			if (_message.Role == "assistant") return ChatMarkdown.Render(text, url => _view.Run(_view.ExecuteAsync("open_url", new { url }, _view._lifetime.Token)));
-			return new SelectableTextBlock { Text = text, Foreground = ChatPalette.UserText, FontSize = 13, LineHeight = 20.8, TextWrapping = TextWrapping.Wrap };
+			return new SelectableTextBlock { FontFamily = NoriTypography.Conversation, Text = text, Foreground = ChatPalette.UserText, FontSize = 13, LineHeight = 20.8, TextWrapping = TextWrapping.Wrap };
 		}
 		private async Task CopyAsync(Button copy)
 		{

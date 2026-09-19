@@ -20,7 +20,6 @@ withDefaults(defineProps<{
 <template>
 	<div class="flex flex-1 flex-col items-center justify-center gap-3 p-5 text-center">
 		<div class="relative flex items-center justify-center" :class="large ? 'w-20 h-20' : 'w-12 h-12'">
-			<span class="absolute inset-0 rounded-full bg-[radial-gradient(circle,var(--glow-teal)_0%,transparent_70%)] opacity-40 animate-glow-pulse"/>
 			<Icon :name="icon" :size="large ? 36 : 22" class="relative text-nori-teal-bright"/>
 		</div>
 		<h3 :class="large ? 'text-2xl font-700 glow-teal' : 'title-md'">{{ title }}</h3>

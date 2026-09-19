@@ -1648,6 +1648,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 				language = config.GetStringOr("language", "zh-CN"),
 				petAutoSummon = ParseBoolFlag(config.GetStringOr("pet_auto_summon", "true")) ?? true,
 				quickChatEnabled = ParseBoolFlag(config.GetStringOr(ConfigStore.KeyQuickChatEnabled, "true")) ?? true,
+				backgroundBlurEnabled = config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true),
 				sidebarCollapsed = ParseBoolFlag(config.GetStringOr("ui_sidebar_collapsed", "")) ?? false,
 				autoCheckUpdates = config.GetBoolOr("auto_check_updates", true),
 			},

@@ -256,6 +256,8 @@ public partial class BridgeCommandsTests : IDisposable
 		public List<string?> MemoryPages { get; } = [];
 		public int ModelsShowCount { get; private set; }
 		public int ChatShowCount { get; private set; }
+		public List<bool> BackgroundBlurChanges { get; } = [];
+		public void UpdateBackgroundBlurEnabled(bool enabled) => BackgroundBlurChanges.Add(enabled);
 		private readonly Dictionary<string, bool> _visible = [];
 
 		public event Action<string, bool>? VisibilityChanged;

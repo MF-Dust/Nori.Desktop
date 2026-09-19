@@ -107,6 +107,9 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// <summary>配置键: 快捷聊天开关。</summary>
 	public const string KeyQuickChatEnabled = "quick_chat_enabled";
 
+	/// <summary>配置键: 常规窗口的系统背景模糊开关。</summary>
+	public const string KeyBackgroundBlurEnabled = "ui_background_blur_enabled";
+
 	/// <summary>MCP stdio 环境变量的独立敏感配置键前缀。</summary>
 	public const string McpEnvironmentKeyPrefix = "mcp_server_env_";
 
@@ -377,6 +380,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 				(KeyFirstRunCompleted, new ConfigValue.Boolean(false)),
 				(KeyTelemetryConsent, new ConfigValue.Text(ConfigValidation.TelemetryConsentStorage(TelemetryConsent.Unset))),
 				(KeyQuickChatEnabled, new ConfigValue.Boolean(true)),
+				(KeyBackgroundBlurEnabled, new ConfigValue.Boolean(true)),
 				("memory_enabled", new ConfigValue.Boolean(true)),
 				("memory_reflection_enabled", new ConfigValue.Boolean(true)),
 				("memory_reflection_rounds", new ConfigValue.Integer(8)),

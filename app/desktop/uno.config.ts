@@ -21,6 +21,7 @@ export default defineConfig({
 		colors: COLORS,
 		spacing: SPACING,
 		fontSize: FONT_SIZES,
+		fontFamily: {sans: "\"Noto Sans SC\", system-ui, sans-serif"},
 		// 边框/描边宽度也走 rem, 避开 Uno 默认的 1px
 		lineWidth: {
 			DEFAULT: "0.1rem",
@@ -43,21 +44,16 @@ export default defineConfig({
 		boxShadow: SHADOWS,
 		animation: {
 			keyframes: {
-				breathe: "{0%,100%{transform:scale(1);filter:drop-shadow(0 0 1.4rem rgba(94,234,212,0.35))}"
-					+ "50%{transform:scale(1.05);filter:drop-shadow(0 0 2.4rem rgba(125,227,255,0.65))}}",
-				"glow-pulse": "{0%,100%{opacity:0.3;transform:scale(1)}50%{opacity:0.65;transform:scale(1.08)}}",
+				breathe: "{0%,100%{transform:scale(1)}50%{transform:scale(1.025)}}",
 			},
 			durations: {
 				breathe: "2.4s",
-				"glow-pulse": "2.5s",
 			},
 			counts: {
 				breathe: "infinite",
-				"glow-pulse": "infinite",
 			},
 			timingFns: {
 				breathe: "ease-in-out",
-				"glow-pulse": "ease-in-out",
 			},
 		},
 	},
@@ -74,29 +70,25 @@ export default defineConfig({
 		],
 		[
 			"window-chrome-focused",
-			"!shadow-[var(--shadow-window),inset_0_0_0_0.15rem_var(--window-focus-border),0_0_1.4rem_var(--window-focus-glow)]",
+			"!shadow-[var(--shadow-window),inset_0_0_0_0.1rem_var(--window-focus-border)]",
 		],
 		["window-root", "w-100vw h-100vh window-chrome"],
 		[
 			"window-surface",
-			"bg-[radial-gradient(110rem_70rem_at_90%_0%,var(--glow-teal-soft)_0%,transparent_60%),"
-			+ "radial-gradient(60rem_50rem_at_0%_100%,var(--bg-panel)_0%,transparent_60%),"
-			+ "linear-gradient(165deg,var(--bg-panel)_0%,var(--bg-deep)_45%,var(--bg-abyss)_100%)]",
+			"bg-[var(--window-background,var(--bg-base))]",
 		],
 		// init 是启动窗: 光晕聚在正中, 与主窗的右上角光源区分
 		[
 			"window-surface-boot",
-			"bg-[radial-gradient(56rem_36rem_at_50%_45%,var(--glow-teal-soft),transparent_70%),"
-			+ "radial-gradient(36rem_24rem_at_50%_60%,var(--line-glow),transparent_65%),"
-			+ "linear-gradient(165deg,var(--bg-panel)_0%,var(--bg-deep)_50%,var(--bg-abyss)_100%)]",
+			"window-surface",
 		],
-		["surface-card", "bg-bg-card border border-line-subtle rounded-md shadow-elev-1 backdrop-blur-[1.2rem] transition-all duration-200 hover:(border-line-strong bg-bg-card-hover shadow-elev-2)"],
+		["surface-card", "bg-bg-card border border-line-subtle rounded-md shadow-elev-1 transition-colors duration-200 hover:(border-line-strong bg-bg-card-hover)"],
 		// 卡片里再套卡片时用这一档, 与外层拉开层次
-		["surface-inset", "bg-overlay-4 border border-line-subtle rounded-sm backdrop-blur-[0.8rem]"],
+		["surface-inset", "bg-overlay-4 border border-line-subtle rounded-sm"],
 		["scroll-area", "min-h-0 overflow-y-auto overflow-x-hidden"],
 
 		// ---- 文字 ----
-		["glow-teal", "text-text-primary [text-shadow:0_0_1.2rem_var(--glow-teal-soft)]"],
+		["glow-teal", "text-text-primary"],
 		["title-lg", "text-xl font-700 text-text-primary tracking-[-0.015em]"],
 		["title-md", "text-lg font-600 text-text-primary tracking-[-0.01em]"],
 		["title-sm", "text-md font-600 text-text-primary"],
@@ -119,20 +111,19 @@ export default defineConfig({
 		[
 			"btn-primary",
 			"btn-base px-4 py-1.8 rounded-sm text-sm font-600 text-on-teal "
-			+ "bg-gradient-to-r from-nori-teal-bright via-nori-teal to-nori-teal-soft shadow-[0_0.2rem_1.4rem_var(--glow-teal-soft)] "
-			+ "hover:not-disabled:(brightness-110 -translate-y-[0.1rem] shadow-[0_0.4rem_2rem_var(--glow-teal)]) "
-			+ "active:not-disabled:(translate-y-0 scale-98)",
+			+ "bg-nori-teal shadow-elev-1 hover:not-disabled:bg-nori-teal-bright "
+			+ "active:not-disabled:bg-nori-teal-pressed",
 		],
 		[
 			"btn-ghost",
 			"btn-base px-3.5 py-1.8 rounded-sm text-sm font-500 text-text-body bg-overlay-4 border border-line-subtle "
-			+ "hover:not-disabled:(text-text-primary bg-overlay-8 border-nori-teal-soft/60 -translate-y-[0.1rem] shadow-elev-1) "
-			+ "active:not-disabled:(translate-y-0 scale-98)",
+			+ "hover:not-disabled:(text-text-primary bg-overlay-8 border-line-strong) "
+			+ "active:not-disabled:bg-overlay-12",
 		],
 		[
 			"btn-danger",
 			"btn-base px-3.5 py-1.8 rounded-sm text-sm font-500 text-danger-text bg-danger/10 border border-danger/35 "
-			+ "hover:not-disabled:(bg-danger/20 border-danger/60 -translate-y-[0.1rem]) active:not-disabled:(translate-y-0 scale-98)",
+			+ "hover:not-disabled:(bg-danger/20 border-danger/60) active:not-disabled:bg-danger/25",
 		],
 		[
 			"btn-icon",
@@ -142,17 +133,12 @@ export default defineConfig({
 		// macOS 红绿灯窗口控制按钮
 		[
 			"btn-traffic",
-			"inline-flex items-center justify-center w-[1.2rem] h-[1.2rem] rounded-full p-0 border-none "
-			+ "transition-all duration-150 select-none cursor-pointer focus-ring outline-none "
-			+ "hover:(scale-110 brightness-105) active:scale-92 disabled:(opacity-40 cursor-not-allowed pointer-events-none)",
+			"inline-flex items-center justify-center w-[2.4rem] h-[2.8rem] rounded-sm p-0 border-none bg-transparent "
+			+ "select-none cursor-pointer focus-ring outline-none disabled:cursor-default",
 		],
 		[
-			"btn-traffic-close",
-			"btn-traffic bg-traffic-close hover:shadow-[0_0_0.6rem_rgba(255,95,86,0.6)] text-[#4c0002]/0 hover:text-[#4c0002]/85 active:text-[#4c0002]",
-		],
-		[
-			"btn-traffic-min",
-			"btn-traffic bg-traffic-minimize hover:shadow-[0_0_0.6rem_rgba(255,189,46,0.6)] text-[#5c3c00]/0 hover:text-[#5c3c00]/85 active:text-[#5c3c00]",
+			"traffic-dot",
+			"inline-flex items-center justify-center w-[1.2rem] h-[1.2rem] rounded-full text-on-teal transition-colors duration-150",
 		],
 
 		// 三个窗口标题栏的关闭按钮 (与 btn-icon 同尺寸, 悬停转危险色)
@@ -182,7 +168,7 @@ export default defineConfig({
 			"w-full px-3.5 py-2 rounded-sm text-sm font-inherit text-text-primary bg-overlay-4 "
 			+ "border border-line-subtle outline-none transition-all duration-150 "
 			+ "placeholder:text-text-placeholder hover:border-nori-teal-soft/50 "
-			+ "focus:(border-nori-teal-bright bg-nori-teal-bright/6 shadow-[0_0_1.4rem_var(--glow-teal-soft)])",
+			+ "focus:(border-nori-teal-bright bg-overlay-6 shadow-[0_0_0_0.2rem_var(--line-subtle)])",
 		],
 
 		// ---- 列表项 / 导航 ----
@@ -194,7 +180,7 @@ export default defineConfig({
 		],
 		[
 			"nav-item-active",
-			"bg-nori-teal-bright/12 border-nori-teal-bright/30 text-nori-teal-bright font-600 shadow-glow",
+			"bg-nori-teal-bright/12 border-nori-teal-bright/30 text-nori-teal-bright font-600",
 		],
 	],
 })

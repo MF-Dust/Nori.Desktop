@@ -127,8 +127,8 @@ const handleLink = async (link: Link) => {
 					:key="link.key"
 					type="button"
 					class="group flex items-center gap-2 px-2.5 py-2 rounded-md text-left cursor-pointer
-						bg-overlay-4 border border-line-subtle transition-all duration-250 focus-ring
-						hover:(bg-nori-teal-bright/8 border-nori-teal-soft -translate-y-[0.15rem] shadow-[0_0.4rem_1.6rem_var(--glow-teal-soft)])"
+						bg-overlay-4 border border-line-subtle transition-all duration-200 focus-ring
+						hover:(bg-nori-teal-bright/8 border-nori-teal-soft)"
 					:class="link.key === 'qq' && copiedQq ? 'bg-success/12 border-success/40' : ''"
 					@click="handleLink(link)"
 				>
@@ -153,7 +153,6 @@ const handleLink = async (link: Link) => {
 
 		<div class="relative shrink-0 w-[18rem] h-[22rem] flex flex-col items-center justify-center">
 			<span class="absolute w-[17rem] h-[17rem] rounded-full border border-dashed border-nori-teal-bright/25 [animation:rotate_18s_linear_infinite]"/>
-			<span class="absolute w-[13rem] h-[13rem] rounded-full bg-[radial-gradient(circle,var(--glow-teal)_0%,transparent_70%)] animate-glow-pulse"/>
 			<img class="relative w-[12rem] h-[12rem] object-contain animate-breathe" :src="logo" alt="Nori"/>
 			<span class="relative mt-1.5 text-xs tracking-[0.5rem] text-nori-teal-soft">- N O R I -</span>
 		</div>

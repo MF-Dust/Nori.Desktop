@@ -18,13 +18,14 @@ public sealed class ChatWindow : Window
 	/// <summary>建立原生对话宿主和可复用正文，不创建 WebView。</summary>
 	public ChatWindow(AppServices services)
 	{
-		Width = 960; Height = 640; MinWidth = 720; MinHeight = 480;
+		NativeWindowSizing.Apply(this, NativeWindowSizing.ChatSize);
 		WindowStartupLocation = WindowStartupLocation.CenterScreen;
 		RequestedThemeVariant = ThemeVariant.Dark;
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/Settings/SettingsTheme.axaml") });
 		Background = ChatPalette.Background;
 		_service = new NativeChatService(services, this);
 		Body = new ChatView(_service) { Margin = new Thickness(12) }; Content = Body;
+		NativeWindowChrome.Attach(this, () => Body.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase));
 		UpdateTitle(); Body.LanguageChanged += UpdateTitle;
 		Opened += (_, _) => Body.SetHostVisible(true);
 		PropertyChanged += (_, args) => { if (args.Property == IsVisibleProperty && !_prepared) Body.SetHostVisible(IsVisible); };

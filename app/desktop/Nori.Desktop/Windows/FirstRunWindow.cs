@@ -53,7 +53,7 @@ public sealed class FirstRunWindow : Window
 	};
 	private readonly TextBlock _counter = new()
 	{
-		Foreground = ChatPalette.Faint, FontSize = 11,
+		Foreground = ChatPalette.Faint, FontSize = 12,
 		VerticalAlignment = VerticalAlignment.Center,
 	};
 	private readonly ContentControl _stage = new() {Margin = new Thickness(28, 18)};
@@ -81,12 +81,8 @@ public sealed class FirstRunWindow : Window
 		MinWidth = definition.MinWidth ?? definition.Width;
 		MinHeight = definition.MinHeight ?? definition.Height;
 		CanResize = definition.CanResize;
-		// 与 NoriWindow 同一套判断：能原生拖动就去掉系统边框（整个应用都是自绘 chrome，
-		// 少设这一行就会在一堆无边框窗口里冒出一个系统标题栏）；不能拖的平台退回
-		// 系统边框，不留一个既拖不动也没有提示的窗口。
-		WindowDecorations = PlatformServices.Current.Capabilities.SupportsWindowDrag
-			? WindowDecorations.None
-			: WindowDecorations.Full;
+		NativeWindowSizing.ConstrainOnFirstOpen(this, NativeWindowSizing.FirstRunSize);
+		WindowDecorations = WindowDecorations.None;
 		WindowStartupLocation = WindowStartupLocation.CenterScreen;
 		RequestedThemeVariant = ThemeVariant.Dark;
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/"))
@@ -148,37 +144,10 @@ public sealed class FirstRunWindow : Window
 
 	private Control BuildChrome()
 	{
-		Button close = new()
-		{
-			Content = "✕", Width = 34, Height = 26,
-			Background = Brushes.Transparent, Foreground = ChatPalette.Muted,
-			BorderThickness = default,
-			HorizontalAlignment = HorizontalAlignment.Right,
-		};
-		close.Click += (_, _) => _services.Windows.Shutdown();
-
-		Border header = new()
-		{
-			Height = 44,
-			Background = ChatPalette.Deep,
-			BorderBrush = ChatPalette.Panel, BorderThickness = new Thickness(0, 0, 0, 1),
-			Padding = new Thickness(16, 0, 8, 0),
-			Child = new Grid
-			{
-				ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
-				Children =
-				{
-					Place(new StackPanel
-					{
-						Orientation = Orientation.Horizontal, Spacing = 8,
-						VerticalAlignment = VerticalAlignment.Center,
-						Children = {_pips, _stepLabel},
-					}, 0),
-					Place(_counter, 1, HorizontalAlignment.Right),
-					Place(close, 2),
-				},
-			},
-		};
+		Grid heading = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+		heading.Children.Add(Place(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _pips, _stepLabel } }, 0, HorizontalAlignment.Left));
+		heading.Children.Add(Place(_counter, 1, HorizontalAlignment.Right));
+		NativeWindowChrome header = new(this, IsEnglish, heading) { Height = 44 };
 
 		_back.Click += (_, _) => { _wizard.Prev(); Render(); };
 		_forward.Click += (_, _) => _ = AdvanceAsync();
@@ -196,14 +165,6 @@ public sealed class FirstRunWindow : Window
 				ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
 				Children = {Place(_back, 0), Place(_error, 1), Place(_forward, 2)},
 			},
-		};
-
-		// 去掉系统边框之后，顶部这条就是拖动区 —— 向导有自己的头部，
-		// 不像启动画面那样整面可拖。
-		header.PointerPressed += (_, args) =>
-		{
-			if (WindowDecorations == WindowDecorations.None
-				&& args.GetCurrentPoint(header).Properties.IsLeftButtonPressed) BeginMoveDrag(args);
 		};
 
 		return new DockPanel

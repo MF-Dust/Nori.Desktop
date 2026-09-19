@@ -23,7 +23,7 @@ public sealed partial class MemoryWindow
 
 	private Border Badge(string text, bool accent = false)
 	{
-		TextBlock label = Text(text, 11.5, accent);
+		TextBlock label = Text(text, 12, accent);
 		SetBrush(label, TextBlock.ForegroundProperty, accent ? "SettingsAccentBrush" : "SettingsSecondaryBrush");
 		var badge = new Border { Child = label, Padding = new Thickness(8, 3), CornerRadius = new CornerRadius(5) };
 		SetBrush(badge, Border.BackgroundProperty, accent ? "SettingsSelectionBrush" : "SettingsInputBrush");

@@ -49,8 +49,10 @@ public sealed record WindowDefinition
 		{
 			Label = WindowLabels.FirstRun,
 			Title = "Nori Desktop Pet",
-			Width = 720,
-			Height = 480,
+			Width = NativeWindowSizing.FirstRunSize.Width,
+			Height = NativeWindowSizing.FirstRunSize.Height,
+			MinWidth = NativeWindowSizing.MinimumSize.Width,
+			MinHeight = NativeWindowSizing.MinimumSize.Height,
 			CanResize = false,
 		},
 		new()
@@ -65,10 +67,10 @@ public sealed record WindowDefinition
 		{
 			Label = WindowLabels.Main,
 			Title = "Nori Desktop Pet",
-			Width = 960,
-			Height = 640,
-			MinWidth = 720,
-			MinHeight = 480,
+			Width = NativeWindowSizing.DefaultSize.Width,
+			Height = NativeWindowSizing.DefaultSize.Height,
+			MinWidth = NativeWindowSizing.MinimumSize.Width,
+			MinHeight = NativeWindowSizing.MinimumSize.Height,
 			CanResize = true,
 		},
 		new()

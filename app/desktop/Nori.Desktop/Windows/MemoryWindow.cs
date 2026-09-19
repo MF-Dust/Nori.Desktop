@@ -50,11 +50,12 @@ public sealed partial class MemoryWindow : Window
 	public MemoryWindow(AppServices services)
 	{
 		_service = new MemoryService(services, this);
-		Width = 960; Height = 640; MinWidth = 720; MinHeight = 480;
+		NativeWindowSizing.Apply(this, NativeWindowSizing.DefaultSize);
 		RequestedThemeVariant = ThemeVariant.Dark;
 		WindowStartupLocation = WindowStartupLocation.CenterScreen;
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/Settings/SettingsTheme.axaml") });
 		BuildShell();
+		NativeWindowChrome.Attach(this, () => _language.StartsWith("en", StringComparison.OrdinalIgnoreCase));
 		BuildPages();
 		ApplyLanguage();
 		Navigate("overview");
@@ -210,13 +211,13 @@ public sealed partial class MemoryWindow : Window
 		var root = new Grid { ColumnDefinitions = new ColumnDefinitions("200,*") };
 		var nav = new StackPanel { Spacing = 0, Margin = new Thickness(10, 20, 10, 12) };
 		var brand = new Grid { ColumnDefinitions = new ColumnDefinitions("36,*"), ColumnSpacing = 10, Margin = new Thickness(6, 0, 6, 14) };
-		var monogram = new Border { CornerRadius = new CornerRadius(11), Width = 36, Height = 36, Child = Text("N", 22, true) };
+		var monogram = new Border { CornerRadius = new CornerRadius(12), Width = 36, Height = 36, Child = Text("N", 22, true) };
 		((TextBlock)monogram.Child).HorizontalAlignment = HorizontalAlignment.Center;
 		((TextBlock)monogram.Child).VerticalAlignment = VerticalAlignment.Center;
 		SetBrush(monogram, Border.BackgroundProperty, "SettingsSelectionBrush");
 		SetBrush(monogram.Child, TextBlock.ForegroundProperty, "SettingsAccentBrush");
 		brand.Children.Add(monogram);
-		var wordmark = Text("NORI", 11.5, true); wordmark.LetterSpacing = 2;
+		var wordmark = Text("NORI", 12, true); wordmark.LetterSpacing = 2;
 		SetBrush(wordmark, TextBlock.ForegroundProperty, "SettingsSecondaryBrush");
 		var brandTitle = Text(T("记忆", "Memory"), 16, true);
 		_localize.Add(() => brandTitle.Text = T("记忆", "Memory"));
@@ -227,11 +228,11 @@ public sealed partial class MemoryWindow : Window
 		{
 			if (section is "overview" or "transfer")
 			{
-				var group = Text("", 11.5, true); group.Margin = new Thickness(10, section == "overview" ? 0 : 10, 0, 6);
+				var group = Text("", 12, true); group.Margin = new Thickness(10, section == "overview" ? 0 : 10, 0, 6);
 				_localize.Add(() => group.Text = section == "overview" ? T("记忆资料库", "LIBRARY") : T("管理与工具", "MANAGEMENT"));
 				SetBrush(group, TextBlock.ForegroundProperty, "SettingsSecondaryBrush"); nav.Children.Add(group);
 			}
-			var button = new Button { Tag = section, CornerRadius = new CornerRadius(9), Padding = new Thickness(8, 4), Margin = new Thickness(0, 1) };
+			var button = new Button { Tag = section, CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 4), Margin = new Thickness(0, 1) };
 			button.Click += (_, _) => Navigate(section);
 			button.Classes.Add("settings-nav");
 			button.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -277,22 +278,22 @@ public sealed partial class MemoryWindow : Window
 
 	private Border NavigationSymbol(string section)
 	{
-		(string color, string data) = section switch
+		string data = section switch
 		{
-			"overview" => ("Blue", "M 4,4 L 10,4 10,10 4,10 Z M 14,4 L 20,4 20,10 14,10 Z M 4,14 L 10,14 10,20 4,20 Z M 14,14 L 20,14 20,20 14,20 Z"),
-			"memories" => ("Purple", "M 4,5 Q 8,3 12,6 Q 16,3 20,5 L 20,20 Q 16,18 12,21 Q 8,18 4,20 Z M 12,6 L 12,21"),
-			"atoms" => ("Orange", "M 12,3 L 21,8 21,17 12,22 3,17 3,8 Z M 3,8 L 12,13 21,8 M 12,13 L 12,22"),
-			"knowledge" => ("Green", "M 6,3 L 15,3 20,8 20,21 6,21 Z M 15,3 L 15,8 20,8 M 9,12 L 16,12 M 9,16 L 16,16"),
-			"archive" => ("Gray", "M 3,4 L 21,4 21,9 3,9 Z M 5,9 L 5,21 19,21 19,9 M 10,13 L 14,13"),
-			"transfer" => ("Blue", "M 4,7 L 20,7 M 16,3 L 20,7 16,11 M 20,17 L 4,17 M 8,13 L 4,17 8,21"),
-			"debugger" => ("Purple", "M 16,10 A 6,6 0 1 1 4,10 A 6,6 0 1 1 16,10 M 15,15 L 21,21 M 8,10 L 12,10 M 10,8 L 10,12"),
-			_ => ("Gray", "M 4,6 L 20,6 M 4,12 L 20,12 M 4,18 L 20,18 M 8,3 L 8,9 M 16,9 L 16,15 M 10,15 L 10,21"),
+			"overview" => "M 4,4 L 10,4 10,10 4,10 Z M 14,4 L 20,4 20,10 14,10 Z M 4,14 L 10,14 10,20 4,20 Z M 14,14 L 20,14 20,20 14,20 Z",
+			"memories" => "M 4,5 Q 8,3 12,6 Q 16,3 20,5 L 20,20 Q 16,18 12,21 Q 8,18 4,20 Z M 12,6 L 12,21",
+			"atoms" => "M 12,3 L 21,8 21,17 12,22 3,17 3,8 Z M 3,8 L 12,13 21,8 M 12,13 L 12,22",
+			"knowledge" => "M 6,3 L 15,3 20,8 20,21 6,21 Z M 15,3 L 15,8 20,8 M 9,12 L 16,12 M 9,16 L 16,16",
+			"archive" => "M 3,4 L 21,4 21,9 3,9 Z M 5,9 L 5,21 19,21 19,9 M 10,13 L 14,13",
+			"transfer" => "M 4,7 L 20,7 M 16,3 L 20,7 16,11 M 20,17 L 4,17 M 8,13 L 4,17 8,21",
+			"debugger" => "M 16,10 A 6,6 0 1 1 4,10 A 6,6 0 1 1 16,10 M 15,15 L 21,21 M 8,10 L 12,10 M 10,8 L 10,12",
+			_ => "M 4,6 L 20,6 M 4,12 L 20,12 M 4,18 L 20,18 M 8,3 L 8,9 M 16,9 L 16,15 M 10,15 L 10,21",
 		};
 		var icon = new Avalonia.Controls.Shapes.Path { Data = Geometry.Parse(data) };
 		icon.Classes.Add("settings-nav-icon");
-		var symbol = new Border { Width = 26, Height = 26, CornerRadius = new CornerRadius(7), Child = new Viewbox { Width = 18, Height = 18, Child = icon } };
+		var symbol = new Border { Width = 26, Height = 26, CornerRadius = new CornerRadius(8), Child = new Viewbox { Width = 18, Height = 18, Child = icon } };
 		symbol.Classes.Add("settings-nav-symbol");
-		SetBrush(symbol, Border.BackgroundProperty, "SettingsIcon" + color + "Brush");
+		symbol.Background = Brushes.Transparent;
 		return symbol;
 	}
 
@@ -380,7 +381,7 @@ public sealed partial class MemoryWindow : Window
 		var body = Stack();
 		if (key.Length > 0) body.Children.Add(Label(key, 16, true));
 		foreach (Control child in children) body.Children.Add(child);
-		var border = new Border { Child = body, Padding = new Thickness(16), CornerRadius = new CornerRadius(10), BorderThickness = new Thickness(1) };
+		var border = new Border { Child = body, Padding = new Thickness(16), CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1) };
 		SetBrush(border, Border.BackgroundProperty, "SettingsCardBrush");
 		SetBrush(border, Border.BorderBrushProperty, "SettingsBorderBrush");
 		return border;

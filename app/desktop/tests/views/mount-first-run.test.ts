@@ -21,7 +21,7 @@ interface InvokeLog {
 const SNAPSHOT = {
 	version: 1,
 	app: {appVersion: "0.0.0-test", productVersion: "v0.0.0-test", platform: "windows", debugCrashTestsAvailable: false},
-	general: {language: "zh-CN", petAutoSummon: true, sidebarCollapsed: false},
+	general: {language: "zh-CN", petAutoSummon: true, backgroundBlurEnabled: true, sidebarCollapsed: false},
 	telemetry: {consent: "unset", enabled: false, available: true},
 	secretIssues: [],
 	ai: {configured: false, provider: "openai", baseUrl: "", model: "", persona: "nori", hasApiKey: false},

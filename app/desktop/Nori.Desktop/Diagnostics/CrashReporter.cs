@@ -449,6 +449,7 @@ public static class CrashReporter
 			WindowStartupLocation = WindowStartupLocation.CenterScreen,
 			Content = root,
 		};
+		Nori.Desktop.Windows.NativeWindowChrome.Attach(window, () => false);
 		window.Closed += (_, _) =>
 		{
 			_crashWindow = null;

@@ -1,31 +1,36 @@
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.QuickChat;
 
-/// <summary>与 Nori.Web 03e4880a 对话浮层一致的不可变色板。</summary>
+/// <summary>局部聊天材质复用统一令牌，透明度保留原有浮层形态。</summary>
 internal static class QuickChatPalette
 {
-	internal static readonly IBrush Dark = Brush("#56565F");
-	internal static readonly IBrush White = Brush("#FEFEFE");
-	internal static readonly IBrush Mint = Brush("#D2E8E9");
-	internal static readonly IBrush MintLight = Brush("#CAF5F1");
-	internal static readonly IBrush Player = Brush("#F03D3D47");
-	internal static readonly IBrush PlayerEnd = Brush("#F54A4A55");
-	internal static readonly IBrush PlayerText = Brush("#E8E8EC");
-	internal static readonly IBrush Error = Brush("#F03D3D47");
-	internal static readonly IBrush Composer = Brush("#D956565F");
-	internal static readonly IBrush ComposerFocused = Brush("#F0FEFEFE");
-	internal static readonly IBrush ComposerBorder = Brush("#20D2E8E9");
-	internal static readonly IBrush ComposerFocusedBorder = Brush("#80D2E8E9");
-	internal static readonly IBrush Placeholder = Brush("#80D2E8E9");
-	internal static readonly IBrush FocusedPlaceholder = Brush("#990E7490");
-	internal static readonly IBrush DisabledArrow = Brush("#6056565F");
-	internal static readonly IBrush BubbleBorder = Brush("#70FEFEFE");
-	internal static readonly IBrush PlayerBorder = Brush("#308B8B99");
-	internal static readonly IBrush Approval = Brush("#F2FEFEFE");
-	internal static readonly IBrush ApprovalText = Brush("#3D3D47");
-	internal static readonly IBrush ApprovalDanger = Brush("#B01521");
+	internal static readonly IBrush Dark = new ImmutableSolidColorBrush(Tint("chat-ai-text", 255));
+	internal static readonly IBrush White = new ImmutableSolidColorBrush(Tint("chat-white", 255));
+	internal static readonly IBrush Mint = new ImmutableSolidColorBrush(Tint("chat-ai-bg", 255));
+	internal static readonly IBrush MintLight = new ImmutableSolidColorBrush(Tint("chat-ai-bg-end", 255));
+	internal static readonly IBrush Player = new ImmutableSolidColorBrush(Tint("chat-user-bg", 240));
+	internal static readonly IBrush PlayerEnd = new ImmutableSolidColorBrush(Tint("chat-user-bg-end", 245));
+	internal static readonly IBrush PlayerText = new ImmutableSolidColorBrush(Tint("chat-user-text", 255));
+	internal static readonly IBrush Error = new ImmutableSolidColorBrush(Tint("chat-user-bg", 240));
+	internal static readonly IBrush Composer = new ImmutableSolidColorBrush(Tint("chat-composer", 217));
+	internal static readonly IBrush ComposerFocused = new ImmutableSolidColorBrush(Tint("chat-white", 240));
+	internal static readonly IBrush ComposerBorder = new ImmutableSolidColorBrush(Tint("chat-ai-bg", 32));
+	internal static readonly IBrush ComposerFocusedBorder = new ImmutableSolidColorBrush(Tint("chat-ai-bg", 128));
+	internal static readonly IBrush Placeholder = new ImmutableSolidColorBrush(Tint("chat-ai-bg", 128));
+	internal static readonly IBrush FocusedPlaceholder = new ImmutableSolidColorBrush(Tint("chat-focus-placeholder", 255));
+	internal static readonly IBrush DisabledArrow = new ImmutableSolidColorBrush(Tint("chat-composer", 96));
+	internal static readonly IBrush BubbleBorder = new ImmutableSolidColorBrush(Tint("chat-white", 112));
+	internal static readonly IBrush PlayerBorder = new ImmutableSolidColorBrush(Tint("text-faint", 48));
+	internal static readonly IBrush Approval = new ImmutableSolidColorBrush(Tint("chat-white", 242));
+	internal static readonly IBrush ApprovalText = new ImmutableSolidColorBrush(Tint("chat-user-bg", 255));
+	internal static readonly IBrush ApprovalDanger = new ImmutableSolidColorBrush(Tint("chat-approval-danger", 255));
 
-	private static IBrush Brush(string value) => new ImmutableSolidColorBrush(Color.Parse(value));
+	internal static Color Tint(string key, byte alpha = 255)
+	{
+		Color color = NoriThemeTokens.Color(key);
+		return Color.FromArgb(alpha, color.R, color.G, color.B);
+	}
 }

@@ -1,9 +1,27 @@
 <Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+	<Styles.Resources>
+		<ResourceDictionary>
+			<ResourceDictionary.MergedDictionaries>
+				<ResourceInclude Source="avares://Nori.Desktop/Appearance/NoriThemeResources.g.axaml"/>
+			</ResourceDictionary.MergedDictionaries>
+			<SolidColorBrush x:Key="QuickApprovalSurfaceBrush" Color="{DynamicResource NoriChatAiBgColor}" Opacity="0.094117647"/>
+			<SolidColorBrush x:Key="QuickApprovalHoverBrush" Color="{DynamicResource NoriChatAiBgColor}" Opacity="0.18823529"/>
+			<SolidColorBrush x:Key="QuickApprovalTextBrush" Color="{DynamicResource NoriChatUserBgColor}" Opacity="1"/>
+			<SolidColorBrush x:Key="QuickComposerTextBrush" Color="{DynamicResource NoriChatComposerColor}" Opacity="1"/>
+			<SolidColorBrush x:Key="QuickDangerBorderBrush" Color="{DynamicResource NoriDangerTextColor}" Opacity="0.43921569"/>
+			<SolidColorBrush x:Key="QuickComposerHintBrush" Color="{DynamicResource NoriChatAiBgColor}" Opacity="0.50196078"/>
+			<SolidColorBrush x:Key="QuickCaretBrush" Color="{DynamicResource NoriChatAiBgEndColor}" Opacity="1"/>
+			<SolidColorBrush x:Key="QuickMintBrush" Color="{DynamicResource NoriChatAiBgColor}" Opacity="1"/>
+			<SolidColorBrush x:Key="QuickPlayerTextBrush" Color="{DynamicResource NoriChatUserTextColor}" Opacity="1"/>
+			<SolidColorBrush x:Key="QuickWhiteBrush" Color="{DynamicResource NoriChatWhiteColor}" Opacity="1"/>
+			<SolidColorBrush x:Key="QuickDangerTextBrush" Color="{DynamicResource NoriDangerTextColor}" Opacity="1"/>
+		</ResourceDictionary>
+	</Styles.Resources>
 	<Style Selector="TextBox.quick-composer">
 		<Setter Property="Background" Value="Transparent"/>
 		<Setter Property="FocusAdorner" Value="{x:Null}"/>
-		<Setter Property="Foreground" Value="#FEFEFE"/>
-		<Setter Property="CaretBrush" Value="#CAF5F1"/>
+		<Setter Property="Foreground" Value="{DynamicResource QuickWhiteBrush}"/>
+		<Setter Property="CaretBrush" Value="{DynamicResource QuickCaretBrush}"/>
 		<Setter Property="BorderThickness" Value="0"/>
 		<Setter Property="CornerRadius" Value="0"/>
 		<Setter Property="Padding" Value="0"/>
@@ -37,8 +55,8 @@
 		</Setter>
 	</Style>
 	<Style Selector="TextBox.quick-composer:focus">
-		<Setter Property="Foreground" Value="#56565F"/>
-		<Setter Property="CaretBrush" Value="#56565F"/>
+		<Setter Property="Foreground" Value="{DynamicResource QuickComposerTextBrush}"/>
+		<Setter Property="CaretBrush" Value="{DynamicResource QuickComposerTextBrush}"/>
 	</Style>
 	<Style Selector="Button.quick-send">
 		<Setter Property="Width" Value="28"/>
@@ -49,7 +67,7 @@
 		<Setter Property="CornerRadius" Value="8"/>
 		<Setter Property="BorderThickness" Value="0"/>
 		<Setter Property="Background" Value="Transparent"/>
-		<Setter Property="Foreground" Value="#80D2E8E9"/>
+		<Setter Property="Foreground" Value="{DynamicResource QuickComposerHintBrush}"/>
 		<Setter Property="FontSize" Value="20"/>
 		<Setter Property="FontWeight" Value="SemiBold"/>
 		<Setter Property="HorizontalContentAlignment" Value="Center"/>
@@ -71,14 +89,14 @@
 	<Style Selector="Button.quick-send.filled">
 		<Setter Property="Background">
 			<LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-				<GradientStop Color="#D2E8E9" Offset="0"/>
-				<GradientStop Color="#CAF5F1" Offset="1"/>
+				<GradientStop Color="{DynamicResource NoriChatAiBgColor}" Offset="0"/>
+				<GradientStop Color="{DynamicResource NoriChatAiBgEndColor}" Offset="1"/>
 			</LinearGradientBrush>
 		</Setter>
-		<Setter Property="Foreground" Value="#56565F"/>
+		<Setter Property="Foreground" Value="{DynamicResource QuickComposerTextBrush}"/>
 	</Style>
 	<Style Selector="Button.quick-send:focus-visible">
-		<Setter Property="BorderBrush" Value="#D2E8E9"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource QuickMintBrush}"/>
 		<Setter Property="BorderThickness" Value="2"/>
 	</Style>
 	<Style Selector="Button.quick-send:disabled">
@@ -87,24 +105,24 @@
 	<Style Selector="Button.quick-approval">
 		<Setter Property="MinHeight" Value="26"/>
 		<Setter Property="Padding" Value="9,4"/>
-		<Setter Property="CornerRadius" Value="7"/>
-		<Setter Property="FontSize" Value="11"/>
+		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="FontSize" Value="12"/>
 		<Setter Property="FontWeight" Value="SemiBold"/>
-		<Setter Property="Background" Value="#18D2E8E9"/>
-		<Setter Property="Foreground" Value="#E8E8EC"/>
-		<Setter Property="BorderBrush" Value="#30D2E8E9"/>
+		<Setter Property="Background" Value="{DynamicResource QuickApprovalSurfaceBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource QuickPlayerTextBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource QuickApprovalHoverBrush}"/>
 		<Setter Property="BorderThickness" Value="1"/>
 	</Style>
 	<Style Selector="Button.quick-approval:pointerover, Button.quick-approval:pressed">
-		<Setter Property="Background" Value="#30D2E8E9"/>
-		<Setter Property="BorderBrush" Value="#80D2E8E9"/>
+		<Setter Property="Background" Value="{DynamicResource QuickApprovalHoverBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource QuickComposerHintBrush}"/>
 	</Style>
 	<Style Selector="Button.quick-approval.allow">
-		<Setter Property="Background" Value="#D2E8E9"/>
-		<Setter Property="Foreground" Value="#3D3D47"/>
+		<Setter Property="Background" Value="{DynamicResource QuickMintBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource QuickApprovalTextBrush}"/>
 	</Style>
 	<Style Selector="Button.quick-approval.deny">
-		<Setter Property="Foreground" Value="#FFD9DC"/>
-		<Setter Property="BorderBrush" Value="#70FF6B72"/>
+		<Setter Property="Foreground" Value="{DynamicResource QuickDangerTextBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource QuickDangerBorderBrush}"/>
 	</Style>
 </Styles>

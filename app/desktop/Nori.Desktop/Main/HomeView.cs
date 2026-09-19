@@ -84,12 +84,12 @@ public sealed class HomeView : Panel
 		foreach (ShortcutCard card in _shortcuts) shortcuts.Children.Add(card.Root);
 		Children.Add(new StackPanel
 		{
-			Spacing = 20,
+			Spacing = 16,
 			Children =
 			{
 				new StackPanel {Spacing = 10, Children = {_missingBanner, _safeBanner, BuildHero()}},
-				new StackPanel {Spacing = 12, Children = {_overviewTitle, stats}},
-				new StackPanel {Spacing = 12, Children = {_shortcutsTitle, shortcuts}},
+				new StackPanel {Spacing = 8, Children = {_overviewTitle, stats}},
+				new StackPanel {Spacing = 8, Children = {_shortcutsTitle, shortcuts}},
 				_widgets,
 				new Border
 				{
@@ -200,7 +200,7 @@ public sealed class HomeView : Panel
 		_togglePet.Margin = new Thickness(0, 0, 10, 0);
 		return new Border
 		{
-			CornerRadius = new CornerRadius(16), BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), Padding = new Thickness(18), ClipToBounds = true,
+			CornerRadius = new CornerRadius(16), BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), Padding = new Thickness(16), ClipToBounds = true,
 			Background = new LinearGradientBrush
 			{
 				StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
@@ -252,7 +252,7 @@ public sealed class HomeView : Panel
 			action.VerticalAlignment = VerticalAlignment.Center;
 			content.Children.Add(action);
 		}
-		return new Border {Background = ChatPalette.Overlay, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(14, 10), Child = content};
+		return new Border {Background = ChatPalette.Overlay, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(14, 10), Child = content};
 	}
 
 	private static Button ActionButton(string text, Action onClick, bool primary = false)
@@ -378,8 +378,8 @@ public sealed class HomeView : Panel
 			Value.Text = "—";
 			Root = new Border
 			{
-				Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(14),
-				Child = new StackPanel {Spacing = 9, Children = {new StackPanel {Orientation = Orientation.Horizontal, Spacing = 8, Children = {MainVisual.Icon(icon, 15, ChatPalette.Muted), _label}}, Value, _note}},
+				Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(12),
+				Child = new StackPanel {Spacing = 8, Children = {new StackPanel {Orientation = Orientation.Horizontal, Spacing = 8, Children = {MainVisual.Icon(icon, 15, ChatPalette.Muted), _label}}, Value, _note}},
 			};
 		}
 		internal void Set(string label, string value, string note, bool active)
@@ -408,20 +408,20 @@ public sealed class HomeView : Panel
 			bottom.Children.Add(arrow);
 			Root = new Button
 			{
-				Name = "HomeShortcut", HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(18), CornerRadius = new CornerRadius(12),
+				Name = "HomeShortcut", HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(14), CornerRadius = new CornerRadius(12),
 				Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1),
 				Content = new StackPanel
 				{
-					Spacing = 13,
+					Spacing = 10,
 					Children =
 					{
 						new Border
 						{
-							Width = 36, Height = 36, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(10), Background = ChatPalette.Overlay,
+							Width = 36, Height = 36, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(12), Background = ChatPalette.Overlay,
 							BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), Child = MainVisual.Icon(icon, 19, ChatPalette.Teal),
 						},
 						_title, _description,
-						new Border {BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 12, 0, 0), Child = bottom},
+						new Border {BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 8, 0, 0), Child = bottom},
 					},
 				},
 			};

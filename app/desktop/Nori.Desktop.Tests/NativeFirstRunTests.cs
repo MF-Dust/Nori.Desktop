@@ -1,4 +1,8 @@
 using System.IO.Compression;
+using System.Text.Json;
+using Avalonia;
+using Avalonia.Styling;
+using Avalonia.VisualTree;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using Avalonia.Headless;
@@ -38,44 +42,64 @@ public partial class BridgeCommandsTests
 	{
 		string outputDirectory = Path.Combine(NativeSettingsCaptureDirectory(), "..", "native-first-run");
 		Directory.CreateDirectory(outputDirectory);
+		List<object> manifest = [];
 
 		await VisualUiSession.Value.Dispatch(async () =>
 		{
-			using BridgeCommandsTests fixture = new(safeMode: false);
 			foreach (string language in new[] {"zh-CN", "en-US"})
 			{
-				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(language));
-				FirstRunWindow window = new(FirstRunDefinition(), fixture._services);
-				try
+				foreach ((int width, int height) in new[] {(720, 480), (800, 560), (1920, 1080)})
 				{
-					window.Show();
-					foreach (WizardStep step in FirstRunWizard.Order)
+					using BridgeCommandsTests fixture = new(safeMode: true);
+					fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(language));
+					FirstRunWindow window = new(FirstRunDefinition() with {Width = width, Height = height}, fixture._services);
+					try
 					{
-						await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
-						AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-						await Task.Delay(80);
-						AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+						window.Show();
+						foreach (WizardStep step in FirstRunWizard.Order)
+						{
+							// 视觉验收直接定位页面，模型导入和完成操作由普通接线测试覆盖。
+							window.ForceStepForTests(step);
+							Assert.Equal(step, window.CurrentStepForTests);
+							await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
+							AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+							await Task.Delay(80);
+							AvaloniaHeadlessPlatform.ForceRenderTimerTick();
 
-						using WriteableBitmap frame = Assert.IsType<WriteableBitmap>(window.CaptureRenderedFrame());
-						frame.Save(
-							Path.Combine(outputDirectory, $"firstrun-{language}-{step}.png".ToLowerInvariant()),
-							PngBitmapEncoderOptions.Default);
-
-						if (step == WizardStep.Ready) break;
-						// 选形象那一步在测试环境里没有已安装的模型，会被自己挡住；
-						// 截图流程只要走完五页，这里放开阻断继续。
-						await window.AdvanceForTests();
-						if (window.CurrentStepForTests == step) window.ForceStepForTests();
+							using WriteableBitmap frame = Assert.IsType<WriteableBitmap>(window.CaptureRenderedFrame());
+							string file = $"firstrun-{language}-{step}-{width}x{height}.png".ToLowerInvariant();
+							frame.Save(Path.Combine(outputDirectory, file), PngBitmapEncoderOptions.Default);
+							Assert.Equal(ThemeVariant.Dark, window.ActualThemeVariant);
+							Assert.Equal(width, window.ClientSize.Width);
+							Assert.Equal(height, window.ClientSize.Height);
+							Assert.True(NativeSettingsSampledColors(frame) > 8, $"首次向导渲染为空白：{file}");
+							foreach (ScrollViewer scroll in window.GetVisualDescendants().OfType<ScrollViewer>()
+								.Where(control => control.IsEffectivelyVisible && control.Viewport.Width > 0))
+							{
+								Assert.True(scroll.Extent.Width <= scroll.Viewport.Width + 2, $"首次向导横向溢出：{file}");
+							}
+							Button forward = window.GetVisualDescendants().OfType<Button>()
+								.Single(button => button.Content as string == window.ForwardForTests.Text);
+							Point origin = forward.TranslatePoint(default, window)!.Value;
+							Assert.True(origin.X >= 0 && origin.Y >= 0
+								&& origin.X + forward.Bounds.Width <= window.Bounds.Width + 1
+								&& origin.Y + forward.Bounds.Height <= window.Bounds.Height + 1,
+								$"首次向导下一步按钮被裁切：{file}");
+							manifest.Add(new {file, language, step = step.ToString(), width, height, theme = "dark"});
+						}
 					}
-				}
-				finally
-				{
-					window.AllowClose = true;
-					window.Close();
+					finally
+					{
+						window.AllowClose = true;
+						window.Close();
+					}
 				}
 			}
 			return true;
 		}, CancellationToken.None);
+		Assert.Equal(FirstRunWizard.Order.Count * 6, manifest.Count);
+		await File.WriteAllTextAsync(Path.Combine(outputDirectory, "manifest.json"),
+			JsonSerializer.Serialize(manifest, new JsonSerializerOptions {WriteIndented = true}));
 	}
 
 	// ── 接线 ───────────────────────────────────────────────────────────────

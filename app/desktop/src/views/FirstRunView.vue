@@ -68,16 +68,6 @@ const submitting = computed(() => state.value.finishState === "submitting")
 const stepError = computed(() => state.value.stepError)
 const finishError = computed(() => state.value.finishError)
 
-// 各步骤的环境光晕 (只改光晕位置与尺寸, 底色统一走深海蓝令牌)
-// 注意: UnoCSS 是静态扇描, 类名必须在源码里字面出现 —— 不能用模板拼接
-const STEP_GLOW = [
-	"bg-[radial-gradient(64rem_40rem_at_85%_30%,var(--glow-teal-soft),transparent_65%),linear-gradient(160deg,var(--bg-panel)_0%,var(--bg-deep)_55%,var(--bg-abyss)_100%)]",
-	"bg-[radial-gradient(62rem_42rem_at_50%_115%,var(--glow-teal-soft),transparent_60%),linear-gradient(160deg,var(--bg-panel)_0%,var(--bg-deep)_55%,var(--bg-abyss)_100%)]",
-	"bg-[radial-gradient(52rem_38rem_at_50%_48%,var(--glow-teal-soft),transparent_70%),linear-gradient(160deg,var(--bg-panel)_0%,var(--bg-deep)_55%,var(--bg-abyss)_100%)]",
-	"bg-[radial-gradient(58rem_40rem_at_15%_35%,var(--glow-teal-soft),transparent_66%),linear-gradient(160deg,var(--bg-panel)_0%,var(--bg-deep)_55%,var(--bg-abyss)_100%)]",
-	"bg-[radial-gradient(56rem_40rem_at_50%_50%,var(--glow-teal),transparent_68%),linear-gradient(160deg,var(--bg-panel)_0%,var(--bg-deep)_55%,var(--bg-abyss)_100%)]",
-]
-
 // 下一步 / 上一步
 const next = async () => {
 	// 离开 AI 步: 填了内容就先落盘再前进, 失败停在原地并把错误摆到底部
@@ -156,8 +146,8 @@ const finish = async () => {
 
 <template>
 	<div
-		class="w-full h-full window-chrome transition-[background,box-shadow] duration-600"
-		:class="[STEP_GLOW[currentStep], isWindowFocused ? 'window-chrome-focused' : '']"
+		class="window-root window-surface transition-[background,box-shadow] duration-200"
+		:class="isWindowFocused ? 'window-chrome-focused' : ''"
 	>
 		<TitleBar
 			show-close
@@ -165,19 +155,19 @@ const finish = async () => {
 			@close="closeApp"
 		>
 			<div class="flex items-center justify-center">
-				<div class="flex items-center gap-2 px-3 py-1 rounded-pill bg-bg-abyss/80 border border-line-strong backdrop-blur-[1.2rem] shadow-[0_0.4rem_1.6rem_rgba(0,0,0,0.4)]">
+				<div class="flex items-center gap-2 px-3 py-1 rounded-pill bg-bg-abyss/80 border border-line-strong shadow-elev-1">
 					<div
 						v-for="(label, idx) in STEP_LABELS"
 						:key="idx"
-						class="flex items-center gap-1.5 text-xs transition-all duration-300"
+						class="flex items-center gap-1.5 text-xs transition-all duration-200"
 						:class="idx === currentStep
-							? 'text-nori-teal-bright font-600 [text-shadow:0_0_0.8rem_var(--glow-teal-soft)]'
+							? 'text-nori-teal-bright font-600'
 							: (idx < currentStep ? 'text-nori-teal-soft' : 'text-text-faint/60')"
 					>
 						<span
-							class="rounded-full transition-all duration-300"
+							class="rounded-full transition-all duration-200"
 							:class="idx === currentStep
-								? 'w-2 h-2 bg-nori-teal-bright shadow-[0_0_0.8rem_var(--glow-teal)]'
+								? 'w-2 h-2 bg-nori-teal-bright'
 								: (idx < currentStep ? 'w-1.5 h-1.5 bg-nori-teal' : 'w-1.5 h-1.5 bg-overlay-20')"
 						/>
 						<span v-if="idx === currentStep" class="whitespace-nowrap">{{ label }}</span>
@@ -186,14 +176,14 @@ const finish = async () => {
 			</div>
 
 			<div class="flex items-center gap-2.5">
-				<div class="flex items-center gap-2 px-2 py-0.8 rounded-sm bg-overlay-4 border border-line-subtle backdrop-blur-[0.8rem]">
+				<div class="flex items-center gap-2 px-2 py-0.8 rounded-sm bg-overlay-4 border border-line-subtle">
 					<div class="flex gap-1">
 						<span
 							v-for="i in STEPS_COUNT"
 							:key="i"
-							class="w-[1.2rem] h-[0.35rem] rounded-pill transition-all duration-300"
+							class="w-[1.2rem] h-[0.35rem] rounded-pill transition-all duration-200"
 							:class="i <= currentStep + 1
-								? 'bg-gradient-to-r from-nori-teal-bright to-nori-teal shadow-[0_0_0.6rem_var(--glow-teal-soft)]'
+								? 'bg-nori-teal'
 								: 'bg-overlay-12'"
 						/>
 					</div>
@@ -222,8 +212,7 @@ const finish = async () => {
 		</div>
 
 		<!-- 底部导航 -->
-		<div class="relative z-2 h-14 shrink-0 flex items-center justify-between gap-3 px-6 bg-bg-abyss/85 border-t border-line-subtle backdrop-blur-[1.4rem]">
-			<span class="absolute top-0 inset-x-0 h-[0.1rem] bg-gradient-to-r from-transparent via-nori-teal-bright/22 to-transparent pointer-events-none"/>
+		<div class="relative z-2 h-14 shrink-0 flex items-center justify-between gap-3 px-6 bg-bg-abyss/85 border-t border-line-subtle">
 
 			<AppButton v-if="!isFirst" icon="arrow-left" :disabled="submitting" @click="prev">
 				{{ I18N.back }}
@@ -245,7 +234,7 @@ const finish = async () => {
 				v-else
 				variant="primary"
 				icon="sparkles"
-				class="px-7 text-md shadow-[0_0.4rem_2rem_var(--glow-teal-strong)]"
+				class="px-7 text-md"
 				:loading="submitting"
 				@click="finish"
 			>

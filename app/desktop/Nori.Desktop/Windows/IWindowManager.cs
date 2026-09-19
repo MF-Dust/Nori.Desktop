@@ -38,6 +38,9 @@ public interface IWindowManager
 	/// <summary>打开并复用原生对话窗口。</summary>
 	void ShowChat();
 
+	/// <summary>更新已注册窗口的背景模糊偏好；无界面宿主无需处理。</summary>
+	void UpdateBackgroundBlurEnabled(bool enabled) { }
+
 	/// <summary>隐藏窗口</summary>
 	void Hide(string label);
 

@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
@@ -43,7 +44,7 @@ public partial class BridgeCommandsTests
 			fixture.InstallKnownModel("arg-nori");
 			fixture._windows.SetVisible(WindowLabels.Pet, true);
 			foreach (string language in new[] {"zh-CN", "en-US"})
-			foreach (var size in new[] {(Width: 720, Height: 480), (Width: 960, Height: 640), (Width: 1920, Height: 1080)})
+			foreach (var size in new[] {(Width: 720, Height: 480), (Width: 1040, Height: 720), (Width: 960, Height: 640), (Width: 1920, Height: 1080)})
 			{
 				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(language));
 				MainWindow window = new(MainDefinition(), fixture._services);
@@ -59,6 +60,16 @@ public partial class BridgeCommandsTests
 
 					using WriteableBitmap frame = Assert.IsType<WriteableBitmap>(window.CaptureRenderedFrame());
 					frame.Save(Path.Combine(outputDirectory, $"main-{language}-{size.Width}x{size.Height}.png"), PngBitmapEncoderOptions.Default);
+					if (size.Width == NativeWindowSizing.DefaultSize.Width && size.Height == NativeWindowSizing.DefaultSize.Height)
+					{
+						ScrollViewer viewport = window.GetLogicalDescendants().OfType<ScrollViewer>().Single(control => control.Name == "HomeScroll");
+						foreach (Button shortcut in window.GetLogicalDescendants().OfType<Button>().Where(control => control.Name == "HomeShortcut"))
+						{
+							Avalonia.Point origin = shortcut.TranslatePoint(default, viewport)!.Value;
+							Assert.True(origin.Y >= 0 && origin.Y + shortcut.Bounds.Height <= viewport.Bounds.Height + 1,
+								$"默认主页尺寸裁切快捷入口：{language}，{shortcut.Bounds}");
+						}
+					}
 					if (size.Width == 720)
 					{
 						ScrollViewer scroll = window.GetLogicalDescendants().OfType<ScrollViewer>().Single(control => control.Name == "HomeScroll");

@@ -87,13 +87,13 @@ const select = async (code: string) => {
 				:key="code"
 				type="button"
 				class="group relative flex items-center gap-2.5 px-3.5 py-3 rounded-md text-left cursor-pointer overflow-hidden
-					border-2 border-line-subtle bg-overlay-4 text-text-primary transition-all duration-250 focus-ring
-					hover:(bg-nori-teal-bright/8 border-nori-teal-soft -translate-y-[0.15rem] shadow-[0_0.6rem_2rem_rgba(0,0,0,0.3)])"
-				:class="current === code ? 'border-nori-teal bg-nori-teal-bright/12 shadow-[0_0.6rem_2rem_rgba(0,0,0,0.4),0_0_1.6rem_var(--glow-teal)]' : ''"
+					border-2 border-line-subtle bg-overlay-4 text-text-primary transition-all duration-200 focus-ring
+					hover:(bg-nori-teal-bright/8 border-nori-teal-soft shadow-elev-1)"
+				:class="current === code ? 'border-nori-teal bg-nori-teal-bright/12' : ''"
 				:aria-pressed="current === code"
 				@click="select(code)"
 			>
-				<span class="w-[3.4rem] h-[2.4rem] shrink-0 rounded-xs overflow-hidden border border-overlay-12 shadow-[0_0.2rem_0.8rem_rgba(0,0,0,0.4)]">
+				<span class="w-[3.4rem] h-[2.4rem] shrink-0 rounded-xs overflow-hidden border border-overlay-12 shadow-elev-1">
 					<img v-if="flagOf(code)" class="w-full h-full object-cover block" :src="flagOf(code)" :alt="nameInfoOf(code).name"/>
 					<span v-else class="block w-full h-full bg-overlay-12"/>
 				</span>

@@ -1,3 +1,4 @@
+using Nori.Desktop.Appearance;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Animation;
@@ -17,7 +18,7 @@ namespace Nori.Desktop.QuickChat;
 /// <summary>贴近桌宠显示的原生轻量对话界面；完整历史与复杂操作交给独立聊天窗口。</summary>
 public sealed class QuickChatView : UserControl, IDisposable
 {
-	private static readonly FontFamily ConversationFont = new("avares://Nori.Desktop/Assets/Fonts#Nunito, Microsoft YaHei UI, PingFang SC, Noto Sans CJK SC, sans-serif");
+	private static readonly FontFamily ConversationFont = NoriTypography.Conversation;
 	private static readonly SplineEasing ComposerEase = new() { X1 = 0.25, Y1 = 0.1, X2 = 0.25, Y2 = 1 };
 	private readonly NativeChatService _service;
 	private readonly Func<string, object?, CancellationToken, Task<JsonElement>> _execute;
@@ -54,7 +55,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 	};
 	private readonly TextBlock _shortcutText = new()
 	{
-		FontSize = 10,
+		FontSize = 12,
 		FontWeight = FontWeight.Medium,
 		FontFamily = ConversationFont,
 		LineHeight = 16,
@@ -74,7 +75,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		VerticalAlignment = VerticalAlignment.Center,
 		IsHitTestVisible = false,
 	};
-	private readonly TextBlock _activity = Text("", 11, FontWeight.Medium, QuickChatPalette.MintLight);
+	private readonly TextBlock _activity = Text("", 12, FontWeight.Medium, QuickChatPalette.MintLight);
 	private readonly Button _send = new()
 	{
 		Name = "QuickChatSend",
@@ -106,10 +107,10 @@ public sealed class QuickChatView : UserControl, IDisposable
 	private readonly ExperimentalAcrylicMaterial _composerMaterial = new()
 	{
 		BackgroundSource = AcrylicBackgroundSource.Digger,
-		TintColor = Color.Parse("#56565F"),
+		TintColor = QuickChatPalette.Tint("chat-composer", 255),
 		TintOpacity = 0.9,
 		MaterialOpacity = 1,
-		FallbackColor = Color.Parse("#56565F"),
+		FallbackColor = QuickChatPalette.Tint("chat-composer", 255),
 	};
 	private readonly ExperimentalAcrylicBorder _composerFrost = new()
 	{
@@ -145,9 +146,9 @@ public sealed class QuickChatView : UserControl, IDisposable
 		IsVisible = false,
 	};
 	private readonly TextBlock _approvalTitle = Text("", 12, FontWeight.SemiBold, QuickChatPalette.PlayerText);
-	private readonly TextBlock _approvalDescription = Text("", 11, FontWeight.Normal, QuickChatPalette.PlayerText);
-	private readonly TextBlock _approvalCountdown = Text("", 10, FontWeight.Normal, QuickChatPalette.Placeholder);
-	private readonly TextBlock _approvalArguments = Text("", 10, FontWeight.Normal, QuickChatPalette.PlayerText);
+	private readonly TextBlock _approvalDescription = Text("", 12, FontWeight.Normal, QuickChatPalette.PlayerText);
+	private readonly TextBlock _approvalCountdown = Text("", 12, FontWeight.Normal, QuickChatPalette.Placeholder);
+	private readonly TextBlock _approvalArguments = Text("", 12, FontWeight.Normal, QuickChatPalette.PlayerText);
 	private readonly Button _deny = ApprovalButton("QuickChatApprovalDeny", "deny");
 	private readonly Button _allow = ApprovalButton("QuickChatApprovalAllow", "allow");
 	private readonly Button _details = ApprovalButton("QuickChatApprovalDetails");
@@ -398,8 +399,8 @@ public sealed class QuickChatView : UserControl, IDisposable
 		_placeholderRow.Children.Add(_placeholder);
 		var shortcutKeys = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
 		shortcutKeys.Children.Add(KeyCap(_shortcutText));
-		shortcutKeys.Children.Add(Text("+", 10, FontWeight.Medium, QuickChatPalette.Mint));
-		TextBlock k = Text("K", 10, FontWeight.Medium, QuickChatPalette.Mint);
+		shortcutKeys.Children.Add(Text("+", 12, FontWeight.Medium, QuickChatPalette.Mint));
+		TextBlock k = Text("K", 12, FontWeight.Medium, QuickChatPalette.Mint);
 		k.LineHeight = 16;
 		shortcutKeys.Children.Add(KeyCap(k));
 		_shortcut.Child = shortcutKeys;
@@ -532,12 +533,12 @@ public sealed class QuickChatView : UserControl, IDisposable
 		_composerTint.Background = focused ? FocusedComposerGradient() : ComposerGradient();
 		_composerShell.BorderBrush = focused ? QuickChatPalette.ComposerFocusedBorder : QuickChatPalette.ComposerBorder;
 		_composerShell.BoxShadow = ComposerShadows(focused);
-		_composerMaterial.TintColor = focused ? Color.Parse("#CAF5F1") : Color.Parse("#56565F");
+		_composerMaterial.TintColor = focused ? QuickChatPalette.Tint("chat-ai-bg-end", 255) : QuickChatPalette.Tint("chat-composer", 255);
 		_composerMaterial.TintOpacity = focused ? 0.18 : 0.9;
 		_composerMaterial.MaterialOpacity = focused ? 0.15 : 1;
-		_composerMaterial.FallbackColor = focused ? Color.Parse("#F2FEFEFE") : Color.Parse("#D956565F");
+		_composerMaterial.FallbackColor = focused ? QuickChatPalette.Tint("chat-white", 242) : QuickChatPalette.Tint("chat-composer", 217);
 		_send.Classes.Set("filled", filled);
-		_sendGlow.BoxShadow = filled ? Shadows(ShadowValue(0, 2, 8, "#80CAF5F1")) : default;
+		_sendGlow.BoxShadow = filled ? Shadows(ShadowValue(0, 2, 8, QuickChatPalette.Tint("chat-ai-bg-end", 128))) : default;
 		_sendIcon.Stroke = filled ? QuickChatPalette.Dark : focused ? QuickChatPalette.DisabledArrow : QuickChatPalette.Placeholder;
 		_send.IsEnabled = filled && _state.Configured && _loadedHistory && !_state.SafeMode && !_state.Chat.Sending && !_preparing && !_approval.IsVisible;
 		if (!_send.IsEnabled && _sendScaleTo != 1) SetSendScale(1);
@@ -707,8 +708,8 @@ public sealed class QuickChatView : UserControl, IDisposable
 		Padding = new Thickness(3, 0),
 		CornerRadius = new CornerRadius(3),
 		BorderThickness = new Thickness(1),
-		BorderBrush = new SolidColorBrush(Color.Parse("#40D2E8E9")),
-		Background = new SolidColorBrush(Color.Parse("#30D2E8E9")),
+		BorderBrush = new SolidColorBrush(QuickChatPalette.Tint("chat-ai-bg", 64)),
+		Background = new SolidColorBrush(QuickChatPalette.Tint("chat-ai-bg", 48)),
 		VerticalAlignment = VerticalAlignment.Center,
 		Child = label,
 	};
@@ -721,53 +722,53 @@ public sealed class QuickChatView : UserControl, IDisposable
 		return button;
 	}
 
-	private static IBrush ComposerGradient() => Gradient("#CC56565F", "#D956565F");
-	private static IBrush FocusedComposerGradient() => Gradient("#F0FEFEFE", "#40CAF5F1");
+	private static IBrush ComposerGradient() => Gradient(QuickChatPalette.Tint("chat-composer", 204), QuickChatPalette.Tint("chat-composer", 217));
+	private static IBrush FocusedComposerGradient() => Gradient(QuickChatPalette.Tint("chat-white", 240), QuickChatPalette.Tint("chat-ai-bg-end", 64));
 	private static IBrush AgentGradient() => new LinearGradientBrush
 	{
 		StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
 		EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
 		GradientStops =
 		{
-			new GradientStop(Color.Parse("#E0D2E8E9"), 0),
-			new GradientStop(Color.Parse("#E8CAF5F1"), 0.5),
-			new GradientStop(Color.Parse("#E0D2E8E9"), 1),
+			new GradientStop(QuickChatPalette.Tint("chat-ai-bg", 224), 0),
+			new GradientStop(QuickChatPalette.Tint("chat-ai-bg-end", 232), 0.5),
+			new GradientStop(QuickChatPalette.Tint("chat-ai-bg", 224), 1),
 		},
 	};
-	private static IBrush PlayerGradient() => Gradient("#F03D3D47", "#F54A4A55");
-	private static IBrush Gradient(string start, string end) => new LinearGradientBrush
+	private static IBrush PlayerGradient() => Gradient(QuickChatPalette.Tint("chat-user-bg", 240), QuickChatPalette.Tint("chat-user-bg-end", 245));
+	private static IBrush Gradient(Color start, Color end) => new LinearGradientBrush
 	{
 		StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
 		EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
-		GradientStops = { new GradientStop(Color.Parse(start), 0), new GradientStop(Color.Parse(end), 1) },
+		GradientStops = { new GradientStop(start, 0), new GradientStop(end, 1) },
 	};
 	private static BoxShadows AgentShadows() => Shadows(
-		ShadowValue(0, 4, 24, "#59CAF5F1"),
-		ShadowValue(0, 2, 8, "#0F000000"),
-		ShadowValue(0, 1, 0, "#90FEFEFE", inset: true),
-		ShadowValue(0, -1, 0, "#05000000", inset: true));
+		ShadowValue(0, 4, 24, QuickChatPalette.Tint("chat-ai-bg-end", 89)),
+		ShadowValue(0, 2, 8, QuickChatPalette.Tint("scrim", 15)),
+		ShadowValue(0, 1, 0, QuickChatPalette.Tint("chat-white", 144), inset: true),
+		ShadowValue(0, -1, 0, QuickChatPalette.Tint("scrim", 5), inset: true));
 	private static BoxShadows PlayerShadows() => Shadows(
-		ShadowValue(0, 4, 16, "#44000000"),
-		ShadowValue(0, 2, 6, "#1F000000"),
-		ShadowValue(0, 1, 0, "#0FFFFFFF", inset: true));
+		ShadowValue(0, 4, 16, QuickChatPalette.Tint("scrim", 68)),
+		ShadowValue(0, 2, 6, QuickChatPalette.Tint("scrim", 31)),
+		ShadowValue(0, 1, 0, QuickChatPalette.Tint("chat-white", 15), inset: true));
 	private static BoxShadows ComposerShadows(bool focused) => focused
 		? Shadows(
-			ShadowValue(0, 8, 32, "#40CAF5F1"),
-			ShadowValue(0, 2, 8, "#14000000"),
-			ShadowValue(0, 1, 0, "#B0FEFEFE", inset: true),
-			ShadowValue(0, -1, 0, "#05000000", inset: true))
+			ShadowValue(0, 8, 32, QuickChatPalette.Tint("chat-ai-bg-end", 64)),
+			ShadowValue(0, 2, 8, QuickChatPalette.Tint("scrim", 20)),
+			ShadowValue(0, 1, 0, QuickChatPalette.Tint("chat-white", 176), inset: true),
+			ShadowValue(0, -1, 0, QuickChatPalette.Tint("scrim", 5), inset: true))
 		: Shadows(
-			ShadowValue(0, 4, 16, "#44000000"),
-			ShadowValue(0, 2, 4, "#26000000"),
-			ShadowValue(0, 1, 0, "#0FFFFFFF", inset: true),
-			ShadowValue(0, -1, 0, "#1A000000", inset: true));
+			ShadowValue(0, 4, 16, QuickChatPalette.Tint("scrim", 68)),
+			ShadowValue(0, 2, 4, QuickChatPalette.Tint("scrim", 38)),
+			ShadowValue(0, 1, 0, QuickChatPalette.Tint("chat-white", 15), inset: true),
+			ShadowValue(0, -1, 0, QuickChatPalette.Tint("scrim", 26), inset: true));
 	private static BoxShadows Shadows(BoxShadow first, params BoxShadow[] remaining) => new(first, remaining);
-	private static BoxShadow ShadowValue(double x, double y, double blur, string color, bool inset = false) => new()
+	private static BoxShadow ShadowValue(double x, double y, double blur, Color color, bool inset = false) => new()
 	{
 		OffsetX = x,
 		OffsetY = y,
 		Blur = blur,
-		Color = Color.Parse(color),
+		Color = color,
 		IsInset = inset,
 	};
 

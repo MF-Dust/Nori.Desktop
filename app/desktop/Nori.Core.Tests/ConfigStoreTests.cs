@@ -63,6 +63,17 @@ public class ConfigStoreTests : IDisposable
 	}
 
 	[Fact]
+	public void BackgroundBlurDefaultsToEnabledAndPreservesSavedPreference()
+	{
+		Assert.True(_config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true));
+		_config.Set(ConfigStore.KeyBackgroundBlurEnabled, new ConfigValue.Boolean(false));
+		_config.InitDefaults("0.2.0");
+		Assert.False(_config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true));
+		_config.Set(ConfigStore.KeyBackgroundBlurEnabled, new ConfigValue.Text("invalid"));
+		Assert.True(_config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true));
+	}
+
+	[Fact]
 	public void 默认配置在初始化后就位()
 	{
 		Assert.Equal("arg-nori", _config.GetStringOr(ConfigStore.KeySelectedModel, ""));

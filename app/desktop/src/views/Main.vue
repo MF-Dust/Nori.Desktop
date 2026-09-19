@@ -148,9 +148,10 @@ const toggleSidebar = async () => {
 	}
 }
 
-// 窗口操作: 最小化主窗口 / 退出应用
-const minimizeMain = async () => {
-	await hideWindow("main")
+// 关闭主窗口只隐藏，退出应用保留独立入口。
+const closeMain = async () => {
+	try { await hideWindow("main") }
+	catch (error) { feedback.error(UI_I18N.value.windowActionFailed, error) }
 }
 
 const exitApp = () => {
@@ -222,10 +223,9 @@ onBeforeUnmount(() => {
 		<TitleBar
 			show-close
 			show-minimize
-			:close-label="I18N.footer.exit"
+			:close-label="UI_I18N.close"
 			:minimize-label="I18N.footer.minimize"
-			@close="exitApp"
-			@minimize="minimizeMain"
+			@close="closeMain"
 		>
 			<!-- 这里原来挂着一枚「当前页」面包屑。主窗口只有一页, 它恒等于「主页」—— 是装饰, 撤掉。 -->
 			<div class="flex items-center gap-2.5">
@@ -237,7 +237,7 @@ onBeforeUnmount(() => {
 			<!-- 侧边导航控制台 -->
 			<aside
 				class="shrink-0 flex flex-col justify-between gap-3 py-3 px-2.5 border-r border-line-subtle
-					bg-bg-abyss/55 backdrop-blur-[1.4rem] transition-[width] duration-250 z-2"
+					bg-bg-abyss/55 transition-[width] duration-200 z-2"
 				:class="collapsed ? 'w-[5.6rem]' : 'w-[15.5rem]'"
 			>
 				<nav class="flex flex-col gap-1.5" :aria-label="I18N.nav.home">
@@ -248,7 +248,7 @@ onBeforeUnmount(() => {
 						:title="collapsed ? HOME_ITEM.label : undefined"
 						aria-current="page"
 					>
-						<span class="absolute left-0 top-1.5 bottom-1.5 w-[0.35rem] rounded-pill bg-gradient-to-b from-nori-teal-bright to-nori-teal shadow-[0_0_1rem_var(--glow-teal)]"/>
+						<span class="absolute left-0 top-1.5 bottom-1.5 w-[0.35rem] rounded-pill bg-nori-teal"/>
 						<span class="flex items-center justify-center shrink-0 text-nori-teal-bright">
 							<Icon :name="HOME_ITEM.icon" :size="17"/>
 						</span>
@@ -293,7 +293,7 @@ onBeforeUnmount(() => {
 						/>
 						<span
 							v-if="item.badge"
-							class="w-1.8 h-1.8 rounded-full bg-warning shadow-[0_0_0.8rem_var(--warning)]"
+							class="w-1.8 h-1.8 rounded-full bg-warning"
 							:class="collapsed ? 'absolute top-1.5 right-1.5' : 'absolute right-7'"
 						/>
 					</button>
@@ -340,8 +340,7 @@ onBeforeUnmount(() => {
 		</div>
 
 		<!-- 底部状态与操作胶囊栏 -->
-		<div class="relative shrink-0 flex flex-col gap-1.5 px-5 py-2.5 border-t border-line-subtle bg-bg-abyss/75 backdrop-blur-[1.4rem]">
-			<span class="absolute top-0 inset-x-0 h-[0.1rem] bg-gradient-to-r from-transparent via-nori-teal-bright/20 to-transparent pointer-events-none"/>
+		<div class="relative shrink-0 flex flex-col gap-1.5 px-5 py-2.5 border-t border-line-subtle bg-bg-abyss/75">
 
 			<!-- 平台降级提示: 没有托盘/穿透/全局光标时明确告知, 而不是静默失效 -->
 			<p
@@ -371,7 +370,7 @@ onBeforeUnmount(() => {
 					<AppButton
 						variant="primary"
 						:icon="petVisible ? 'close' : 'sparkles'"
-						class="shadow-[0_0.2rem_1.4rem_var(--glow-teal-soft)] hover:shadow-[0_0.4rem_2rem_var(--glow-teal)]"
+						class=""
 						@click="togglePet"
 					>
 						{{ petVisible ? I18N.hidePet : I18N.summonPet }}

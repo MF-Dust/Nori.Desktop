@@ -1,3 +1,4 @@
+using Nori.Desktop.Appearance;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -35,8 +36,7 @@ public sealed class MainWindow : Window
 	private readonly Button _collapse = new() {Name = "CollapseSidebar", BorderThickness = default};
 	private readonly Button _petToggle = new() {Name = "TogglePet"};
 	private readonly Button _exit = new();
-	private readonly Button _minimize;
-	private readonly Button _close;
+	private NativeWindowChrome _windowChrome = null!;
 	private readonly List<LauncherEntry> _launchers = [];
 	private DispatcherTimer? _refresh;
 	private bool _collapsed;
@@ -58,9 +58,10 @@ public sealed class MainWindow : Window
 		MinWidth = definition.MinWidth ?? 720;
 		MinHeight = definition.MinHeight ?? 480;
 		CanResize = definition.CanResize;
+		NativeWindowSizing.ConstrainOnFirstOpen(this, NativeWindowSizing.DefaultSize);
 		WindowStartupLocation = WindowStartupLocation.CenterScreen;
 		RequestedThemeVariant = ThemeVariant.Dark;
-		FontFamily = new FontFamily("Microsoft YaHei UI, PingFang SC, Noto Sans CJK SC, sans-serif");
+		FontFamily = NoriTypography.System;
 		Background = ChatPalette.Background;
 		Foreground = ChatPalette.Body;
 		Resources["MainText"] = ChatPalette.Body;
@@ -72,12 +73,9 @@ public sealed class MainWindow : Window
 		{
 			Source = new Uri("avares://Nori.Desktop/Main/MainTheme.axaml"),
 		});
-		WindowDecorations = PlatformServices.Current.Capabilities.SupportsWindowDrag
-			? WindowDecorations.None : WindowDecorations.Full;
+		WindowDecorations = WindowDecorations.None;
 		_collapsed = ReadCollapsed();
 		_home = new HomeView(services, Refresh);
-		_minimize = ChromeButton("minimize", () => WindowState = WindowState.Minimized);
-		_close = ChromeButton("close", Hide);
 		Content = BuildChrome();
 		Refresh();
 		Opened += (_, _) => StartRefreshing();
@@ -142,27 +140,8 @@ public sealed class MainWindow : Window
 				_brandCaption,
 			},
 		};
-		// 拖动只绑定空白标题区，不会把按钮按下事件传给窗口移动。
-		Border dragArea = new() {Background = Brushes.Transparent, Child = brand};
-		dragArea.PointerPressed += (_, args) =>
-		{
-			if (PlatformServices.Current.Capabilities.SupportsWindowDrag
-				&& args.GetCurrentPoint(dragArea).Properties.IsLeftButtonPressed) BeginMoveDrag(args);
-		};
-		Grid header = new() {ColumnDefinitions = new ColumnDefinitions("*,Auto")};
-		header.Children.Add(dragArea);
-		StackPanel actions = new()
-		{
-			Orientation = Orientation.Horizontal, Spacing = 4,
-			VerticalAlignment = VerticalAlignment.Center, Children = {_minimize, _close},
-		};
-		Grid.SetColumn(actions, 1);
-		header.Children.Add(actions);
-		return new Border
-		{
-			Padding = new Thickness(20, 0, 10, 0), Background = ChatPalette.Deep,
-			BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 0, 0, 1), Child = header,
-		};
+		_windowChrome = new NativeWindowChrome(this, IsEnglish, brand) { Height = 52 };
+		return _windowChrome;
 	}
 
 	private Border BuildSidebar()
@@ -170,7 +149,7 @@ public sealed class MainWindow : Window
 		_homeLabel.FontWeight = FontWeight.SemiBold;
 		Border home = new()
 		{
-			Background = ChatPalette.Panel, CornerRadius = new CornerRadius(9), Padding = new Thickness(13, 12),
+			Background = ChatPalette.Panel, CornerRadius = new CornerRadius(8), Padding = new Thickness(13, 12),
 			BorderBrush = ChatPalette.Teal, BorderThickness = new Thickness(2, 0, 0, 0),
 			Child = new StackPanel {Orientation = Orientation.Horizontal, Spacing = 12, Children = {MainVisual.Icon("home", 20, ChatPalette.Teal), _homeLabel}},
 		};
@@ -288,8 +267,7 @@ public sealed class MainWindow : Window
 		_pageTitle.Text = english ? "Home" : "主页";
 		_pageSubtitle.Text = english ? "A little company, always close by." : "一点陪伴，随时在你身边。";
 		_brandCaption.Text = english ? "Desktop companion" : "桌面伴侣";
-		NameControl(_minimize, english ? "Minimize" : "最小化");
-		NameControl(_close, english ? "Hide window" : "收起窗口");
+		_windowChrome.RefreshLabels();
 		string collapseText = _collapsed ? english ? "Expand sidebar" : "展开侧栏" : english ? "Collapse sidebar" : "折叠侧栏";
 		_collapse.Content = new StackPanel
 		{
@@ -350,12 +328,6 @@ public sealed class MainWindow : Window
 		TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
 	};
 
-	private static Button ChromeButton(string icon, Action action)
-	{
-		Button button = new() {Content = MainVisual.Icon(icon, 16), Width = 34, Height = 30, Padding = default, BorderThickness = default};
-		button.Click += (_, _) => action();
-		return button;
-	}
 
 	private static void NameControl(Control control, string name)
 	{

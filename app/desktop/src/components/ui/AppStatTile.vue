@@ -44,7 +44,7 @@ const onClick = () => {
 		:is="actionLabel ? 'button' : 'div'"
 		:type="actionLabel ? 'button' : undefined"
 		class="surface-card min-w-0 flex flex-col gap-1.5 px-3.5 py-3 text-left"
-		:class="actionLabel ? 'focus-ring cursor-pointer hover:-translate-y-[0.1rem] disabled:(opacity-50 cursor-not-allowed)' : ''"
+		:class="actionLabel ? 'focus-ring cursor-pointer  disabled:(opacity-50 cursor-not-allowed)' : ''"
 		:aria-label="actionLabel"
 		:disabled="actionLabel ? disabled : undefined"
 		@click="onClick"

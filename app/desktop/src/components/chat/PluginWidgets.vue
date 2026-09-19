@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
 		<div
 			v-for="widget in widgets"
 			:key="JSON.stringify([widget.pluginId, widget.entry])"
-			class="mx-4.5 mt-3 rounded-xl border border-line-subtle bg-bg-deep/60 backdrop-blur-[1rem] text-sm overflow-hidden"
+			class="mx-4.5 mt-3 rounded-xl border border-line-subtle bg-bg-deep/60 text-sm overflow-hidden"
 		>
 			<button
 				type="button"

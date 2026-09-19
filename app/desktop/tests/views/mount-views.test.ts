@@ -19,6 +19,7 @@ describe("Views and Panels Mounting", () => {
 		general: {
 			language: "zh-CN",
 			petAutoSummon: true,
+			backgroundBlurEnabled: true,
 			sidebarCollapsed: false,
 		},
 		telemetry: {

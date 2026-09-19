@@ -20,6 +20,8 @@ public partial class SettingsWindow : Window
 	public SettingsWindow()
 	{
 		InitializeComponent();
+		NativeWindowSizing.Apply(this, NativeWindowSizing.DefaultSize);
+		NativeWindowChrome.Attach(this, () => _viewModel?.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase) == true);
 		PagePresenter.DataContextChanged += OnPageChanged;
 	}
 

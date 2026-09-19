@@ -7,6 +7,8 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
+		"theme:sync": "node scripts/sync-design-tokens.mjs",
+		"theme:check": "node scripts/sync-design-tokens.mjs --check",
 		"build": "vue-tsc --noEmit && vite build",
 		"lint": "eslint src --ext .ts,.vue --max-warnings=0",
 		"preview": "vite preview",

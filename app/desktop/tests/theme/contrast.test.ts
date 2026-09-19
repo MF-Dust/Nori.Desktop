@@ -36,6 +36,13 @@ describe("对比度计算", () => {
 })
 
 describe("设计令牌可读性门禁", () => {
+	it.each(["#ffffff", "#000000"])("系统桌面为 %s 时玻璃背景上的文字 ≥ 4.5:1", (desktop) => {
+		for (const token of BODY_FOREGROUNDS) {
+			const RATIO = contrastRatio(COLORS[token], COLORS["bg-glass"], desktop)
+			expect(RATIO, `${token} on glass over ${desktop} = ${RATIO.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+		}
+	})
+
 	it.each(BODY_FOREGROUNDS)("%s 在所有背景上 ≥ 4.5:1", (token) => {
 		for (const [name, background] of Object.entries(BACKGROUNDS)) {
 			const RATIO = contrastRatio(COLORS[token], background)

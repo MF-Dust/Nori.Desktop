@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Nori.Desktop.Appearance;
 using Avalonia.Controls.Documents;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -25,7 +26,7 @@ public sealed class NativeChatMarkdownTests
 			Assert.Equal(14, title.FontSize);
 			Assert.Equal(19.6, title.LineHeight);
 			Assert.Equal(FontWeight.Bold, title.FontWeight);
-			Assert.Equal(Color.Parse("#111827"), Assert.IsAssignableFrom<ISolidColorBrush>(title.Foreground).Color);
+			Assert.Equal(Color.Parse("#45454f"), Assert.IsAssignableFrom<ISolidColorBrush>(title.Foreground).Color);
 		});
 		Inline[] inlines = controls.OfType<TextBlock>().SelectMany(text => InlineNodes(text.Inlines)).ToArray();
 		Assert.Contains(inlines.OfType<Span>(), span => span.FontWeight == FontWeight.Bold);
@@ -36,7 +37,7 @@ public sealed class NativeChatMarkdownTests
 		TextBlock inlineCode = Assert.Single(controls.OfType<TextBlock>(), text => text.Text == "x < y");
 		Assert.Equal(12, inlineCode.FontSize);
 		Assert.Equal(FontWeight.SemiBold, inlineCode.FontWeight);
-		Assert.Equal(Color.Parse("#082f49"), Assert.IsAssignableFrom<ISolidColorBrush>(inlineCode.Foreground).Color);
+		Assert.Equal(NoriThemeTokens.Color("chat-ai-text"), Assert.IsAssignableFrom<ISolidColorBrush>(inlineCode.Foreground).Color);
 		Assert.Contains(controls.OfType<TextBlock>(), text => text.Text == "3.");
 		Assert.Contains(controls.OfType<TextBlock>(), text => text.Text == "4.");
 		Assert.Equal(2, controls.Count(control => control.Name == "ChatMarkdownList"));
@@ -67,8 +68,8 @@ public sealed class NativeChatMarkdownTests
 		Assert.Equal(TextWrapping.NoWrap, code.TextWrapping);
 		Assert.Equal(12, code.FontSize);
 		Assert.Equal(19.2, code.LineHeight);
-		Assert.Equal(Color.Parse("#171B22"), Assert.IsAssignableFrom<ISolidColorBrush>(border.Background).Color);
-		Assert.Equal(Color.Parse("#ecf8ff"), Assert.IsAssignableFrom<ISolidColorBrush>(code.Foreground).Color);
+		Assert.Equal(Color.Parse("#161a22"), Assert.IsAssignableFrom<ISolidColorBrush>(border.Background).Color);
+		Assert.Equal(NoriThemeTokens.Color("text-primary"), Assert.IsAssignableFrom<ISolidColorBrush>(code.Foreground).Color);
 		code.SelectAll();
 		Assert.Equal(expected, code.SelectedText);
 		return Task.CompletedTask;

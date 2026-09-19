@@ -43,7 +43,7 @@ export const naiveThemeOverrides: GlobalThemeOverrides = {
 		dividerColor: C["line-subtle"],
 		borderRadius: RADIUS.sm,
 		borderRadiusSmall: RADIUS.xs,
-		fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+		fontFamily: "'Noto Sans SC', system-ui, sans-serif",
 		fontSize: FONT_SIZES.base[0],
 		fontSizeSmall: FONT_SIZES.sm[0],
 	},
@@ -60,7 +60,7 @@ export const naiveThemeOverrides: GlobalThemeOverrides = {
 	Switch: {
 		railColorActive: C["nori-teal"],
 		buttonColor: C["bg-abyss"],
-		boxShadowFocus: `0 0 1.2rem ${C["glow-teal-strong"]}`,
+		boxShadowFocus: `0 0 0 0.2rem ${C["line-strong"]}`,
 	},
 	Select: {
 		peers: {
@@ -70,7 +70,7 @@ export const naiveThemeOverrides: GlobalThemeOverrides = {
 				border: `0.1rem solid ${C["line-subtle"]}`,
 				borderHover: `0.1rem solid ${C["glow-teal"]}`,
 				borderFocus: `0.1rem solid ${C["nori-teal"]}`,
-				boxShadowFocus: `0 0 1rem ${C["glow-teal-soft"]}`,
+				boxShadowFocus: `0 0 0 0.2rem ${C["line-subtle"]}`,
 				borderRadius: RADIUS.sm,
 				textColor: C["text-primary"],
 				placeholderColor: C["text-placeholder"],
@@ -93,7 +93,7 @@ export const naiveThemeOverrides: GlobalThemeOverrides = {
 		borderHover: `0.1rem solid ${C["glow-teal"]}`,
 		borderFocus: `0.1rem solid ${C["nori-teal"]}`,
 		borderDisabled: `0.1rem solid ${C["line-subtle"]}`,
-		boxShadowFocus: `0 0 1.2rem ${C["glow-teal-soft"]}`,
+		boxShadowFocus: `0 0 0 0.2rem ${C["line-subtle"]}`,
 		borderRadius: RADIUS.sm,
 		textColor: C["text-primary"],
 		textColorDisabled: C["text-disabled"],

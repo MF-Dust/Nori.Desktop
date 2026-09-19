@@ -48,6 +48,7 @@ import type {
 	UpdaterCheckResultDto,
 	UpdaterInstallResultDto,
 	VisionProbeResult,
+	WindowChromeState,
 } from "../runtime/types"
 import type {PluginInfo, PluginInstallResult, PluginUninstallResult} from "../plugins"
 
@@ -85,6 +86,10 @@ export type WorkspacePickResult = {root: string} | null
 /** 前端实际使用的宿主命令契约。C# 仍会再次校验参数和来源窗口。 */
 export interface BridgeCommandMap {
 	ui_get_snapshot: {args: EmptyCommandArgs; result: UiSnapshot}
+	window_get_backdrop_state: {args: EmptyCommandArgs; result: {active: boolean}}
+	window_get_state: {args: EmptyCommandArgs; result: WindowChromeState}
+	window_minimize: {args: EmptyCommandArgs; result: EmptyCommandResult}
+	window_toggle_maximized: {args: EmptyCommandArgs; result: WindowChromeState}
 	write_log: {args: {level: "info" | "warn" | "error" | "debug"; message: string}; result: EmptyCommandResult}
 	get_recent_logs: {args: EmptyCommandArgs; result: {time: string; level: string; source: string; message: string}[]}
 	clear_recent_logs: {args: EmptyCommandArgs; result: EmptyCommandResult}

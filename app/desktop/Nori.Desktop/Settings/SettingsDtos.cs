@@ -115,6 +115,9 @@ public sealed record SettingsGeneralPatchDto
 	[JsonPropertyName("petAutoSummon")]
 	public bool? PetAutoSummon { get; init; }
 
+	[JsonPropertyName("backgroundBlurEnabled")]
+	public bool? BackgroundBlurEnabled { get; init; }
+
 	[JsonPropertyName("sidebarCollapsed")]
 	public bool? SidebarCollapsed { get; init; }
 

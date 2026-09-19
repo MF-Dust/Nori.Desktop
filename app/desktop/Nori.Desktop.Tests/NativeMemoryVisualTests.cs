@@ -45,7 +45,7 @@ public partial class BridgeCommandsTests
 			{
 				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(language));
 				fixture._runtime.InvalidateSnapshot("general");
-				foreach ((int width, int height) in new[] {(720, 480), (960, 640), (1920, 1080)})
+				foreach ((int width, int height) in new[] {(720, 480), (1040, 720), (960, 640), (1920, 1080)})
 				{
 					MemoryWindow window = new(fixture._services) {Width = width, Height = height};
 					try
@@ -107,7 +107,7 @@ public partial class BridgeCommandsTests
 			}
 			return true;
 		}, CancellationToken.None);
-		Assert.Equal(66, manifest.Count);
+		Assert.Equal(88, manifest.Count);
 		await File.WriteAllTextAsync(Path.Combine(output, "manifest.json"), JsonSerializer.Serialize(manifest, new JsonSerializerOptions {WriteIndented = true}));
 	}
 

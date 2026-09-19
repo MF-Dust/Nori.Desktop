@@ -119,7 +119,7 @@ onBeforeUnmount(() => {
 	<Teleport to="body">
 		<div
 			v-if="show"
-			class="fixed inset-0 z-100 flex items-center justify-center bg-bg-abyss/72 p-4 backdrop-blur-[0.4rem]"
+			class="fixed inset-0 z-100 flex items-center justify-center bg-bg-abyss/72 p-4"
 			role="presentation"
 			@click="onMaskClick"
 		>

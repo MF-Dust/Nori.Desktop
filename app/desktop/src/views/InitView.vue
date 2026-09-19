@@ -126,27 +126,24 @@ onMounted(async () => {
 
 		<div class="flex-1 min-h-0 scroll-area">
 			<div class="min-h-full flex flex-col items-center justify-center gap-7 pb-6 relative">
-				<!-- 多重轨道天体声呐光环 -->
+				<!-- 品牌标识保持安静，加载状态由下方进度图标表达。 -->
 				<div class="relative w-[15rem] h-[15rem] flex items-center justify-center">
-					<span class="absolute inset-0 rounded-full border border-dashed border-nori-teal-bright/40 [animation:rotate_14s_linear_infinite]"/>
-					<span class="absolute inset-2.5 rounded-full border border-dotted border-nori-teal/30 [animation:rotate_22s_linear_infinite_reverse]"/>
-					<span class="absolute inset-5 rounded-full bg-[radial-gradient(circle,var(--glow-teal)_0%,var(--glow-teal-soft)_45%,transparent_75%)] animate-glow-pulse"/>
-					<img class="relative w-[8.2rem] h-[8.2rem] object-contain animate-breathe drop-shadow-[0_0_1.6rem_var(--glow-teal-soft)]" :src="logo" alt="Nori"/>
+					<img class="relative w-[8.2rem] h-[8.2rem] object-contain animate-breathe" :src="logo" alt="Nori"/>
 				</div>
 
 				<!-- 状态胶囊 -->
 				<div
 					v-if="!timedOut"
-					class="inline-flex items-center gap-2.5 px-4.5 py-2 rounded-pill bg-bg-abyss/70 border border-nori-teal-bright/30 shadow-[0_0_2rem_rgba(125,227,255,0.16)] backdrop-blur-[1.4rem]"
+					class="inline-flex items-center gap-2.5 px-4.5 py-2 rounded-pill bg-bg-abyss/70 border border-nori-teal-bright/30 shadow-elev-1"
 					role="status"
 					aria-live="polite"
 				>
 					<Icon name="loading" class="spin text-nori-teal-bright" :size="15"/>
-					<span class="text-base text-text-primary font-600 tracking-[0.03rem] [text-shadow:0_0_1rem_var(--glow-teal-soft)]">{{ statusText }}</span>
+					<span class="text-base text-text-primary font-600 tracking-[0.03rem]">{{ statusText }}</span>
 				</div>
 
 				<!-- 宿主信号迟迟不来时的自救出口 -->
-				<div v-else class="flex flex-col items-center gap-3 px-6 py-5 surface-card backdrop-blur-[1.4rem] text-center shadow-[0_0.8rem_3.2rem_rgba(0,0,0,0.5)] border-line-strong" role="alert">
+				<div v-else class="flex flex-col items-center gap-3 px-6 py-5 surface-card text-center shadow-elev-1 border-line-strong" role="alert">
 					<span class="title-sm text-text-primary">{{ I18N.timeout }}</span>
 					<span class="text-sub max-w-[32rem] leading-relaxed">{{ I18N.timeoutDesc }}</span>
 					<AppButton variant="primary" class="mt-1.5 px-5" icon="arrow-right" :loading="entering" @click="retryEnterMain">

@@ -45,7 +45,7 @@ describe("OperationDrawer & AutomationTaskCard", () => {
 		RUNTIME.snapshot.value = {
 			version: 1,
 			app: {appVersion: "0.1.0", platform: "windows", debugCrashTestsAvailable: false, safeMode: false},
-			general: {language: "zh-CN", petAutoSummon: true, sidebarCollapsed: false},
+			general: {language: "zh-CN", petAutoSummon: true, backgroundBlurEnabled: true, sidebarCollapsed: false},
 			telemetry: {consent: "granted", enabled: true, available: true},
 			secretIssues: [],
 			ai: {configured: true, provider: "openai", baseUrl: "", model: "gpt-4o", persona: "nori", hasApiKey: true},

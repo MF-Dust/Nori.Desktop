@@ -1,3 +1,4 @@
+using Nori.Desktop.Appearance;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Avalonia;
@@ -36,20 +37,20 @@ public static class ChatMarkdown
 		RegexOptions.Multiline | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
 	// 尺寸对应 theme.less 中的 rem × 10，画刷只供 Markdown 使用，不注册共享主题资源。
-	private static readonly FontFamily BodyFont = new("-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Roboto, Helvetica Neue, Arial, sans-serif");
+	private static readonly FontFamily BodyFont = NoriTypography.Conversation;
 	private static readonly FontFamily CodeFont = new("ui-monospace, SFMono-Regular, Menlo, Consolas, monospace");
-	private static readonly IBrush BodyText = Brush("#111827");
-	private static readonly IBrush CodeBackground = Brush("#171B22");
-	private static readonly IBrush CodeText = Brush("#ecf8ff");
-	private static readonly IBrush InlineCodeText = Brush("#082f49");
+	private static readonly IBrush BodyText = NoriThemeTokens.Brush("chat-ai-text");
+	private static readonly IBrush CodeBackground = NoriThemeTokens.Brush("bg-base");
+	private static readonly IBrush CodeText = NoriThemeTokens.Brush("text-primary");
+	private static readonly IBrush InlineCodeText = NoriThemeTokens.Brush("chat-ai-text");
 	private static readonly IBrush InlineCodeBackground = Brush("#1F000000");
 	private static readonly IBrush RuleBrush = Brush("#26000000");
 	private static readonly IBrush QuoteBackground = Brush("#0F000000");
-	private static readonly IBrush QuoteBorder = Brush("#4a7c82");
-	private static readonly IBrush TableText = Brush("#1e293b");
-	private static readonly IBrush TableHeaderText = Brush("#0f172a");
+	private static readonly IBrush QuoteBorder = NoriThemeTokens.Brush("chat-markdown-quote");
+	private static readonly IBrush TableText = NoriThemeTokens.Brush("chat-ai-text");
+	private static readonly IBrush TableHeaderText = NoriThemeTokens.Brush("chat-ai-text");
 	private static readonly IBrush TableHeaderBackground = Brush("#14000000");
-	private static readonly IBrush LinkText = Brush("#0369a1");
+	private static readonly IBrush LinkText = NoriThemeTokens.Brush("chat-markdown-link");
 
 	/// <summary>仅生成原生文本、排版和按钮控件；外链交由宿主处理，不执行 HTML 或加载图片。</summary>
 	/// <param name="text">消息原文。</param>

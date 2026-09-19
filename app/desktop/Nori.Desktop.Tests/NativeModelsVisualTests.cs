@@ -37,7 +37,7 @@ public partial class BridgeCommandsTests
 		{
 			using BridgeCommandsTests fixture = new(safeMode: true); SeedNativeModels(fixture);
 			foreach (string language in new[] { "zh-CN", "en-US" })
-			foreach ((int width, int height) in new[] { (720, 480), (960, 640), (1920, 1080) })
+			foreach ((int width, int height) in new[] { (720, 480), (1040, 720), (960, 640), (1920, 1080) })
 			{
 				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(language)); fixture._runtime.InvalidateSnapshot("general");
 				ModelsWindow window = new(fixture._services) { Width = width, Height = height };
@@ -93,7 +93,7 @@ public partial class BridgeCommandsTests
 			}
 			return true;
 		}, CancellationToken.None);
-		Assert.Equal(25, manifest.Count);
+		Assert.Equal(33, manifest.Count);
 		await File.WriteAllTextAsync(Path.Combine(output, "manifest.json"), JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
 	}
 }

@@ -6,7 +6,7 @@
 //   1. 基础重置与根字号 (1rem = 10px)
 //   2. :root 设计令牌 (与 src/assets/style/tokens.ts 逐条一致, 由测试看守)
 //   3. 关键帧、滚动条与 Vue 过渡类
-// 配色: 深邃海洋赛博科技与青绿微光 (色相不变)
+// 配色：Nori.Web 深灰蓝底与低饱和青色，材质由宿主真实透明级别驱动。
 // ============================================================
 
 // ---------- 基础重置 ----------
@@ -24,17 +24,23 @@ img {
 // 根字号: 1rem = 10px (浏览器默认 16px × 62.5%), 组件内一律用 rem
 html {
 	font-size: 62.5%;
+	color-scheme: dark;
 }
 
 html, body, #app {
 	width: 100%;
 	height: 100%;
 	color: var(--text-body);
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-family: "Noto Sans SC", system-ui, sans-serif;
+	line-height: 1.6;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 	background: transparent;
 	overflow: hidden;
+}
+
+body, #app {
+	font-size: 1.3rem;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -59,56 +65,68 @@ option {
 
 // ---------- 设计令牌 (单一色源: src/assets/style/tokens.ts) ----------
 :root {
-	--nori-teal: #5eead4;
-	--nori-teal-bright: #7de3ff;
-	--nori-teal-soft: #7fd4e8;
-	--bg-base: #171B22;
-	--bg-abyss: #13171f;
-	--bg-deep: #1c212a;
-	--bg-panel: #242f3d;
-	--bg-card: rgba(28, 35, 47, 0.65);
-	--bg-card-hover: rgba(36, 47, 61, 0.78);
-	--bg-card-active: rgba(42, 54, 70, 0.88);
-	--bg-glass: rgba(23, 27, 34, 0.8);
-	--bg-glass-modal: rgba(19, 23, 31, 0.95);
-	--text-primary: #ecf8ff;
-	--text-body: #cfdde5;
-	--text-muted: #9db2c0;
-	--text-faint: #8398a8;
-	--line-subtle: rgba(125, 227, 255, 0.12);
-	--line-strong: rgba(125, 227, 255, 0.28);
-	--line-glow: rgba(94, 234, 212, 0.45);
-	--success: #20e090;
+	--nori-teal: #77c6d4;
+	--nori-teal-bright: #9ed2d2;
+	--nori-teal-soft: #b6d5d9;
+	--bg-base: #161a22;
+	--bg-abyss: #13171e;
+	--bg-deep: #1b2029;
+	--bg-panel: #272e39;
+	--bg-card: rgba(30, 35, 45, 0.92);
+	--bg-card-hover: rgba(39, 46, 57, 0.94);
+	--bg-card-active: rgba(45, 55, 65, 0.96);
+	--bg-glass: rgba(22, 26, 34, 0.86);
+	--bg-glass-modal: rgba(22, 26, 34, 0.96);
+	--bg-sidebar: rgba(19, 23, 30, 0.55);
+	--bg-input: #252c36;
+	--bg-selection: #293e46;
+	--text-primary: #e8efef;
+	--text-body: #cedbdc;
+	--text-muted: #a7b9bf;
+	--text-faint: #95a9b1;
+	--line-subtle: rgba(158, 210, 210, 0.16);
+	--line-strong: rgba(158, 210, 210, 0.30);
+	--line-glow: rgba(158, 210, 210, 0.45);
+	--success: #80c9aa;
 	--warning: #f1b24a;
 	--danger: #fb3c44;
-	--danger-text: #ff6b72;
-	--glow-teal: rgba(125, 227, 255, 0.45);
-	--glow-teal-soft: rgba(125, 227, 255, 0.18);
-	--glow-teal-strong: rgba(94, 234, 212, 0.65);
-	--on-teal: #03101c;
-	--text-placeholder: rgba(157, 178, 192, 0.75);
-	--text-disabled: #6a8496;
-	--nori-teal-pressed: #2dd4bf;
-	--info-hover: #a5f3fc;
-	--info-pressed: #38bdf8;
+	--danger-text: #ff7d84;
+	--glow-teal: rgba(158, 210, 210, 0.20);
+	--glow-teal-soft: rgba(158, 210, 210, 0.08);
+	--glow-teal-strong: rgba(158, 210, 210, 0.30);
+	--on-teal: #16232b;
+	--text-placeholder: #95a9b1;
+	--text-disabled: #798f99;
+	--nori-teal-pressed: #64b1c0;
+	--info-hover: #b6dfe1;
+	--info-pressed: #6aafbc;
 	--overlay-2: rgba(255, 255, 255, 0.02);
 	--overlay-4: rgba(255, 255, 255, 0.04);
 	--overlay-6: rgba(255, 255, 255, 0.06);
 	--overlay-8: rgba(255, 255, 255, 0.08);
 	--overlay-12: rgba(255, 255, 255, 0.12);
 	--overlay-20: rgba(255, 255, 255, 0.2);
-	--bg-popover: rgba(23, 27, 34, 0.96);
-	--bg-menu: rgba(21, 25, 33, 0.96);
-	--bg-tooltip: rgba(19, 23, 31, 0.95);
+	--bg-popover: rgba(30, 35, 45, 0.98);
+	--bg-menu: rgba(22, 26, 34, 0.98);
+	--bg-tooltip: rgba(30, 35, 45, 0.98);
+	--scrim: rgba(3, 6, 12, 0.65);
 	--slider-fill: #77c6d4;
-	--slider-fill-hover: #8de0ee;
-	--window-focus-border: #9bd4de;
-	--window-focus-glow: rgba(155, 212, 222, 0.25);
-	--chat-user-bg: #454752;
-	--chat-user-text: #ffffff;
-	--chat-ai-bg: #b8d7d8;
-	--chat-ai-text: #111827;
-	--chat-ai-border: rgba(155, 196, 197, 0.5);
+	--slider-fill-hover: #9ed2d2;
+	--window-focus-border: #9ed2d2;
+	--window-focus-glow: rgba(158, 210, 210, 0.14);
+	--chat-user-bg: #3d3d47;
+	--chat-user-bg-end: #4a4a55;
+	--chat-user-text: #e8e8ec;
+	--chat-ai-bg: #d2e8e9;
+	--chat-ai-bg-end: #caf5f1;
+	--chat-ai-text: #45454f;
+	--chat-ai-border: rgba(254, 254, 254, 0.44);
+	--chat-composer: #56565f;
+	--chat-white: #fefefe;
+	--chat-focus-placeholder: #32616d;
+	--chat-approval-danger: #b01521;
+	--chat-markdown-link: #0369a1;
+	--chat-markdown-quote: #4a7c82;
 	--traffic-close: #ff5f56;
 	--traffic-close-hover: #e0443e;
 	--traffic-minimize: #ffbd2e;
@@ -121,11 +139,11 @@ option {
 	--radius-lg: 1.6rem;
 	--radius-pill: 99.9rem;
 	--shadow-soft: 0 0.8rem 2.4rem rgba(0, 0, 0, 0.35);
-	--shadow-glow: 0 0 2rem rgba(125, 227, 255, 0.2);
-	--shadow-window: 0 1.2rem 3.6rem rgba(0, 0, 0, 0.65);
-	--shadow-elev-1: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.32), 0 0 0.1rem rgba(125, 227, 255, 0.08);
-	--shadow-elev-2: 0 0.8rem 2.4rem rgba(0, 0, 0, 0.48), 0 0 1.6rem rgba(125, 227, 255, 0.1);
-	--shadow-elev-3: 0 1.6rem 4rem rgba(0, 0, 0, 0.7), 0 0 2.4rem rgba(94, 234, 212, 0.14);
+	--shadow-glow: 0 0 1.2rem rgba(158, 210, 210, 0.08);
+	--shadow-window: 0 0.8rem 3.2rem rgba(0, 0, 0, 0.35);
+	--shadow-elev-1: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.16);
+	--shadow-elev-2: 0 0.4rem 1.6rem rgba(0, 0, 0, 0.24);
+	--shadow-elev-3: 0 0.8rem 3.2rem rgba(0, 0, 0, 0.35);
 }
 
 // ---------- 现代化暗色发光滚动条 ----------
@@ -135,23 +153,22 @@ option {
 }
 
 ::-webkit-scrollbar-track {
-	background: rgba(0, 0, 0, 0.18);
+	background: transparent;
 	border-radius: 0.35rem;
 }
 
 ::-webkit-scrollbar-thumb {
-	background: rgba(125, 227, 255, 0.28);
-	border: 0.1rem solid rgba(5, 14, 26, 0.5);
+	background: var(--line-strong);
+	border: 0.1rem solid var(--bg-base);
 	border-radius: 0.35rem;
 	transition: background 0.2s ease, box-shadow 0.2s ease;
 
 	&:hover {
-		background: rgba(125, 227, 255, 0.46);
-		box-shadow: 0 0 0.8rem var(--glow-teal-soft);
+		background: var(--text-disabled);
 	}
 
 	&:active {
-		background: rgba(94, 234, 212, 0.58);
+		background: var(--nori-teal);
 	}
 }
 
@@ -159,11 +176,9 @@ option {
 @keyframes breathe {
 	0%, 100% {
 		transform: scale(1);
-		filter: drop-shadow(0 0 1.4rem rgba(94, 234, 212, 0.35));
 	}
 	50% {
-		transform: scale(1.05);
-		filter: drop-shadow(0 0 2.4rem rgba(125, 227, 255, 0.65));
+		transform: scale(1.025);
 	}
 }
 
@@ -176,45 +191,19 @@ option {
 	}
 }
 
-@keyframes glow-pulse {
-	0%, 100% {
-		opacity: 0.3;
-		transform: scale(1);
-	}
-	50% {
-		opacity: 0.65;
-		transform: scale(1.08);
-	}
-}
-
 // 在场感: 一圈光环从点上扩出去再散掉。
 //
 // 颜色走 --pulse-tint 而不是写死绿色 —— 写死之后它只能表示"在线", 别的状态想用
 // 同一个节拍就得再写一套关键帧。
 @keyframes pulse-soft {
 	0% {
-		box-shadow: 0 0 0 0 var(--pulse-tint, rgba(32, 224, 144, 0.45));
+		box-shadow: 0 0 0 0 var(--pulse-tint, var(--success));
 	}
 	70% {
 		box-shadow: 0 0 0 0.75rem transparent;
 	}
 	100% {
 		box-shadow: 0 0 0 0 transparent;
-	}
-}
-
-// ---------- 她是连着线的 ----------
-//
-// 立绘上她尾巴末端拖着一根接头线 —— 她不是凭空住在屏幕里, 是插在这台机器上的。
-// 面板上沿那道光就是这根线: 每隔几秒走过一趟, 说明这头还通着。
-//
-// 走一趟给 7 秒。快了像进度条, 慢了没人会注意到它动过。
-@keyframes nori-current {
-	from {
-		background-position: -60% 0;
-	}
-	to {
-		background-position: 160% 0;
 	}
 }
 
@@ -237,29 +226,10 @@ option {
 	animation: breathe 2.4s ease-in-out infinite;
 }
 
-.animate-glow-pulse {
-	animation: glow-pulse 2.5s ease-in-out infinite;
-}
-
 // 3.6 秒一轮。原来是 1.2 秒 —— 那是告警的节拍, 不是待在那儿的节拍。
 // (这条规则此前没有任何地方用到, 改节奏不影响既有界面。)
 .animate-pulse-soft {
 	animation: pulse-soft 3.6s cubic-bezier(0.4, 0, 0.3, 1) infinite;
-}
-
-.nori-current {
-	// 亮芯只占一小段: 宽了就成了一团光晕, 看着像渲染瑕疵而不像有东西走过去
-	background-image: linear-gradient(
-		90deg,
-		transparent 0%,
-		var(--glow-teal-soft) 30%,
-		var(--nori-teal-bright) 50%,
-		var(--glow-teal-soft) 70%,
-		transparent 100%
-	);
-	background-size: 26% 100%;
-	background-repeat: no-repeat;
-	animation: nori-current 7s linear infinite;
 }
 
 .animate-bubble-in {
@@ -283,7 +253,7 @@ option {
 .page-next-leave-active,
 .page-prev-enter-active,
 .page-prev-leave-active {
-	transition: opacity 0.28s ease, transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+	transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .page-next-enter-from {

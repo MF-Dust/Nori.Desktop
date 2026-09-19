@@ -2,84 +2,80 @@
 	<!-- 复用 Devolutions 控件模板、阴影与键盘焦点；统一 Nori 外壳及深色选项状态。 -->
 	<Styles.Resources>
 		<ResourceDictionary>
-			<SolidColorBrush x:Key="SettingsIconForegroundBrush" Color="#FFFFFF"/>
-			<SolidColorBrush x:Key="SettingsIconHighlightBrush" Color="#40FFFFFF"/>
-			<LinearGradientBrush x:Key="SettingsIconBlueBrush" StartPoint="0%,0%" EndPoint="0%,100%">
-				<GradientStop Color="#439BFA" Offset="0"/><GradientStop Color="#1661D4" Offset="1"/>
-			</LinearGradientBrush>
-			<LinearGradientBrush x:Key="SettingsIconPurpleBrush" StartPoint="0%,0%" EndPoint="0%,100%">
-				<GradientStop Color="#AB7DF0" Offset="0"/><GradientStop Color="#7741C3" Offset="1"/>
-			</LinearGradientBrush>
-			<LinearGradientBrush x:Key="SettingsIconRedBrush" StartPoint="0%,0%" EndPoint="0%,100%">
-				<GradientStop Color="#F97983" Offset="0"/><GradientStop Color="#D73751" Offset="1"/>
-			</LinearGradientBrush>
-			<LinearGradientBrush x:Key="SettingsIconGreenBrush" StartPoint="0%,0%" EndPoint="0%,100%">
-				<GradientStop Color="#52B79B" Offset="0"/><GradientStop Color="#21846B" Offset="1"/>
-			</LinearGradientBrush>
-			<LinearGradientBrush x:Key="SettingsIconOrangeBrush" StartPoint="0%,0%" EndPoint="0%,100%">
-				<GradientStop Color="#F5B252" Offset="0"/><GradientStop Color="#D67A20" Offset="1"/>
-			</LinearGradientBrush>
-			<LinearGradientBrush x:Key="SettingsIconGrayBrush" StartPoint="0%,0%" EndPoint="0%,100%">
-				<GradientStop Color="#9AA6B6" Offset="0"/><GradientStop Color="#647184" Offset="1"/>
-			</LinearGradientBrush>
-			<ResourceDictionary.ThemeDictionaries>
-				<ResourceDictionary x:Key="Light">
-					<SolidColorBrush x:Key="SettingsWindowBrush" Color="#F3F7F8"/>
-					<SolidColorBrush x:Key="SettingsSidebarBrush" Color="#EAF1F3"/>
-					<SolidColorBrush x:Key="SettingsCardBrush" Color="#FFFFFF"/>
-					<SolidColorBrush x:Key="SettingsBorderBrush" Color="#D3E1E5"/>
-					<SolidColorBrush x:Key="SettingsPrimaryBrush" Color="#20313D"/>
-					<SolidColorBrush x:Key="SettingsSecondaryBrush" Color="#556B78"/>
-					<SolidColorBrush x:Key="SettingsErrorBrush" Color="#B42318"/>
-					<SolidColorBrush x:Key="SettingsSelectionBrush" Color="#DAEDF2"/>
-					<SolidColorBrush x:Key="SettingsAccentBrush" Color="#176779"/>
-					<SolidColorBrush x:Key="SettingsInputBrush" Color="#F4F8F9"/>
-					<SolidColorBrush x:Key="SettingsHoverBrush" Color="#E2EDF0"/>
-					<SolidColorBrush x:Key="SettingsAccentForegroundBrush" Color="#FFFFFF"/>
-					<StaticResource x:Key="TextBoxMultiLineBackgroundBrush" ResourceKey="SettingsInputBrush"/>
-				</ResourceDictionary>
-				<ResourceDictionary x:Key="Dark">
-					<SolidColorBrush x:Key="SettingsWindowBrush" Color="#161A22"/>
-					<SolidColorBrush x:Key="SettingsSidebarBrush" Color="#13171E"/>
-					<SolidColorBrush x:Key="SettingsCardBrush" Color="#1D242D"/>
-					<SolidColorBrush x:Key="SettingsBorderBrush" Color="#34434B"/>
-					<SolidColorBrush x:Key="SettingsPrimaryBrush" Color="#E6F1F5"/>
-					<SolidColorBrush x:Key="SettingsSecondaryBrush" Color="#A4B4BF"/>
-					<SolidColorBrush x:Key="SettingsErrorBrush" Color="#FFB4AB"/>
-					<SolidColorBrush x:Key="SettingsSelectionBrush" Color="#233B45"/>
-					<SolidColorBrush x:Key="SettingsAccentBrush" Color="#77C6D4"/>
-					<SolidColorBrush x:Key="SettingsInputBrush" Color="#252E38"/>
-					<SolidColorBrush x:Key="SettingsHoverBrush" Color="#2D3A46"/>
-					<SolidColorBrush x:Key="SettingsAccentForegroundBrush" Color="#15212A"/>
-					<!-- 库的部分控件色源仍使用浅色常量；只补齐深色资源，不覆盖控件模板与状态。 -->
-					<StaticResource x:Key="ForegroundHighBrush" ResourceKey="SettingsPrimaryBrush"/>
-					<StaticResource x:Key="ForegroundLowBrush" ResourceKey="SettingsSecondaryBrush"/>
-					<StaticResource x:Key="ButtonBackgroundBrush" ResourceKey="SettingsInputBrush"/>
-					<StaticResource x:Key="ButtonPressedBackgroundBrush" ResourceKey="SettingsHoverBrush"/>
-					<StaticResource x:Key="ButtonDisabledBackgroundBrush" ResourceKey="SettingsCardBrush"/>
-					<StaticResource x:Key="ButtonBorderBrush" ResourceKey="SettingsBorderBrush"/>
-					<StaticResource x:Key="ComboBoxBackgroundBrush" ResourceKey="SettingsInputBrush"/>
-					<StaticResource x:Key="ComboBoxPressedBackgroundBrush" ResourceKey="SettingsHoverBrush"/>
-					<StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="SettingsBorderBrush"/>
-					<StaticResource x:Key="ControlBackgroundDisabledHighBrush" ResourceKey="SettingsCardBrush"/>
-					<!-- 弹层与非活动选项同样需要深色底，不能只修复收起时的输入框。 -->
-					<StaticResource x:Key="PopupBackgroundBrush" ResourceKey="SettingsCardBrush"/>
-					<StaticResource x:Key="PopupBorderBrush" ResourceKey="SettingsBorderBrush"/>
-					<StaticResource x:Key="PopupInnerBorderHighlightBrush" ResourceKey="SettingsBorderBrush"/>
-					<StaticResource x:Key="LayoutBackgroundMidBrush" ResourceKey="SettingsSelectionBrush"/>
-					<StaticResource x:Key="ComboBoxItemPointerOverBackgroundBrush" ResourceKey="SettingsHoverBrush"/>
-					<StaticResource x:Key="TextBoxBackgroundBrush" ResourceKey="SettingsInputBrush"/>
-					<StaticResource x:Key="TextBoxBorderBrush" ResourceKey="SettingsBorderBrush"/>
-					<StaticResource x:Key="TextBoxMultiLineBackgroundBrush" ResourceKey="SettingsInputBrush"/>
-				</ResourceDictionary>
-			</ResourceDictionary.ThemeDictionaries>
+			<ResourceDictionary.MergedDictionaries>
+				<ResourceInclude Source="avares://Nori.Desktop/Appearance/NoriThemeResources.g.axaml"/>
+			</ResourceDictionary.MergedDictionaries>
+			<StaticResource x:Key="SettingsWindowBrush" ResourceKey="NoriBgBaseBrush"/>
+			<StaticResource x:Key="SettingsSidebarBrush" ResourceKey="NoriBgSidebarBrush"/>
+			<StaticResource x:Key="SettingsCardBrush" ResourceKey="NoriBgCardBrush"/>
+			<StaticResource x:Key="SettingsBorderBrush" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="SettingsPrimaryBrush" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="SettingsSecondaryBrush" ResourceKey="NoriTextMutedBrush"/>
+			<StaticResource x:Key="SettingsErrorBrush" ResourceKey="NoriDangerTextBrush"/>
+			<StaticResource x:Key="SettingsSelectionBrush" ResourceKey="NoriBgSelectionBrush"/>
+			<StaticResource x:Key="SettingsAccentBrush" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="SettingsInputBrush" ResourceKey="NoriBgInputBrush"/>
+			<StaticResource x:Key="SettingsHoverBrush" ResourceKey="NoriBgCardHoverBrush"/>
+			<StaticResource x:Key="SettingsAccentForegroundBrush" ResourceKey="NoriOnTealBrush"/>
+			<StaticResource x:Key="SettingsIconForegroundBrush" ResourceKey="NoriTextMutedBrush"/>
+			<StaticResource x:Key="SettingsIconHighlightBrush" ResourceKey="NoriOverlay20Brush"/>
+			<StaticResource x:Key="NoriWindowSurfaceBrush" ResourceKey="NoriBgBaseBrush"/>
+			<!-- Devolutions 的开关及下拉箭头拥有独立画刷，不继承控件前景。 -->
+			<StaticResource x:Key="SystemAccentColor" ResourceKey="NoriNoriTealColor"/>
+			<StaticResource x:Key="SystemAccentColorDark1" ResourceKey="NoriNoriTealPressedColor"/>
+			<StaticResource x:Key="SystemAccentColorLight1" ResourceKey="NoriNoriTealBrightColor"/>
+			<StaticResource x:Key="AccentForegroundColor" ResourceKey="NoriOnTealColor"/>
+			<StaticResource x:Key="ControlBorderAccentBrush" ResourceKey="SettingsAccentBrush"/>
+			<StaticResource x:Key="ControlBackgroundAccentHighBrush" ResourceKey="SettingsAccentBrush"/>
+			<StaticResource x:Key="ControlBackgroundAccentRaisedBrush" ResourceKey="SettingsAccentBrush"/>
+			<StaticResource x:Key="ControlForegroundAccentHighBrush" ResourceKey="SettingsAccentForegroundBrush"/>
+			<StaticResource x:Key="FocusBorderBrush" ResourceKey="NoriWindowFocusGlowBrush"/>
+			<StaticResource x:Key="ToggleSwitchContainerCheckedDefaultBackground" ResourceKey="SettingsAccentBrush"/>
+			<StaticResource x:Key="ToggleSwitchContainerCheckedPointeroverBackground" ResourceKey="NoriNoriTealBrightBrush"/>
+			<StaticResource x:Key="ToggleSwitchContainerCheckedPressedBackground" ResourceKey="NoriNoriTealPressedBrush"/>
+			<StaticResource x:Key="ToggleSwitchContainerCheckedDisabledBackground" ResourceKey="SettingsSelectionBrush"/>
+			<StaticResource x:Key="ToggleSwitchContainerUnCheckedDefaultBackground" ResourceKey="SettingsInputBrush"/>
+			<StaticResource x:Key="ToggleSwitchContainerUnCheckedPointeroverBackground" ResourceKey="SettingsHoverBrush"/>
+			<StaticResource x:Key="ToggleSwitchContainerUnCheckedPressedBackground" ResourceKey="SettingsSelectionBrush"/>
+			<StaticResource x:Key="ToggleSwitchContainerUnCheckedDisabledBackground" ResourceKey="SettingsCardBrush"/>
+			<StaticResource x:Key="ToggleSwitchContainerUnCheckedDisabledBorderBrush" ResourceKey="SettingsBorderBrush"/>
+			<StaticResource x:Key="ToggleSwitchDefaultBorderBrush" ResourceKey="SettingsBorderBrush"/>
+			<StaticResource x:Key="ToggleSwitchKnobBackground" ResourceKey="SettingsPrimaryBrush"/>
+			<StaticResource x:Key="SimpleToggleSwitchContainerCheckedForeground" ResourceKey="SettingsAccentBrush"/>
+			<StaticResource x:Key="ComboBoxButtonBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
+			<StaticResource x:Key="ComboBoxButtonBorderBrush" ResourceKey="SettingsAccentBrush"/>
+			<StaticResource x:Key="ComboBoxButtonInactiveBackgroundBrush" ResourceKey="SettingsInputBrush"/>
+			<StaticResource x:Key="ComboBoxButtonInactiveBorderBrush" ResourceKey="SettingsBorderBrush"/>
+			<StaticResource x:Key="ComboBoxChevronBrush" ResourceKey="SettingsAccentForegroundBrush"/>
+			<StaticResource x:Key="ComboBoxChevronInactiveBrush" ResourceKey="SettingsSecondaryBrush"/>
+			<SolidColorBrush x:Key="TextBoxSelectionHighlightBrush" Color="{StaticResource NoriNoriTealColor}" Opacity="0.3"/>
+			<CornerRadius x:Key="TextBoxFocusCornerRadius">8</CornerRadius>
+			<StaticResource x:Key="ForegroundHighBrush" ResourceKey="SettingsPrimaryBrush"/>
+			<StaticResource x:Key="ForegroundLowBrush" ResourceKey="SettingsSecondaryBrush"/>
+			<StaticResource x:Key="ButtonBackgroundBrush" ResourceKey="SettingsInputBrush"/>
+			<StaticResource x:Key="ButtonPressedBackgroundBrush" ResourceKey="SettingsHoverBrush"/>
+			<StaticResource x:Key="ButtonDisabledBackgroundBrush" ResourceKey="SettingsCardBrush"/>
+			<StaticResource x:Key="ButtonBorderBrush" ResourceKey="SettingsBorderBrush"/>
+			<StaticResource x:Key="ComboBoxBackgroundBrush" ResourceKey="SettingsInputBrush"/>
+			<StaticResource x:Key="ComboBoxPressedBackgroundBrush" ResourceKey="SettingsHoverBrush"/>
+			<StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="SettingsBorderBrush"/>
+			<StaticResource x:Key="ControlBackgroundDisabledHighBrush" ResourceKey="SettingsCardBrush"/>
+			<!-- 弹层与非活动选项同样需要深色底，不能只修复收起时的输入框。 -->
+			<StaticResource x:Key="PopupBackgroundBrush" ResourceKey="SettingsCardBrush"/>
+			<StaticResource x:Key="PopupBorderBrush" ResourceKey="SettingsBorderBrush"/>
+			<StaticResource x:Key="PopupInnerBorderHighlightBrush" ResourceKey="SettingsBorderBrush"/>
+			<StaticResource x:Key="LayoutBackgroundMidBrush" ResourceKey="SettingsSelectionBrush"/>
+			<StaticResource x:Key="ComboBoxItemPointerOverBackgroundBrush" ResourceKey="SettingsHoverBrush"/>
+			<StaticResource x:Key="TextBoxBackgroundBrush" ResourceKey="SettingsInputBrush"/>
+			<StaticResource x:Key="TextBoxBorderBrush" ResourceKey="SettingsBorderBrush"/>
+			<StaticResource x:Key="TextBoxMultiLineBackgroundBrush" ResourceKey="SettingsInputBrush"/>
 			<!-- 保留 ToggleButton 的选中语义，复用设置按钮模板及键盘焦点，不混用浅色回退模板。 -->
 			<ControlTheme x:Key="SettingsChoiceTheme" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type Button}}">
 				<Setter Property="Background" Value="{DynamicResource SettingsInputBrush}"/>
 				<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
 				<Setter Property="BorderBrush" Value="{DynamicResource SettingsBorderBrush}"/>
 				<Setter Property="BorderThickness" Value="1"/>
-				<Setter Property="CornerRadius" Value="7"/>
+				<Setter Property="CornerRadius" Value="8"/>
 				<Style Selector="^:pointerover, ^:pressed">
 					<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
 				</Style>
@@ -98,12 +94,16 @@
 		</ResourceDictionary>
 	</Styles.Resources>
 	<Style Selector="Window">
-		<Setter Property="FontFamily" Value="Microsoft YaHei UI, PingFang SC, Noto Sans CJK SC, sans-serif"/>
-		<Setter Property="Background" Value="{DynamicResource SettingsWindowBrush}"/>
+		<Setter Property="FontFamily" Value="{DynamicResource DefaultFontFamily}"/>
+		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="Background" Value="{DynamicResource NoriWindowSurfaceBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
 	</Style>
 	<Style Selector="ToggleButton.settings-choice">
 		<Setter Property="Theme" Value="{StaticResource SettingsChoiceTheme}"/>
+	</Style>
+	<Style Selector="TextBox:not(.chat-composer):not(.quick-composer), ComboBox">
+		<Setter Property="CornerRadius" Value="8"/>
 	</Style>
 	<Style Selector="Window.models-window ComboBox, Window.models-window TextBox">
 		<Setter Property="MinHeight" Value="34"/>
@@ -138,18 +138,9 @@
 		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
 	</Style>
 	<Style Selector="TextBox.settings-search">
-		<Setter Property="CornerRadius" Value="7"/>
+		<Setter Property="CornerRadius" Value="8"/>
 	</Style>
-	<!--
-		导航图标不带底片。
-
-		原来每一页配一枚不同色的圆角方块: 紫、红、绿、橙、蓝、灰 —— 十一页十一种颜色,
-		而颜色不编码任何信息, 纯装饰。整个应用是深海蓝加一点薄荷的单色体系, 这一排
-		彩虹是唯一的例外, 而它恰好长在用户最常来的地方。
-
-		底片撤掉之后还有一个附带好处: 「访问权限」和「情绪表达」当时是**两块纯色空白**
-		(见下面那段注释), 有底片时它们看着像坏了, 没底片时只是图标缺失 —— 当然两个都补上了。
-	-->
+	<!-- 导航统一使用无底片的线性图标。 -->
 	<Style Selector="Border.settings-nav-symbol">
 		<Setter Property="Background" Value="Transparent"/>
 		<Setter Property="BorderThickness" Value="0"/>
@@ -163,18 +154,13 @@
 		<Setter Property="StrokeLineCap" Value="Round"/>
 		<Setter Property="StrokeJoin" Value="Round"/>
 	</Style>
+	<Style Selector="Button.settings-nav.selected Path.settings-nav-icon">
+		<Setter Property="Stroke" Value="{DynamicResource SettingsAccentBrush}"/>
+	</Style>
 	<Style Selector="Button.settings-nav[Tag=ai] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 10,3 Q 11,10 18,11 Q 11,12 10,19 Q 9,12 2,11 Q 9,10 10,3 Z M 19,2 L 19,6 M 17,4 L 21,4 M 20,16 L 20,20 M 18,18 L 22,18"/>
 	</Style>
-	<!--
-		workspace 与 expression 此前**没有图标数据**。
-
-		页面早先叫 library / behaviors, 改名之后样式选择器没跟着改, 于是这两页的 Path
-		拿不到 Data —— 渲染成一个空 Path, 不报错、不告警, 界面上就是两块空白。
-		(那两条死样式已在下面删掉。)
-
-		这两枚按主界面那套图标的画法来: 圆角收笔, 1.8 描边。
-	-->
+	<!-- 每个导航入口都有独立路径数据。 -->
 	<Style Selector="Button.settings-nav[Tag=workspace] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 12,3.2 L 4.8,6 L 4.8,12.1 C 4.8,16 7.7,19 12,20.8 C 16.3,19 19.2,16 19.2,12.1 L 19.2,6 Z M 9.1,12.2 L 11.3,14.4 L 15,10.4"/>
 	</Style>

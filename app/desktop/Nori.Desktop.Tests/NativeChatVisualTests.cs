@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Nori.Core.Configuration;
 using Nori.Desktop.Chat;
+using Nori.Desktop.QuickChat;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Tests;
@@ -29,9 +30,9 @@ public partial class BridgeCommandsTests
 	[Fact]
 	public void NativeChatPaletteRetainsVuePaleAssistantAndAccessibleText()
 	{
-		Assert.Equal(Color.Parse("#b8d7d8"), ((ISolidColorBrush)ChatPalette.AssistantBackground).Color);
-		Assert.Equal(Color.Parse("#111827"), ((ISolidColorBrush)ChatPalette.AssistantText).Color);
-		Assert.Equal(Color.Parse("#454752"), ((ISolidColorBrush)ChatPalette.UserBackground).Color);
+		Assert.Equal(Color.Parse("#d2e8e9"), ((ISolidColorBrush)ChatPalette.AssistantBackground).Color);
+		Assert.Equal(Color.Parse("#45454f"), ((ISolidColorBrush)ChatPalette.AssistantText).Color);
+		Assert.Equal(Color.Parse("#3d3d47"), ((ISolidColorBrush)ChatPalette.UserBackground).Color);
 		CheckContrast(ChatPalette.AssistantText, ChatPalette.AssistantBackground);
 		CheckContrast(ChatPalette.UserText, ChatPalette.UserBackground);
 		CheckContrast(ChatPalette.Muted, ChatPalette.Deep);
@@ -53,6 +54,8 @@ public partial class BridgeCommandsTests
 			(ISolidColorBrush)ChatPalette.AssistantBackground, (ISolidColorBrush)ChatPalette.AssistantText,
 			(ISolidColorBrush)ChatPalette.Line, (ISolidColorBrush)ChatPalette.AssistantBorder,
 			(ISolidColorBrush)ChatPalette.Overlay, (ISolidColorBrush)ChatPalette.Scrim,
+			(ISolidColorBrush)QuickChatPalette.Mint, (ISolidColorBrush)QuickChatPalette.Dark,
+			(ISolidColorBrush)QuickChatPalette.Composer, (ISolidColorBrush)QuickChatPalette.Player,
 		];
 		Color[] expected = brushes.Select(brush => brush.Color).ToArray();
 		Color[] actual = await Task.Run(() => brushes.Select(brush => brush.Color).ToArray());
@@ -69,7 +72,7 @@ public partial class BridgeCommandsTests
 		{
 			using BridgeCommandsTests fixture = new(); fixture.ConfigureDesktop();
 			foreach (string language in new[] { "zh-CN", "en-US" })
-			foreach ((int width, int height) in new[] { (720, 480), (960, 640), (1920, 1080) })
+			foreach ((int width, int height) in new[] { (720, 480), (960, 720), (960, 640), (1920, 1080) })
 			{
 				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(language)); fixture._runtime.InvalidateSnapshot("general");
 				ChatWindow window = new(fixture._services) { Width = width, Height = height };
@@ -103,7 +106,7 @@ public partial class BridgeCommandsTests
 			}
 			return true;
 		}, CancellationToken.None);
-		Assert.Equal(36, manifest.Count);
+		Assert.Equal(48, manifest.Count);
 		await File.WriteAllTextAsync(Path.Combine(output, "manifest.json"), JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
 	}
 

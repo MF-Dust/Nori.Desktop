@@ -85,6 +85,8 @@ export interface GeneralState {
 	petAutoSummon: boolean
 	/** 是否启用快捷聊天入口 */
 	quickChatEnabled: boolean
+	/** 是否请求系统背景模糊；实际效果由每个窗口的宿主通知 */
+	backgroundBlurEnabled: boolean
 	/** 主界面侧边栏是否折叠 */
 	sidebarCollapsed: boolean
 	/** 启动时是否自动检查更新 */
@@ -107,6 +109,12 @@ export interface WindowsState {
 	models: boolean
 	memory: boolean
 	settings: boolean
+}
+
+/** 当前宿主窗口标题栏状态，由宿主原生窗口属性驱动。 */
+export interface WindowChromeState {
+	maximized: boolean
+	canResize: boolean
 }
 
 /** 运行会话类型 (Linux 下区分 x11 / wayland) */

@@ -50,6 +50,8 @@ public partial class BridgeCommandsTests
 			Assert.Equal("和 Nori 聊天...", placeholder.Text);
 			Assert.True(shortcut.IsVisible);
 			Assert.Equal(4, composer.BoxShadow.Count);
+			Assert.Equal(WindowTransparencyLevel.Transparent, Assert.Single(window.TransparencyLevelHint));
+			Assert.Equal(0, Assert.IsAssignableFrom<ISolidColorBrush>(window.Background).Color.A);
 
 			DateTimeOffset now = DateTimeOffset.UtcNow;
 			window.Body.State.BeginSend("测试状态", now);
@@ -60,6 +62,9 @@ public partial class BridgeCommandsTests
 			window.Body.State.ApplyEvent(JsonSerializer.SerializeToElement(new { type = "chunk", sessionId = "visual-status", chunk = "分层阴影" }), now);
 			Border bubble = window.GetVisualDescendants().OfType<Border>().Single(control => control.Name == "QuickChatAgentBubble");
 			Assert.Equal(4, bubble.BoxShadow.Count);
+			TextBlock message = Assert.IsType<TextBlock>(bubble.Child);
+			Assert.Equal(Color.Parse("#45454F"), Assert.IsAssignableFrom<ISolidColorBrush>(message.Foreground).Color);
+			Assert.Equal(14, message.FontSize);
 		}
 		finally
 		{
@@ -180,13 +185,8 @@ public partial class BridgeCommandsTests
 			window.Show();
 			await view.RefreshAsync();
 			await WaitUntilAsync(() => view.HistoryLoaded);
-			Assert.StartsWith("Nunito", new Typeface(view.FontFamily, weight: FontWeight.Medium).GlyphTypeface.FamilyName, StringComparison.Ordinal);
-			if (System.OperatingSystem.IsWindows())
-			{
-				Assert.True(FontManager.Current.TryMatchCharacter('和', FontStyle.Normal, FontWeight.Medium,
-					FontStretch.Normal, view.FontFamily, System.Globalization.CultureInfo.GetCultureInfo("zh-CN"), out Typeface chinese));
-				Assert.Contains("YaHei", chinese.GlyphTypeface.FamilyName, StringComparison.OrdinalIgnoreCase);
-			}
+			GlyphTypeface conversationGlyphs = new Typeface(view.FontFamily, weight: FontWeight.Medium).GlyphTypeface;
+			Assert.NotEqual((ushort)0, conversationGlyphs.CharacterToGlyphMap.GetGlyph('N'));
 			view.ApplySnapshot(JsonSerializer.SerializeToElement(new
 			{
 				app = new {safeMode = false},

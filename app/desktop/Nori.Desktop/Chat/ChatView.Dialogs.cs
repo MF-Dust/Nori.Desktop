@@ -1,3 +1,4 @@
+using Nori.Desktop.Windows;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Automation;
@@ -16,7 +17,7 @@ public sealed partial class ChatView
 	private readonly TextBlock _dialogTitle = Text("", 18, true);
 	private readonly TextBlock _approvalName = Text("", 14, true);
 	private readonly TextBlock _approvalDescription = Text("", 12);
-	private readonly TextBlock _approvalQueue = Text("", 11.5);
+	private readonly TextBlock _approvalQueue = Text("", 12);
 	private readonly TextBlock _approvalCountdown = Text("", 12);
 	private readonly TextBlock _dialogError = Text("", 12);
 	private readonly SelectableTextBlock _approvalArgs = new() { FontSize = 12, FontFamily = new FontFamily("Consolas, Menlo, monospace"), TextWrapping = TextWrapping.Wrap, Foreground = ChatPalette.Body };
@@ -38,14 +39,23 @@ public sealed partial class ChatView
 	{
 		var dialog = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), RowSpacing = 12 };
 		KeyboardNavigation.SetTabNavigation(dialog, KeyboardNavigationMode.Cycle);
-		var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12 };
-		_dialogTitle.VerticalAlignment = VerticalAlignment.Center; heading.Children.Add(_dialogTitle);
-		_dialogClose = Button(() => T("关闭并拒绝", "Close and deny"), () =>
+		var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12 };
+		_dialogTitle.VerticalAlignment = VerticalAlignment.Center;
+		_dialogClose = NativeWindowChrome.TrafficButton("close", "×");
+		_dialogClose.Name = "ChatDialogClose";
+		_dialogClose.Click += async (_, _) =>
 		{
-			if (_state.Approvals.Count > 0) return DecideApprovalAsync(false);
-			_confirmOpen = false; RenderDialog(); return Task.CompletedTask;
-		}, "ChatDialogClose", "close", iconOnly: true);
-		Grid.SetColumn(_dialogClose, 1); heading.Children.Add(_dialogClose); dialog.Children.Add(heading);
+			if (_state.Approvals.Count > 0) await DecideApprovalAsync(false);
+			else { _confirmOpen = false; RenderDialog(); }
+		};
+		Localize(() => { AutomationProperties.SetName(_dialogClose, T("关闭并拒绝", "Close and deny")); ToolTip.SetTip(_dialogClose, T("关闭并拒绝", "Close and deny")); });
+		var lights = new StackPanel { Orientation = Orientation.Horizontal, Children = { _dialogClose } };
+		foreach (var kind in new[] { "minimize", "zoom" })
+		{
+			var disabled = NativeWindowChrome.TrafficButton(kind, kind == "zoom" ? "+" : "−");
+			disabled.IsEnabled = false; disabled.Opacity = .35; lights.Children.Add(disabled);
+		}
+		heading.Children.Add(lights); Grid.SetColumn(_dialogTitle, 1); heading.Children.Add(_dialogTitle); dialog.Children.Add(heading);
 		var contents = new Grid();
 		var approval = new StackPanel { Spacing = 12 };
 		_approvalName.Foreground = ChatPalette.Accent; approval.Children.Add(_approvalName);

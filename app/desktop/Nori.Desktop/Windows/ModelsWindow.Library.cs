@@ -21,7 +21,7 @@ public sealed partial class ModelsWindow
 			using Stream stream = AssetLoader.Open(new Uri("avares://Nori.Desktop/Assets/Models/" + model.Image));
 			var bitmap = new Bitmap(stream); _thumbnails.Add(bitmap);
 			var image = new Image { Source = bitmap, Stretch = Stretch.UniformToFill, Width = 88, Height = 124 };
-			var portrait = new Border { Child = image, CornerRadius = new CornerRadius(7), ClipToBounds = true };
+			var portrait = new Border { Child = image, CornerRadius = new CornerRadius(8), ClipToBounds = true };
 			var status = Text("", 12);
 			Brush(status, TextBlock.ForegroundProperty, "SettingsAccentBrush");
 			Button enable = ActionButton(() => T("启用模型", "Use model"), async () =>

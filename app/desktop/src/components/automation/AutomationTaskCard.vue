@@ -190,7 +190,7 @@ const onCancel = () => {
 <template>
 	<div
 		class="surface-card relative flex flex-col gap-3 p-3.5 border transition-all duration-200"
-		:class="isAwaitingApproval || isSafePagePaused ? 'border-warning/50 bg-warning/6 shadow-glow' : 'border-line-subtle'"
+		:class="isAwaitingApproval || isSafePagePaused ? 'border-warning/50 bg-warning/6' : 'border-line-subtle'"
 		role="article"
 		:aria-labelledby="`task-title-${task.id}`"
 	>
@@ -237,7 +237,7 @@ const onCancel = () => {
 			<div class="h-1.5 w-full rounded-pill bg-overlay-6 overflow-hidden">
 				<div
 					v-if="progressPercent !== null"
-					class="h-full rounded-pill bg-gradient-to-r from-nori-teal to-nori-teal-bright transition-all duration-300"
+					class="h-full rounded-pill bg-nori-teal transition-all duration-200"
 					:style="{width: `${progressPercent}%`}"
 				/>
 				<div

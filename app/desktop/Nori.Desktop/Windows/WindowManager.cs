@@ -9,6 +9,8 @@ using Nori.Desktop.QuickChat;
 using Nori.Core.Assets;
 using Nori.Core.Data;
 using Nori.Desktop.Bridge;
+using Nori.Desktop.Appearance;
+using Nori.Core.Configuration;
 
 namespace Nori.Desktop.Windows;
 
@@ -29,6 +31,7 @@ public sealed class WindowManager : IWindowManager
 	private QuickChatController? _quickChat;
 	private NoriWindow? _audioHost;
 	private AppServices? _services;
+	private WindowBackdropController? _backdrops;
 	private int _shutdownRequested;
 	private Task? _memoryCloseTask;
 	private Task? _modelsCloseTask;
@@ -57,6 +60,8 @@ public sealed class WindowManager : IWindowManager
 	public void CreateAll(NoriBridge bridge, AppServices services)
 	{
 		_services = services;
+		_backdrops = new WindowBackdropController();
+		_ = LoadBackdropPreferenceAsync(services);
 		foreach (WindowDefinition definition in WindowDefinition.All)
 		{
 			if (definition.Label == WindowLabels.Main)
@@ -135,6 +140,7 @@ public sealed class WindowManager : IWindowManager
 	/// </summary>
 	private void TrackVisibility(string label, Window window)
 	{
+		_backdrops?.Register(window);
 		window.AddHandler(InputElement.KeyDownEvent, OnQuickChatShortcut, RoutingStrategies.Tunnel);
 		_visible[label] = window.IsVisible;
 		window.PropertyChanged += (_, args) =>
@@ -169,6 +175,26 @@ public sealed class WindowManager : IWindowManager
 	/// 全部窗口
 	/// </summary>
 	public IEnumerable<Window> All => _windows.Values;
+
+	/// <inheritdoc />
+	public void UpdateBackgroundBlurEnabled(bool enabled)
+	{
+		Dispatcher.UIThread.VerifyAccess();
+		_backdrops?.SetEnabled(enabled);
+	}
+
+	private async Task LoadBackdropPreferenceAsync(AppServices services)
+	{
+		try
+		{
+			if (_backdrops is { } backdrops)
+				await backdrops.InitializeAsync(() => services.Config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true));
+		}
+		catch (Exception exception)
+		{
+			services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"读取窗口外观设置失败: {exception.GetType().Name}");
+		}
+	}
 
 	/// <summary>
 	/// 显示窗口；伴侣视窗不抢焦点，其他窗口同时聚焦
@@ -535,6 +561,8 @@ public sealed class WindowManager : IWindowManager
 				else if (window is PetWindow petWindow) petWindow.AllowClose = true;
 			}
 
+			_backdrops?.Dispose();
+			_backdrops = null;
 			if (_audioHost is not null)
 			{
 				_audioHost.AllowClose = true;

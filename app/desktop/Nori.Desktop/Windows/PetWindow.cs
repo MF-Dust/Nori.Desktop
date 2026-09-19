@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+using Nori.Desktop.Appearance;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -627,8 +628,9 @@ public sealed class PetWindow : Window
 	{
 		var menu = new ContextMenu
 		{
-			Background = new SolidColorBrush(Color.FromArgb(245, 10, 26, 40)),
-			BorderBrush = new SolidColorBrush(Color.FromArgb(120, 125, 227, 255)),
+			FontFamily = NoriTypography.System,
+			Background = NoriThemeTokens.Brush("bg-menu"),
+			BorderBrush = NoriThemeTokens.Brush("line-strong"),
 			BorderThickness = new Thickness(1),
 			CornerRadius = new CornerRadius(8),
 			Padding = new Thickness(4),
@@ -647,7 +649,7 @@ public sealed class PetWindow : Window
 		menu.Items.Add(openMainItem);
 		menu.Items.Add(randomMotionItem);
 		menu.Items.Add(resetPosItem);
-		menu.Items.Add(new Separator { Background = new SolidColorBrush(Color.FromArgb(60, 125, 227, 255)), Margin = new Thickness(4, 2) });
+		menu.Items.Add(new Separator { Background = NoriThemeTokens.Brush("line-subtle"), Margin = new Thickness(4, 2) });
 		menu.Items.Add(hidePetItem);
 		menu.Items.Add(exitItem);
 
@@ -661,11 +663,11 @@ public sealed class PetWindow : Window
 		{
 			Header = header,
 			Foreground = isDanger
-				? new SolidColorBrush(Color.FromRgb(255, 120, 120))
-				: new SolidColorBrush(Color.FromRgb(220, 240, 255)),
+				? NoriThemeTokens.Brush("danger-text")
+				: NoriThemeTokens.Brush("text-body"),
 			FontSize = 13,
 			Padding = new Thickness(12, 6),
-			CornerRadius = new CornerRadius(4),
+			CornerRadius = new CornerRadius(8),
 		};
 		item.Click += (_, _) => onClick();
 		return item;

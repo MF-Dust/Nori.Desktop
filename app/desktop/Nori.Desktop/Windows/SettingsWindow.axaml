@@ -6,28 +6,24 @@
 	x:CompileBindings="True"
 	x:DataType="settings:SettingsViewModel"
 	Title="{Binding WindowTitle}"
-	Width="960"
-	Height="640"
-	MinWidth="720"
-	MinHeight="480"
 	CanResize="True"
 	WindowStartupLocation="CenterScreen"
-	WindowDecorations="Full"
+	WindowDecorations="None"
 	RequestedThemeVariant="Dark">
 	<Window.Styles>
 		<StyleInclude Source="avares://Nori.Desktop/Settings/SettingsTheme.axaml"/>
 	</Window.Styles>
-	<Border Background="{DynamicResource SettingsWindowBrush}">
+	<Border Background="Transparent">
 		<Grid ColumnDefinitions="200,*">
 			<Border Grid.Column="0" Background="{DynamicResource SettingsSidebarBrush}" BorderBrush="{DynamicResource SettingsBorderBrush}" BorderThickness="0,0,1,0">
 				<DockPanel>
 					<StackPanel DockPanel.Dock="Top" Spacing="20" Margin="16,24,16,12">
 						<Grid ColumnDefinitions="36,*" ColumnSpacing="10">
-							<Border Background="{DynamicResource SettingsSelectionBrush}" CornerRadius="11" Width="36" Height="36">
+							<Border Background="{DynamicResource SettingsSelectionBrush}" CornerRadius="12" Width="36" Height="36">
 								<TextBlock Text="N" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource SettingsAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 							</Border>
 							<StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-								<TextBlock Text="NORI" FontSize="11.5" FontWeight="Bold" LetterSpacing="2" Foreground="{DynamicResource SettingsSecondaryBrush}"/>
+								<TextBlock Text="NORI" FontSize="12" FontWeight="Bold" LetterSpacing="2" Foreground="{DynamicResource SettingsSecondaryBrush}"/>
 								<TextBlock Text="{Binding WindowTitle}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource SettingsPrimaryBrush}" TextWrapping="Wrap"/>
 							</StackPanel>
 						</Grid>
@@ -42,13 +38,13 @@
 							<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="settings:SettingsGroupViewModel">
 									<StackPanel Spacing="4" Margin="10,8,10,6">
-										<TextBlock Text="{Binding Title}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="10,2,0,4"/>
+										<TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="10,2,0,4"/>
 										<ItemsControl ItemsSource="{Binding VisiblePages}">
 											<ItemsControl.ItemTemplate>
 												<DataTemplate x:DataType="settings:SettingsPageItemViewModel">
-													<Button Classes="settings-nav" Classes.selected="{Binding IsSelected}" Tag="{Binding Key}" Click="OnNavigateClick" HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch" Padding="8,6" Margin="0,1" MinHeight="40" CornerRadius="9">
+													<Button Classes="settings-nav" Classes.selected="{Binding IsSelected}" Tag="{Binding Key}" Click="OnNavigateClick" HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch" Padding="8,6" Margin="0,1" MinHeight="40" CornerRadius="8">
 														<Grid ColumnDefinitions="26,*" ColumnSpacing="9">
-															<Border Classes="settings-nav-symbol" Width="26" Height="26" CornerRadius="7">
+															<Border Classes="settings-nav-symbol" Width="26" Height="26" CornerRadius="8">
 																<Viewbox Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center">
 																	<Path Classes="settings-nav-icon"/>
 																</Viewbox>

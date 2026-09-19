@@ -15,7 +15,7 @@ public sealed partial class ModelsWindow
 	private readonly Border _previewHost = new()
 	{
 		Name = "ModelsPreviewHost",
-		CornerRadius = new CornerRadius(10),
+		CornerRadius = new CornerRadius(12),
 		BorderThickness = new Thickness(1),
 		ClipToBounds = true,
 		HorizontalAlignment = HorizontalAlignment.Stretch,

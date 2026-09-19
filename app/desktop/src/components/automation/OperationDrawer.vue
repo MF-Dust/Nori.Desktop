@@ -315,9 +315,9 @@ onBeforeUnmount(() => {
 			class="btn-base gap-2 px-2.5 py-1 rounded-pill text-xs font-500 transition-all duration-200 border"
 			:class="[
 				hasAwaitingApproval || capsuleTone === 'warning'
-					? 'bg-warning/15 border-warning/50 text-warning shadow-[0_0_1.2rem_var(--warning)] animate-pulse'
+					? 'bg-warning/15 border-warning/50 text-warning animate-pulse'
 					: capsuleTone === 'teal'
-						? 'bg-nori-teal-bright/12 border-nori-teal-bright/40 text-nori-teal-bright shadow-[0_0_1.2rem_var(--glow-teal-soft)]'
+						? 'bg-nori-teal-bright/12 border-nori-teal-bright/40 text-nori-teal-bright'
 						: 'bg-overlay-6 border-line-subtle text-text-muted hover:border-line-strong hover:text-text-primary',
 			]"
 			:aria-expanded="isOpen"
@@ -339,12 +339,12 @@ onBeforeUnmount(() => {
 		<Transition name="drawer-fade">
 			<div
 				v-if="isOpen"
-				class="fixed inset-0 z-50 flex justify-end bg-bg-abyss/60 backdrop-blur-[0.4rem] transition-opacity duration-200"
+				class="fixed inset-0 z-50 flex justify-end bg-bg-abyss/60 transition-opacity duration-200"
 				@click.self="closeDrawer"
 			>
 				<aside
 					ref="drawerRef"
-					class="w-[32rem] max-w-[90vw] h-full flex flex-col bg-bg-card/95 border-l border-line-subtle shadow-elev-3 backdrop-blur-[1.6rem] transition-transform duration-250 focus-ring"
+					class="w-[32rem] max-w-[90vw] h-full flex flex-col bg-bg-card/95 border-l border-line-subtle shadow-elev-3 transition-transform duration-200 focus-ring"
 					role="dialog"
 					aria-modal="true"
 					:aria-label="TEXT.title"

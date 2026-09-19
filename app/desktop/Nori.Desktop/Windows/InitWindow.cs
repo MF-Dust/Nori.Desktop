@@ -1,3 +1,4 @@
+using Nori.Desktop.Appearance;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -46,12 +47,7 @@ public sealed class InitWindow : Window
 		Title = definition.Title;
 		Width = definition.Width; Height = definition.Height;
 		CanResize = definition.CanResize;
-		// 与 NoriWindow 同一套判断：能原生拖动就去掉系统边框（整个应用都是自绘 chrome，
-		// 少设这一行就会在一堆无边框窗口里冒出一个系统标题栏）；不能拖的平台退回
-		// 系统边框，不留一个既拖不动也没有提示的窗口。
-		WindowDecorations = PlatformServices.Current.Capabilities.SupportsWindowDrag
-			? WindowDecorations.None
-			: WindowDecorations.Full;
+		WindowDecorations = WindowDecorations.None;
 		WindowStartupLocation = WindowStartupLocation.CenterScreen;
 		RequestedThemeVariant = ThemeVariant.Dark;
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/"))
@@ -60,16 +56,10 @@ public sealed class InitWindow : Window
 		});
 		Background = ChatPalette.Background;
 
-		_view = new InitView(IsEnglish(), () => _ = RetryAsync(), () => _services.Windows.Shutdown());
+		_view = new InitView(IsEnglish(), () => _ = RetryAsync());
 		Content = _view;
 
-		// 去掉系统边框之后要自己接拖动。启动画面整面都可拖 —— 它没有标题栏，
-		// 用户会下意识按住任意位置挪。
-		PointerPressed += (_, args) =>
-		{
-			if (WindowDecorations == WindowDecorations.None
-				&& args.GetCurrentPoint(this).Properties.IsLeftButtonPressed) BeginMoveDrag(args);
-		};
+		NativeWindowChrome.Attach(this, IsEnglish, () => _services.Windows.Shutdown());
 
 		// **推到下一帧再起跑。** 在 Opened 处理器里同步走完「进主界面」会连带
 		// Hide 掉自己，而那时窗口还在完成显示流程，屏幕上会留下一个不重绘的空壳。
@@ -220,7 +210,7 @@ internal sealed class InitView : Panel
 	private double _phase;
 	private bool _english;
 
-	internal InitView(bool english, Action onRetry, Action onClose)
+	internal InitView(bool english, Action onRetry)
 	{
 		_english = english;
 
@@ -245,8 +235,8 @@ internal sealed class InitView : Panel
 			{
 				GradientStops =
 				[
-					new GradientStop(Color.Parse("#3a7de3ff"), 0),
-					new GradientStop(Color.Parse("#1a7de3ff"), 0.45),
+					new GradientStop(NoriThemeTokens.Color("glow-teal-soft"), 0),
+					new GradientStop(NoriThemeTokens.Color("line-subtle"), 0.45),
 					new GradientStop(Colors.Transparent, 0.75),
 				],
 			},
@@ -316,18 +306,6 @@ internal sealed class InitView : Panel
 			},
 		};
 
-		Button close = new()
-		{
-			Content = "✕",
-			Width = 34, Height = 26,
-			HorizontalAlignment = HorizontalAlignment.Right,
-			VerticalAlignment = VerticalAlignment.Top,
-			Margin = new Thickness(0, 6, 8, 0),
-			Background = Brushes.Transparent, Foreground = ChatPalette.Muted,
-			BorderThickness = default,
-		};
-		close.Click += (_, _) => onClose();
-
 		Children.Add(new StackPanel
 		{
 			Spacing = 18,
@@ -335,7 +313,6 @@ internal sealed class InitView : Panel
 			VerticalAlignment = VerticalAlignment.Center,
 			Children = {_halo, _statusCapsule, _timeoutCard},
 		});
-		Children.Add(close);
 
 		ApplyText();
 	}

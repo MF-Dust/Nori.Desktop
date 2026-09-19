@@ -117,15 +117,14 @@ public partial class BridgeCommandsTests
 	});
 
 	[Fact]
-	public Task 首启与初始化拖动能力降级沿用系统边框() => WithSettingsUiAsync(() =>
+	public Task 首启与初始化始终使用自绘标题栏() => WithSettingsUiAsync(() =>
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true);
 		FirstRunWindow firstRun = new(FirstRunDefinition(), fixture._services);
 		InitWindow init = new(InitDefinition(), fixture._services);
 		try
 		{
-			WindowDecorations expected = PlatformServices.Current.Capabilities.SupportsWindowDrag
-				? WindowDecorations.None : WindowDecorations.Full;
+			WindowDecorations expected = WindowDecorations.None;
 			Assert.Equal(expected, firstRun.WindowDecorations);
 			Assert.Equal(expected, init.WindowDecorations);
 			Assert.Equal(FirstRunDefinition().CanResize, firstRun.CanResize);

@@ -281,6 +281,20 @@ publish.bat
 
 ---
 
+## 捐赠支持
+
+如果 Nori 为你带来了帮助或陪伴，欢迎自愿捐赠，支持项目的持续开发与维护。感谢每一份支持！
+
+> **请注意：捐赠本项目并非向游戏《I_NORI》的开发团队捐赠。以下收款码仅用于支持本项目。**
+
+| 微信赞赏 | 支付宝 |
+| :---: | :---: |
+| <a href="./docs/WeChat.png"><img src="./docs/WeChat.png" alt="微信赞赏码" height="280" /></a> | <a href="./docs/AliPay.jpg"><img src="./docs/AliPay.jpg" alt="支付宝收款码" height="280" /></a> |
+
+点击图片可查看原图。捐赠完全自愿，请量力而行；点亮 Star、反馈问题和贡献代码，同样是对项目的支持。
+
+---
+
 ## Star History
 
 <div align="center">

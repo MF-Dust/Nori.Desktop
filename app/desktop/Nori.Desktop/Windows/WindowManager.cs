@@ -447,6 +447,7 @@ public sealed class WindowManager : IWindowManager
 	/// 托盘菜单与桥接命令可能在关闭回调或后台线程中触发退出。统一延迟到 UI 线程执行,
 	/// 并在真正关闭前放行所有受管窗口, 避免窗口关闭处理器把退出请求变成隐藏窗口。
 	/// </summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1854", Justification = "关闭流程使用受控异步任务并显式处理生命周期结果。")]
 	public void Shutdown()
 	{
 		if (Interlocked.Exchange(ref _shutdownRequested, 1) != 0) return;
@@ -466,7 +467,7 @@ public sealed class WindowManager : IWindowManager
 				failureOwner = settings;
 				if (settings is not null && !await settings.FlushPendingSavesAsync())
 					throw new InvalidOperationException("设置保存失败，请检查后重试");
-				failureOwner = memory; // NOSONAR -- 保留当前窗口用于失败时恢复可编辑上下文
+				failureOwner = memory;
 				if (memory is not null && !await memory.FlushPendingSavesAsync())
 					throw new InvalidOperationException("记忆保存失败，请检查后重试");
 				failureOwner = models;
@@ -477,10 +478,10 @@ public sealed class WindowManager : IWindowManager
 				if (failureOwner is ChatWindow recordingChat) await recordingChat.Body.PrepareHideAsync();
 				failureOwner = memory;
 				if (memory is not null) await memory.PrepareShutdownAsync();
-				failureOwner = settings; // NOSONAR -- 保留当前窗口用于失败时恢复可编辑上下文
+				failureOwner = settings;
 				if (settings is not null) await settings.PrepareShutdownAsync();
 				// 模型窗口最后释放；此前任一窗口失败时，模型编辑上下文仍可复用。
-				failureOwner = models; // NOSONAR -- 保留当前窗口用于失败时恢复可编辑上下文
+				failureOwner = models;
 				if (models is not null) await models.PrepareShutdownAsync();
 				failureOwner = Get(WindowLabels.Chat);
 				if (failureOwner is ChatWindow chat) await chat.PrepareShutdownAsync();

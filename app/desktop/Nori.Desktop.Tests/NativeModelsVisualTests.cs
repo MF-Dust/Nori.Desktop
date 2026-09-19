@@ -57,7 +57,9 @@ public partial class BridgeCommandsTests
 						string file = $"{page}-{language}-{width}x{height}.png"; frame.Save(Path.Combine(output, file), PngBitmapEncoderOptions.Default);
 						Assert.Equal(ThemeVariant.Dark, window.ActualThemeVariant); Assert.True(NativeSettingsSampledColors(frame) > 8);
 						foreach (ScrollViewer scroll in window.GetVisualDescendants().OfType<ScrollViewer>().Where(control => control.IsEffectivelyVisible && control.Viewport.Width > 0))
+						{
 							Assert.True(scroll.Extent.Width <= scroll.Viewport.Width + 2, $"原生模型布局横向溢出：{file}，{scroll.Name}");
+						}
 						if (page is "display" or "regions")
 						{
 							Border stage = ModelControl<Border>(window, "ModelsPreviewHost");

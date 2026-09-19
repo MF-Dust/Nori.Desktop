@@ -5,6 +5,7 @@ using Avalonia.Threading;
 namespace Nori.Desktop.Settings;
 
 /// <summary>AI 对话与 Embedding 设置页。</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1854", Justification = "设置命令回调按 UI 约定显式丢弃受控后台 Task。")]
 public sealed class AiSettingsPage : SettingsPageBase
 {
 	private static readonly IReadOnlyList<SettingsOption> ProviderOptions =
@@ -58,8 +59,8 @@ public sealed class AiSettingsPage : SettingsPageBase
 			snapshot => FirstString(snapshot, string.Empty, ["ai", "chat", "persona"], ["ai", "persona"]), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_ai_providers", new { persona = Convert.ToString(value) ?? string.Empty }, token));
 
-		AddAction(chat, "fetchModels", new("获取模型", "Fetch models"), new("使用当前服务商列出可用模型。", "List models from the selected provider."), new SettingsCommand(command => _ = FetchModelsAsync())); // NOSONAR -- 命令回调按 UI 约定启动后台操作并显式丢弃 Task
-		AddAction(chat, "testChat", new("测试对话连接", "Test chat connection"), new("发送一次最小连接测试。", "Run a minimal connection test."), new SettingsCommand(command => _ = TestChatAsync())); // NOSONAR -- 命令回调按 UI 约定启动后台操作并显式丢弃 Task
+		AddAction(chat, "fetchModels", new("获取模型", "Fetch models"), new("使用当前服务商列出可用模型。", "List models from the selected provider."), new SettingsCommand(command => _ = FetchModelsAsync()));
+		AddAction(chat, "testChat", new("测试对话连接", "Test chat connection"), new("发送一次最小连接测试。", "Run a minimal connection test."), new SettingsCommand(command => _ = TestChatAsync()));
 
 		_chatResult = AddField(chat, "chatResult", new("对话连接结果", "Chat connection result"), new("", ""), SettingsEditorKind.Multiline,
 			_ => _chatResult?.Text ?? string.Empty, string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
@@ -78,7 +79,7 @@ public sealed class AiSettingsPage : SettingsPageBase
 		_embeddingDimensions = AddField(embedding, "embeddingDimensions", new("向量维度", "Dimensions"), new("留空使用模型默认维度；自定义维度必须为正整数。", "Leave empty for model defaults, or enter a positive integer."), SettingsEditorKind.Text,
 			snapshot => FirstString(snapshot, string.Empty, ["ai", "embedding", "dimensions"], ["embedding", "dimensions"]), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_ai_providers", new {embedding = new {dimensions = NormalizeDimensions(Convert.ToString(value))}}, token));
-		AddAction(embedding, "testEmbedding", new("测试向量连接", "Test embedding connection"), new("检查 Embedding 地址、密钥和模型。", "Check the embedding endpoint, key and model."), new SettingsCommand(command => _ = TestEmbeddingAsync())); // NOSONAR -- 命令回调按 UI 约定启动后台操作并显式丢弃 Task
+		AddAction(embedding, "testEmbedding", new("测试向量连接", "Test embedding connection"), new("检查 Embedding 地址、密钥和模型。", "Check the embedding endpoint, key and model."), new SettingsCommand(command => _ = TestEmbeddingAsync()));
 		_embeddingResult = AddField(embedding, "embeddingResult", new("向量连接结果", "Embedding connection result"), new("", ""), SettingsEditorKind.Multiline,
 			_ => _embeddingResult?.Text ?? string.Empty, string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
 		_embeddingResult.IsVisible = false;

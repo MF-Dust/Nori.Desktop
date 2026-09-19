@@ -115,6 +115,7 @@ public sealed class SentryTelemetry : ITelemetry
 		}
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "遥测刷新失败不能阻断应用关闭。")]
 	public async Task FlushAsync(TimeSpan timeout)
 	{
 		try
@@ -123,7 +124,7 @@ public sealed class SentryTelemetry : ITelemetry
 			lock (_gate) enabled = _enabled && !_disposed;
 			if (enabled) await SentrySdk.FlushAsync(timeout).ConfigureAwait(false);
 		}
-		catch // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		catch
 		{
 			// 退出阶段不再抛出遥测异常。
 		}
@@ -248,6 +249,7 @@ public sealed class SentryTelemetry : ITelemetry
 		return trimmed.Length > 240 ? trimmed[..240] : trimmed;
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "遥测关闭失败不能阻断应用资源释放。")]
 	private void CloseLocked()
 	{
 		_enabled = false;

@@ -69,10 +69,14 @@ public sealed class WindowsInputService
 [SupportedOSPlatform("windows")]
 public sealed class Win32InputNativeApi : IWindowsInputNativeApi
 {
-	[StructLayout(LayoutKind.Sequential)] private struct Mouse { public int X, Y; public uint Data, Flags, Time; public nint Extra; } // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
-	[StructLayout(LayoutKind.Sequential)] private struct Keyboard { public ushort Vk, Scan; public uint Flags, Time; public nint Extra; } // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
-	[StructLayout(LayoutKind.Explicit)] private struct Union { [FieldOffset(0)] public Mouse Mouse; [FieldOffset(0)] public Keyboard Keyboard; } // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
-	[StructLayout(LayoutKind.Sequential)] private struct Input { public uint Type; public Union Data; } // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	[StructLayout(LayoutKind.Sequential)] private struct Mouse { public int X, Y; public uint Data, Flags, Time; public nint Extra; }
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	[StructLayout(LayoutKind.Sequential)] private struct Keyboard { public ushort Vk, Scan; public uint Flags, Time; public nint Extra; }
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	[StructLayout(LayoutKind.Explicit)] private struct Union { [FieldOffset(0)] public Mouse Mouse; [FieldOffset(0)] public Keyboard Keyboard; }
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	[StructLayout(LayoutKind.Sequential)] private struct Input { public uint Type; public Union Data; }
 	[DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
 	[DllImport("user32.dll")] private static extern nint GetForegroundWindow();
 	[DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, Input[] inputs, int size);

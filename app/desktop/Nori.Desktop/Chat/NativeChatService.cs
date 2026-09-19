@@ -129,10 +129,11 @@ public sealed class NativeChatService : IDisposable
 		}
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "通知记录失败不能中断聊天流程。")]
 	private void LogNotificationFailure(Exception exception)
 	{
 		try { _services.Logger.Write(LogSource.Backend, "warn", $"原生对话通知失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); }
-		catch { } // NOSONAR -- 通知或后台回调失败必须隔离，避免业务流程中断
+		catch { }
 	}
 
 	/// <summary>退订并取消本来源尚未结束的请求，不影响其他窗口。</summary>

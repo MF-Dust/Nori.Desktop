@@ -125,6 +125,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 		}
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "密钥保存失败时的回滚清理不能覆盖原始异常。")]
 	private void Save(byte[] key)
 	{
 		if (OperatingSystem.IsMacOS() && TryKeychainWrite(key)) return;
@@ -150,7 +151,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 			}
 			finally
 			{
-				try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } // NOSONAR -- 临时资源清理失败不能覆盖原始异常
+				try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
 			}
 		}
 		catch (SecretKeyStoreException)

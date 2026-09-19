@@ -37,7 +37,8 @@ public sealed class WindowsPlatformServices : IPlatformServices
 	private static extern bool SetLayeredWindowAttributes(nint hWnd, uint crKey, byte bAlpha, uint dwFlags);
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct Point // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	private struct Point
 	{
 		public int X;
 		public int Y;

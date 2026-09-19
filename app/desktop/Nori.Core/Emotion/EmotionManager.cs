@@ -42,7 +42,8 @@ public sealed record EmotionState
 /// 支持配置持久化与自然衰减: 每 DecayIntervalSeconds 秒衰减 0.1, 归零后回到 neutral。
 /// 情绪变化时通过 ExpressionRequested 请求 Live2D 默认表情映射。
 /// </summary>
-public sealed class EmotionManager(Nori.Core.Configuration.ConfigStore configStore) : IDisposable // NOSONAR -- 该 timer 已在 Dispose 或 DisposeAsync 中释放，属于分析器误报
+[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2931", Justification = "计时器已在 Dispose 中释放，属于分析器误报。")]
+public sealed class EmotionManager(Nori.Core.Configuration.ConfigStore configStore) : IDisposable
 {
 	/// <summary>自然衰减周期 (秒), 与前端实现一致</summary>
 	public const int DecayIntervalSeconds = 20;

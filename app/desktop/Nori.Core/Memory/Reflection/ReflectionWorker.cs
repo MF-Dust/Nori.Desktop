@@ -37,6 +37,7 @@ public sealed class ReflectionWorker : IAsyncDisposable
 
 	public bool TryEnqueue() => _channel.Writer.TryWrite(Signal);
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "后台反思任务失败需记录并继续调度。")]
 	private async Task RunAsync()
 	{
 		try
@@ -48,7 +49,7 @@ public sealed class ReflectionWorker : IAsyncDisposable
 					if (await _service.ReflectPendingAsync(_cts.Token).ConfigureAwait(false))
 					{
 						try { _onCompleted?.Invoke(); }
-						catch { } // NOSONAR -- 通知或后台回调失败必须隔离，避免业务流程中断
+						catch { }
 						// 处理期间可能又有完整轮次进入队列，下一次循环继续检查持久化游标。
 					}
 				}

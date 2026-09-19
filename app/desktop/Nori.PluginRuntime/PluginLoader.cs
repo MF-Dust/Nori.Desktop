@@ -5,6 +5,7 @@ namespace Nori.PluginRuntime;
 internal sealed class PluginLoader
 {
 	/// <summary>加载入口实例并返回其独立的可回收 ALC。</summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "加载失败后的 ALC 卸载只能尽力执行，必须保留原始插件错误。")]
 	public INoriPlugin Load(PluginManifest manifest, string installDirectory, out PluginLoadContext loadContext)
 	{
 		ArgumentNullException.ThrowIfNull(manifest);
@@ -31,12 +32,12 @@ internal sealed class PluginLoader
 		}
 		catch (PluginException)
 		{
-			try { loadContext.Unload(); } catch { } // NOSONAR: 加载失败后的卸载只能尽力执行，必须保留原始插件错误。
+			try { loadContext.Unload(); } catch { }
 			throw;
 		}
 		catch (Exception exception)
 		{
-			try { loadContext.Unload(); } catch { } // NOSONAR: 加载失败后的卸载只能尽力执行，必须保留原始插件错误。
+			try { loadContext.Unload(); } catch { }
 			throw new PluginException(PluginErrorCodes.EntryTypeNotFound, "插件入口加载失败", exception);
 		}
 	}

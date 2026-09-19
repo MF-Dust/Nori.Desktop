@@ -13,7 +13,8 @@ public sealed class Win32WindowNativeApi : IWindowsWindowNativeApi
 	private const uint ProcessQueryLimitedInformation = 0x1000;
 	private const uint DesktopReadObjects = 1;
 	[UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate bool EnumWindowsProc(nint handle, nint data);
-	[StructLayout(LayoutKind.Sequential)] private struct TokenLabel { public nint Sid; } // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	[StructLayout(LayoutKind.Sequential)] private struct TokenLabel { public nint Sid; }
 
 	[DllImport("user32.dll", SetLastError = true)] private static extern bool EnumWindows(EnumWindowsProc callback, nint data);
 	[DllImport("user32.dll", EntryPoint = "IsWindow")] private static extern bool NativeIsWindow(nint handle);

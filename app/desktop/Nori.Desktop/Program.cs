@@ -34,6 +34,7 @@ internal static class Program
 		return $"{os}-{architecture}";
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "启动错误展示失败不能覆盖原始错误。")]
 	private static void ShowStartupError(string title, string message)
 	{
 		string safe = Nori.Core.Security.SensitiveDataRedactor.Redact(message);
@@ -57,7 +58,7 @@ internal static class Program
 				process.WaitForExit(5000);
 				return;
 			}
-			catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			catch { }
 		}
 		Console.Error.WriteLine($"{title}: {safe}");
 	}

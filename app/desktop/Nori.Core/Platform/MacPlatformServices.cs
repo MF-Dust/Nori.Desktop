@@ -19,14 +19,16 @@ public sealed class MacPlatformServices : IPlatformServices
 	private const string AppKit = "/System/Library/Frameworks/AppKit.framework/AppKit";
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct CGPoint // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	private struct CGPoint
 	{
 		public double X;
 		public double Y;
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct CGRect // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	private struct CGRect
 	{
 		public double X;
 		public double Y;

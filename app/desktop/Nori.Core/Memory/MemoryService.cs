@@ -621,10 +621,11 @@ public sealed class MemoryService : IAsyncDisposable
 		_embeddingCts.Dispose();
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "后台资源清理失败不能覆盖工作线程异常。")]
 	private async Task DisposeEmbeddingResourcesWhenWorkerStopsAsync(Task worker)
 	{
 		try { await worker.ConfigureAwait(false); }
-		catch { } // NOSONAR -- 通知或后台回调失败必须隔离，避免业务流程中断
+		catch { }
 		finally { DisposeEmbeddingResources(); }
 	}
 

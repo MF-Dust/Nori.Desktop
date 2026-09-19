@@ -678,6 +678,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// 模型、遥测同意、首次运行标记与初始化时间必须一起落盘，避免进程在
 	/// 首次运行标记已经写入后崩溃，下一次启动却缺少必要配置。
 	/// </summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "首次运行收尾失败不能覆盖原始配置错误。")]
 	public void CompleteFirstRun(string modelId, bool telemetryEnabled)
 	{
 		if (string.IsNullOrWhiteSpace(modelId)) throw new ArgumentException("模型 ID 不能为空", nameof(modelId));
@@ -697,7 +698,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 			}
 			catch
 			{
-				try { transaction.Rollback(); } catch { } // NOSONAR -- 事务回滚是补偿操作，回滚异常不能覆盖原始错误
+				try { transaction.Rollback(); } catch { }
 				throw;
 			}
 		});

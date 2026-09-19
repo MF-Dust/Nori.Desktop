@@ -105,6 +105,7 @@ internal sealed class PluginStateStore
 		}
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "插件状态临时文件清理失败不能覆盖已完成的持久化结果。")]
 	private void Persist()
 	{
 		string temporary = _path + ".tmp-" + Guid.NewGuid().ToString("N");
@@ -115,7 +116,7 @@ internal sealed class PluginStateStore
 		}
 		finally
 		{
-			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } // NOSONAR: 临时状态文件清理失败不应覆盖已完成的持久化结果。
+			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
 		}
 	}
 

@@ -235,6 +235,7 @@ internal sealed class JsonPluginStorage : IPluginStorage
 		}
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "临时文件清理失败不能覆盖已完成的插件状态写入。")]
 	private void Save()
 	{
 		string temporary = _path + ".tmp-" + Guid.NewGuid().ToString("N");
@@ -249,7 +250,7 @@ internal sealed class JsonPluginStorage : IPluginStorage
 		}
 		finally
 		{
-			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } // NOSONAR: 临时文件清理失败不应覆盖已完成的导出结果。
+			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
 		}
 	}
 
@@ -357,11 +358,12 @@ internal sealed class PluginContext : IPluginContext
 	public required IPluginCapabilities Capabilities { get; init; }
 	public CancellationToken StoppingToken => StoppingSource.Token;
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "插件撤销阶段必须继续释放其余资源。")]
 	internal void Revoke()
 	{
-		try { StoppingSource.Cancel(throwOnFirstException: false); } catch { } // NOSONAR: 撤销阶段必须继续释放其余插件资源。
-		try { ContributionRegistry.RevokeAll(); } catch { } // NOSONAR: 撤销阶段必须继续释放其余插件资源。
-		try { CapabilityRegistry.Dispose(); } catch { } // NOSONAR: 撤销阶段必须继续释放其余插件资源。
+		try { StoppingSource.Cancel(throwOnFirstException: false); } catch { }
+		try { ContributionRegistry.RevokeAll(); } catch { }
+		try { CapabilityRegistry.Dispose(); } catch { }
 	}
 
 	internal void Dispose()

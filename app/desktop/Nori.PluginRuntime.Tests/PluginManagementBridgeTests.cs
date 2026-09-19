@@ -103,9 +103,10 @@ public sealed class PluginManagementBridgeTests : IAsyncDisposable
 
 	private static JsonElement Args(object value) => JsonSerializer.SerializeToElement(value, JsonOptions);
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "测试夹具销毁只能尽力清理，不能让清理异常覆盖测试结果。")]
 	public async ValueTask DisposeAsync()
 	{
-		try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { } // NOSONAR: 测试夹具销毁阶段只能尽力清理，不能让清理异常覆盖测试结果。
+		try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { }
 		await ValueTask.CompletedTask;
 	}
 }

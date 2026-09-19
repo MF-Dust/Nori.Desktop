@@ -429,7 +429,8 @@ public sealed partial class NativeSettingsPagePresenter
 			await viewModel.UninstallAsync(skill).ConfigureAwait(true);
 	}
 
-	private bool UpdateComplexPage() // NOSONAR -- 调用方使用返回值决定是否跳过完整重建
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3241", Justification = "调用方使用返回值决定是否跳过完整重建。")]
+	private bool UpdateComplexPage()
 	{
 		if (_complexBody is null || _complexOwner != _viewModel || _complexRoot != _root
 			|| _complexState is null || _complexRender is null || _viewModel is null) return false;

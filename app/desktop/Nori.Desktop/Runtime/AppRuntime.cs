@@ -47,7 +47,8 @@ namespace Nori.Desktop.Runtime;
 ///
 /// 秘密纪律: 快照只返回 hasApiKey 等脱敏标记, 明文绝不回传事件/日志/错误。
 /// </summary>
-public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 timer 已在 Dispose 或 DisposeAsync 中释放，属于分析器误报
+[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2931", Justification = "运行时计时器已在 DisposeAsync 中释放，属于分析器误报。")]
+public sealed partial class AppRuntime : IAsyncDisposable
 {
 	/// <summary>工具授权等待超时 (秒); 超时一律 fail-closed 拒绝</summary>
 	public const int ApprovalTimeoutSeconds = 60;
@@ -160,6 +161,7 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 	/// <summary>取走并清除“初始化开始”标志 (只能被消费一次)</summary>
 	public bool ConsumeInitStartPending() => Interlocked.Exchange(ref _initStartPending, 0) == 1;
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "诊断回调失败必须隔离，不能阻断运行时构造。")]
 	public AppRuntime(AppServices services)
 	{
 		Services = services;
@@ -194,7 +196,7 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 		// 嵌入批处理恢复期的单轮失败降级为 warn 日志, 连续多轮失败才由 MemoryService 升级为 Error 遥测。
 		Memory.EmbeddingDiagnostic = (severity, message) =>
 		{
-			try { services.Logger.Write(LogSource.Backend, severity, message); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			try { services.Logger.Write(LogSource.Backend, severity, message); } catch { }
 		};
 		Knowledge = new KnowledgeService(services.Database, Memory, config, services.Paths.KnowledgePath);
 		Knowledge.StatusChanged = () => InvalidateSnapshot("memory");
@@ -487,6 +489,7 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 		TrackTask(task);
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "宠物交互失败后的本地回退不能覆盖原始异常。")]
 	private async Task RunPetInteractionAsync(PetInteractionTrigger trigger)
 	{
 		using CancellationTokenSource requestCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
@@ -526,7 +529,7 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 		}
 		catch (Exception exception)
 		{
-			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣 AI 互动失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣 AI 互动失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
 			PostActivePetInteractionFallback(trigger, requestCts);
 		}
 		finally
@@ -544,12 +547,13 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 		}
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "交互表现失败不能阻断后续状态更新。")]
 	private void ApplyPetInteractionReaction(PetInteractionTrigger trigger, PetInteractionReaction reaction)
 	{
 		if (!IsCurrentPetInteraction(trigger)) return;
 		if (!string.IsNullOrWhiteSpace(reaction.Emotion) && EmotionTypes.IsValid(reaction.Emotion))
 		{
-			try { Emotion.SetEmotion(reaction.Emotion); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			try { Emotion.SetEmotion(reaction.Emotion); } catch { }
 		}
 		if (!string.IsNullOrWhiteSpace(reaction.Motion)) Services.PetRuntime.PlayMotionByName(reaction.Motion);
 		if (!string.IsNullOrWhiteSpace(reaction.Expression)) Services.PetRuntime.PlayExpression(reaction.Expression);
@@ -620,6 +624,7 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 		catch (ObjectDisposedException) { }
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "语音播放失败必须降级为静默，不能阻断交互。")]
 	private async Task SpeakPetInteractionSafelyAsync(string text, CancellationTokenSource speechCts)
 	{
 		try
@@ -634,7 +639,7 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 		}
 		catch (Exception exception)
 		{
-			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣互动朗读失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣互动朗读失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
 		}
 		finally
 		{
@@ -669,6 +674,7 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 	/// 同步已连接 MCP 工具到 Agent 注册表。
 	/// 每个动态工具默认 confirm, 由 AgentRuntime 的逐调用授权链路 fail-closed 控制。
 	/// </summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1854", Justification = "刷新失败日志需要保留最后一个服务标识，后台结果按生命周期受控处理。")]
 	public async Task RefreshMcpToolsAsync(CancellationToken cancellationToken = default)
 	{
 		// 安全模式不能通过聊天启动或其他间接路径刷新外部 MCP。
@@ -710,7 +716,7 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 			foreach (McpServerStatusInfo server in servers.Where(server =>
 				string.Equals(server.Status, "connected", StringComparison.OrdinalIgnoreCase)))
 			{
-				failureServerId = server.ServerId; // NOSONAR -- 异常路径需要保留最近服务端 ID 用于脱敏诊断
+				failureServerId = server.ServerId;
 				foreach (McpToolDefinition definition in server.Tools)
 				{
 					ct.ThrowIfCancellationRequested();
@@ -790,14 +796,16 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 	}
 
 	/// <summary>活跃插件集合变化后防抖刷新插件工具。</summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1854", Justification = "计时器回调按生命周期触发后台刷新，任务结果由观察逻辑处理。")]
 	private void SchedulePluginToolsRefresh()
 	{
 		_pluginToolsRefreshTimer?.Dispose();
 		_pluginToolsRefreshTimer = new Timer(
-			timerState => { _ = RefreshPluginToolsAsync(); }, // NOSONAR -- timer 回调触发受控后台刷新并显式丢弃 Task
+			timerState => { _ = RefreshPluginToolsAsync(); },
 			null, PluginToolsRefreshDebounceMs, Timeout.Infinite);
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "插件工具刷新失败需记录并继续运行主界面。")]
 	private async Task RefreshPluginToolsAsync()
 	{
 		if (Volatile.Read(ref _disposed) != 0) return;
@@ -834,7 +842,7 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 		{
 			// 只记录类别与摘要, 不写入插件参数或结果
 			try { Services.Logger.Write(LogSource.Backend, "warn", $"插件工具刷新失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); }
-			catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			catch { }
 		}
 		finally
 		{
@@ -1569,6 +1577,7 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 		}
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "状态订阅者和诊断记录必须彼此隔离，单个失败不能阻断其余通知。")]
 	private void RaiseStateChanged()
 	{
 		if (Volatile.Read(ref _disposed) != 0) return;
@@ -2017,6 +2026,7 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 		return float.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float value) ? value : null;
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "退出清理按资源逐项隔离，单项失败不能阻断其余释放。")]
 	public async ValueTask DisposeAsync()
 	{
 		if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
@@ -2064,16 +2074,16 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 		await WaitBoundedAsync(_backgroundTasks.Keys.ToArray(), TimeSpan.FromSeconds(5)).ConfigureAwait(false);
 		_backgroundTasks.Clear();
 
-		try { await _reflectionWorker.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
-		try { await Knowledge.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
-		try { Proactive.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
-		try { Emotion.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { await _reflectionWorker.DisposeAsync().ConfigureAwait(false); } catch { }
+		try { await Knowledge.DisposeAsync().ConfigureAwait(false); } catch { }
+		try { Proactive.Dispose(); } catch { }
+		try { Emotion.Dispose(); } catch { }
 		// Voice.Dispose 会逆向释放 _playback; 录音票据要单独作废
-		try { _recorder.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
-		try { Voice.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { _recorder.Dispose(); } catch { }
+		try { Voice.Dispose(); } catch { }
 		// 音频宿主通道最后解除: 让所有 WaitUntilReadyAsync 等待者立即结束而不是等超时
-		try { _audioChannel.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
-		try { if (Services.Automation is not null) await Services.Automation.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { _audioChannel.Dispose(); } catch { }
+		try { if (Services.Automation is not null) await Services.Automation.DisposeAsync().ConfigureAwait(false); } catch { }
 		_petInteractionGate.Dispose();
 		_pluginToolsRefreshTimer?.Dispose();
 		_pluginToolsRefreshGate.Dispose();
@@ -2163,7 +2173,8 @@ public sealed partial class AppRuntime : IAsyncDisposable // NOSONAR -- 该 time
 	}
 
 	/// <summary>待决桌面视觉授权请求；只保存动作种类和任务标识。</summary>
-	private sealed class PendingDesktopApproval(AutomationApprovalRequest request, TaskCompletionSource<bool> tcs) : IDisposable // NOSONAR -- 该 timer 已在 Dispose 或 DisposeAsync 中释放，属于分析器误报
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2931", Justification = "待决授权的计时器已在 Dispose 中释放，属于分析器误报。")]
+	private sealed class PendingDesktopApproval(AutomationApprovalRequest request, TaskCompletionSource<bool> tcs) : IDisposable
 	{
 		public AutomationApprovalRequest Request { get; } = request;
 		public TaskCompletionSource<bool> Tcs { get; } = tcs;

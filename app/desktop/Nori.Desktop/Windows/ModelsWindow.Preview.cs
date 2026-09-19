@@ -37,6 +37,7 @@ public sealed partial class ModelsWindow
 	private long _previewRequest;
 	private string? _previewExpression;
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1854", Justification = "预览按钮事件回调按 Avalonia 事件契约保留，受控刷新任务无需同步等待。")]
 	private void InitializePreview(AppServices services)
 	{
 		_preview = new ModelPreviewControl(services) {Name = "ModelsPreview"};
@@ -58,7 +59,7 @@ public sealed partial class ModelsWindow
 			if (button.Name?.StartsWith("ModelsExpression_", StringComparison.Ordinal) == true)
 				UpdatePreviewExpression(modelId, force: true);
 			else if (button.Name == "ModelsRetry" && _preview is {IsReady: false, ErrorMessage: not null})
-				_ = LoadPreviewAsync(modelId); // NOSONAR -- UI 事件启动受控预览加载并显式丢弃 Task
+				_ = LoadPreviewAsync(modelId);
 		});
 
 		_previewLayer.Children.Add(_preview);

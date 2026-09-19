@@ -12,6 +12,7 @@ namespace Nori.Desktop.Diagnostics;
 public sealed record SmokeTestOptions(SmokeTestMode Mode, string Profile)
 {
 	/// <summary>启动冒烟模式命令行解析。</summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S127", Justification = "命令行解析消费参数值时必须跳过已消费项。")]
 	public static bool TryParse(IReadOnlyList<string> args, out SmokeTestOptions? options, out string error)
 	{
 		options = null;
@@ -46,7 +47,7 @@ public sealed record SmokeTestOptions(SmokeTestMode Mode, string Profile)
 				error = "--smoke-test 必须带且只能带一个 --profile <temp>";
 				return false;
 			}
-			profile = args[++index]; // NOSONAR -- 解析器按变长字段或参数消费索引，循环内调整是算法必需
+			profile = args[++index];
 		}
 
 		if (string.IsNullOrWhiteSpace(profile))
@@ -177,10 +178,11 @@ public static class SmokeTestRuntime
 		_ = ExitAfterCheckpointAsync(windowManager);
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "烟雾测试退出阶段的清理失败不能阻断进程退出。")]
 	private static async Task ExitAfterCheckpointAsync(IWindowManager windowManager)
 	{
 		await Task.Delay(GracefulShutdownDelay).ConfigureAwait(false);
-		try { windowManager.Shutdown(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { windowManager.Shutdown(); } catch { }
 
 		// CI 的无头桌面环境可能卡住原生窗口退出; 冒烟 profile 是隔离的一次性目录,
 		// 因此在等待正常清理后保留进程内硬退出兜底, 外部脚本仍有更长的 watchdog。

@@ -97,6 +97,7 @@ public static class MathExpression
 			return left;
 		}
 
+		[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1244", Justification = "表达式除零检查必须精确判断零值，使用范围会拒绝合法非零输入。")]
 		private double ParseMultiplicative()
 		{
 			double left = ParseExponent();
@@ -114,11 +115,11 @@ public static class MathExpression
 							left *= right;
 							break;
 						case '/':
-							if (right == 0) throw Error("除数不能为零"); // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
+							if (right == 0) throw Error("除数不能为零");
 							left /= right;
 							break;
 						default:
-							if (right == 0) throw Error("取模除数不能为零"); // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
+							if (right == 0) throw Error("取模除数不能为零");
 							left %= right;
 							break;
 					}

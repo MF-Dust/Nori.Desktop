@@ -107,6 +107,7 @@ public static class StorageBootstrapper
 	private static bool IsNumericVersionSupported(string value) =>
 		value.Split('.') is [_, _, _] && value.Split('.').All(segment => ushort.TryParse(segment, out _));
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "临时文件清理失败不能覆盖原始写入异常。")]
 	private static void WriteAtomicFile(string path, string content)
 	{
 		string temporary = path + $".tmp-{Guid.NewGuid():N}";
@@ -123,7 +124,7 @@ public static class StorageBootstrapper
 		}
 		finally
 		{
-			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } // NOSONAR -- 临时资源清理失败不能覆盖原始异常
+			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
 		}
 	}
 
@@ -140,8 +141,9 @@ public static class StorageBootstrapper
 		throw new IOException("无法提交 data staging", last);
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "临时资源清理失败不能覆盖原始异常。")]
 	private static void TryDeleteDirectory(string path)
 	{
-		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { } // NOSONAR -- 临时资源清理失败不能覆盖原始异常
+		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { }
 	}
 }

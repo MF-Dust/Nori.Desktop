@@ -12,7 +12,8 @@ namespace Nori.Desktop.Runtime;
 public static class SystemIdleTime
 {
 	[StructLayout(LayoutKind.Sequential)]
-	private struct LastInputInfo // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	private struct LastInputInfo
 	{
 		public uint CbSize;
 		public uint DwTime;

@@ -4,6 +4,7 @@ using Nori.Desktop.Settings.Pages;
 namespace Nori.Desktop.Settings;
 
 /// <summary>软件更新信息、下载进度和安装动作。</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1854", Justification = "设置命令回调按 UI 约定显式丢弃受控后台 Task。")]
 public sealed class UpdatesSettingsPage : SettingsPageBase
 {
 	private readonly Dictionary<string, SettingsFieldViewModel> _fields = new(StringComparer.Ordinal);
@@ -124,7 +125,7 @@ public sealed class UpdatesSettingsPage : SettingsPageBase
 			read, "", (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
 
 	private void Action(SettingsSectionViewModel section, string key, SettingsText label, SettingsText description, Func<Task> action) =>
-		_fields[key] = AddAction(section, key, label, description, new SettingsCommand(command => _ = action())); // NOSONAR -- 设置命令按 UI 约定启动后台操作并显式丢弃 Task
+		_fields[key] = AddAction(section, key, label, description, new SettingsCommand(command => _ = action()));
 
 	private static string Value(JsonElement snapshot, string name) => SettingsSnapshotReader.String(snapshot, "", "updater", name);
 	private static string Text(string chinese, string english) => SettingsLocalization.IsEnglish ? english : chinese;

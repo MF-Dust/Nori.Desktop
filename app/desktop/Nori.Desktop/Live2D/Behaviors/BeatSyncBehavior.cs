@@ -81,10 +81,11 @@ public sealed class BeatSyncBehavior : IBehaviorPlugin
 		return (_baseY, _baseZ - cfg.BottomDip);
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1244", Justification = "节拍目标使用精确零值表示未初始化，近似比较会改变动画基线。")]
 	public void UpdateTargets(double now)
 	{
-		float currentY = TargetY != 0 ? TargetY : _baseY; // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
-		float currentZ = TargetZ != 0 ? TargetZ : _baseZ; // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
+		float currentY = TargetY != 0 ? TargetY : _baseY;
+		float currentZ = TargetZ != 0 ? TargetZ : _baseZ;
 
 		while (_segments.Count > 0)
 		{

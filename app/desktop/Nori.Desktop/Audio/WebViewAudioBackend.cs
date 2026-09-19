@@ -62,6 +62,7 @@ public sealed class WebViewAudioPlayback(MediaExchange media, Func<string, strin
 	public void SetDeviceVolume(double volume) => Volatile.Write(ref _deviceVolume, Math.Clamp(volume, 0, 1));
 
 	/// <inheritdoc />
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "音频播放失败后的回滚不能覆盖原始错误。")]
 	public async Task PlayAsync(EncodedAudio audio, CancellationToken cancellationToken)
 	{
 		EncodedAudio validated = AudioMime.ValidateEncoded(audio.Bytes, audio.Mime);
@@ -99,7 +100,7 @@ public sealed class WebViewAudioPlayback(MediaExchange media, Func<string, strin
 		}
 		catch (OperationCanceledException)
 		{
-			try { channel.Post("nori:audio-stop", null); } catch { } // NOSONAR -- 音频通道已进入停止阶段，通知失败不能阻断资源释放
+			try { channel.Post("nori:audio-stop", null); } catch { }
 			throw;
 		}
 		catch (TimeoutException)
@@ -233,6 +234,7 @@ public sealed class WebViewMicrophoneRecorder(MediaExchange media, Func<string, 
 	}
 
 	/// <inheritdoc />
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "录音停止后的临时资源清理不能覆盖原始错误。")]
 	public async Task<RecordedAudio> StopAsync(CancellationToken cancellationToken = default)
 	{
 		string token;
@@ -257,7 +259,7 @@ public sealed class WebViewMicrophoneRecorder(MediaExchange media, Func<string, 
 			// 作废票据并解除 StartAsync 的等待; 前端随后对旧 token 的回报都会因 token 不匹配被忽略。
 			media.CancelUpload(token);
 			pendingStart?.TrySetCanceled();
-			try { channel.Post("nori:audio-record-stop", new {token}); } catch { } // NOSONAR -- 音频通道已进入停止阶段，通知失败不能阻断资源释放
+			try { channel.Post("nori:audio-record-stop", new {token}); } catch { }
 			return new RecordedAudio([], "audio/wav", "speech.wav");
 		}
 

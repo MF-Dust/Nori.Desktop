@@ -139,6 +139,7 @@ public sealed class ModelPreviewControl : UserControl, IDisposable
 	public bool IsPointerInteractionEnabled { get; set; } = true;
 
 	/// <summary>固定舞台内的模型显示倍率。</summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1244", Justification = "渲染缩放值用于避免重复刷新，精确相等比较保持现有行为。")]
 	public float PreviewScale
 	{
 		get { lock (_stateGate) return _previewScale; }
@@ -148,7 +149,7 @@ public sealed class ModelPreviewControl : UserControl, IDisposable
 			float normalized = NormalizeScale(value);
 			lock (_stateGate)
 			{
-				if (_previewScale == normalized) return; // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
+				if (_previewScale == normalized) return;
 				_previewScale = normalized;
 			}
 			ApplyPreviewSettings();
@@ -173,6 +174,7 @@ public sealed class ModelPreviewControl : UserControl, IDisposable
 	}
 
 	/// <summary>预览离屏渲染倍率。</summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1244", Justification = "渲染缩放值用于避免重复刷新，精确相等比较保持现有行为。")]
 	public float RenderScale
 	{
 		get { lock (_stateGate) return _renderScale; }
@@ -182,7 +184,7 @@ public sealed class ModelPreviewControl : UserControl, IDisposable
 			float normalized = NormalizeRenderScale(value);
 			lock (_stateGate)
 			{
-				if (_renderScale == normalized) return; // NOSONAR -- 算法哨兵值或除零判断要求精确比较，改用范围会改变行为
+				if (_renderScale == normalized) return;
 				_renderScale = normalized;
 			}
 			ApplyPreviewSettings();

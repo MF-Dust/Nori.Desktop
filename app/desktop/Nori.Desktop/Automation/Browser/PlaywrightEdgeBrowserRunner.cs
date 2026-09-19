@@ -138,22 +138,23 @@ public sealed class PlaywrightEdgeBrowserRunner : IAsyncDisposable
 		if (safetySignals is not null) AttachPageHandlers(page, safetySignals);
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1854", Justification = "浏览器事件回调参数按 Playwright 事件契约保留，后台任务结果受控丢弃。")]
 	private static void AttachPageHandlers(IPage page, BrowserSafetySignals safetySignals)
 	{
 		page.Dialog += (sender, dialog) =>
 		{
 			safetySignals.Report(BrowserAutomationPolicy.PauseReason.PermissionDialog);
-			_ = DismissDialogAsync(dialog); // NOSONAR -- 事件回调必须显式丢弃受控异步清理任务
+			_ = DismissDialogAsync(dialog);
 		};
 		page.FileChooser += (sender, chooser) =>
 		{
 			safetySignals.Report(BrowserAutomationPolicy.PauseReason.FileChooser);
-			_ = CancelFileChooserAsync(chooser); // NOSONAR -- 事件回调必须显式丢弃受控异步清理任务
+			_ = CancelFileChooserAsync(chooser);
 		};
 		page.Download += (sender, download) =>
 		{
 			safetySignals.Report(BrowserAutomationPolicy.PauseReason.Download);
-			_ = CancelDownloadAsync(download); // NOSONAR -- 事件回调必须显式丢弃受控异步清理任务
+			_ = CancelDownloadAsync(download);
 		};
 	}
 

@@ -7,8 +7,10 @@ namespace Nori.Desktop.Automation.Windows;
 [SupportedOSPlatform("windows")]
 public sealed class Win32ScreenCaptureNativeApi : IWindowsScreenCaptureNativeApi
 {
-	[StructLayout(LayoutKind.Sequential)] private struct Header { public uint Size; public int Width, Height; public ushort Planes, Bits; public uint Compression, ImageSize; public int XPels, YPels; public uint Used, Important; } // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
-	[StructLayout(LayoutKind.Sequential)] private struct Info { public Header Header; public uint Color; } // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	[StructLayout(LayoutKind.Sequential)] private struct Header { public uint Size; public int Width, Height; public ushort Planes, Bits; public uint Compression, ImageSize; public int XPels, YPels; public uint Used, Important; }
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	[StructLayout(LayoutKind.Sequential)] private struct Info { public Header Header; public uint Color; }
 	[DllImport("gdi32.dll", SetLastError = true)] private static extern nint CreateCompatibleDC(nint dc);
 	[DllImport("gdi32.dll", SetLastError = true)] private static extern nint CreateDIBSection(nint dc, ref Info info, uint usage, out nint bits, nint section, uint offset);
 	[DllImport("gdi32.dll")] private static extern nint SelectObject(nint dc, nint obj);

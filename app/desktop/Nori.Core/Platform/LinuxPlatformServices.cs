@@ -33,7 +33,8 @@ public sealed class LinuxPlatformServices : IPlatformServices
 	private const long SubstructureRedirectMask = 1L << 20;
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct XRectangle // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	private struct XRectangle
 	{
 		public short X;
 		public short Y;
@@ -42,7 +43,8 @@ public sealed class LinuxPlatformServices : IPlatformServices
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	private struct XClientMessageEvent // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	private struct XClientMessageEvent
 	{
 		public int Type;
 		public nuint Serial;

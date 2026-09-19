@@ -89,7 +89,8 @@ internal static class WasapiNativeApi
 	}
 
 	[StructLayout(LayoutKind.Sequential, Pack = 4)]
-	internal struct PropertyKey(Guid formatId, uint propertyId) : IEquatable<PropertyKey> // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	internal struct PropertyKey(Guid formatId, uint propertyId) : IEquatable<PropertyKey>
 	{
 		internal Guid FormatId = formatId;
 		internal uint PropertyId = propertyId;
@@ -215,7 +216,8 @@ internal static class WasapiNativeApi
 	/// 去 SubFormat 里取真正的格式。
 	/// </summary>
 	[StructLayout(LayoutKind.Sequential, Pack = 1)]
-	internal struct WaveFormatEx : IEquatable<WaveFormatEx> // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	internal struct WaveFormatEx : IEquatable<WaveFormatEx>
 	{
 		internal ushort FormatTag;
 		internal ushort Channels;

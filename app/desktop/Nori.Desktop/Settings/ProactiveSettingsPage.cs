@@ -5,6 +5,7 @@ using System.Text.Json;
 namespace Nori.Desktop.Settings;
 
 /// <summary>主动互动与提醒设置页。</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1854", Justification = "设置命令回调按 UI 约定显式丢弃受控后台 Task。")]
 public sealed class ProactiveSettingsPage : SettingsPageBase
 {
 	private readonly SettingsFieldViewModel _newReminderText;
@@ -62,8 +63,8 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 		};
 		_repeatDaily = AddField(reminders, "repeatDaily", new("每天重复", "Repeat daily"), new("让提醒每天在相同时间触发。", "Repeat the reminder at the same time every day."), SettingsEditorKind.Boolean,
 			_ => _repeatDaily?.Boolean ?? false, false, (_, _) => Task.FromResult(default(JsonElement)));
-		_addCommand = new SettingsCommand(command => _ = AddReminderAsync(), canExecute => !_safeMode && !_adding && !_refreshing && !_cancelling); // NOSONAR -- 命令回调启动受控后台操作并显式丢弃 Task
-		_refreshCommand = new SettingsCommand(command => _ = RefreshRemindersAsync(), canExecute => !_refreshing && !_adding && !_cancelling); // NOSONAR -- 命令回调启动受控后台操作并显式丢弃 Task
+		_addCommand = new SettingsCommand(command => _ = AddReminderAsync(), canExecute => !_safeMode && !_adding && !_refreshing && !_cancelling);
+		_refreshCommand = new SettingsCommand(command => _ = RefreshRemindersAsync(), canExecute => !_refreshing && !_adding && !_cancelling);
 		AddAction(reminders, "addReminder", new("添加提醒", "Add reminder"), new("保存后会立即出现在下方列表。", "The reminder appears in the list after saving."), _addCommand);
 		AddAction(reminders, "refreshReminders", new("刷新提醒", "Refresh reminders"), new("从运行时重新读取提醒列表。", "Read reminders from the runtime again."), _refreshCommand);
 	}
@@ -181,6 +182,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 	}
 
 	/// <summary>重复规则保存失败时撤销新建提醒，避免悄悄留下单次提醒。</summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "提醒创建失败后的 UI 清理不能覆盖原始错误。")]
 	internal static async Task CreateReminderAsync(
 		Func<string, object?, CancellationToken, Task<JsonElement>> execute,
 		string content, double delay, bool repeat, CancellationToken cancellationToken)
@@ -194,7 +196,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 		{
 			// 用户取消或窗口关闭时仍尽力撤销，避免保留与用户意图不符的单次提醒。
 			try { await execute("reminder_cancel", new {id}, CancellationToken.None).ConfigureAwait(false); }
-			catch { } // NOSONAR -- 补偿性清理失败不能覆盖原始异常
+			catch { }
 			throw;
 		}
 	}

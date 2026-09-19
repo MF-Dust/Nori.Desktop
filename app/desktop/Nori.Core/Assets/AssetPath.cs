@@ -11,6 +11,7 @@ public static class AssetPath
 	/// <summary>
 	/// 百分号解码. `%` 后面不是合法 HEX 时返回 null (视为非法请求)
 	/// </summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S127", Justification = "百分号编码会消费三个字符，UTF-8 分支会消费一个字符。")]
 	public static string? PercentDecode(string input)
 	{
 		byte[] bytes = new byte[input.Length];
@@ -25,7 +26,7 @@ public static class AssetPath
 				int low = HexValue(input[index + 2]);
 				if (high < 0 || low < 0) return null;
 				bytes[length++] = (byte)((high << 4) | low);
-				index += 3; // NOSONAR -- 解析器按变长字段或参数消费索引，循环内调整是算法必需
+				index += 3;
 				continue;
 			}
 			// 非 ASCII 字符按 UTF-8 展开
@@ -35,7 +36,7 @@ public static class AssetPath
 				if (length + encoded.Length > bytes.Length) Array.Resize(ref bytes, length + encoded.Length);
 				encoded.CopyTo(bytes, length);
 				length += encoded.Length;
-				index++; // NOSONAR -- 解析器按变长字段或参数消费索引，循环内调整是算法必需
+				index++;
 				continue;
 			}
 			bytes[length++] = (byte)current;

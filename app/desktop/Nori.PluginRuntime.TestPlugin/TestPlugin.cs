@@ -52,9 +52,10 @@ public sealed class NotAPlugin
 }
 
 /// <summary>用于验证入口必须有 public parameterless constructor。</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3453", Justification = "测试契约需要验证入口类型缺少 public 无参构造函数时被拒绝。")]
 public sealed class PrivateConstructorPlugin : INoriPlugin
 {
-	private PrivateConstructorPlugin() // NOSONAR: 测试契约要求入口类型缺少 public 无参构造函数时被拒绝。
+	private PrivateConstructorPlugin()
 	{
 	}
 

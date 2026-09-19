@@ -63,16 +63,17 @@ public static class CrashReporter
 	public static void AttachTelemetry(ITelemetry telemetry) => _telemetry = telemetry ?? NoopTelemetry.Instance;
 
 	/// <summary>记录 Avalonia 启动前的异常，供原生启动错误提示复用脱敏日志。</summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "启动诊断记录失败不能覆盖原始启动异常。")]
 	public static void LogEarlyStartupFailure(string title, Exception exception, string? logDirectory = null)
 	{
 		string message = $"{SensitiveDataRedactor.Redact(title)}: {SensitiveDataRedactor.ExceptionSummary(exception)}";
 		if (!string.IsNullOrWhiteSpace(logDirectory))
 		{
 			try { new FileLogger(logDirectory).Write(LogSource.Backend, "error", message); return; }
-			catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			catch { }
 		}
 		// 存储 marker 提交前不得创建 data 子目录；此时只保留控制台诊断。
-		try { Console.Error.WriteLine(message); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { Console.Error.WriteLine(message); } catch { }
 	}
 
 	/// <summary>
@@ -80,7 +81,8 @@ public static class CrashReporter
 	/// 取代裸的 <c>_ = SomeAsync()</c>, 让异常在发生当下就有上下文地落盘,
 	/// 而不是拖到 GC 时变成一条没有时间线的 UnobservedTaskException.
 	/// </summary>
-	public static async void Forget(Task task, string what) // NOSONAR -- 这是受控的 UI 或后台 fire-and-forget 入口，内部已观察异常
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3168", Justification = "UI 启动诊断入口是受控 fire-and-forget，内部已捕获异常。")]
+	public static async void Forget(Task task, string what)
 	{
 		try
 		{
@@ -232,6 +234,7 @@ public static class CrashReporter
 	private static string AssemblyFileName(string fileName) =>
 		Path.GetFileName(fileName.Replace('\\', '/'));
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "崩溃处理回调必须隔离日志失败，保证退出流程。")]
 	private static void OnDomainUnhandledException(object? sender, UnhandledExceptionEventArgs eventArgs)
 	{
 		if (eventArgs.ExceptionObject is not Exception exception)
@@ -244,7 +247,7 @@ public static class CrashReporter
 		{
 			Report(exception, eventArgs.IsTerminating);
 		}
-		catch // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		catch
 		{
 			// 兜底自身都失败了, 只能放弃: 进程即将终止或已不可救
 			if (eventArgs.IsTerminating) ExitProcess(1);
@@ -484,6 +487,7 @@ public static class CrashReporter
 	/// <summary>
 	/// 兜底专用写日志: 日志器不可用时尽力自建一个, 再失败也只能放弃
 	/// </summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "崩溃退出阶段的遥测刷新只能尽力执行，失败不能阻断退出。")]
 	private static void FlushTelemetrySafe()
 	{
 		try

@@ -59,6 +59,7 @@ public sealed class PetGlControl : OpenGlControlBase
 		_runtime = runtime;
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "GL 初始化失败后的资源回滚不能覆盖原始异常。")]
 	protected override void OnOpenGlInit(GlInterface gl)
 	{
 		base.OnOpenGlInit(gl);
@@ -101,11 +102,11 @@ public sealed class PetGlControl : OpenGlControlBase
 			}
 			catch
 			{
-				try { _runtime.OnGlDeinit(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
-				try { _lapp?.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+				try { _runtime.OnGlDeinit(); } catch { }
+				try { _lapp?.Dispose(); } catch { }
 				_lapp = null;
 				DisposeRenderTargets();
-				try { _textureQuad?.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+				try { _textureQuad?.Dispose(); } catch { }
 				_textureQuad = null;
 				_glApi = null;
 				CubismFramework.CleanUp();

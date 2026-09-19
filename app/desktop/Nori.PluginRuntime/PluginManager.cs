@@ -529,6 +529,7 @@ internal sealed class PluginManager : IAsyncDisposable
 		}
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "插件停止阶段必须继续撤销其余资源，不能让单个插件异常阻断卸载。")]
 	private async Task DeactivateCoreAsync(string pluginId, CancellationToken cancellationToken, bool disabled)
 	{
 		if (!_plugins.TryGetValue(pluginId, out PluginHandle? handle)) return;
@@ -543,9 +544,9 @@ internal sealed class PluginManager : IAsyncDisposable
 		}
 
 		handle.State = PluginLifecycleState.Stopping;
-		try { handle.StopSource?.Cancel(throwOnFirstException: false); } catch { } // NOSONAR: 停止阶段必须继续撤销其余资源，不能让一个插件异常阻断卸载。
-		try { handle.Contributions.RevokeAll(); } catch { } // NOSONAR: 停止阶段必须继续撤销其余资源，不能让一个插件异常阻断卸载。
-		try { handle.Context?.Revoke(); } catch { } // NOSONAR: 停止阶段必须继续撤销其余资源，不能让一个插件异常阻断卸载。
+		try { handle.StopSource?.Cancel(throwOnFirstException: false); } catch { }
+		try { handle.Contributions.RevokeAll(); } catch { }
+		try { handle.Context?.Revoke(); } catch { }
 
 		PluginException? failure = null;
 		if (_options.ClosePluginWindowsAsync is not null)
@@ -647,6 +648,7 @@ internal sealed class PluginManager : IAsyncDisposable
 		Report(exception, handle);
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1854", Justification = "清除局部加载上下文引用以便弱引用卸载检查，避免 GC 保留插件上下文。")]
 	private bool UnloadContext(PluginHandle handle)
 	{
 		PluginLoadContext? context = handle.LoadContext;
@@ -662,7 +664,7 @@ internal sealed class PluginManager : IAsyncDisposable
 			Report(new PluginException(PluginErrorCodes.UnloadPendingRestart, "插件程序集无法卸载", exception), handle);
 			return false;
 		}
-		context = null; // NOSONAR: 清除局部引用以便弱引用卸载检查，避免 GC 保留插件加载上下文。
+		context = null;
 		for (int index = 0; index < 10 && weak.IsAlive; index++)
 		{
 			GC.Collect();
@@ -914,6 +916,7 @@ internal sealed class PluginManager : IAsyncDisposable
 		return Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)).Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)), comparison);
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "诊断回调失败不能阻断主流程或覆盖原始插件错误。")]
 	private void Report(PluginException exception, PluginHandle? handle = null)
 	{
 		try
@@ -925,7 +928,7 @@ internal sealed class PluginManager : IAsyncDisposable
 				$"{_options.HostApiVersion.Major}.{_options.HostApiVersion.Minor}",
 				_options.HostVersion.ToString()));
 		}
-		catch { /* 插件窗口关闭失败不应阻断版本提示。 */ } // NOSONAR: 关闭辅助窗口属于尽力清理，主流程仍需完成。
+		catch { /* 插件窗口关闭失败不应阻断版本提示。 */ }
 	}
 
 	private void EnsureNotDisposed()

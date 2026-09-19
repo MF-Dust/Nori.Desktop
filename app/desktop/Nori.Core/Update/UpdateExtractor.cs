@@ -43,6 +43,7 @@ public static class UpdateExtractor
 	public const double MaxCompressionRatio = 200.0;
 
 	/// <summary>安全解压更新包并原子提交到发布包根目录。</summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "更新失败后的暂存目录清理不能覆盖原始异常。")]
 	public static SlotCommitResult ExtractAndCommitSlot(
 		string archivePath,
 		string packageRoot,
@@ -163,7 +164,7 @@ public static class UpdateExtractor
 			{
 				if (Directory.Exists(fullStaging)) Directory.Delete(fullStaging, recursive: true);
 			}
-			catch { } // NOSONAR -- 临时资源清理失败不能覆盖原始异常
+			catch { }
 		}
 	}
 
@@ -174,8 +175,11 @@ public static class UpdateExtractor
 		string slotName = Path.GetFileName(Path.TrimEndingDirectorySeparator(fullSlotDirectory));
 		if (slotName.Length == 0 || slotName is "." or "..")
 			throw new InvalidOperationException("部署槽目录名无效");
-		EnsureNoReparsePoints(fullSlotDirectory);
-		string manifestPath = Path.Combine(fullSlotDirectory, "deployment.json");
+		string parentDirectory = Path.GetDirectoryName(fullSlotDirectory)
+			?? throw new InvalidOperationException("部署槽目录无效");
+		string sanitizedSlotDirectory = Path.Combine(parentDirectory, slotName);
+		EnsureNoReparsePoints(sanitizedSlotDirectory);
+		string manifestPath = Path.Combine(sanitizedSlotDirectory, "deployment.json");
 		EnsureNoReparsePoints(manifestPath);
 		if (File.Exists(manifestPath) && new FileInfo(manifestPath).Length > 1024 * 1024)
 			throw new InvalidOperationException("部署清单大小超过限制");
@@ -210,7 +214,7 @@ public static class UpdateExtractor
 			|| entrypoint.Contains('\\') || entrypoint.Split('/').Any(part => part is "" or "." or "..")
 			|| SanitizePath(entrypoint) != entrypoint)
 			throw new InvalidOperationException("部署清单版本或入口无效");
-		string fullSlot = Path.GetFullPath(slotDirectory);
+		string fullSlot = sanitizedSlotDirectory;
 		string entryPath = Path.GetFullPath(Path.Combine(fullSlot, entrypoint.Replace('/', Path.DirectorySeparatorChar)));
 		if (!IsContained(entryPath, fullSlot) || !File.Exists(entryPath))
 		{

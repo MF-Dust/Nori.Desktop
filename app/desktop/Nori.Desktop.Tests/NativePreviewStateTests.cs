@@ -64,10 +64,9 @@ public partial class BridgeCommandsTests
 		preview.ModelReady += (_, _) => ready++;
 		Task load = preview.LoadModelAsync("arg-nori", owner.Token);
 		long generation = runtime.ModelGeneration;
-		if (ownerCancels) owner.Cancel(); else completion.SetCanceled();
-
 		if (ownerCancels)
 		{
+			owner.Cancel();
 			await Assert.ThrowsAnyAsync<OperationCanceledException>(() => load.WaitAsync(TimeSpan.FromSeconds(3)));
 			Assert.Null(preview.ErrorMessage);
 			Assert.Equal(0, failed);
@@ -75,6 +74,7 @@ public partial class BridgeCommandsTests
 		}
 		else
 		{
+			completion.SetCanceled();
 			InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() => load.WaitAsync(TimeSpan.FromSeconds(3)));
 			Assert.IsAssignableFrom<OperationCanceledException>(error.InnerException);
 			Assert.Contains("初始化中断", preview.ErrorMessage);

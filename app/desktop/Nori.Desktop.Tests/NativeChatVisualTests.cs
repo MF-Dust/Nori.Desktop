@@ -88,7 +88,9 @@ public partial class BridgeCommandsTests
 						string file = $"{scene}-{language}-{width}x{height}.png"; frame.Save(Path.Combine(output, file), PngBitmapEncoderOptions.Default);
 						Assert.Equal(ThemeVariant.Dark, window.ActualThemeVariant); Assert.True(NativeSettingsSampledColors(frame) > 8);
 						foreach (ScrollViewer scroll in window.GetVisualDescendants().OfType<ScrollViewer>().Where(control => control.IsEffectivelyVisible && control.Viewport.Width > 0))
+						{
 							Assert.True(scroll.Extent.Width <= scroll.Viewport.Width + 2, $"原生对话横向溢出：{file}，{scroll.Name}");
+						}
 						Control composer = ChatControl<Control>(window, "ChatComposeBar"); Point origin = composer.TranslatePoint(default, window)!.Value;
 						Assert.True(origin.Y + composer.Bounds.Height <= window.Bounds.Height + 1, $"原生输入区被裁切：{file}");
 						manifest.Add(new { file, scene, language, width, height, theme = "dark", syntheticConversation = true, vuePixelComparison = false });

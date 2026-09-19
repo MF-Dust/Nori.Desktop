@@ -59,7 +59,14 @@ public static class DeploymentSelector
 
 	public static DeploymentManifest ReadManifest(string deploymentRoot)
 	{
-		string path = Path.Combine(deploymentRoot, "deployment.json"); // NOSONAR: deploymentRoot 来自已解析的应用槽目录，后续 IsReparse 校验并限制固定文件名。
+		string normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(deploymentRoot));
+		string slotName = Path.GetFileName(Path.TrimEndingDirectorySeparator(normalizedRoot));
+		if (!SlotPattern.IsMatch(slotName)) throw new InvalidOperationException("部署槽目录名无效");
+		DirectoryInfo parent = Directory.GetParent(normalizedRoot) ?? throw new InvalidOperationException("无法确定部署槽父目录");
+		string trustedRoot = Path.Combine(parent.FullName, Path.GetFileName(slotName));
+		if (!string.Equals(normalizedRoot, Path.GetFullPath(trustedRoot), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+			throw new InvalidOperationException("部署槽路径无效");
+		string path = Path.Combine(parent.FullName, Path.GetFileName(trustedRoot), "deployment.json");
 		if (!File.Exists(path) || IsReparse(path)) throw new InvalidOperationException($"部署 manifest 不存在或无效: {path}");
 		using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
 		JsonElement root = document.RootElement;

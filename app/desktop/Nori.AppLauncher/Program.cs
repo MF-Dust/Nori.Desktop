@@ -69,6 +69,7 @@ internal static class Program
 		return $"{os}-{architecture}";
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S127", Justification = "命令行解析消费选项值时必须推进同一个索引。")]
 	private static void WaitPid(string[] args, out int? waitPid, out long? waitStartTicks, out List<string> forwarded)
 	{
 		waitPid = null;
@@ -97,6 +98,7 @@ internal static class Program
 		if (waitPid is not null && waitStartTicks is null) throw new ArgumentException("--launcher-wait-pid 必须同时带 --launcher-wait-start-ticks");
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "等待进程的查询或退出异常不能遮蔽启动失败。")]
 	private static void WaitForProcess(int pid, long? expectedStartTicks)
 	{
 		try
@@ -143,7 +145,7 @@ internal static class Program
 				process.WaitForExit(5000);
 				return;
 			}
-			catch { /* 进程已退出或无法查询时，启动器仍需输出原始错误。 */ } // NOSONAR: 此处故意忽略等待进程的清理异常，避免遮蔽启动失败。
+			catch { /* 进程已退出或无法查询时，启动器仍需输出原始错误。 */ }
 		}
 		Console.Error.WriteLine($"{title}: {message}");
 	}

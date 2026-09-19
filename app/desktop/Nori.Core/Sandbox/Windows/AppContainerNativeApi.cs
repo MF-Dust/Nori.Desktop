@@ -112,7 +112,8 @@ internal static class AppContainerNativeApi
 	internal static extern bool TerminateProcess(IntPtr handle, uint exitCode);
 
 	[StructLayout(LayoutKind.Sequential)]
-	internal struct SecurityCapabilities // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	internal struct SecurityCapabilities
 	{
 		public IntPtr AppContainerSid;
 		public IntPtr Capabilities;
@@ -121,14 +122,16 @@ internal static class AppContainerNativeApi
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	internal struct SidAndAttributes // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	internal struct SidAndAttributes
 	{
 		public IntPtr Sid;
 		public uint Attributes;
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	internal struct SecurityAttributes // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	internal struct SecurityAttributes
 	{
 		public int Length;
 		public IntPtr SecurityDescriptor;
@@ -136,7 +139,8 @@ internal static class AppContainerNativeApi
 	}
 
 	[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-	internal struct StartupInfo // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	internal struct StartupInfo
 	{
 		public int Size;
 		public IntPtr Reserved;
@@ -159,14 +163,16 @@ internal static class AppContainerNativeApi
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	internal struct StartupInfoEx // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	internal struct StartupInfoEx
 	{
 		public StartupInfo StartupInfo;
 		public IntPtr AttributeList;
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
-	internal struct ProcessInformation // NOSONAR -- 原生 ABI 结构体仅用于互操作，不参与相等比较
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3898", Justification = "原生 ABI 结构体仅用于互操作，不参与相等比较。")]
+	internal struct ProcessInformation
 	{
 		public IntPtr Process;
 		public IntPtr Thread;

@@ -679,6 +679,7 @@ public sealed class PetRuntime
 	/// GL 线程专属: 候选模型可先创建, 但提交前必须再次校验操作世代;
 	/// 过期候选只移除, 不得改变当前模型或持久化选择。
 	/// </summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "模型切换清理失败不能阻断渲染线程的后续收尾。")]
 	private void ApplyPreparedOnGlThread(ModelLoadOperation operation, PreparedModel prepared)
 	{
 		LAppDelegateOpenGL? app = _app;
@@ -801,7 +802,7 @@ public sealed class PetRuntime
 					_appliedMaskBufferSize = 0;
 					if (previousModel is not null)
 					{
-						try { ApplyRenderQualityOnGlThread(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+						try { ApplyRenderQualityOnGlThread(); } catch { }
 					}
 				}
 			}
@@ -819,7 +820,7 @@ public sealed class PetRuntime
 			return;
 		}
 
-		try { _services.Logger.Write(LogSource.Backend, "info", $"成功加载 Live2D 模型: {prepared.ModelId}"); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { _services.Logger.Write(LogSource.Backend, "info", $"成功加载 Live2D 模型: {prepared.ModelId}"); } catch { }
 		try { ModelChanged?.Invoke(); }
 		catch (Exception exception) { WriteCubismLog($"模型变更事件处理异常: {exception.Message}"); }
 	}

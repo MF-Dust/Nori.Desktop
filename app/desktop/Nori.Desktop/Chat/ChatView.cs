@@ -289,7 +289,8 @@ public sealed partial class ChatView : UserControl, IDisposable
 		if (_disposed) return;
 		UpdateVoiceLabel(); UpdateApprovalCountdown();
 	}
-	private async void Run(Task task) // NOSONAR -- 这是受控的 UI 或后台 fire-and-forget 入口，内部已观察异常
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3168", Justification = "UI 事件调用的受控 fire-and-forget 入口，内部已捕获异常。")]
+	private async void Run(Task task)
 	{
 		_operations.Add(task);
 		try { await task; }

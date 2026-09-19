@@ -83,6 +83,7 @@ public sealed class AppStoragePaths
 	public string MarkerPath { get; }
 
 	/// <summary>创建固定目录并检查数据目录确实可写，不回退到系统目录。</summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "存储目录创建失败需要继续报告原始启动错误。")]
 	public void EnsureCreated()
 	{
 		EnsureDirectory(PackageRoot);
@@ -118,7 +119,7 @@ public sealed class AppStoragePaths
 		}
 		finally
 		{
-			try { if (File.Exists(probe)) File.Delete(probe); } catch { } // NOSONAR -- 临时资源清理失败不能覆盖原始异常
+			try { if (File.Exists(probe)) File.Delete(probe); } catch { }
 		}
 	}
 

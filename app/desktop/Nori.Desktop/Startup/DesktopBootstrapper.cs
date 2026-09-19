@@ -325,6 +325,7 @@ internal sealed class DesktopBootstrapper
 		catch (Exception exception) { WriteShutdownFailure(exception); }
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "关闭阶段逐项清理，单项失败不能阻断剩余释放。")]
 	private async Task ShutdownCoreAsync()
 	{
 		// 服务各自负责取消并收拢启动任务；先等 MCP/插件启动反而会推迟它们收到 Dispose 取消。
@@ -337,36 +338,37 @@ internal sealed class DesktopBootstrapper
 
 		if (_startupPluginRuntime is not null)
 		{
-			try { await _startupPluginRuntime.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			try { await _startupPluginRuntime.DisposeAsync().ConfigureAwait(false); } catch { }
 			_startupPluginRuntime = null;
 		}
-		try { _startupUpdate?.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { _startupUpdate?.Dispose(); } catch { }
 		_startupUpdate = null;
 		if (_startupMcp is not null)
 		{
-			try { await _startupMcp.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			try { await _startupMcp.DisposeAsync().ConfigureAwait(false); } catch { }
 			_startupMcp = null;
 		}
 		if (_startupAssets is not null)
 		{
-			try { await _startupAssets.DisposeAsync().ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			try { await _startupAssets.DisposeAsync().ConfigureAwait(false); } catch { }
 			_startupAssets = null;
 		}
-		try { _startupHttpClients?.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { _startupHttpClients?.Dispose(); } catch { }
 		_startupHttpClients = null;
-		try { _startupDatabase?.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { _startupDatabase?.Dispose(); } catch { }
 		_startupDatabase = null;
 		if (_startupTelemetry is not null)
 		{
-			try { await _startupTelemetry.FlushAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
-			try { _startupTelemetry.Dispose(); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+			try { await _startupTelemetry.FlushAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); } catch { }
+			try { _startupTelemetry.Dispose(); } catch { }
 			_startupTelemetry = null;
 		}
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "关闭诊断记录失败不能阻断进程退出。")]
 	private static void WriteShutdownFailure(Exception exception)
 	{
-		try { System.Diagnostics.Debug.WriteLine($"Nori 关闭流程失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { } // NOSONAR -- 关闭或降级阶段需继续完成后续清理，单项失败不能阻断流程
+		try { System.Diagnostics.Debug.WriteLine($"Nori 关闭流程失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
 	}
 
 	/// <summary>

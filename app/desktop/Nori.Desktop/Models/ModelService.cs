@@ -169,6 +169,7 @@ public sealed class ModelService : IDisposable
 		_retiredBackgroundCts.Clear();
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "状态订阅者异常必须隔离，不能阻断模型操作。")]
 	private void RaiseStateChanged()
 	{
 		if (Volatile.Read(ref _disposed) != 0 || StateChanged is not { } handlers) return;
@@ -178,7 +179,7 @@ public sealed class ModelService : IDisposable
 			catch (Exception exception)
 			{
 				try { _services.Logger.Write(LogSource.Backend, "warn", $"模型窗口状态通知失败: {exception.GetType().Name}"); }
-				catch { } // NOSONAR -- 通知或后台回调失败必须隔离，避免业务流程中断
+				catch { }
 			}
 		}
 	}

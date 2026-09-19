@@ -36,12 +36,13 @@ public sealed class PluginAssetRouteReviewTests : IAsyncLifetime
 		});
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "测试夹具销毁只能尽力清理，不能让清理异常覆盖测试结果。")]
 	public async Task DisposeAsync()
 	{
 		_client.Dispose();
 		if (_server is not null) await _server.DisposeAsync();
 		if (_runtime is not null) await _runtime.DisposeAsync();
-		try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { } // NOSONAR: 测试夹具销毁阶段只能尽力清理，不能让清理异常覆盖测试结果。
+		try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { }
 	}
 
 	[Fact]

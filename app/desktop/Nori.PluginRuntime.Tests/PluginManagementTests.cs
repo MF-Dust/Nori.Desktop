@@ -312,8 +312,9 @@ public sealed class PluginManagementTests
 		return path;
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "测试夹具销毁只能尽力清理，不能让清理异常覆盖测试结果。")]
 	private static void DeleteDirectory(string path)
 	{
-		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { } // NOSONAR: 测试夹具销毁阶段只能尽力清理，不能让清理异常覆盖测试结果。
+		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { }
 	}
 }

@@ -230,6 +230,7 @@ internal sealed class PluginPackageInstaller
 		return path[prefix.Length..];
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "临时安装包清理失败不能覆盖安装结果。")]
 	private static void WriteCurrentPointer(string pointerPath, string version)
 	{
 		string temporary = pointerPath + ".tmp-" + Guid.NewGuid().ToString("N");
@@ -240,7 +241,7 @@ internal sealed class PluginPackageInstaller
 		}
 		finally
 		{
-			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { } // NOSONAR: 临时安装包清理失败不应覆盖安装结果。
+			try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
 		}
 	}
 
@@ -251,9 +252,10 @@ internal sealed class PluginPackageInstaller
 	private static void EnsureNoReparsePoints(string path) =>
 		PluginPathSafety.EnsureNoReparsePoint(path, PluginErrorCodes.PackagePathDenied, "插件包路径包含符号链接");
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "回滚清理只能尽力执行，必须保留原始安装错误。")]
 	private static void TryDelete(string path)
 	{
-		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { } // NOSONAR: 回滚清理只能尽力执行，原始安装错误必须保留。
+		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { }
 	}
 
 	private sealed record PackageEntry(ZipArchiveEntry Entry, string Path);

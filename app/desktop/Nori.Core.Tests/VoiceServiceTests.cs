@@ -134,6 +134,7 @@ public class VoiceServiceTests : IDisposable
 		public TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		public bool IsPlaying { get; private set; }
 		public event Action<bool>? PlayingChanged;
+		[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3237", Justification = "测试替身不使用音量采样事件，显式接口事件访问器必须保持空实现。")]
 		event Action<double>? IAudioPlayback.VolumeSampled
 		{
 			add { }

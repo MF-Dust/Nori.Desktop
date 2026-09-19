@@ -274,6 +274,7 @@ public sealed class SettingsService : IDisposable
 		return new {confirmed};
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "设置状态通知失败不能阻断保存流程。")]
 	private void RaiseStateChanged()
 	{
 		if (Volatile.Read(ref _disposed) != 0) return;
@@ -285,7 +286,7 @@ public sealed class SettingsService : IDisposable
 			catch (Exception exception)
 			{
 				try { _services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"设置窗口状态通知失败: {exception.GetType().Name}"); }
-				catch { } // NOSONAR -- 通知或后台回调失败必须隔离，避免业务流程中断
+				catch { }
 			}
 		}
 	}

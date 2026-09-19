@@ -340,11 +340,12 @@ public sealed class KnowledgeService : IAsyncDisposable
 		return result;
 	}
 
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "状态通知失败不能覆盖索引操作异常。")]
 	private void SetStatus(MemoryIndexStatus status)
 	{
 		lock (_gate) _status = status;
 		try { StatusChanged?.Invoke(); }
-		catch { } // NOSONAR -- 通知或后台回调失败必须隔离，避免业务流程中断
+		catch { }
 	}
 
 	private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));

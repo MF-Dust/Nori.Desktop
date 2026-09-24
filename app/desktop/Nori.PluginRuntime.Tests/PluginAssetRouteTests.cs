@@ -6,7 +6,7 @@ namespace Nori.PluginRuntime.Tests;
 public sealed class PluginAssetRouteTests : IAsyncLifetime
 {
 	private readonly string _root = Path.Combine(Path.GetTempPath(), "nori-plugin-asset-tests", Guid.NewGuid().ToString("N"));
-	private readonly string _pluginId = "io.nori.asset";
+	private readonly string _pluginId = "io." + new string('a', 70);
 	private readonly HttpClient _client = new();
 	private PluginRuntimeHost _runtime = null!;
 	private AssetServer _server = null!;
@@ -47,7 +47,7 @@ public sealed class PluginAssetRouteTests : IAsyncLifetime
 	}
 
 	[Fact]
-	public async Task 插件公开资源可访问且manifest不可访问()
+	public async Task 超过64位的插件ID仍可访问公开资源且manifest不可访问()
 	{
 		_runtime.Discover();
 		HttpResponseMessage asset = await _client.GetAsync(_server.PublicUrl("plugins", $"{_pluginId}/web/index.html"));

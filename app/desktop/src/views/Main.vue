@@ -288,13 +288,13 @@ onBeforeUnmount(() => {
 						-->
 						<span
 							v-if="isWindowOpen(item.window)"
-							class="w-1.6 h-1.6 rounded-full bg-nori-teal-bright animate-pulse-soft"
+							class="w-1.5 h-1.5 rounded-full bg-nori-teal-bright animate-pulse-soft"
 							:class="collapsed ? 'absolute bottom-1.5 right-1.5' : 'absolute right-3'"
 							:style="{'--pulse-tint': 'var(--glow-teal)'}"
 						/>
 						<span
 							v-if="item.badge"
-							class="w-1.8 h-1.8 rounded-full bg-warning"
+							class="w-2 h-2 rounded-full bg-warning"
 							:class="collapsed ? 'absolute top-1.5 right-1.5' : 'absolute right-7'"
 						/>
 					</button>

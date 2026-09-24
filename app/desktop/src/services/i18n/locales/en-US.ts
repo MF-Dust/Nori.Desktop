@@ -31,6 +31,7 @@ export default {
 		},
 		firstRun: {
 			welcome: {
+				badge: "Live2D Cyber Companion",
 				title: "Welcome to Nori",
 				subtitle: "A desktop companion for work, study, and relaxing. Let's get to know her first.",
 				openFailed: "Failed to open the link",
@@ -62,6 +63,7 @@ export default {
 				},
 			},
 			languageSelect: {
+				badge: "Language Preference",
 				title: "Select Language",
 				subtitle: "Pick the language you want to read the UI and talk to Nori in",
 				langEmpty: "No languages available",
@@ -93,6 +95,7 @@ export default {
 				skip: "Skip this step",
 			},
 			ready: {
+				badge: "All Set & Ready",
 				title: "All Set!",
 				desc: "Click Start to initialize. Nori is looking forward to meeting you.",
 				initDesc: "🐾 Initialization only takes a few seconds",

@@ -35,6 +35,7 @@ export default () => {
 			},
 			firstRun: {
 				welcome: {
+					badge: t("components.firstRun.welcome.badge"),
 					title: t("components.firstRun.welcome.title"),
 					subtitle: t("components.firstRun.welcome.subtitle"),
 					openFailed: t("components.firstRun.welcome.openFailed"),
@@ -66,6 +67,7 @@ export default () => {
 					},
 				},
 				languageSelect: {
+					badge: t("components.firstRun.languageSelect.badge"),
 					title: t("components.firstRun.languageSelect.title"),
 					subtitle: t("components.firstRun.languageSelect.subtitle"),
 					langEmpty: t("components.firstRun.languageSelect.langEmpty"),
@@ -97,6 +99,7 @@ export default () => {
 					skip: t("components.firstRun.aiSetup.skip"),
 				},
 				ready: {
+					badge: t("components.firstRun.ready.badge"),
 					title: t("components.firstRun.ready.title"),
 					desc: t("components.firstRun.ready.desc"),
 					initDesc: t("components.firstRun.ready.initDesc"),

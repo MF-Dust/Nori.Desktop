@@ -31,6 +31,7 @@ export default {
 		},
 		firstRun: {
 			welcome: {
+				badge: "Live2D 桌面伙伴",
 				title: "欢迎来到 Nori",
 				subtitle: "一只会陪你上班、学习、摸鱼的桌面伙伴。先认识一下它吧。",
 				openFailed: "打开链接失败",
@@ -62,6 +63,7 @@ export default {
 				},
 			},
 			languageSelect: {
+				badge: "语言偏好",
 				title: "选择语言",
 				subtitle: "请选择您希望与 Nori 交互及阅读界面的主要语言",
 				langEmpty: "暂无可用语言",
@@ -93,6 +95,7 @@ export default {
 				skip: "跳过这一步",
 			},
 			ready: {
+				badge: "准备就绪",
 				title: "准备就绪",
 				desc: "点击「开始」完成初始化，Nori 期待与你见面。",
 				initDesc: "🐾 初始化只需几秒",

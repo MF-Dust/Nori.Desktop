@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 namespace Nori.PluginRuntime;
 
@@ -63,7 +64,7 @@ internal sealed class PluginManager : IAsyncDisposable
 	private readonly PluginRuntimeOptions _options;
 	private readonly PluginPackageInstaller _installer;
 	private readonly PluginLoader _loader = new();
-	private readonly Dictionary<string, PluginHandle> _plugins = new(StringComparer.Ordinal);
+	private readonly ConcurrentDictionary<string, PluginHandle> _plugins = new(StringComparer.Ordinal);
 	private readonly CancellationTokenSource _shutdownSource = new();
 	private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
 	private readonly PluginStartupRecoveryStore _startupRecovery;
@@ -170,7 +171,7 @@ internal sealed class PluginManager : IAsyncDisposable
 		foreach (string stale in _plugins.Keys.Where(id => !seen.Contains(id)).ToArray())
 		{
 			PluginHandle handle = _plugins[stale];
-			if (handle.Instance is null && handle.LoadContext is null) _plugins.Remove(stale);
+			if (handle.Instance is null && handle.LoadContext is null) _plugins.TryRemove(stale, out _);
 		}
 		ValidateDependencies();
 		return Plugins;
@@ -385,7 +386,7 @@ internal sealed class PluginManager : IAsyncDisposable
 			{
 				_installer.Uninstall(pluginId);
 				if (deleteData) DeletePluginData(pluginId);
-				_plugins.Remove(pluginId);
+				_plugins.TryRemove(pluginId, out _);
 				_startupRecovery.Clear(pluginId);
 				_stateStore.Remove(pluginId);
 				return new PluginUninstallResult(true, false, null);
@@ -837,7 +838,7 @@ internal sealed class PluginManager : IAsyncDisposable
 				if (deleteData) DeletePluginData(pluginId);
 				_startupRecovery.Clear(pluginId);
 				_stateStore.Remove(pluginId);
-				_plugins.Remove(pluginId);
+				_plugins.TryRemove(pluginId, out _);
 			}
 			catch (PluginException exception)
 			{

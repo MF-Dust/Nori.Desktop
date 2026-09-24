@@ -107,7 +107,7 @@ onBeforeUnmount(() => {
 			<button
 				type="button"
 				:aria-expanded="expanded.has(widget.pluginId)"
-				class="w-full flex items-center gap-2 px-3.5 py-2 text-left hover:bg-bg-hover/40"
+				class="w-full flex items-center gap-2 px-3.5 py-2 text-left hover:bg-overlay-8"
 				@click="toggle(widget.pluginId)"
 			>
 				<span class="text-nori-teal-bright">◆</span>

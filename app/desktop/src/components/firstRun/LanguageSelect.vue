@@ -75,7 +75,7 @@ const select = async (code: string) => {
 		<div class="flex flex-col items-center gap-1 text-center">
 			<span class="chip-teal">
 				<Icon name="noriOS" :size="12"/>
-				<span>Language Preference</span>
+				<span>{{ I18N.badge }}</span>
 			</span>
 			<h2 class="text-2xl font-700 glow-teal">{{ I18N.title }}</h2>
 			<p class="text-xs text-sub">{{ I18N.subtitle }}</p>

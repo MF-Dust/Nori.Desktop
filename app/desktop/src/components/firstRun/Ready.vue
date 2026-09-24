@@ -63,7 +63,7 @@ const SUMMARY = computed<{icon: IconName; label: string; value: string}[]>(() =>
 		<div class="flex flex-col items-center gap-0.5">
 			<span class="chip-teal text-xs">
 				<Icon name="sparkles" :size="11"/>
-				<span>All Set &amp; Ready</span>
+				<span>{{ I18N.badge }}</span>
 			</span>
 			<h2 class="text-2xl font-700 glow-teal">{{ I18N.title }}</h2>
 			<p class="text-xs text-text-body leading-relaxed max-w-[36rem]">{{ I18N.desc }}</p>

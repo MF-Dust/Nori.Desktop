@@ -4,7 +4,7 @@
 
 对话入口改为复用独立 Avalonia `ChatWindow`，正文 `ChatView` 可复用，不创建 WebView。默认 960×640 DIP，最小 720×480 DIP，仅深色，不跟随系统浅色。普通关闭先停止录音再隐藏，保留草稿、滚动位置和正在生成的会话；应用退出才取消会话并释放订阅。
 
-设置、模型、记忆已经是原生窗口。本次不迁移主页、首次运行、初始化页；`main` WebView 继续常驻承载 TTS/STT、媒体令牌交换及口型同步。`PluginWidgets` 移至主页，`OperationDrawer` 的自动化审批仍在主窗口，与原生对话工具审批分开。主动提醒仍沿用原有桌宠动作与自动朗读路径，本次不增加主动提醒气泡。
+设置、模型、记忆、对话、首次运行等窗口已全部原生化。`main` WebView 继续常驻承载 TTS/STT、媒体令牌交换及口型同步。主动提醒沿用原有桌宠动作与自动朗读路径。
 
 旧 `ChatView.vue`、`ChatMessageBubble.vue`、Vue chatStore、聊天 Markdown/split 辅助及其专属测试已删除；无剩余调用的 `markdown-it`、`dompurify`、`.chat-markdown` 样式与 `glass-panel` shortcut 同步移除。没有移除主窗口音频代码、插件挂件或共享国际化词条。
 

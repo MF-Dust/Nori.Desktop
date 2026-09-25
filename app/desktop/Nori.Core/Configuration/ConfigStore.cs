@@ -192,6 +192,63 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 		if (IsSensitiveKey(key)) _secretIssues.TryRemove(key, out _);
 	}
 
+	/// <summary>
+	/// 批量写入配置。所有更新在单个事务中提交,减少锁竞争。
+	/// 敏感字段先完成加密;密钥库不可用时整个批次失败。
+	/// </summary>
+	public void SetBatch(Dictionary<string, ConfigValue> updates)
+	{
+		if (updates == null || updates.Count == 0) return;
+
+		// 预先加密所有敏感字段,如果密钥库不可用则提前失败
+		Dictionary<string, string> preparedValues = new(updates.Count, StringComparer.Ordinal);
+		foreach (var (key, value) in updates)
+		{
+			ArgumentException.ThrowIfNullOrEmpty(key);
+			string toStore = IsSensitiveKey(key) ? ProtectValue(key, value.ToStorage()) : value.ToStorage();
+			preparedValues[key] = toStore;
+		}
+
+		_database.Locked(connection =>
+		{
+			using SqliteTransaction transaction = connection.BeginTransaction();
+			try
+			{
+				using SqliteCommand command = connection.CreateCommand();
+				command.Transaction = transaction;
+				command.CommandText = """
+					INSERT INTO config (key, value)
+					VALUES ($key, $value)
+					ON CONFLICT(key)
+					DO UPDATE SET value = excluded.value
+					""";
+
+				SqliteParameter keyParam = command.Parameters.Add("$key", SqliteType.Text);
+				SqliteParameter valueParam = command.Parameters.Add("$value", SqliteType.Text);
+
+				foreach (var (key, value) in preparedValues)
+				{
+					keyParam.Value = key;
+					valueParam.Value = value;
+					command.ExecuteNonQuery();
+				}
+
+				transaction.Commit();
+			}
+			catch
+			{
+				transaction.Rollback();
+				throw;
+			}
+		});
+
+		// 清理所有成功写入的敏感配置问题记录
+		foreach (string key in updates.Keys)
+		{
+			if (IsSensitiveKey(key)) _secretIssues.TryRemove(key, out _);
+		}
+	}
+
 	/// <summary>删除配置, 返回是否真的删除了记录。</summary>
 	public bool Delete(string key)
 	{

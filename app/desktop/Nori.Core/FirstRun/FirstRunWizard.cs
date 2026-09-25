@@ -47,7 +47,7 @@ public sealed record WizardState
 /// 首次运行向导的状态机。
 ///
 /// 步进、守卫与提交状态全收在这里，窗口只做渲染 —— 从 Vue 版
-/// <c>services/firstRun/wizard.ts</c> 原样搬过来，连同它当初解决的那个问题：
+/// 承接原来首次运行 UI 的服务端验证逻辑，连同它当初解决的那个问题：
 /// 更早的实现里「下一步」在末步静默 no-op、模型保存与 complete_first_run 失败只往
 /// 控制台打一行，界面毫无变化，观感就是「卡在选形象那一步」。所以每一步的失败都要
 /// 变成**可见状态**（<see cref="WizardState.StepError"/> /

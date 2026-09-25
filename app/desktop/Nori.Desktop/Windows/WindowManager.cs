@@ -17,7 +17,7 @@ namespace Nori.Desktop.Windows;
 /// <summary>
 /// 窗口调度
 ///
-/// 承接原来 Rust 侧 lib.rs setup / tray.rs 与前端 services/window/index.ts 的窗口调度职责.
+/// 承接原来 Rust 侧 lib.rs setup / tray.rs 的窗口调度职责.
 /// 用户窗口都是原生的。兼容音频宿主另行创建，不进入这个列表。
 /// </summary>
 public sealed class WindowManager : IWindowManager

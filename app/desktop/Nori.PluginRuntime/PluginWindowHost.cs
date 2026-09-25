@@ -154,7 +154,7 @@ internal sealed partial class PluginWindowHost : IAsyncDisposable
 
 		Uri webRoot = new(sample, "./");
 		Uri candidate;
-		if (Uri.TryCreate(entryPoint, UriKind.Absolute, out Uri? absolute)) candidate = absolute;
+		if (PluginWindowOptionsValidator.TryCreateAbsoluteUri(entryPoint, out Uri? absolute)) candidate = absolute;
 		else
 		{
 			string relative = entryPoint.TrimStart('/');

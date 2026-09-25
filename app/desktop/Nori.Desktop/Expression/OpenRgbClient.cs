@@ -70,7 +70,11 @@ public sealed class OpenRgbClient : IDisposable
 		try
 		{
 			// 回环上连接被拒是立刻返回的，不会走满超时。
-			if (!tcp.ConnectAsync("127.0.0.1", port).Wait(Timeout) || !tcp.Connected)
+			// 使用 CancellationTokenSource 实现超时控制，避免 .Wait() 产生 unobserved task exception。
+			using CancellationTokenSource cts = new(Timeout);
+			tcp.ConnectAsync("127.0.0.1", port, cts.Token).GetAwaiter().GetResult();
+
+			if (!tcp.Connected)
 			{
 				tcp.Dispose();
 				return null;
@@ -82,7 +86,7 @@ public sealed class OpenRgbClient : IDisposable
 			client.Send(0, SetClientName, Encoding.ASCII.GetBytes("Nori\0"));
 			return client;
 		}
-		catch (Exception exception) when (exception is SocketException or IOException or AggregateException)
+		catch (Exception exception) when (exception is SocketException or IOException or AggregateException or OperationCanceledException)
 		{
 			tcp.Dispose();
 			return null;

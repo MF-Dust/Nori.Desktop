@@ -61,7 +61,7 @@ export default defineConfig({
 		// ---- 窗口与容器 ----
 		// 窗口根节点的视觉定义只留在这里。
 		// window-chrome 只管圆角/描边/阴影, window-root 再补满屏尺寸,
-		// window-surface 是默认底纹 (first-run 用自己的分步渐变替换它)。
+		// window-surface 是默认底纹。
 		[
 			"window-chrome",
 			"relative flex flex-col rounded-lg overflow-hidden select-none text-text-body transition-[box-shadow] duration-200 "

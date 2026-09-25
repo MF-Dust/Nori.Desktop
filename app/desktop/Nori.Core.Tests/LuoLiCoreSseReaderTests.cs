@@ -152,6 +152,15 @@ public sealed class LuoLiCoreSseReaderTests
 
 	/// <summary>SSE 规范里 `data:` 之后的单个空格属于分隔符，不是正文。</summary>
 	[Fact]
+	public async Task 单帧过大时拒绝解析()
+	{
+		string sse = "event: delta\ndata: {\"text\":\"" + new string('x', 600_000) + "\"}\n\n";
+		ChatException failure = await ReadFailureAsync(sse);
+
+		Assert.Contains("单帧", failure.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task 字段冒号后的单个空格被剥掉()
 	{
 		List<LuoLiCoreStreamEvent> items = await ReadAsync("event: done\ndata: {\"text\":\" 前导空格保留\"}\n\n");

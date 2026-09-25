@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Nori.Desktop.Settings;
 
 namespace Nori.Desktop.Settings.Pages;
 
@@ -111,7 +112,7 @@ internal static class NativeMcpServerEditor
 			}
 			catch (Exception exception)
 			{
-				feedback.Text = exception.Message;
+				feedback.Text = SettingsErrorText.Resolve(exception);
 			}
 			finally
 			{

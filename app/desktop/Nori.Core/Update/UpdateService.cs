@@ -77,7 +77,7 @@ public sealed class UpdateService : IDisposable
 		if (httpClient is null)
 		{
 			_ownedClients = NoriHttpClients.Create(false, TimeSpan.FromMinutes(30),
-				config?.GetBoolOr("allow_public_system_proxy", true) ?? true);
+				config?.GetBoolOr("allow_public_system_proxy", false) ?? false);
 			_httpClient = _ownedClients.Public;
 		}
 		else _httpClient = httpClient;

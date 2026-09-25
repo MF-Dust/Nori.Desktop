@@ -143,8 +143,8 @@ internal sealed class DesktopBootstrapper
 
 		// 默认校验服务器证书。自签名/私有部署的大模型端点可通过 allow_insecure_tls 显式放开。
 		bool insecureTls = ParseBoolFlag(config.GetStringOr("allow_insecure_tls", "")) ?? false;
-		// 公网请求默认使用明确直连的地址校验客户端；必须依赖系统代理时可显式放行。
-		bool publicSystemProxy = ParseBoolFlag(config.GetStringOr("allow_public_system_proxy", "")) ?? true;
+		// 公网请求默认直连；只有用户明确配置时才使用系统代理。
+		bool publicSystemProxy = ParseBoolFlag(config.GetStringOr("allow_public_system_proxy", "")) ?? false;
 		NoriHttpClients httpClients = NoriHttpClients.Create(
 			insecureTls,
 			TimeSpan.FromSeconds(ChatService.TimeoutSeconds + 10),
@@ -154,7 +154,7 @@ internal sealed class DesktopBootstrapper
 		HttpClient publicHttp = httpClients.Public;
 		if (insecureTls)
 		{
-			logger.Write(LogSource.Backend, "warn", "已启用 allow_insecure_tls: 出站 HTTPS 不再校验服务器证书, 仅建议对本地/自签名端点使用");
+			logger.Write(LogSource.Backend, "warn", "已启用 allow_insecure_tls: 仅本地/模型端点跳过 TLS 证书校验");
 		}
 		cancellationToken.ThrowIfCancellationRequested();
 		AssetServer? assetServer = null;
@@ -171,7 +171,7 @@ internal sealed class DesktopBootstrapper
 			SafeMode = safeMode,
 			Logger = logger,
 			AssetUriFactory = (pluginId, path) => assetServer is { } server
-				? new Uri(server.PublicUrl("plugins", $"{pluginId}/{path}"), UriKind.RelativeOrAbsolute)
+				? ToAbsolutePluginAssetUri(server, pluginId, path)
 				: throw new InvalidOperationException("插件资源服务尚未启动"),
 			OnError = exception =>
 			{
@@ -385,6 +385,14 @@ internal sealed class DesktopBootstrapper
 	/// 应用版本, 写入 app_version 配置
 	/// </summary>
 	private static string AppVersion() => Nori.Core.ProductVersion.Current;
+
+	private static Uri ToAbsolutePluginAssetUri(AssetServer server, string pluginId, string path)
+	{
+		string route = server.PublicUrl("plugins", $"{pluginId}/{path}");
+		if (Uri.TryCreate(route, UriKind.Absolute, out Uri? absolute)) return absolute;
+		return new Uri(new Uri(server.Origin + server.Prefix + "/", UriKind.Absolute), route.TrimStart('/'));
+	}
+
 
 	/// <summary>提取插件运行时使用的数字宿主版本。</summary>
 	private static PluginVersion PluginHostVersion()

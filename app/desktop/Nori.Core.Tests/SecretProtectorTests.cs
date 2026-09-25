@@ -158,4 +158,41 @@ public class SecretKeyStoreTests : IDisposable
 		Assert.True(File.Exists(Path.Combine(_dir, "secret.key")));
 		Assert.Equal(created, new SecretKeyStore(_dir).LoadOrCreate());
 	}
+
+	[Fact]
+	public async Task 不同实例并发首次读取仍返回同一主密钥()
+	{
+		if (!OperatingSystem.IsWindows()) return;
+
+		using ManualResetEventSlim gate = new(false);
+		Task<byte[]>[] tasks = Enumerable.Range(0, 16)
+			.Select(_ => Task.Run(() =>
+			{
+				gate.Wait();
+				return new SecretKeyStore(_dir).LoadOrCreate();
+			}))
+			.ToArray();
+
+		gate.Set();
+		byte[][] keys = await Task.WhenAll(tasks);
+		Assert.All(keys, key => Assert.Equal(keys[0], key));
+	}
+
+	[Fact]
+	public async Task 同实例并发首次读取只生成一个主密钥()
+	{
+		SecretKeyStore store = new(_dir);
+		using ManualResetEventSlim gate = new(false);
+		Task<byte[]>[] tasks = Enumerable.Range(0, 16)
+			.Select(_ => Task.Run(() =>
+			{
+				gate.Wait();
+				return store.LoadOrCreate();
+			}))
+			.ToArray();
+
+		gate.Set();
+		byte[][] keys = await Task.WhenAll(tasks);
+		Assert.All(keys, key => Assert.Equal(keys[0], key));
+	}
 }

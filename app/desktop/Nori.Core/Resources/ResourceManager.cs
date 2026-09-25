@@ -308,6 +308,7 @@ public sealed class ResourceManager
 
 		List<(string Target, string Backup)> backups = [];
 		List<string> installedTargets = [];
+		bool preserveBackupOnFailure = false;
 		try
 		{
 			foreach (string modelId in modelIds)
@@ -333,13 +334,16 @@ public sealed class ResourceManager
 		}
 		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or OperationCanceledException or ResourceException)
 		{
+			// 先保留备份；只有回滚完整成功后才允许清理，避免回滚失败时丢掉唯一旧模型。
+			preserveBackupOnFailure = true;
 			try
 			{
 				RollbackSwap(installedTargets, backups);
+				preserveBackupOnFailure = false;
 			}
-			catch (Exception rollbackException) when (rollbackException is IOException or UnauthorizedAccessException)
+			catch (Exception rollbackException) when (rollbackException is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
 			{
-				throw new ResourceException($"导入资源失败且回滚失败: {rollbackException.Message}", rollbackException);
+				throw new ResourceException($"导入资源失败且回滚失败，旧模型备份保留在: {backupRoot}", rollbackException);
 			}
 
 			if (exception is OperationCanceledException or ResourceException) throw;
@@ -347,7 +351,7 @@ public sealed class ResourceManager
 		}
 		finally
 		{
-			TryDeleteDirectory(backupRoot);
+			if (!preserveBackupOnFailure) TryDeleteDirectory(backupRoot);
 		}
 	}
 
@@ -356,6 +360,12 @@ public sealed class ResourceManager
 		IReadOnlyList<string> installedTargets,
 		IReadOnlyList<(string Target, string Backup)> backups)
 	{
+		for (int index = backups.Count - 1; index >= 0; index--)
+		{
+			if (!Directory.Exists(backups[index].Backup))
+				throw new IOException($"资源回滚备份不存在: {backups[index].Backup}");
+		}
+
 		for (int index = installedTargets.Count - 1; index >= 0; index--)
 		{
 			string target = installedTargets[index];
@@ -366,7 +376,11 @@ public sealed class ResourceManager
 		{
 			(string target, string backup) = backups[index];
 			if (Directory.Exists(target)) Directory.Delete(target, true);
-			if (Directory.Exists(backup)) Directory.Move(backup, target);
+			if (!Directory.Exists(backup))
+				throw new IOException($"资源回滚备份不存在: {backup}");
+			Directory.Move(backup, target);
+			if (!Directory.Exists(target))
+				throw new IOException($"资源回滚后目标目录不存在: {target}");
 		}
 	}
 

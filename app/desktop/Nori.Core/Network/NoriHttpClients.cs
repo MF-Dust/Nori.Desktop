@@ -26,15 +26,15 @@ public sealed class NoriHttpClients : IDisposable
 	}
 
 	/// <summary>创建一组带统一 TLS 与超时策略的客户端。</summary>
-	/// <param name="allowInsecureTls">跳过公网/本地请求的证书校验 (自签名端点)。</param>
+	/// <param name="allowInsecureLocalTls">仅跳过本地/模型请求的证书校验 (自签名端点)。公网请求始终校验证书。</param>
 	/// <param name="publicUseSystemProxy">公网客户端是否跟随系统代理。</param>
 	/// <param name="timeout">请求超时</param>
-	public static NoriHttpClients Create(bool allowInsecureTls, TimeSpan? timeout = null, bool publicUseSystemProxy = false)
+	public static NoriHttpClients Create(bool allowInsecureLocalTls, TimeSpan? timeout = null, bool publicUseSystemProxy = false)
 	{
 		TimeSpan requestTimeout = timeout ?? DefaultTimeout;
 		HttpClientHandler localHandler = new()
 		{
-			ServerCertificateCustomValidationCallback = allowInsecureTls
+			ServerCertificateCustomValidationCallback = allowInsecureLocalTls
 				? static (_, _, _, _) => true
 				: null,
 		};
@@ -49,9 +49,7 @@ public sealed class NoriHttpClients : IDisposable
 			SslOptions = new SslClientAuthenticationOptions
 			{
 				EnabledSslProtocols = SslProtocols.None,
-				RemoteCertificateValidationCallback = allowInsecureTls
-					? static (_, _, _, _) => true
-					: null,
+				// 公网客户端不继承本地自签名端点的 TLS 放宽策略。
 			},
 		};
 		HttpClient @public = new(publicHandler) {Timeout = requestTimeout};

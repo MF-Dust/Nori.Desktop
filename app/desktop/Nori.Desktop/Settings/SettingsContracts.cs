@@ -330,11 +330,14 @@ public abstract class SettingsPageBase : SettingsObservableObject, ISettingsPage
 
 	internal void ReportSaveFailure(SettingsFieldViewModel field, Exception exception)
 	{
-		ErrorMessage = field.Label + ": " + exception.Message;
+		ErrorMessage = field.Label + ": " + SettingsErrorText.Resolve(exception);
 	}
 
-	/// <summary>更新页面操作状态。</summary>
-	protected void SetStatus(string message) => StatusMessage = message;
+	/// <summary>设置页面操作状态。</summary>
+	protected void SetStatus(string message) => StatusMessage = SettingsErrorText.Resolve(message);
+
+	/// <summary>设置页面操作状态并按当前语言转换异常。</summary>
+	protected void SetStatus(Exception exception) => StatusMessage = SettingsErrorText.Resolve(exception);
 
 	/// <inheritdoc />
 	public void Dispose()
@@ -683,7 +686,7 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 			lock (_saveSync)
 			{
 				if (revision != _editRevision) return false;
-				_errorText = exception.Message;
+				_errorText = SettingsErrorText.Resolve(exception);
 			}
 			OnPropertyChanged(nameof(ErrorText));
 			_page.ReportSaveFailure(this, exception);

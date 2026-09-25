@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
+using Nori.Core.Network;
 
 namespace Nori.Core.Chat.Adapters;
 
@@ -27,6 +28,10 @@ public sealed class GoogleGenAiAdapter(HttpClient httpClient) : IModelCatalogAda
 		{
 			response = await _httpClient.SendAsync(request, cancellationToken);
 		}
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			throw;
+		}
 		catch (Exception)
 		{
 			// 请求失败回退内置列表
@@ -40,7 +45,9 @@ public sealed class GoogleGenAiAdapter(HttpClient httpClient) : IModelCatalogAda
 				{
 					try
 					{
-						JsonNode? body = JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+						string text = await UrlAccessPolicy.ReadCappedTextAsync(
+							response.Content, UrlAccessPolicy.MaxResponseBytes, cancellationToken);
+						JsonNode? body = JsonNode.Parse(text);
 						if (body?["models"] is JsonArray modelsArray && modelsArray.Count > 0)
 						{
 							SortedSet<string> models = new(StringComparer.Ordinal);
@@ -60,6 +67,10 @@ public sealed class GoogleGenAiAdapter(HttpClient httpClient) : IModelCatalogAda
 							}
 							if (models.Count > 0) return [.. models];
 						}
+					}
+					catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+					{
+						throw;
 					}
 					catch
 					{

@@ -41,6 +41,7 @@ internal sealed class PluginWebViewWindow : Window, IPluginWebViewWindow, IPlugi
 	private readonly NativeWebView _webView;
 	private readonly WebViewScriptDispatcher _scriptDispatcher;
 	private readonly string _webViewDataRoot;
+	private readonly Func<Uri, bool>? _navigationPolicy;
 	private int _visible;
 	private CancellationTokenRegistration _revocationRegistration;
 	private int _isClosingOrClosed;
@@ -56,7 +57,9 @@ internal sealed class PluginWebViewWindow : Window, IPluginWebViewWindow, IPlugi
 		PluginBridge? bridge = null,
 		CancellationToken revocationToken = default,
 		string? webViewDataRoot = null,
-		FileLogger? logger = null)
+		FileLogger? logger = null,
+		Uri? entryPoint = null,
+		Func<Uri, bool>? navigationPolicy = null)
 	{
 		ArgumentNullException.ThrowIfNull(descriptor);
 		ArgumentNullException.ThrowIfNull(options);
@@ -69,6 +72,7 @@ internal sealed class PluginWebViewWindow : Window, IPluginWebViewWindow, IPlugi
 		Label = PluginWindowHost.BuildLabel(PluginId, WindowId);
 		Descriptor = descriptor;
 		_webViewDataRoot = Path.GetFullPath(webViewDataRoot ?? Path.Combine(AppContext.BaseDirectory, "webview_plugins"));
+		_navigationPolicy = navigationPolicy;
 
 		Title = options.Title;
 		Width = options.Width;
@@ -102,12 +106,17 @@ internal sealed class PluginWebViewWindow : Window, IPluginWebViewWindow, IPlugi
 		};
 		_webView.EnvironmentRequested += OnEnvironmentRequested;
 		_webView.WebMessageReceived += OnWebMessageReceived;
+		_webView.NewWindowRequested += (_, args) => args.Handled = true;
+		_webView.NavigationStarted += (_, args) =>
+		{
+			if (args.Request is not { } request || _navigationPolicy?.Invoke(request) == false) args.Cancel = true;
+		};
 		_webView.NavigationCompleted += OnNavigationCompleted;
 		Content = _webView;
 		_scriptDispatcher = new WebViewScriptDispatcher(script => _webView.InvokeScript(script));
 
-		// 导航至插件入口 URL
-		_webView.Source = new Uri(options.EntryPoint, UriKind.RelativeOrAbsolute);
+		// 导航至已由宿主解析并限制在插件 web 根下的入口 URL。
+		_webView.Source = entryPoint ?? new Uri(options.EntryPoint, UriKind.RelativeOrAbsolute);
 
 		PropertyChanged += OnPropertyChanged;
 		Closed += OnClosed;

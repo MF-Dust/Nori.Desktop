@@ -8,6 +8,7 @@ using Microsoft.Extensions.AI;
 using OpenAI;
 using OpenAI.Chat;
 using OpenAI.Responses;
+using Nori.Core.Network;
 
 namespace Nori.Core.Chat;
 
@@ -203,7 +204,9 @@ public static class ChatClientFactory
 		{
 			// 外层 provider HttpClient 已经标记 request 为已发送，转发给共享 HttpClient 前必须复制消息。
 			using HttpRequestMessage forwarded = await CloneRequestAsync(request, cancellationToken).ConfigureAwait(false);
-			return await sharedHttpClient.SendAsync(forwarded, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+			HttpResponseMessage response = await sharedHttpClient.SendAsync(forwarded, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+			response.Content = UrlAccessPolicy.WrapResponseContent(response.Content);
+			return response;
 		}
 
 		private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)

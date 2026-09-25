@@ -156,7 +156,7 @@ public sealed class AiSettingsPage : SettingsPageBase
 			else SetConnectionResult(false, Text($"已找到 {_models.Count} 个模型，可在列表中选择。", $"{_models.Count} models available to select."));
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetConnectionResult(false, exception.Message); }
+		catch (Exception exception) { SetConnectionResult(false, SettingsErrorText.Resolve(exception)); }
 		finally { SetActionsBusy(false, false); }
 	}
 
@@ -191,8 +191,9 @@ public sealed class AiSettingsPage : SettingsPageBase
 	internal void SetConnectionResult(bool embedding, string message)
 	{
 		SettingsFieldViewModel field = embedding ? _embeddingResult : _chatResult;
-		field.Text = message;
-		field.IsVisible = message.Length > 0;
+		string localized = SettingsErrorText.Resolve(message);
+		field.Text = localized;
+		field.IsVisible = localized.Length > 0;
 	}
 
 	private static string Text(string chinese, string english) => SettingsLocalization.IsEnglish ? english : chinese;
@@ -215,7 +216,7 @@ public sealed class AiSettingsPage : SettingsPageBase
 			SetConnectionResult(false, ConnectionStatus(result));
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetConnectionResult(false, exception.Message); }
+		catch (Exception exception) { SetConnectionResult(false, SettingsErrorText.Resolve(exception)); }
 		finally { SetActionsBusy(false, false); }
 	}
 
@@ -237,7 +238,7 @@ public sealed class AiSettingsPage : SettingsPageBase
 			SetConnectionResult(true, ConnectionStatus(result));
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetConnectionResult(true, exception.Message); }
+		catch (Exception exception) { SetConnectionResult(true, SettingsErrorText.Resolve(exception)); }
 		finally { SetActionsBusy(true, false); }
 	}
 

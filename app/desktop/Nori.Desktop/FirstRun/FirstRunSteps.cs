@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -482,20 +483,24 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		HorizontalAlignment = HorizontalAlignment.Center,
 	};
 
-	private static Control Field(string label, Control editor) => new StackPanel
+	private static Control Field(string label, Control editor)
 	{
-		Spacing = 4, HorizontalAlignment = HorizontalAlignment.Center,
-		Children =
+		AutomationProperties.SetName(editor, label);
+		return new StackPanel
 		{
-			new TextBlock {Text = label, FontSize = 11, Foreground = ChatPalette.Faint},
-			editor,
-		},
-	};
+			Spacing = 4, HorizontalAlignment = HorizontalAlignment.Center,
+			Children =
+			{
+				new TextBlock {Text = label, FontSize = 11, Foreground = ChatPalette.Faint},
+				editor,
+			},
+		};
+	}
 
 	/// <summary>一张可选卡片。<paramref name="onPick"/> 为 null 表示这一项不可选。</summary>
 	private static Control Choice(string title, string subtitle, bool selected, Action? onPick)
 	{
-		Border card = new()
+		Button card = new()
 		{
 			Width = 320,
 			Padding = new Thickness(14, 10),
@@ -504,8 +509,9 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 			BorderBrush = selected ? ChatPalette.Teal : ChatPalette.Faint,
 			BorderThickness = new Thickness(selected ? 2 : 1),
 			Opacity = onPick is null ? 0.45 : 1,
-			Cursor = onPick is null ? null : new Cursor(StandardCursorType.Hand),
-			Child = new StackPanel
+			IsEnabled = onPick is not null,
+			HorizontalContentAlignment = HorizontalAlignment.Stretch,
+			Content = new StackPanel
 			{
 				Spacing = 2,
 				Children =
@@ -515,7 +521,8 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 				},
 			},
 		};
-		if (onPick is not null) card.PointerPressed += (_, _) => onPick();
+		AutomationProperties.SetName(card, $"{title}. {subtitle}");
+		if (onPick is not null) card.Click += (_, _) => onPick();
 		return card;
 	}
 

@@ -208,6 +208,7 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	private readonly Func<IDesktopVisionActionExecutor>? _desktopVisionActionFactory;
 	private readonly Func<IDesktopVisionScreenshotSource>? _desktopVisionScreenshotFactory;
 	private readonly Func<IDesktopVisionWindowCatalog>? _desktopVisionWindowCatalogFactory;
+	private readonly Func<AutomationBounds> _screenBoundsProvider;
 	private readonly object _desktopStateGate = new();
 	private readonly Dictionary<Guid, DesktopTaskState> _desktopTasks = [];
 	private readonly Dictionary<Guid, BrowserTaskState> _browserTasks = [];
@@ -255,7 +256,8 @@ public sealed class AutomationRuntime : IAsyncDisposable
 		AutomationApprovalCallback? browserApprovalCallback = null,
 		AutomationAuditRepository? auditSink = null,
 		BrowserAutomationResultStore? browserResults = null,
-		TimeSpan? browserTaskTimeout = null)
+		TimeSpan? browserTaskTimeout = null,
+		Func<AutomationBounds>? screenBoundsProvider = null)
 	{
 		ArgumentNullException.ThrowIfNull(config);
 		_config = config;
@@ -270,6 +272,7 @@ public sealed class AutomationRuntime : IAsyncDisposable
 		if (_browserTaskTimeout <= TimeSpan.Zero || _browserTaskTimeout > BrowserAutomationTaskLimits.MaximumDuration)
 			throw new ArgumentOutOfRangeException(nameof(browserTaskTimeout));
 		_auditSink = auditSink;
+		_screenBoundsProvider = screenBoundsProvider ?? GetDefaultScreenBounds;
 
 		// 安全模式装配时不保留任何桌面视觉外部依赖工厂；Bridge 和执行入口仍会再次拒绝。
 		if (safeMode)
@@ -460,7 +463,7 @@ public sealed class AutomationRuntime : IAsyncDisposable
 		IDesktopVisionActionExecutor actionExecutor = CreateActionExecutor();
 		IDesktopVisionPlanner planner = CreatePlanner();
 		AutomationCapability granted = GetGrantedCapabilities(GetSettings());
-		AutomationPolicy policy = new(granted, AutomationPolicy.Default.ScreenBounds);
+		AutomationPolicy policy = new(granted, ResolveScreenBounds());
 		DesktopTaskState state = new();
 		DesktopVisionRunnerRequest request = new(
 			"桌面视觉任务",
@@ -901,6 +904,34 @@ public sealed class AutomationRuntime : IAsyncDisposable
 		AutomationCapability granted = GetGrantedCapabilities(settings);
 		if ((granted & requiredCapability) != requiredCapability)
 			throw new InvalidOperationException("自动化能力未被显式授权");
+	}
+
+	private AutomationBounds ResolveScreenBounds()
+	{
+		try
+		{
+			return _screenBoundsProvider();
+		}
+		catch (Exception exception) when (exception is InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
+		{
+			return AutomationPolicy.Default.ScreenBounds;
+		}
+	}
+
+	private static AutomationBounds GetDefaultScreenBounds()
+	{
+		if (!OperatingSystem.IsWindows()) return AutomationPolicy.Default.ScreenBounds;
+		try
+		{
+			IWindowsInputNativeApi input = new Win32InputNativeApi();
+			return input.TryGetVirtualScreenBounds(out AutomationBounds bounds)
+				? bounds
+				: AutomationPolicy.Default.ScreenBounds;
+		}
+		catch (Exception exception) when (exception is InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
+		{
+			return AutomationPolicy.Default.ScreenBounds;
+		}
 	}
 
 	private static AutomationCapability GetGrantedCapabilities(AutomationSettingsSnapshot settings) =>

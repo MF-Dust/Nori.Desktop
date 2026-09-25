@@ -156,22 +156,40 @@ public static class AssetPath
 			{
 				continue;
 			}
-			// 防止路径穿越: 必须仍在根目录内
-			if (!full.StartsWith(canonicalRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
-			if (!File.Exists(full)) continue;
-			// 防止 symlink 逃逸: 解析链接后再查一次
-			try
-			{
-				string real = Path.GetFullPath(File.ResolveLinkTarget(full, true)?.FullName ?? full);
-				if (!real.StartsWith(canonicalRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
-			}
-			catch (IOException)
-			{
-				continue;
-			}
+			// 防止路径穿越以及中间目录的 symlink / junction 逃逸。
+			if (!File.Exists(full) || !IsContainedAndFreeOfReparsePoints(canonicalRoot, full)) continue;
 			return full;
 		}
 		return null;
+	}
+
+	/// <summary>
+	/// 检查词法 containment，并逐段拒绝祖先和目标本身的 reparse point。
+	/// </summary>
+	private static bool IsContainedAndFreeOfReparsePoints(string root, string path)
+	{
+		StringComparison comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+		string prefix = root.EndsWith(Path.DirectorySeparatorChar) || root.EndsWith(Path.AltDirectorySeparatorChar)
+			? root
+			: root + Path.DirectorySeparatorChar;
+		if (!path.StartsWith(prefix, comparison)) return false;
+
+		try
+		{
+			if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0) return false;
+			string current = root;
+			string relative = Path.GetRelativePath(root, path);
+			foreach (string segment in relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries))
+			{
+				current = Path.Combine(current, segment);
+				if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0) return false;
+			}
+			return true;
+		}
+		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+		{
+			return false;
+		}
 	}
 
 	/// <summary>

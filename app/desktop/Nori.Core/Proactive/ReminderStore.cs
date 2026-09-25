@@ -244,24 +244,75 @@ public sealed class ReminderStore(NoriDatabase database)
 		return due;
 	});
 
-	/// <summary>确认一条提醒已经成功投递；每日重复提醒会重新排队到下一天。</summary>
+	/// <summary>确认一条提醒已经成功投递；每日重复提醒按时区重新排队到下一天。</summary>
 	public bool MarkFired(string id)
 	{
 		string now = UtcNowText();
 		return database.Locked(connection =>
 		{
-			using SqliteCommand command = connection.CreateCommand();
-			command.CommandText = """
+			using SqliteTransaction transaction = connection.BeginTransaction();
+			using SqliteCommand read = connection.CreateCommand();
+			read.Transaction = transaction;
+			read.CommandText = "SELECT id, content, trigger_at, repeat_daily, created_at, status, timezone, recurrence_json, snoozed_until, claimed_at, fired_at, updated_at FROM reminders WHERE id = $id AND status = 'claimed'";
+			read.Parameters.AddWithValue("$id", id);
+			ReminderItem? claimed;
+			using (SqliteDataReader reader = read.ExecuteReader())
+				claimed = reader.Read() ? ReadItem(reader) : null;
+			if (claimed is null)
+			{
+				transaction.Rollback();
+				return false;
+			}
+
+			long nextTrigger = claimed.RepeatDaily
+				? NextDailyTrigger(claimed.TriggerAt, claimed.Timezone)
+				: claimed.TriggerAt;
+			using SqliteCommand update = connection.CreateCommand();
+			update.Transaction = transaction;
+			update.CommandText = """
 				UPDATE reminders
 				SET status = CASE WHEN repeat_daily <> 0 THEN 'pending' ELSE 'fired' END,
-				    trigger_at = CASE WHEN repeat_daily <> 0 THEN trigger_at + 86400000 ELSE trigger_at END,
+				    trigger_at = $nextTrigger,
 				    claimed_at = NULL, snoozed_until = NULL, fired_at = $fired_at, updated_at = $fired_at
 				WHERE id = $id AND status = 'claimed'
 				""";
-			command.Parameters.AddWithValue("$id", id);
-			command.Parameters.AddWithValue("$fired_at", now);
-			return command.ExecuteNonQuery() > 0;
+			update.Parameters.AddWithValue("$id", id);
+			update.Parameters.AddWithValue("$nextTrigger", nextTrigger);
+			update.Parameters.AddWithValue("$fired_at", now);
+			bool updated = update.ExecuteNonQuery() > 0;
+			transaction.Commit();
+			return updated;
 		});
+	}
+
+	/// <summary>按指定时区的本地墙上时间计算下一次每日提醒。</summary>
+	internal static long NextDailyTrigger(long triggerAt, string timezone)
+	{
+		DateTimeOffset instant = DateTimeOffset.FromUnixTimeMilliseconds(triggerAt);
+		TimeZoneInfo zone;
+		try
+		{
+			zone = TimeZoneInfo.FindSystemTimeZoneById(timezone);
+		}
+		catch (Exception exception) when (exception is TimeZoneNotFoundException or InvalidTimeZoneException or ArgumentException)
+		{
+			return triggerAt + 86_400_000;
+		}
+
+		DateTime local = DateTime.SpecifyKind(
+			TimeZoneInfo.ConvertTime(instant, zone).DateTime, DateTimeKind.Unspecified);
+		DateTime next = local.AddDays(1);
+		// 春季跳时中不存在的墙上时间顺延到该时段的第一个有效分钟。
+		for (int minute = 0; minute < 180 && zone.IsInvalidTime(next); minute++)
+			next = next.AddMinutes(1);
+		try
+		{
+			return new DateTimeOffset(next, zone.GetUtcOffset(next)).ToUnixTimeMilliseconds();
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+			return triggerAt + 86_400_000;
+		}
 	}
 
 	/// <summary>投递失败时立即释放领取；未释放的崩溃领取由租约策略自动重试。</summary>

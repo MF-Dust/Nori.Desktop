@@ -231,12 +231,12 @@ Core 的 loopback `AssetServer` 只负责通用服务：随机前缀、Host allo
 /<random-prefix>/plugins/<pluginId>/web/index.html
 ```
 
-`PluginAssetRoute` 负责 manifest ID、公开目录 allowlist、containment 与 symlink/reparse 检查；Core 负责统一文件响应。生产 URL 使用随机前缀同源地址，开发 URL 使用 `/plugins/...` 并由 Vite 代理到同一回环服务。不启动第二个静态服务器，`vite.config.ts` 继续使用 `base: "./"`。
+`PluginAssetRoute` 负责 manifest ID、公开目录 allowlist、containment 与 symlink/reparse 检查；Core 负责统一文件响应。生产和开发模式都由宿主生成绝对的随机前缀回环 URL，插件窗口不接受相对入口或任意 loopback 页面。不启动第二个静态服务器，`vite.config.ts` 继续使用 `base: "./"`。
 
 ## 当前未实现
 
 - Marketplace、联网下载/安装、签名与供应链验证、自动更新。
 - WASM 与 out-of-process 插件沙箱。
 - Arcade、Games、Harness runtime 及对应 WebSocket/world/patch/审批 adapter。
-- 完整插件前端 SDK、动态 Vue 注入、插件直接 Avalonia Control。
+- 完整插件前端 SDK、动态页面注入、插件直接 Avalonia Control。
 - 任意 network/filesystem/shell/process/LLM/memory/MCP/automation/pet/chat capability。

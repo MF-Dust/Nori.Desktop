@@ -220,7 +220,7 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 			catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) { return; }
 			catch (Exception exception)
 			{
-				ErrorMessage = exception.Message;
+				ErrorMessage = SettingsErrorText.Resolve(exception);
 			}
 		}
 	}

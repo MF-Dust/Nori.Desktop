@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Nori.Desktop.Settings;
 
 namespace Nori.Desktop.Settings.Pages;
 
@@ -52,7 +53,7 @@ public abstract class SettingsPageViewModelBase : INotifyPropertyChanged
 	public void ReportError(Exception exception)
 	{
 		ArgumentNullException.ThrowIfNull(exception);
-		ErrorMessage = exception.Message;
+		ErrorMessage = SettingsErrorText.Resolve(exception);
 		NotifyChanged(nameof(ErrorMessage));
 	}
 

@@ -7,16 +7,14 @@
 # Nori Desktop
 
 <p align="center">
-  <strong>基于 .NET 10 + Avalonia 12 原生宿主与 Vue 3 + UnoCSS 架构的新一代高性能 Live2D 桌面智能伴侣</strong>
+  <strong>基于 .NET 10 + Avalonia 12 原生宿主与 TypeScript 音频兼容层的新一代高性能 Live2D 桌面智能伴侣</strong>
 </p>
 
 <p align="center">
   <a href="https://deepwiki.ai/MF-Dust/Nori-Desktop-Pet"><img src="https://img.shields.io/badge/DeepWiki-Documentation-0969da?style=flat-square&logo=gitbook&logoColor=white" alt="DeepWiki" /></a>
   <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-10.0-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 10" /></a>
   <a href="https://avaloniaui.net/"><img src="https://img.shields.io/badge/Avalonia-12.1-8C52FF?style=flat-square&logo=avalonia&logoColor=white" alt="Avalonia 12" /></a>
-  <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.5-4FC08D?style=flat-square&logo=vue.js&logoColor=white" alt="Vue 3" /></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.6-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5" /></a>
-  <a href="https://unocss.dev/"><img src="https://img.shields.io/badge/UnoCSS-Atomic-333333?style=flat-square&logo=unocss" alt="UnoCSS" /></a>
   <a href="https://www.live2d.com/"><img src="https://img.shields.io/badge/Live2D-Cubism%204%20Native-FF6F61?style=flat-square" alt="Live2D" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue.svg?style=flat-square" alt="License: GPLv3" /></a>
   <a href="https://github.com/MF-Dust/Nori-Desktop-Pet/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome" /></a>
@@ -76,19 +74,19 @@
 
 **Nori Desktop** 是一款诞生于高维信息之海的开源 Live2D 桌面智能伴侣（由社区共同发起与维护）。
 
-底层宿主采用 **.NET 10 + Avalonia 12** 构建，伴侣视窗采用 **C# 原生 OpenGL ES (Live2DCSharpSDK)** 直接在透明无边框窗口中绘制，以动态 alpha 外接矩形实现贴近模型尺寸的透明点击穿透与极度跟手的平滑拖拽；主控制台与配置面板采用现代化的 **Vue 3 + TypeScript + UnoCSS** SPA，由跨平台 **NativeWebView** 高性能承载，内置安全可靠的 Kestrel 回环服务与多模态智能 Agent 交互核心。
+底层宿主采用 **.NET 10 + Avalonia 12** 构建，伴侣视窗采用 **C# 原生 OpenGL ES (Live2DCSharpSDK)** 直接在透明无边框窗口中绘制，以动态 alpha 外接矩形实现贴近模型尺寸的透明点击穿透与极度跟手的平滑拖拽；用户窗口全部采用 Avalonia 原生控件，只有在平台没有原生音频后端时才装配隐藏的 **TypeScript 音频宿主页**。宿主通过 Kestrel 回环服务提供受限资源、插件页面和一次性音频传输 Token，并承载多模态智能 Agent 交互核心。
 
 ### 核心特性
 
 - **原生 OpenGL Live2D 伴侣视窗**：基于 `Live2DCSharpSDK` 直接在 Avalonia `PetGlControl` (OpenGL ES 2.0) 上绘制，支持高精度 2048x2048 遮罩缓冲与 16x 各向异性过滤，原生支持物理摆动、自动眨眼、视线追踪、节拍同步与音频 RMS 口型同步。
 - **模型尺寸透明点击穿透**：Alpha 缓冲动态采样（~10Hz）生成可见模型的连续外接矩形，并结合 Win32 `WM_NCHITTEST` 钩子让矩形外区域穿透至桌面底层；4px 阈值原生平滑拖拽与坐标自动持久化；多平台能力感知驱动优雅降级。
-- **深海微光美学 UI 与四窗口隔离架构**：全界面采用 UnoCSS 精确控制的深海微光（Deep Ocean Glow）设计系统；调度四独立窗口生命周期（`first-run` 首次引导、`init` 初始化、`main` 控制台、`pet` 原生伴侣视窗）；内置 Kestrel 回环 `AssetServer` 同源托管前端 SPA、本地资源与一次性音频传输 Token。
+- **原生设置与四窗口架构**：用户窗口采用 Avalonia 原生控件，调度四独立窗口生命周期（`first-run` 首次引导、`init` 初始化、`main` 控制台、`pet` 原生伴侣视窗）；内置 Kestrel 回环 `AssetServer` 托管隐藏音频宿主、插件页面、本地资源与一次性音频传输 Token。
 - **多模型智能 Agent 与生态扩展**：支持 OpenAI / Claude / Gemini / DeepSeek / Ollama 等多平台 LLM，具备流式打字机输出与实时情感/动作标签驱动；内置 SQLite 键值存储与长期记忆体系（Memory.md），支持 Model Context Protocol (MCP) 插件工具扩展。
-- **全链路多模态语音交互**：C# `VoiceService` 驱动（支持 Whisper 离线/在线语音识别、GPT-SoVITS / Custom HTTP / OpenAI / Gemini / MiniMax / IndexTTS-2 TTS）；`main` 控制台作为唯一常驻音频宿主，通过 WebAudio 播放并提取 RMS 振幅实时驱动嘴形。
-- **高可靠安全模式与隐私保护**：内置 `--safe-mode` 命令行排障模式，跳过外部联网与重型模型加载，保留 UI 与手动修复入口；脱敏诊断导出（`export_diagnostics`）严格排除数据库、对话记忆、提示词、凭据与敏感路径；敏感配置采用 AES-256-GCM (`nsec1:`) 结合系统安全密钥库加密存储。
+- **全链路多模态语音交互**：C# `VoiceService` 驱动（支持 Whisper 离线/在线语音识别、GPT-SoVITS / Custom HTTP / OpenAI / Gemini / MiniMax / IndexTTS-2 TTS）；非原生音频后端使用隐藏的 `audio-host` 页面播放、录音并提取 RMS 振幅实时驱动嘴形。
+- **高可靠安全模式与隐私保护**：内置 `--safe-mode` 命令行排障模式，跳过外部联网与重型模型加载，保留 UI 与手动修复入口；脱敏诊断导出（`export_diagnostics`）严格排除数据库、对话记忆、提示词、凭据与敏感路径；敏感配置采用 AES-256-GCM (`nsec2:`) 结合系统安全密钥库加密存储。
 - **插件系统扩展体系 (NPS 2.0)**：所有插件生产代码收敛于 `Nori.PluginRuntime` 单一程序集，基于受信任进程内架构与能力隔离设计，通过 `PluginWindowHost`、`PluginWebViewCapability` (`ui.webview`) 与独立安全总线 `PluginBridge` 提供跨平台透明 Web 视图扩展支持。
-- **本地模型自由管理与热调节**：支持本地 Live2D ZIP/文件夹安全导入与沙盒解压校验；设置面板内嵌 PixiJS 提供实时 2D/3D 视口双重渲染与参数热调。
-- **完备的国际化支持**：全界面中英文双语支持（i18n），多语言键集严格对齐与纯净渲染。
+- **本地模型自由管理与原生预览**：支持本地 Live2D ZIP/文件夹安全导入与沙盒解压校验；模型管理窗口使用原生 `ModelPreviewControl` 进行隔离 OpenGL 预览与参数编辑。
+- **原生国际化**：首次运行、主窗口、设置、记忆和模型管理等用户窗口使用宿主侧中英文资源；TypeScript 资源仅服务隐藏音频宿主和桥接兼容层。
 
 ---
 
@@ -109,19 +107,18 @@ flowchart TD
         sdk[Live2DCSharpSDK.OpenGL ES 2.0]
     end
 
-    subgraph Frontend[NativeWebView 前端 SPA]
-        vue[Vue 3 + TS + UnoCSS]
-        views[FirstRun / Init / Main 控制台]
-        preview[设置面板: PixiJS 预览]
-        audioHost[WebAudio 播放 / MediaRecorder 录音]
+    subgraph Frontend[隐藏音频宿主与插件页面]
+        audioHost[TypeScript audio-host: WebAudio / MediaRecorder]
+        pluginPage[插件 WebView 页面: 由插件资源路由提供]
     end
 
     app --> petWin
     app --> bridge
     petWin --> sdk
     sdk --> cubism
-    bridge <== 双向 JSON Envelopes ==> vue
-    kestrel -- 回环 HTTP 提供资源/媒体Token --> vue
+    bridge <== 双向 JSON Envelopes ==> audioHost
+    kestrel -- 回环 HTTP 提供资源/媒体Token --> audioHost
+    kestrel -- 插件资源与受限页面 --> pluginPage
     core --> SQLite[(nori.db 数据库)]
     core --> models[本地 Live2D 资源库]
     petWin --> models
@@ -145,13 +142,13 @@ Nori-Desktop-Pet/
 │   ├── Live2DCSharpSDK.OpenGL/      # Live2D OpenGL ES 2.0 渲染器
 │   ├── Live2DCSharpSDK.App/         # Live2D 模型与纹理加载管理
 │   ├── Live2D/native/               # 各平台 Cubism Core 原生动态库
-│   ├── src/                         # 前端 Vue 3 + TypeScript SPA 源码
-│   │   ├── assets/style/            # 深海微光设计系统 Token 与主题样式
-│   │   ├── components/              # Vue UI 组件（聊天/设置/模型管理/引导）
-│   │   ├── services/                # 前端服务（Host IPC 桥/Live2D 控制器/i18n/音频宿主）
-│   │   └── views/                   # 窗口视图（FirstRunView / InitView / MainView）
+│   ├── src/                         # 音频宿主页面与 TypeScript bridge 客户端
+│   │   ├── assets/style/            # 主题令牌、主题样式与窗口背景适配
+│   │   ├── services/audio/          # WebAudio 播放、录音与 RMS 分析
+│   │   ├── services/host/           # IPC 命令与宿主事件
+│   │   └── services/runtime/        # 类型化运行时接口与日志
 │   ├── tests/                       # 前端 Vitest 单元测试
-│   ├── uno.config.ts                # UnoCSS 原子类与设计系统配置
+│   ├── uno.config.ts                # 兼容层主题/令牌配置（不承载用户窗口）
 │   ├── Nori.slnx                    # .NET 统一解决方案配置
 │   ├── package.json                 # 前端依赖与脚本配置
 │   ├── publish.bat / publish.sh     # 跨平台发布构建脚本
@@ -176,7 +173,7 @@ Nori-Desktop-Pet/
 
 - **操作系统**：Windows 10 / 11（x64，首要验收与发布平台）；macOS 与 Linux 支持开发与单元测试。
 - **.NET SDK**：[.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) 或更高版本。
-- **Node.js**：Node.js 18+ 与 [pnpm](https://pnpm.io/)（必须使用 pnpm）。
+- **Node.js**：Node.js 24+ 与 [pnpm](https://pnpm.io/)（必须使用 pnpm）。
 - **WebView 运行时**：Windows 内置 Microsoft Edge WebView2 Evergreen Runtime。
 - **浏览器 DOM 自动化（可选）**：仅 Windows 支持，目标机需安装 Microsoft Edge stable；Playwright 使用 `msedge` channel 和进程临时隔离 profile，不随发布包捆绑或下载浏览器。自动化默认关闭，启用后填充等高风险动作仍需主界面审批。
 
@@ -215,10 +212,10 @@ dotnet run --project Nori.Desktop
 - **开发热重载模式**：先启动 Vite 开发服务器，再启动宿主并附加开发环境变量
 
 ```bash
-# 终端 1：启动 Vite 开发服务（默认端口 1420）
+# 终端 1：启动音频宿主 Vite 服务（默认端口 1420）
 pnpm dev
 
-# 终端 2：启动宿主并连接开发服务器
+# 终端 2：启动宿主；用户窗口仍由 Avalonia 原生控件提供
 NORI_DEV=1 dotnet run --project Nori.Desktop
 ```
 
@@ -241,17 +238,18 @@ publish.bat
 在提交代码前，请务必阅读 [`docs/规范.md`](./docs/规范.md)。主要开发契约包括：
 
 - **代码风格**：
-  - 前端（`.ts` / `.vue` / `.less`）与 C# 源码缩进统一采用 **Tab**，双引号，换行符使用 **LF**。
-  - 前端局部常量采用 `UPPER_SNAKE` 命名规范（如 `const ROUTER = useRouter()`），C# 遵循标准 .NET 命名风格。
+  - TypeScript 音频宿主与 C# 源码缩进统一采用 **Tab**，双引号，换行符使用 **LF**。
+  - TypeScript 局部常量采用 `UPPER_SNAKE` 命名规范，C# 遵循标准 .NET 命名风格。
   - 注释、日志提示和面向用户的界面文本保持**中文**。
-- **样式与设计系统**：
-  - 严禁在 Vue 组件中使用 `<style scoped>`，全部使用 UnoCSS 原子类与 `uno.config.ts` 预设 shortcuts。
-  - 所有尺寸统一使用 `rem`（基准字体 `62.5%`，`1rem = 10px`，Uno 步进 `1 = 0.4rem`），严禁硬编码 `px`。
-  - 颜色严格来源于 `tokens.ts` 深海微光设计系统，严禁裸写 Hex 颜色。
+- **前端兼容层**：
+  - `src/` 只包含隐藏音频宿主、TypeScript bridge 客户端和运行时服务；不要把用户窗口、设置页或模型预览重新放回 WebView。
+  - 主题令牌仍集中在 `src/assets/style/tokens.ts`，修改后运行 `pnpm theme:check`。
+- **原生窗口**：
+  - 用户窗口、设置、记忆和模型管理沿用 `Nori.Desktop` 的 Avalonia 控件及原生双语资源；新增窗口同步更新 `WindowDefinition.cs`、窗口标签和窗口管理器。
 - **质量门禁**：
   - 每次 PR 前必须确保 `pnpm build`、`pnpm test`、`dotnet build Nori.slnx` 和 `dotnet test Nori.slnx` 全部通过。
 - **窗口与命令规范**：
-  - 新增窗口需同步更新 `WindowDefinition.cs`、`WindowLabel`、`WINDOW_ROUTES` 与 `router/index.ts`。
+  - 新增窗口需同步更新 `WindowDefinition.cs`、窗口标签和窗口管理器；只有音频宿主和插件 WebView 使用页面资源。
   - 新增桥接 IPC 命令必须在 `BridgeCommands.InvokeAsync` 中显式注册，并提供中文调用注释。
 
 ---

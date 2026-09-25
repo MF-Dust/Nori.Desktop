@@ -47,6 +47,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	private const string KeychainAccount = "config-master-key";
 
 	private readonly string _keyPath;
+	private readonly Lock _gate = new();
 	private byte[]? _cached;
 
 	/// <summary>生产构造必须使用宿主已经解析并校验过的 secret.key 路径。</summary>
@@ -74,23 +75,60 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	/// <inheritdoc />
 	public byte[] LoadOrCreate()
 	{
-		if (_cached is not null) return _cached;
-
-		byte[]? existing = TryLoad();
-		if (existing is not null)
+		// 首次读取会访问外部密钥库/文件；串行化避免多个设置字段同时首次写入时互相覆盖主密钥。
+		lock (_gate)
 		{
-			if (existing.Length != KeySize)
-			{
-				throw new SecretKeyStoreException("平台主密钥长度无效, 为避免使已有密文全部失效而拒绝覆盖");
-			}
-			_cached = existing;
-			return existing;
-		}
+			if (_cached is not null) return _cached;
 
-		byte[] created = RandomNumberGenerator.GetBytes(KeySize);
-		Save(created);
-		_cached = created;
-		return created;
+			using FileStream processLock = AcquireProcessLock();
+			byte[]? existing = TryLoad();
+			if (existing is not null)
+			{
+				if (existing.Length != KeySize)
+				{
+					throw new SecretKeyStoreException("平台主密钥长度无效, 为避免使已有密文全部失效而拒绝覆盖");
+				}
+				_cached = existing;
+				return existing;
+			}
+
+			byte[] created = RandomNumberGenerator.GetBytes(KeySize);
+			Save(created);
+			_cached = created;
+			return created;
+		}
+	}
+
+	private FileStream AcquireProcessLock()
+	{
+		string lockPath = _keyPath + ".lock";
+		Directory.CreateDirectory(Path.GetDirectoryName(_keyPath) ?? ".");
+		DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+		while (true)
+		{
+			try
+			{
+				FileStream stream = new(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+				try
+				{
+					if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(lockPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+					return stream;
+				}
+				catch
+				{
+					stream.Dispose();
+					throw;
+				}
+			}
+			catch (IOException) when (DateTime.UtcNow < deadline)
+			{
+				Thread.Sleep(50);
+			}
+			catch (IOException exception)
+			{
+				throw new SecretKeyStoreException("等待平台主密钥锁超时, 为避免并发更换密钥而拒绝启动敏感配置", exception);
+			}
+		}
 	}
 
 	private byte[]? TryLoad()
@@ -223,21 +261,21 @@ public sealed class SecretKeyStore : ISecretKeyStore
 		{
 			ProcessStartInfo info = new()
 			{
+				// 不从 PATH 查找，避免应用启动环境中的恶意可执行文件读取或替换主密钥。
 				FileName = tool switch
 				{
-					KeyStoreTool.MacOsSecurity => "security",
-					KeyStoreTool.LinuxSecretTool => "secret-tool",
+					KeyStoreTool.MacOsSecurity => "/usr/bin/security",
+					KeyStoreTool.LinuxSecretTool => "/usr/bin/secret-tool",
 					_ => throw new ArgumentOutOfRangeException(nameof(tool)),
 				},
 				RedirectStandardOutput = true,
-				RedirectStandardError = true,
+				RedirectStandardError = false,
 				RedirectStandardInput = stdin is not null,
 				UseShellExecute = false,
 				CreateNoWindow = true,
 			};
 			foreach (string argument in arguments) info.ArgumentList.Add(argument);
 
-			// FileName 来自 KeyStoreTool 封闭枚举，参数通过 ArgumentList 传递。
 			using Process? process = Process.Start(info); // nosemgrep
 			if (process is null) return null;
 			if (stdin is not null)
@@ -245,13 +283,39 @@ public sealed class SecretKeyStore : ISecretKeyStore
 				process.StandardInput.Write(stdin);
 				process.StandardInput.Close();
 			}
-			string output = process.StandardOutput.ReadToEnd();
-			process.WaitForExit(5000);
-			return process.ExitCode == 0 ? output : null;
+
+			Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+			if (!outputTask.Wait(TimeSpan.FromSeconds(5)))
+			{
+				_ = outputTask.ContinueWith(
+					static task => _ = task.Exception,
+					CancellationToken.None,
+					TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+					TaskScheduler.Default);
+				TryTerminate(process);
+				return null;
+			}
+			if (!process.WaitForExit(5000))
+			{
+				TryTerminate(process);
+				return null;
+			}
+			return process.ExitCode == 0 ? outputTask.GetAwaiter().GetResult() : null;
 		}
-		catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+		catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or AggregateException)
 		{
 			return null;
+		}
+	}
+
+	private static void TryTerminate(Process process)
+	{
+		try
+		{
+			if (!process.HasExited) process.Kill(entireProcessTree: true);
+		}
+		catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException or System.ComponentModel.Win32Exception)
+		{
 		}
 	}
 }

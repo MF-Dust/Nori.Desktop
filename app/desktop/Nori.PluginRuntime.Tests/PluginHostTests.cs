@@ -445,9 +445,61 @@ public sealed class PluginHostTests
 		}));
 	}
 
+	[Theory]
+	[InlineData("https://example.com/plugin")]
+	[InlineData("file:///tmp/plugin.html")]
+	[InlineData("javascript:alert(1)")]
+	[InlineData("//example.com/plugin")]
+	public async Task PluginWebViewCapability拒绝离开回环资源服务的入口(string entryPoint)
+	{
+		PluginDescriptorSummary descriptor = new()
+		{
+			Id = "io.test.plugin",
+			Name = "Test Plugin",
+			Version = "1.0.0",
+		};
+		PluginWebViewCapability capability = new(
+			descriptor,
+			(desc, opts, ct) => Task.FromResult<IPluginWebViewWindow>(new FakePluginWebViewWindow(desc.Id, opts.Id, opts.Title, opts.EntryPoint)));
+
+		await Assert.ThrowsAsync<ArgumentException>(() => capability.CreateWindowAsync(new PluginWebViewOptions
+		{
+			Id = "win-1",
+			Title = "Title",
+			EntryPoint = entryPoint,
+		}));
+	}
+
 	#endregion
 
 	#region 8. 租约撤销与生命周期测试 (Lease Revocation & Window Host)
+
+	[Fact]
+	public async Task 没有宿主资源入口时拒绝创建窗口()
+	{
+		string root = Path.Combine(Path.GetTempPath(), $"nori-plugin-window-{Guid.NewGuid():N}");
+		try
+		{
+			await using PluginWindowHost host = new(webViewDataRoot: root);
+			PluginDescriptorSummary descriptor = new()
+			{
+				Id = "io.test.plugin",
+				Name = "Test Plugin",
+				Version = "1.0.0",
+			};
+
+			await Assert.ThrowsAsync<PluginException>(() => host.CreateWindowAsync(descriptor, new PluginWebViewOptions
+			{
+				Id = "main",
+				Title = "Test",
+				EntryPoint = "/index.html",
+			}));
+		}
+		finally
+		{
+			try { Directory.Delete(root, true); } catch (IOException) { }
+		}
+	}
 
 	[Fact]
 	public void 租约Token触发时自动执行撤销与关闭()

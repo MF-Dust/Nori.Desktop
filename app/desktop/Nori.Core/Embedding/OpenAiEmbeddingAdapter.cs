@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 using OpenAI;
 using OpenAI.Embeddings;
 using AiEmbeddingGenerationOptions = Microsoft.Extensions.AI.EmbeddingGenerationOptions;
+using Nori.Core.Network;
 
 namespace Nori.Core.Embedding;
 
@@ -23,6 +24,7 @@ public sealed class OpenAiEmbeddingAdapter(HttpClient httpClient) : IEmbeddingAd
 	private readonly HttpClient _httpClient = httpClient;
 	private readonly Lock _gate = new();
 	private GeneratorState? _state;
+	private HttpClient? _sdkHttpClient;
 	private long _cacheEpoch;
 
 	public async Task<float[]> GetEmbeddingAsync(
@@ -89,10 +91,11 @@ public sealed class OpenAiEmbeddingAdapter(HttpClient httpClient) : IEmbeddingAd
 		{
 			if (_state is {Fingerprint: var current} && current == fingerprint) return _state.Generator;
 
+			HttpClient sdkHttpClient = _sdkHttpClient ??= UrlAccessPolicy.CreateCappedHttpClient(_httpClient);
 			OpenAIClientOptions options = new()
 			{
 				Endpoint = new Uri($"{baseUrl}/"),
-				Transport = new HttpClientPipelineTransport(_httpClient),
+				Transport = new HttpClientPipelineTransport(sdkHttpClient),
 			};
 			EmbeddingClient client = new(model, new ApiKeyCredential(apiKey ?? ""), options);
 			IEmbeddingGenerator<string, Embedding<float>> inner = client.AsIEmbeddingGenerator(dimensions);
@@ -122,7 +125,8 @@ public sealed class OpenAiEmbeddingAdapter(HttpClient httpClient) : IEmbeddingAd
 			Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
 		};
 		using HttpResponseMessage response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-		string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+		string body = await UrlAccessPolicy.ReadCappedTextAsync(
+			response.Content, UrlAccessPolicy.MaxResponseBytes, cancellationToken).ConfigureAwait(false);
 		if (!response.IsSuccessStatusCode)
 		{
 			throw new HttpRequestException($"Embedding HTTP {(int)response.StatusCode}");

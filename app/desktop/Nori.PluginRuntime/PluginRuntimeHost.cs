@@ -29,7 +29,7 @@ internal sealed class PluginRuntimeHost : IAsyncDisposable
 		string stagingDirectory = Path.GetFullPath(options.StagingDirectory ?? Path.Combine(dataDirectory, "plugins", "temp", "staging"));
 		Directory.CreateDirectory(dataDirectory);
 
-		_windows = new PluginWindowHost(options.Logger, webViewDataDirectory);
+		_windows = new PluginWindowHost(options.Logger, webViewDataDirectory, options.AssetUriFactory);
 		_manager = new PluginManager(new PluginRuntimeOptions
 		{
 			PluginsDirectory = pluginsDirectory,

@@ -17,7 +17,7 @@ public sealed class NoriHttpClientsTests
 		try
 		{
 			using NoriHttpClients clients = NoriHttpClients.Create(
-				allowInsecureTls: false, timeout: TimeSpan.FromSeconds(2));
+				allowInsecureLocalTls: false, timeout: TimeSpan.FromSeconds(2));
 			using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
 			Exception? exception = await Record.ExceptionAsync(async () =>
 			{
@@ -43,7 +43,7 @@ public sealed class NoriHttpClientsTests
 		try
 		{
 			using NoriHttpClients clients = NoriHttpClients.Create(
-				allowInsecureTls: false,
+				allowInsecureLocalTls: false,
 				timeout: TimeSpan.FromSeconds(2),
 				publicUseSystemProxy: true);
 			using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));

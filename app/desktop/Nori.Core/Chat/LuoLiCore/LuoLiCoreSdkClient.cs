@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using Nori.Core.Network;
 
 namespace Nori.Core.Chat.LuoLiCore;
 
@@ -63,8 +64,9 @@ public sealed class LuoLiCoreSdkClient(HttpClient httpClient, LuoLiCoreSdkOption
 		using HttpResponseMessage response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken);
 		await ThrowIfFailedAsync(response, cancellationToken);
 
-		SdkSession? session = await response.Content.ReadFromJsonAsync<SdkSession>(
-			LuoLiCoreSdkProtocol.Json, cancellationToken);
+		string text = await UrlAccessPolicy.ReadCappedTextAsync(
+			response.Content, UrlAccessPolicy.MaxResponseBytes, cancellationToken);
+		SdkSession? session = JsonSerializer.Deserialize<SdkSession>(text, LuoLiCoreSdkProtocol.Json);
 		if (session is null || string.IsNullOrWhiteSpace(session.Id)) throw new ChatException("SDK 建会话成功但没有返回 id");
 		return session.Id;
 	}
@@ -83,8 +85,9 @@ public sealed class LuoLiCoreSdkClient(HttpClient httpClient, LuoLiCoreSdkOption
 		using HttpResponseMessage response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken);
 		await ThrowIfFailedAsync(response, cancellationToken);
 
-		SdkResetResult? result = await response.Content.ReadFromJsonAsync<SdkResetResult>(
-			LuoLiCoreSdkProtocol.Json, cancellationToken);
+		string text = await UrlAccessPolicy.ReadCappedTextAsync(
+			response.Content, UrlAccessPolicy.MaxResponseBytes, cancellationToken);
+		SdkResetResult? result = JsonSerializer.Deserialize<SdkResetResult>(text, LuoLiCoreSdkProtocol.Json);
 		return result?.CommitId ?? string.Empty;
 	}
 
@@ -104,8 +107,9 @@ public sealed class LuoLiCoreSdkClient(HttpClient httpClient, LuoLiCoreSdkOption
 		using HttpResponseMessage response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken);
 		if (!response.IsSuccessStatusCode) return [];
 
-		SdkToolListResponse? listed = await response.Content.ReadFromJsonAsync<SdkToolListResponse>(
-			LuoLiCoreSdkProtocol.Json, cancellationToken);
+		string text = await UrlAccessPolicy.ReadCappedTextAsync(
+			response.Content, UrlAccessPolicy.MaxResponseBytes, cancellationToken);
+		SdkToolListResponse? listed = JsonSerializer.Deserialize<SdkToolListResponse>(text, LuoLiCoreSdkProtocol.Json);
 		return listed?.Tools is null
 			? []
 			: [.. listed.Tools
@@ -148,7 +152,8 @@ public sealed class LuoLiCoreSdkClient(HttpClient httpClient, LuoLiCoreSdkOption
 		// 队列满则不然：它已经是 200 + SSE，要等 error 事件才看得到。
 		await ThrowIfFailedAsync(response, timeout.Token);
 
-		await using Stream stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+		await using Stream responseStream = await response.Content.ReadAsStreamAsync(timeout.Token);
+		await using CappedReadStream stream = new(responseStream, UrlAccessPolicy.MaxResponseBytes);
 		using StreamReader reader = new(stream, Encoding.UTF8);
 
 		await foreach (LuoLiCoreStreamEvent item in LuoLiCoreSseReader.ReadAsync(reader, timeout.Token))
@@ -182,21 +187,25 @@ public sealed class LuoLiCoreSdkClient(HttpClient httpClient, LuoLiCoreSdkOption
 	{
 		if (response.IsSuccessStatusCode) return;
 
-		string body = string.Empty;
-		try { body = await response.Content.ReadAsStringAsync(cancellationToken); }
-		catch (Exception exception) when (exception is not OperationCanceledException) { /* 读不到就只报状态码 */ }
-
-		SdkError? error = null;
-		if (body.Length > 0)
+		// 只提取受限错误码，不转发上游错误 message；正文可能包含请求回显、凭据或内部路径。
+		string? code = null;
+		try
 		{
-			try { error = JsonSerializer.Deserialize<SdkError>(body, LuoLiCoreSdkProtocol.Json); }
-			catch (JsonException) { /* 不是信封 */ }
+			string body = await UrlAccessPolicy.ReadCappedTextAsync(response.Content, 4096, cancellationToken);
+			SdkError? error = JsonSerializer.Deserialize<SdkError>(body, LuoLiCoreSdkProtocol.Json);
+			string candidate = error?.Code ?? "";
+			if (candidate.Length is > 0 and <= 64 && candidate.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.'))
+				code = candidate;
 		}
-
-		string detail = error is not null
-			? $"{error.Code}{(string.IsNullOrWhiteSpace(error.Message) ? "" : ": " + error.Message)}"
-			: body.Length > 0 ? body[..Math.Min(body.Length, 200)] : "无响应体";
-		throw new ChatException($"LuoLiCore 返回 HTTP {(int)response.StatusCode}, {detail}");
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			throw;
+		}
+		catch
+		{
+			// 错误体不是受支持的 JSON 时只保留 HTTP 状态。
+		}
+		throw new ChatException($"LuoLiCore 返回 HTTP {(int)response.StatusCode}{(code is null ? "" : $", {code}")}");
 	}
 }
 

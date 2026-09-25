@@ -73,6 +73,7 @@ internal sealed class PluginPackageInstaller
 		string pluginDirectory = CurrentDirectory(manifest.Id);
 		string versionDirectory = VersionDirectory(manifest.Id, manifest.Version);
 		string pointerPath = Path.Combine(pluginDirectory, CurrentFileName);
+		bool versionMoved = false;
 		try
 		{
 			cancellationToken.ThrowIfCancellationRequested();
@@ -91,17 +92,20 @@ internal sealed class PluginPackageInstaller
 			EnsureNoReparsePoints(pluginDirectory);
 			if (Directory.Exists(versionDirectory)) throw new PluginException(PluginErrorCodes.InvalidPackage, "插件版本已经安装");
 			Directory.Move(staging, versionDirectory);
+			versionMoved = true;
 			WriteCurrentPointer(pointerPath, extracted.Version);
 			return extracted;
 		}
 		catch (PluginException)
 		{
 			TryDelete(staging);
+			if (versionMoved) TryDelete(versionDirectory);
 			throw;
 		}
 		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or ResourceException)
 		{
 			TryDelete(staging);
+			if (versionMoved) TryDelete(versionDirectory);
 			throw new PluginException(PluginErrorCodes.InvalidPackage, "插件包安装失败", exception);
 		}
 	}

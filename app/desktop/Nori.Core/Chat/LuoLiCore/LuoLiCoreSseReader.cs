@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
+using Nori.Core.Network;
 
 namespace Nori.Core.Chat.LuoLiCore;
 
@@ -24,6 +26,9 @@ internal readonly record struct SseFrame(string Event, string Data);
 /// </summary>
 internal static class LuoLiCoreSseReader
 {
+	private const long MaxStreamBytes = UrlAccessPolicy.MaxResponseBytes;
+	private const int MaxFrameBytes = 512 * 1024;
+	private const long MaxTextBytes = 2 * 1024 * 1024;
 	/// <summary>
 	/// 按帧读。只认 <c>event:</c> 与 <c>data:</c> 两个字段，空行分帧。
 	///
@@ -36,6 +41,8 @@ internal static class LuoLiCoreSseReader
 	{
 		string? eventName = null;
 		string? data = null;
+		long totalBytes = 0;
+		long frameBytes = 0;
 
 		while (true)
 		{
@@ -52,8 +59,15 @@ internal static class LuoLiCoreSseReader
 				if (eventName is not null && data is not null) yield return new SseFrame(eventName, data);
 				eventName = null;
 				data = null;
+				frameBytes = 0;
 				continue;
 			}
+
+			long lineBytes = Encoding.UTF8.GetByteCount(line) + 1;
+			totalBytes += lineBytes;
+			frameBytes += lineBytes;
+			if (totalBytes > MaxStreamBytes) throw new ChatException("SDK 流超过响应大小上限");
+			if (frameBytes > MaxFrameBytes) throw new ChatException("SDK 流单帧超过大小上限");
 
 			// 注释帧（以 ':' 开头）按规范忽略。对端目前不发，但反代可能插入保活注释。
 			if (line[0] == ':') continue;
@@ -82,6 +96,7 @@ internal static class LuoLiCoreSseReader
 	{
 		bool sawDelta = false;
 		bool terminated = false;
+		long textBytes = 0;
 
 		await foreach (SseFrame frame in ReadFramesAsync(reader, cancellationToken))
 		{
@@ -102,7 +117,10 @@ internal static class LuoLiCoreSseReader
 				{
 					SdkDelta? delta = Deserialize<SdkDelta>(frame.Data, "delta");
 					sawDelta = true;
-					yield return LuoLiCoreStreamEvent.Delta(delta?.Text ?? string.Empty);
+					string text = delta?.Text ?? string.Empty;
+					textBytes += Encoding.UTF8.GetByteCount(text);
+					if (textBytes > MaxTextBytes) throw new ChatException("SDK 流累计文本超过大小上限");
+					yield return LuoLiCoreStreamEvent.Delta(text);
 					break;
 				}
 
@@ -120,7 +138,10 @@ internal static class LuoLiCoreSseReader
 				{
 					SdkDone? done = Deserialize<SdkDone>(frame.Data, "done");
 					terminated = true;
-					yield return LuoLiCoreStreamEvent.Done(done?.Text ?? string.Empty, done?.Usage);
+					string text = done?.Text ?? string.Empty;
+					textBytes += Encoding.UTF8.GetByteCount(text);
+					if (textBytes > MaxTextBytes) throw new ChatException("SDK 流累计文本超过大小上限");
+					yield return LuoLiCoreStreamEvent.Done(text, done?.Usage);
 					break;
 				}
 

@@ -35,6 +35,15 @@ public class UrlAccessPolicyTests
 	}
 
 	[Fact]
+	public async Task 官方SDK响应包装拒绝超限正文()
+	{
+		using HttpContent original = new StringContent(new string('x', 32));
+		using HttpContent capped = UrlAccessPolicy.WrapResponseContent(original, 8);
+
+		await Assert.ThrowsAsync<InvalidOperationException>(() => capped.ReadAsStringAsync());
+	}
+
+	[Fact]
 	public void 网络异常翻译为稳定消息()
 	{
 		InvalidOperationException exception = UrlAccessPolicy.Translate(

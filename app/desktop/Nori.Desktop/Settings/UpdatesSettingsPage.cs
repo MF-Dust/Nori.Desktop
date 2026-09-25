@@ -102,7 +102,7 @@ public sealed class UpdatesSettingsPage : SettingsPageBase
 			SetStatus("");
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (Exception exception) { SetStatus(exception); }
 		finally
 		{
 			_pending = false;
@@ -116,7 +116,7 @@ public sealed class UpdatesSettingsPage : SettingsPageBase
 		_cancelPending = true;
 		UpdateVisibility();
 		try { await ExecuteAsync("updater_cancel", cancellationToken: LifetimeToken).ConfigureAwait(true); }
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (Exception exception) { SetStatus(exception); }
 		finally { _cancelPending = false; UpdateVisibility(); }
 	}
 

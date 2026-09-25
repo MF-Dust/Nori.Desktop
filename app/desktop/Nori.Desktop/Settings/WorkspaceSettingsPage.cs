@@ -355,7 +355,7 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 		}
 		catch (Exception exception)
 		{
-			SetStatus(exception.Message);
+			SetStatus(exception);
 		}
 	}
 }

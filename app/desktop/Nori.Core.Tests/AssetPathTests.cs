@@ -100,4 +100,33 @@ public class AssetPathTests
 			if (Directory.Exists(root)) Directory.Delete(root, true);
 		}
 	}
+
+	[Fact]
+	public void Resolve拒绝祖先符号链接()
+	{
+		string root = Path.Combine(Path.GetTempPath(), $"nori-asset-link-{Guid.NewGuid():N}");
+		string outside = Path.Combine(root, "outside");
+		string link = Path.Combine(root, "link");
+		Directory.CreateDirectory(outside);
+		File.WriteAllText(Path.Combine(outside, "secret.txt"), "TOP SECRET");
+		try
+		{
+			try
+			{
+				Directory.CreateSymbolicLink(link, outside);
+			}
+			catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+			{
+				// 某些 Windows 环境没有创建符号链接权限，平台安全测试由 ResourcePathSafetyTests 覆盖。
+				return;
+			}
+
+			Assert.Null(AssetPath.Resolve(root, "link/secret.txt"));
+		}
+		finally
+		{
+			try { if (Directory.Exists(link)) Directory.Delete(link); } catch { }
+			try { if (Directory.Exists(root)) Directory.Delete(root, true); } catch { }
+		}
+	}
 }

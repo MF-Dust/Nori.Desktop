@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Nori.Core.Network;
 
 namespace Nori.Core.Chat.Adapters;
 
@@ -43,14 +44,16 @@ public sealed class AnthropicAdapter(HttpClient httpClient) : IModelCatalogAdapt
 		{
 			if (!response.IsSuccessStatusCode)
 			{
-				string errorText = await SafeReadErrorAsync(response, cancellationToken);
+				string errorText = await UrlAccessPolicy.ReadSafeProviderErrorAsync(response.Content, cancellationToken);
 				throw new ChatException($"获取模型列表失败: HTTP {(int)response.StatusCode}{(errorText.Length > 0 ? $", {errorText}" : "")}");
 			}
 
 			JsonNode? body;
 			try
 			{
-				body = JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+				string text = await UrlAccessPolicy.ReadCappedTextAsync(
+					response.Content, UrlAccessPolicy.MaxResponseBytes, cancellationToken);
+				body = JsonNode.Parse(text);
 			}
 			catch (JsonException exception)
 			{
@@ -97,22 +100,4 @@ public sealed class AnthropicAdapter(HttpClient httpClient) : IModelCatalogAdapt
 		return $"{baseUrl}/{path}";
 	}
 
-	private static async Task<string> SafeReadErrorAsync(HttpResponseMessage response, CancellationToken ct)
-	{
-		try
-		{
-			string raw = await response.Content.ReadAsStringAsync(ct);
-			if (string.IsNullOrWhiteSpace(raw)) return "";
-			if (JsonNode.Parse(raw) is { } node)
-			{
-				string? msg = node["error"]?["message"]?.GetValue<string>() ?? node["message"]?.GetValue<string>();
-				if (!string.IsNullOrWhiteSpace(msg)) return msg;
-			}
-			return raw.Length > 200 ? raw[..200] : raw;
-		}
-		catch
-		{
-			return "";
-		}
-	}
 }

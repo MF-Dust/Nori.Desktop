@@ -145,6 +145,34 @@ public sealed class ReminderStoreTests
 	}
 
 	[Fact]
+	public void 每日提醒按时区跨夏令时保持本地时间()
+	{
+		TimeZoneInfo zone;
+		try
+		{
+			zone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+		}
+		catch (Exception exception) when (exception is TimeZoneNotFoundException or InvalidTimeZoneException)
+		{
+			return;
+		}
+
+		DateTimeOffset beforeSpring = new(2026, 3, 7, 8, 30, 0, TimeSpan.Zero); // 03:30 EST
+		long springNext = ReminderStore.NextDailyTrigger(beforeSpring.ToUnixTimeMilliseconds(), "America/New_York");
+		DateTimeOffset springLocal = DateTimeOffset.FromUnixTimeMilliseconds(springNext)
+			.ToOffset(zone.GetUtcOffset(DateTimeOffset.FromUnixTimeMilliseconds(springNext)));
+		Assert.Equal(new DateTime(2026, 3, 8, 3, 30, 0), springLocal.DateTime);
+		Assert.Equal(23 * 60 * 60 * 1000, springNext - beforeSpring.ToUnixTimeMilliseconds());
+
+		DateTimeOffset beforeFall = new(2026, 10, 31, 5, 30, 0, TimeSpan.Zero); // 01:30 EDT
+		long fallNext = ReminderStore.NextDailyTrigger(beforeFall.ToUnixTimeMilliseconds(), "America/New_York");
+		DateTimeOffset fallLocal = DateTimeOffset.FromUnixTimeMilliseconds(fallNext)
+			.ToOffset(zone.GetUtcOffset(DateTimeOffset.FromUnixTimeMilliseconds(fallNext)));
+		Assert.Equal(new DateTime(2026, 11, 1, 1, 30, 0), fallLocal.DateTime);
+		Assert.Equal(25 * 60 * 60 * 1000, fallNext - beforeFall.ToUnixTimeMilliseconds());
+	}
+
+	[Fact]
 	public void 完成或取消后不会再次进入到期领取()
 	{
 		string path = NewPath();

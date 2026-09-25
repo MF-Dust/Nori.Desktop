@@ -226,6 +226,29 @@ public sealed class PluginManagementTests
 	}
 
 	[Fact]
+	public void 指针写入失败不会留下阻塞同版本安装的孤儿目录()
+	{
+		string root = CreateTemp();
+		try
+		{
+			PluginPackageInstaller installer = new(Path.Combine(root, "plugins"));
+			string pluginDirectory = Path.Combine(root, "plugins", "orphan.plugin");
+			Directory.CreateDirectory(pluginDirectory);
+			string pointerDirectory = Path.Combine(pluginDirectory, PluginPackageInstaller.CurrentFileName);
+			Directory.CreateDirectory(pointerDirectory);
+			string package = CreateTestPackage(root, "orphan.plugin", "1.0.0");
+
+			Assert.Throws<PluginException>(() => installer.Install(package));
+			Assert.False(Directory.Exists(Path.Combine(pluginDirectory, "1.0.0")));
+
+			Directory.Delete(pointerDirectory);
+			PluginManifest installed = installer.Install(package);
+			Assert.Equal("orphan.plugin", installed.Id);
+		}
+		finally { DeleteDirectory(root); }
+	}
+
+	[Fact]
 	public async Task SafeMode只发现且不创建插件数据或激活DLL()
 	{
 		string root = CreateTemp();

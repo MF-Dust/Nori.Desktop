@@ -16,15 +16,20 @@ internal sealed partial class PluginWindowHost : IAsyncDisposable
 	private readonly ConcurrentDictionary<string, PluginWebViewWindow> _windows = new(StringComparer.Ordinal);
 	private readonly FileLogger? _logger;
 	private readonly string _webViewDataRoot;
+	private readonly Func<string, string, Uri>? _assetUriFactory;
 	private int _disposed;
 
 	[GeneratedRegex(@"^[a-zA-Z0-9_\-\.]{1,64}$", RegexOptions.Compiled)]
 	private static partial Regex SafeIdPattern();
 
-	public PluginWindowHost(FileLogger? logger = null, string? webViewDataRoot = null)
+	public PluginWindowHost(
+		FileLogger? logger = null,
+		string? webViewDataRoot = null,
+		Func<string, string, Uri>? assetUriFactory = null)
 	{
 		_logger = logger;
 		_webViewDataRoot = Path.GetFullPath(webViewDataRoot ?? Path.Combine(AppContext.BaseDirectory, "webview_plugins"));
+		_assetUriFactory = assetUriFactory;
 		Directory.CreateDirectory(_webViewDataRoot);
 	}
 
@@ -104,6 +109,8 @@ internal sealed partial class PluginWindowHost : IAsyncDisposable
 
 		ValidatePluginId(descriptor.Id, nameof(descriptor.Id));
 		PluginWindowOptionsValidator.Validate(options);
+		Uri entryPoint = ResolveEntryPoint(descriptor.Id, options.EntryPoint);
+		Uri webRoot = new(entryPoint, "./");
 
 		string label = BuildLabel(descriptor.Id, options.Id);
 
@@ -123,7 +130,9 @@ internal sealed partial class PluginWindowHost : IAsyncDisposable
 				options,
 				revocationToken: revocationToken,
 				webViewDataRoot: _webViewDataRoot,
-				logger: _logger);
+				logger: _logger,
+				entryPoint: entryPoint,
+				navigationPolicy: request => IsAllowedNavigation(request, webRoot));
 		});
 
 		window.WindowClosed += OnWindowClosed;
@@ -132,6 +141,48 @@ internal sealed partial class PluginWindowHost : IAsyncDisposable
 		_logger?.Write(LogSource.Backend, "info", $"已创建并注册插件窗口: {label}");
 
 		return window;
+	}
+
+	private Uri ResolveEntryPoint(string pluginId, string entryPoint)
+	{
+		if (_assetUriFactory is null)
+			throw new PluginException(PluginErrorCodes.BridgeDenied, "插件资源服务未提供绝对入口");
+
+		Uri sample = _assetUriFactory(pluginId, "web/index.html");
+		if (!sample.IsAbsoluteUri)
+			throw new PluginException(PluginErrorCodes.BridgeDenied, "插件资源服务必须提供绝对入口");
+
+		Uri webRoot = new(sample, "./");
+		Uri candidate;
+		if (Uri.TryCreate(entryPoint, UriKind.Absolute, out Uri? absolute)) candidate = absolute;
+		else
+		{
+			string relative = entryPoint.TrimStart('/');
+			if (relative.StartsWith("web/", StringComparison.OrdinalIgnoreCase)) relative = relative[4..];
+			candidate = new Uri(webRoot, relative);
+		}
+		if (!IsAllowedNavigation(candidate, webRoot))
+			throw new PluginException(PluginErrorCodes.BridgeDenied, "插件窗口入口超出当前插件的 web 根目录");
+		return candidate;
+	}
+
+	private static bool IsAllowedNavigation(Uri request, Uri webRoot)
+	{
+		if (!request.IsAbsoluteUri
+			|| (request.Scheme != Uri.UriSchemeHttp && request.Scheme != Uri.UriSchemeHttps)
+			|| !request.IsLoopback
+			|| request.UserInfo.Length > 0
+			|| request.Fragment.Length > 0
+			|| !string.Equals(request.Scheme, webRoot.Scheme, StringComparison.OrdinalIgnoreCase)
+			|| !string.Equals(request.IdnHost, webRoot.IdnHost, StringComparison.OrdinalIgnoreCase)
+			|| request.Port != webRoot.Port)
+		{
+			return false;
+		}
+		string rootPath = webRoot.AbsolutePath.EndsWith("/", StringComparison.Ordinal)
+			? webRoot.AbsolutePath
+			: webRoot.AbsolutePath + "/";
+		return request.AbsolutePath.StartsWith(rootPath, StringComparison.Ordinal);
 	}
 
 	private IReadOnlyList<PluginWebViewWindow> GetWindowsForPlugin(string pluginId) =>

@@ -171,7 +171,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 			SetStatus(Text("提醒已添加。", "Reminder added."));
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (Exception exception) { SetStatus(exception); }
 		finally
 		{
 			if (entered) _reminderGate.Release();
@@ -222,7 +222,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 			SetStatus(Text($"已加载 {Reminders.Count} 条提醒。", $"{Reminders.Count} reminders loaded."));
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (Exception exception) { SetStatus(exception); }
 		finally
 		{
 			if (entered) _reminderGate.Release();
@@ -249,7 +249,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 			SetStatus(Text("提醒已取消。", "Reminder cancelled."));
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (Exception exception) { SetStatus(exception); }
 		finally
 		{
 			if (entered) _reminderGate.Release();
@@ -264,7 +264,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 		_refreshCommand.RaiseCanExecuteChanged();
 	}
 
-	internal void ReportActionFailure(Exception exception) => SetStatus(exception.Message);
+	internal void ReportActionFailure(Exception exception) => SetStatus(exception);
 
 	private static string Text(string chinese, string english) => SettingsLocalization.IsEnglish ? english : chinese;
 }

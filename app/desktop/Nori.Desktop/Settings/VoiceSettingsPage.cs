@@ -200,7 +200,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			_indexTemplate.Text = path;
 			SetStatus(Text("模板音频已选择。", "Template audio selected."));
 		}
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (Exception exception) { SetStatus(exception); }
 	}
 
 	private async Task TestVoiceAsync()
@@ -215,7 +215,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			SetStatus(Text("试听已开始。", "Voice preview started."));
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (Exception exception) { SetStatus(exception); }
 		finally { _previewing = false; _previewCommand.RaiseCanExecuteChanged(); }
 	}
 
@@ -223,7 +223,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	{
 		try { await ExecuteAsync("tts_stop", cancellationToken: LifetimeToken).ConfigureAwait(true); }
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (Exception exception) { SetStatus(exception); }
 	}
 
 	private async Task AcknowledgeVoiceNoticeAsync()
@@ -234,7 +234,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			_notice.IsVisible = false;
 			SetStatus(Text("旧版提示已关闭。", "Legacy notice dismissed."));
 		}
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (Exception exception) { SetStatus(exception); }
 	}
 
 	private async Task CloneIndexVoiceAsync()
@@ -255,7 +255,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			SetStatus(voiceId.Length > 0 ? Text("声音克隆完成：", "Voice cloned: ") + voiceId : Text("声音克隆完成。", "Voice cloned."));
 		}
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetStatus(exception.Message); }
+		catch (Exception exception) { SetStatus(exception); }
 		finally { _cloning = false; _cloneCommand.RaiseCanExecuteChanged(); }
 	}
 }

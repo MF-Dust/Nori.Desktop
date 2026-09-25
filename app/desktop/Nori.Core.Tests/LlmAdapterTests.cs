@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;
 using Nori.Core.Chat;
 using Nori.Core.Chat.Adapters;
+using Nori.Core.Network;
 
 namespace Nori.Core.Tests;
 
@@ -92,6 +93,29 @@ public class LlmAdapterTests
 		Assert.Contains("gemini-2.5-flash", models);
 		Assert.Contains("gemini-2.5-pro", models);
 		Assert.DoesNotContain("embedding-001", models);
+	}
+
+	[Fact]
+	public async Task 模型目录响应有大小上限且错误正文不外泄()
+	{
+		using MockHttpMessageHandler oversized = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+		{
+			Content = new StringContent(new string('x', checked((int)UrlAccessPolicy.MaxResponseBytes + 1)))
+		});
+		using HttpClient oversizedClient = new(oversized);
+		OpenAiChatAdapter oversizedAdapter = new(oversizedClient);
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			oversizedAdapter.FetchModelsAsync("https://example.test/v1", "key"));
+
+		using MockHttpMessageHandler error = new(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+		{
+			Content = new StringContent("secret=do-not-show")
+		});
+		using HttpClient errorClient = new(error);
+		OpenAiChatAdapter errorAdapter = new(errorClient);
+		ChatException failure = await Assert.ThrowsAsync<ChatException>(() =>
+			errorAdapter.FetchModelsAsync("https://example.test/v1", "key"));
+		Assert.DoesNotContain("do-not-show", failure.Message, StringComparison.Ordinal);
 	}
 
 	[Fact]

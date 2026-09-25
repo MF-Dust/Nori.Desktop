@@ -48,28 +48,21 @@ Local verification follows `AGENTS.md` → Local Verification; consult `docs/规
 
 ## Architecture
 
-### WebView windows, native pet, and native settings
+### Native windows architecture
 
-`Nori.Desktop/Windows/WindowDefinition.cs` declares the four base windows — `first-run`, `init`, `main`, `pet` — all created hidden, borderless (`WindowDecorations.None`) and transparent.
-- Three windows (`first-run`, `init`, `main`) are `NoriWindow` hosting `NativeWebView` and loading the Vue bundle. `main` doubles as the **audio host** (see below) — it only hides on close, so it is always alive.
-- The desktop pet (`pet`) is a native Avalonia `PetWindow` hosting `PetGlControl` (OpenGL via `Live2DCSharpSDK`), bypassing webview airspace and window-region clipping issues completely. Same code on all three desktops.
+所有用户界面窗口现已原生化:
+- **桌宠** (`pet`) — 原生 Avalonia `PetWindow` + `PetGlControl` (OpenGL via `Live2DCSharpSDK`)
+- **对话** (`chat`, `quick-chat`) — 原生 `ChatWindow` / `QuickChatWindow` (深色主题)
+- **记忆** (`memory`) — 原生 `MemoryWindow`
+- **模型** (`models`) — 原生 `ModelsWindow` (包含隔离的模型预览)
+- **设置** (`settings`) — 原生 `SettingsWindow`
+- **音频宿主** (`main`) — 唯一保留的 `NoriWindow` WebView,托管 WebAudio/MediaRecorder
 
-The settings interface uses native Avalonia `SettingsWindow`, created by `WindowManager`; settings UI work should inspect that path.
+`App.cs` 读取 `first_run_completed` 并显示首次运行向导或初始化流程,然后打开主窗口。所有窗口创建时隐藏、无边框 (`WindowDecorations.None`)。
 
-1. `App.cs` reads `first_run_completed` from SQLite and shows `first-run` or `init`.
-2. The host navigates each webview to `…/app/index.html?window=<label>`.
-3. Each webview mounts `App.vue`, which calls `navigateToOwnWindow()` — it reads its own label from the query string and `router.replace()`s to the mapped route.
-4. The label→route table is `WINDOW_ROUTES` in `src/services/window/index.ts`.
+系统托盘 (`Tray/TrayMenu.cs`) 是主要入口点:左键打开对话窗口,菜单切换桌宠。`Install` 在某些 Linux 桌面上返回 false (无 StatusNotifier),此时 `platform.supportsTray` 为 false,前端显示内置入口。关闭窗口仅隐藏 (`AllowClose` 门控真正的 disposal);`ShutdownMode.OnExplicitShutdown` 保持进程存活。
 
-**Adding a webview window means touching four places**: `WindowDefinition.All`, the `WindowLabel` union, `WINDOW_ROUTES`, and `src/services/router/index.ts`.
-
-First-run flow: wizard in `first-run` → `complete_first_run` (C#) sets an `initStartPending` flag, closes `first-run`, shows `init`, broadcasts `nori:init-start` → `InitView` opens `main`, then closes `init`.
-
-**The broadcast can outrun the subscription.** `init` starts hidden on the first-run path, and its webview may still be loading when `nori:init-start` fires — the event is then lost forever and the page spins on the loading ring. So `InitView` **subscribes first, then calls `init_ready`**, which returns (and clears) `initStartPending`; a true value means "run the flow now". `startInitFlow` has a reentrancy gate, and a 10s watchdog offers a manual "open main window" escape hatch.
-
-The tray (`Tray/TrayMenu.cs`) is the primary always-available entry point: left-click opens `main`, menu toggles `pet`. `Install` returns `false` when the tray fails (some Linux desktops have no StatusNotifier), which flips `platform.supportsTray` so the frontend shows a built-in entry instead. Closing a window only hides it (`NoriWindow.AllowClose` / `PetWindow.AllowClose` gates real disposal); `ShutdownMode.OnExplicitShutdown` keeps the process alive.
-
-`WindowManager` tracks each window's `IsVisible` and raises `VisibilityChanged`; `AppRuntime` turns that into `InvalidateSnapshot("pet")`, so `snapshot.pet.visible` is the single source of truth for pet state — toggling from the tray updates the main window immediately.
+`WindowManager` 跟踪每个窗口的 `IsVisible` 并触发 `VisibilityChanged`;`AppRuntime` 将其转换为 `InvalidateSnapshot("pet")`,因此 `snapshot.pet.visible` 是桌宠状态的唯一真实来源。
 
 ### The bridge (replaces Tauri IPC)
 
@@ -91,12 +84,10 @@ Host→frontend events:
 
 | Event | Emitted by | Consumed by |
 |---|---|---|
-| `nori:init-start` | `complete_first_run` | `InitView.vue` |
-| `nori:config-changed` | every `set_config` | WebViews — hot-applies display config |
-| `nori:play-motion` | `chat_completion` | WebViews |
-| `nori:window-metrics` | `NoriWindow.PostMetrics` | `services/host/window.ts` cache |
-| `nori:audio-play` / `nori:audio-stop` | `WebViewAudioPlayback` | `services/audio/` in `main` |
-| `nori:audio-record-start` / `-stop` | `WebViewMicrophoneRecorder` | `services/audio/` in `main` |
+| `nori:config-changed` | every `set_config` | Audio host WebView — hot-applies display config |
+| `nori:play-motion` | `chat_completion` | Native chat windows |
+| `nori:audio-play` / `nori:audio-stop` | `WebViewAudioPlayback` | `services/audio/` in audio host |
+| `nori:audio-record-start` / `-stop` | `WebViewMicrophoneRecorder` | `services/audio/` in audio host |
 
 Blocking work (HTTP, zip extraction, SQLite) must stay off the UI thread; anything touching windows or `InvokeScript` must go through `Dispatcher.UIThread`.
 

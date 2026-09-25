@@ -22,7 +22,7 @@ namespace Nori.Desktop.Live2D;
 /// </summary>
 public sealed class PetGlControl : OpenGlControlBase
 {
-	private const double MaskSampleIntervalSeconds = 0.100;
+	private const double MaskSampleIntervalSeconds = 0.150;
 
 	private readonly PetRuntime _runtime;
 	private LAppDelegateOpenGL? _lapp;

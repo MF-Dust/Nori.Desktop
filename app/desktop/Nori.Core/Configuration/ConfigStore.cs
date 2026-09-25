@@ -15,11 +15,13 @@ namespace Nori.Core.Configuration;
 /// nsec1 与 Windows 旧 enc:dpapi: 只读兼容并在成功读取后惰性迁移。任何密钥库
 /// 或加密失败都会中止写入, 绝不把明文作为回退值写入数据库。
 /// </summary>
-public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore = null)
+public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore = null) : IDisposable
 {
 	private readonly ISecretKeyStore _keyStore = keyStore ?? new SecretKeyStore();
 	private readonly NoriDatabase _database = database;
 	private readonly ConcurrentDictionary<string, SecretIssue> _secretIssues = new(StringComparer.Ordinal);
+	private byte[]? _cachedMasterKey;
+	private readonly object _keyLock = new();
 
 	/// <summary>配置键: 配置结构版本。</summary>
 	public const string KeyConfigSchemaVersion = "config_schema_version";
@@ -558,9 +560,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 		if (!IsSensitiveKey(key) || string.IsNullOrEmpty(plainText)) return plainText;
 		try
 		{
-			byte[] masterKey = _keyStore.LoadOrCreate();
-			if (masterKey.Length != SecretKeyStore.KeySize)
-				throw new SecretKeyStoreException("平台主密钥长度无效, 拒绝写入敏感配置");
+			byte[] masterKey = GetOrLoadMasterKey();
 			return SecretProtector.ProtectV2(masterKey, key, plainText);
 		}
 		catch (SecretKeyStoreException)
@@ -581,7 +581,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 		if (SecretProtector.IsNsec2(stored) || SecretProtector.IsNsec1(stored))
 		{
 			byte[] masterKey;
-			try { masterKey = _keyStore.LoadOrCreate(); }
+			try { masterKey = GetOrLoadMasterKey(); }
 			catch (Exception exception) when (exception is SecretKeyStoreException or CryptographicException or IOException or UnauthorizedAccessException or InvalidOperationException)
 			{
 				RecordSecretIssue(key, SecretIssueCategory.KeyStoreUnavailable);
@@ -744,5 +744,33 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	{
 		string name = CultureInfo.CurrentUICulture.Name;
 		return string.IsNullOrEmpty(name) ? "zh-CN" : name;
+	}
+
+	/// <summary>获取或加载缓存的主密钥。</summary>
+	private byte[] GetOrLoadMasterKey()
+	{
+		if (_cachedMasterKey != null) return _cachedMasterKey;
+
+		lock (_keyLock)
+		{
+			if (_cachedMasterKey != null) return _cachedMasterKey;
+
+			byte[] masterKey = _keyStore.LoadOrCreate();
+			if (masterKey.Length != SecretKeyStore.KeySize)
+				throw new SecretKeyStoreException("平台主密钥长度无效");
+
+			_cachedMasterKey = masterKey;
+			return _cachedMasterKey;
+		}
+	}
+
+	/// <summary>清理缓存的主密钥。</summary>
+	public void Dispose()
+	{
+		if (_cachedMasterKey != null)
+		{
+			Array.Clear(_cachedMasterKey, 0, _cachedMasterKey.Length);
+			_cachedMasterKey = null;
+		}
 	}
 }

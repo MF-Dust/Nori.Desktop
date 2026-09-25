@@ -5,7 +5,7 @@ using Nori.Desktop.Audio;
 namespace Nori.Desktop.Tests;
 
 /// <summary>隐藏 main WebView 时音频通道仍可用的可注入后端测试。</summary>
-public class AudioBackendTests
+public class WebViewAudioTests
 {
 	[Theory]
 	[InlineData("audio/wav")]

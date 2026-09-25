@@ -8,8 +8,10 @@ import {invoke} from "../host/invoke"
 import {listen, type UnlistenFn} from "../host/event"
 import {ReportLogError} from "../runtime/logging"
 
-/** 音量采样间隔 (ms)，与原生后端一致。 */
-const LEVEL_INTERVAL_MS = 60
+/** 音量采样间隔 (ms)，平衡流畅度与性能。 */
+const LEVEL_INTERVAL_MS = 100
+/** 音量变化阈值 (0-1)，低于此值不触发桥接调用。 */
+const LEVEL_CHANGE_THRESHOLD = 0.05
 /** 单段音频和录音上传上限。 */
 export const MAX_AUDIO_BYTES = 32 * 1024 * 1024
 const RECORDING_MIME_CANDIDATES = [
@@ -56,6 +58,7 @@ let levelTimer: ReturnType<typeof setInterval> | null = null
 let currentToken = ""
 let playbackGeneration = 0
 let rmsBuffer = new Float32Array(1024)
+let lastReportedLevel = 0
 
 let recorder: MediaRecorder | null = null
 let recorderChunks: Blob[] = []
@@ -238,7 +241,12 @@ const play = async (payload: PlayPayload): Promise<void> => {
 		const TOKEN = payload.token
 		NODE.onended = () => { finishPlayback(TOKEN, GENERATION) }
 		levelTimer = setInterval(() => {
-			if (isCurrentPlayback(TOKEN, GENERATION)) void invoke("audio_level", {level: readLevel()}).catch(() => {})
+			if (!isCurrentPlayback(TOKEN, GENERATION)) return
+			const CURRENT_LEVEL = readLevel()
+			if (Math.abs(CURRENT_LEVEL - lastReportedLevel) >= LEVEL_CHANGE_THRESHOLD) {
+				lastReportedLevel = CURRENT_LEVEL
+				void invoke("audio_level", {level: CURRENT_LEVEL}).catch(() => {})
+			}
 		}, LEVEL_INTERVAL_MS)
 		NODE.start()
 	} catch (error) {

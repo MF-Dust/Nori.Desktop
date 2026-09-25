@@ -163,7 +163,7 @@ public sealed class PcmResamplerTests
 			PcmResampler.Prepare(source, new(44100, 1), cancellation.Token);
 		});
 		await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-		cancellation.Cancel();
+		cancellation.CancelAfter(TimeSpan.FromMilliseconds(10));
 
 		await Assert.ThrowsAnyAsync<OperationCanceledException>(() => conversion.WaitAsync(TimeSpan.FromSeconds(5)));
 	}

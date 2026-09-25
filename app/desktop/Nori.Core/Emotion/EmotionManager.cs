@@ -158,33 +158,12 @@ public sealed class EmotionManager(Nori.Core.Configuration.ConfigStore configSto
 	{
 		lock (_gate)
 		{
-			_decayTimer ??= new System.Threading.Timer(_ =>
-			{
-				bool changed = false;
-				lock (_gate)
-				{
-					if (_current == EmotionTypes.Neutral) return;
-					_intensity -= 0.1;
-					if (_intensity <= 0.1)
-					{
-						_current = EmotionTypes.Neutral;
-						_intensity = 0.5;
-					}
-					changed = true;
-				}
-				if (changed)
-				{
-					Changed?.Invoke(GetState());
-					SchedulePersist();
-				}
-			}, null, DecayIntervalSeconds * 1000, DecayIntervalSeconds * 1000);
+			_decayTimer ??= new System.Threading.Timer(_ => TickDecay(), null, DecayIntervalSeconds * 1000, DecayIntervalSeconds * 1000);
 		}
 	}
 
-	/// <summary>测试辅助: 手动推进一次衰减 (20s 周期的确定性替代)</summary>
-	public void TickDecayForTests()
+	internal void TickDecay()
 	{
-		bool changed;
 		lock (_gate)
 		{
 			if (_current == EmotionTypes.Neutral) return;
@@ -194,9 +173,9 @@ public sealed class EmotionManager(Nori.Core.Configuration.ConfigStore configSto
 				_current = EmotionTypes.Neutral;
 				_intensity = 0.5;
 			}
-			changed = true;
 		}
-		if (changed) Changed?.Invoke(GetState());
+		Changed?.Invoke(GetState());
+		SchedulePersist();
 	}
 
 	private static double ParseDouble(string raw, double fallback) =>

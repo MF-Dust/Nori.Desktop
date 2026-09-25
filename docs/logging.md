@@ -31,4 +31,4 @@
 
 ## 验证
 
-日志专项测试覆盖并发顺序、隐私白名单、前端限流、来源授权、默认级别、队列溢出、故障恢复、分卷清理、释放和诊断页筛选。`NORI_CAPTURE_SETTINGS=1` 下运行 `NativeLoggingAndModelPopupVisualCapture` 可生成中英文 720×480 和 1920×1080 的诊断页、模型弹窗与确认窗口截图，默认输出至 `artifacts/native-settings/logging`。
+日志专项测试覆盖并发顺序、隐私白名单、前端限流、来源授权、默认级别、队列溢出、故障恢复、分卷清理、释放和诊断页筛选。

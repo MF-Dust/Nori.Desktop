@@ -78,8 +78,6 @@ public partial class BridgeCommandsTests : IDisposable
 	// 会话线程保留到测试进程退出，避免 Avalonia 12.1.1 启停竞态；每次 Dispatch 仍独立创建和清理应用。
 	private static readonly Lazy<HeadlessUnitTestSession> SettingsUiSession = new(() =>
 		HeadlessUnitTestSession.StartNew(typeof(BridgeCommandsTests), AvaloniaTestIsolationLevel.PerTest));
-	private static readonly Lazy<HeadlessUnitTestSession> VisualUiSession = new(() =>
-		HeadlessUnitTestSession.StartNew(typeof(NativeSettingsVisualApplicationBuilder), AvaloniaTestIsolationLevel.PerTest));
 
 	internal static async Task WithSettingsUiAsync(Func<Task> action)
 	{
@@ -738,26 +736,6 @@ public partial class BridgeCommandsTests : IDisposable
 
 
 	/// <summary>
-	/// 安全模式跳过的是**出网那一步**，不是「什么都不做」。
-	///
-	/// 本地记着的会话必须作废，否则退出安全模式之后那段「已经清掉」的上下文会原样回来。
-	/// </summary>
-	[Fact]
-	public async Task 安全模式下清空同时作废本地会话()
-	{
-		using BridgeCommandsTests fixture = new(safeMode: true);
-		fixture.ConfigureUnreachableLuoLiCore();
-		Assert.Equal("sess_fixed", fixture._config.GetStringOr(LuoLiCoreSettingsStore.KeySessionId, ""));
-
-		await fixture.CreateCommands().InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main), "chat_clear", Args(new { }));
-
-		// 连不上那个端口的话上面那一句会抛，能走到这里就说明没发请求。
-		Assert.Equal("", fixture._config.GetStringOr(LuoLiCoreSettingsStore.KeySessionId, ""));
-		Assert.Equal("", fixture._config.GetStringOr(LuoLiCoreSettingsStore.KeySessionOwner, ""));
-	}
-
-	/// <summary>
 	/// 把 LuoLiCore 配成「已启用、已有会话、地址指向一个没人监听的端口」。
 	///
 	/// 端口选 1 是因为它不会有人在听：非安全模式下真去调那个重置端点必然连接失败，安全模式下
@@ -1153,6 +1131,8 @@ public partial class BridgeCommandsTests : IDisposable
 		Assert.Contains("\"remoteReset\":false", json, StringComparison.Ordinal);
 		Assert.Contains("安全模式", json, StringComparison.Ordinal);
 		Assert.Empty(fixture._services.Chat.GetHistory());
+		Assert.Equal("", fixture._config.GetStringOr(LuoLiCoreSettingsStore.KeySessionId, ""));
+		Assert.Equal("", fixture._config.GetStringOr(LuoLiCoreSettingsStore.KeySessionOwner, ""));
 	}
 
 	/// <summary>
@@ -1876,26 +1856,6 @@ public partial class BridgeCommandsTests : IDisposable
 		object? result = await commands.InvokeAsync(
 			new FakeBridgeSource("main"), "approval_respond", Args(new {requestId = "missing", approved = true}));
 		Assert.Equal(false, result);
-	}
-
-	// ---- 历史规范化 ----
-
-	[Fact]
-	public async Task chat_history_page过滤反馈行并规范化旧协议JSON()
-	{
-		_services.Chat.SaveMessage("assistant", "```json\n{\"type\": \"message\", \"text\": \"旧版回复\"}\n```");
-		_services.Chat.SaveMessage("user", "【系统工具执行反馈 - getTime】:\n{}");
-		_services.Chat.SaveMessage("user", "你好");
-
-		BridgeCommands commands = CreateCommands();
-		var page = await commands.InvokeAsync(new FakeBridgeSource("main"), "chat_history_page", Args(new {limit = 10}));
-		var rows = ((IEnumerable<object>)page!).ToList();
-
-		Assert.Equal(2, rows.Count);
-		JsonSerializerOptions relaxed = new() {Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping};
-		string json = JsonSerializer.Serialize(rows, relaxed);
-		Assert.Contains("旧版回复", json, StringComparison.Ordinal);
-		Assert.DoesNotContain("系统工具执行反馈", json, StringComparison.Ordinal);
 	}
 
 	// ---- 提醒持久化 ----

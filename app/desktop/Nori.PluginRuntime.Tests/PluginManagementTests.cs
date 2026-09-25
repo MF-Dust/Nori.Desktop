@@ -243,6 +243,8 @@ public sealed class PluginManagementTests
 			Assert.True(info.UserEnabled);
 			Assert.Equal(PluginLifecycleState.Disabled, info.State);
 			Assert.Equal(PluginErrorCodes.SafeModeDisabled, info.ErrorCode);
+			await manager.StartAllAsync();
+			Assert.Equal(PluginLifecycleState.Disabled, Assert.Single(manager.Plugins).State);
 			await manager.ActivateAsync("safe.plugin");
 			Assert.False(Directory.Exists(Path.Combine(root, "plugin-data", "safe.plugin")));
 			await Assert.ThrowsAsync<PluginException>(() => manager.EnableAsync("safe.plugin"));

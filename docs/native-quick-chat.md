@@ -48,7 +48,7 @@ Windows/macOS 根据鼠标所在交互区域切换透明空白穿透，X11 使�
 
 截图位于 [screenshots/native-quick-chat](screenshots/native-quick-chat)。20 张命名场景覆盖 720×480、1920×1080；另外 40 张覆盖中英文及 200/280 DIP 内容宽度。真实 Win32/OpenGL 的 `quick-chat-pet.png` 与 `quick-chat-composer.png` 来自隔离安全模式，不依赖用户数据库、不发送网络对话。两张原生窗口截图分别捕获；黑色区域是窗口抓图的透明背景表现，并非生产窗口黑色背景。
 
-截图测试必须独立进程运行，避免普通 Headless 测试污染字体/渲染服务。工作目录 `app/desktop`，命令遵循 RTK wrapper：
+工作目录 `app/desktop`，命令遵循 RTK wrapper：
 
 ```powershell
 rtk proxy dotnet build Nori.slnx --configuration Release
@@ -56,10 +56,6 @@ rtk proxy dotnet test Nori.Desktop.Tests --configuration Release --no-build --no
 rtk proxy dotnet test Nori.Core.Tests --configuration Release --no-build --no-restore -m:1
 rtk proxy pnpm check:todo
 ```
-
-Skia 截图：设置 `NORI_CAPTURE_CHAT=1`，运行 `--filter FullyQualifiedName~NativeQuickChatVisualCapture`。默认输出到 `app/desktop/artifacts/native-quick-chat`；设置 `NORI_SETTINGS_CAPTURE_DIR` 可指定其同级目录。
-
-真实 Windows Live2D：设置 `NORI_CAPTURE_QUICKCHAT_NATIVE=1`、`NORI_QUICKCHAT_MODEL_DIR`（本地合法 arg-nori 模型目录）、`NORI_QUICKCHAT_NATIVE_CAPTURE_DIR`，单独运行 `--filter FullyQualifiedName~QuickChat真实窗口`。测试只复制模型至临时 fixture，关闭并清理自己的窗口。
 
 真实平台仍需人工验证：Windows 中文输入法候选确认、拖拽跨不同 DPI 显示器、与其他应用的焦点/置顶交互；macOS 与 X11/Wayland 的透明/穿透/工作区变化。当前桌面自动化连接不可用，不能将截图测试表述为这些交互已人工验收。
 

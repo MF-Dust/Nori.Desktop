@@ -55,7 +55,6 @@
 - `dotnet test Nori.slnx --configuration Release --no-build --no-restore -m:1`：1134 项通过（Launcher 5、Core 658、Desktop 338、PluginRuntime 133），6 项按显式开关跳过，其中 3 项是外部模型资源测试、3 项是视觉截图测试。
 - `pnpm coverage:dotnet --no-build --no-restore`：三个项目覆盖率采集均通过，产物在 `app/desktop/artifacts/dotnet-coverage/`。
 - 显式启用 `NORI_TEST_LIVE2D_ASSETS=1` 后，后台准备、原生 SDK、预览状态相关聚焦测试 36 项全部通过。包括真实 Nori 文件读取、真实 MOC 创建、无文件/无解码提交，以及动作损坏、渲染器创建失败、第二张纹理上传失败时的资源回收。纹理上传使用测试替身，不冒充真实 GL 验证。
-- `NORI_CAPTURE_MODELS=1 dotnet test Nori.Desktop.Tests/Nori.Desktop.Tests.csproj --configuration Release --no-build --no-restore -m:1 --filter FullyQualifiedName~NativeModelsVisualCapture`：通过；生成模型库、全局行为、显示、互动区域的中英文深色截图 24 张，加上区域下拉弹层截图，共 25 张，覆盖 720×480、960×640、1920×1080，产物在 `app/desktop/artifacts/native-models/`。验证横向溢出、窄窗上下布局及舞台与页脚边界。
 - 自动化另覆盖原生来源白名单/可见性/安全模式、元数据回退、独立字段保存与失败重试、区域几何和绑定、预览取消/超时/过期结果、表情清除、重复纹理加载，以及前端两个入口和首次运行保留。
 
 以上命令均从 `app/desktop` 执行。外部真实资源不提交仓库；`NORI_LIVE2D_FIXTURES` 可指定含 `arg-nori/`、`nori/` 的资源根，显式启用但缺少文件会失败，干净 CI 默认跳过这些测试。

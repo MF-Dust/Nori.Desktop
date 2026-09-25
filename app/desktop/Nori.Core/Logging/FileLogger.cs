@@ -58,7 +58,7 @@ public sealed class FileLogger : IDisposable, IAsyncDisposable
 
 	public FileLogger(string? directory, string minimumLevel, FileLoggerOptions? options = null)
 	{
-		_directory = Path.GetFullPath(directory ?? new AppStoragePaths(Environment.CurrentDirectory).LogsDirectory);
+		_directory = PhysicalLogDirectory(Path.GetFullPath(directory ?? new AppStoragePaths(Environment.CurrentDirectory).LogsDirectory));
 		_options = options ?? new FileLoggerOptions();
 		if (_options.QueueCapacity < 1 || _options.MemoryCapacity < 1 || _options.FileBytes < 1024
 			|| _options.TotalBytes < _options.FileBytes || _options.Retention <= TimeSpan.Zero || _options.MaintenanceInterval <= TimeSpan.Zero)
@@ -165,8 +165,10 @@ public sealed class FileLogger : IDisposable, IAsyncDisposable
 		{
 			try
 			{
-				AppStoragePaths.EnsureNoReparsePoints(directory, Path.GetPathRoot(Path.GetFullPath(directory))!);
-				Directory.CreateDirectory(directory);
+				string logDirectory = PhysicalLogDirectory(Path.GetFullPath(directory));
+				Directory.CreateDirectory(logDirectory);
+				if (IsReparsePoint(logDirectory)) return;
+				directory = logDirectory;
 				string path = Path.Combine(directory, $"nori_{DateTime.Now:yyyy-MM-dd}_{Guid.Empty:N}.jsonl");
 				if (File.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) return;
 				using FileStream stream = new(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
@@ -270,9 +272,27 @@ public sealed class FileLogger : IDisposable, IAsyncDisposable
 
 	private void EnsureSafeDirectory()
 	{
-		AppStoragePaths.EnsureNoReparsePoints(_directory, Path.GetPathRoot(_directory)!);
 		Directory.CreateDirectory(_directory);
+		if (IsReparsePoint(_directory)) throw new InvalidOperationException("日志目录不能是符号链接");
 	}
+
+	/// <summary>
+	/// 解析日志目录。macOS 的 /var 等系统链接要落到真实目录，不能从文件系统根拒绝；
+	/// 目录本身仍不能是链接，避免日志被指到别处。
+	/// </summary>
+	private static string PhysicalLogDirectory(string fullPath)
+	{
+		string name = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+		string? parent = Path.GetDirectoryName(fullPath);
+		if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(name))
+			throw new InvalidOperationException("日志目录无效");
+		string directory = Path.Combine(AppStoragePaths.ResolvePhysicalPath(parent), name);
+		if ((File.Exists(directory) || Directory.Exists(directory)) && IsReparsePoint(directory))
+			throw new InvalidOperationException("日志目录不能是符号链接");
+		return directory;
+	}
+
+	private static bool IsReparsePoint(string path) => (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
 
 	private void TryMaintain()
 	{

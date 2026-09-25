@@ -58,9 +58,6 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 	/// <summary>AI 那一步实际存进去了没有。末步的摘要据此说话。</summary>
 	public bool AiSaved { get; private set; }
 
-	/// <summary>指定选中的形象。**只给测试用** —— 测试环境里一个模型都没装。</summary>
-	internal void SelectModelForTests(string modelId) => SelectedModel = modelId;
-
 	/// <summary>步骤标题，画在顶部指示条旁边。</summary>
 	public static string Title(WizardStep step, bool english) => step switch
 	{

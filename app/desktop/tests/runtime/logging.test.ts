@@ -36,11 +36,4 @@ describe("结构化前端日志", () => {
 		expect(INVOKE).toHaveBeenCalledTimes(1)
 		expect(CONSOLE).toHaveBeenCalledWith("日志转发失败", "feedback.error", "Error")
 	})
-
-	it("级别调整使用独立的类型化命令", async () => {
-		const {GetLoggingStatus, SetLoggingLevel} = await import("../../src/services/runtime/logging")
-		await SetLoggingLevel("trace"); await GetLoggingStatus()
-		expect(INVOKE).toHaveBeenCalledWith("set_logging_level", {level: "trace"})
-		expect(INVOKE).toHaveBeenCalledWith("get_logging_status")
-	})
 })

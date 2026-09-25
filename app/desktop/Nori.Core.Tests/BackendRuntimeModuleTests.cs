@@ -460,7 +460,7 @@ public class BackendRuntimeModuleTests : IDisposable
 		Assert.Equal("happy", emotion.CurrentType);
 
 		// 衰减到阈值以下回到 neutral @0.5
-		for (int i = 0; i < 10; i++) emotion.TickDecayForTests();
+		for (int i = 0; i < 10; i++) emotion.TickDecay();
 		Assert.Equal("neutral", emotion.CurrentType);
 
 		// 持久化防抖 400ms 后可读回
@@ -494,12 +494,13 @@ public class BackendRuntimeModuleTests : IDisposable
 	{
 		ChatService chat = new(new HttpClient(), _database, _config);
 		chat.SaveMessage("assistant", "{\"type\": \"message\", \"text\": \"协议回复\"}");
+		chat.SaveMessage("assistant", "```json\n{\"type\": \"message\", \"text\": \"旧版回复\"}\n```");
 		chat.SaveMessage("user", "【系统工具执行反馈 - getTime】:\n{}");
 		chat.SaveMessage("user", "普通输入");
 
 		var normalized = AgentHistory.NormalizeRecent(chat.GetHistory(10, 0));
 
-		Assert.Equal([("assistant", "协议回复"), ("user", "普通输入")], normalized);
+		Assert.Equal([("assistant", "协议回复"), ("assistant", "旧版回复"), ("user", "普通输入")], normalized);
 	}
 
 	// ---- 模型元数据 ----

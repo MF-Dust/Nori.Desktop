@@ -5,7 +5,6 @@ import UNO_CONFIG from "../../uno.config"
 /**
  * shortcut 生成结果的门禁
  *
- * shortcuts.test.ts 只扫源码文本, 看不见"这个 shortcut 名到底生成了什么 CSS"。
  * 这里真跑一遍生成器, 是因为出过一次静态检查全绿的事故: Uno 默认把连字符也当
  * 变体分隔符, `focus-ring` 于是先被解析成「focus 变体 + ring 工具类」, 直接写在
  * class 里的 shortcut 名静默失效, 全站焦点环没有描边。

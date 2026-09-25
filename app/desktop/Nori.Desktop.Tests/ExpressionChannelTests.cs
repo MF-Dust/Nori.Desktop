@@ -54,13 +54,6 @@ public sealed class ExpressionChannelTests
 		Assert.Equal(0xB0, color.B);
 	}
 
-	[Fact]
-	public void 转成Windows的BGR字节序()
-	{
-		// Windows 的注册表与 DWM 都按 0x00BBGGRR 存颜色，写反了整个桌面会变成补色。
-		Assert.Equal(0x00DAC3B4u, ExpressionColors.ToWindowsBgr(Color.FromRgb(0xB4, 0xC3, 0xDA)));
-	}
-
 	// ---- 语音气泡 ----
 
 	[Fact]

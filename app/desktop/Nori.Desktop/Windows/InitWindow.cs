@@ -148,27 +148,8 @@ public sealed class InitWindow : Window
 		}
 	}
 
-	// ── 测试用的几个口子 ────────────────────────────────────────────────
-	//
-	// 这一页没有可点的中间态可供断言：动效是定时器画的、超时是等出来的。
-	// 与其在测试里等 10 秒，不如把这三样露出来。
-
-	/// <summary>是否已经发起过进入主界面。</summary>
-	internal bool HasStartedForTests => _started;
-
-	/// <summary>隐藏或关闭后，两类定时器都不应继续运行。</summary>
 	internal bool AnimationRunningForTests => _view.AnimationRunning;
 	internal bool WatchdogRunningForTests => _watchdog?.IsEnabled == true;
-
-	/// <summary>直接切到超时面板，不等那 10 秒。</summary>
-	internal void ShowTimeoutForTests()
-	{
-		_view.SetLanguage(IsEnglish());
-		_view.ShowTimeout();
-	}
-
-	/// <summary>超时面板上那颗按钮的文案。</summary>
-	internal string RetryLabelForTests => _view.RetryLabel;
 
 	protected override void OnClosed(EventArgs e)
 	{

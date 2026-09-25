@@ -52,18 +52,6 @@
 
 新增 `NativeChatBridgeTests`、`NativeChatRuntimeTests`、`NativeChatStateTests`、`NativeChatWindowTests`、`NativeChatMarkdownTests`、`NativeChatVisualTests`。覆盖来源伪装/越权、隐藏审批、锁等待期间隐藏与取消、真实延期/超时、清空与生成互斥、终结后 TTS 不占闸门、远端就绪、事件先到、最终正文替换、历史代次/去重、输入同步、语音失败重试、草稿与控件保留、实时语言和深色交互态。前端测试覆盖原生入口、主窗口音频生命周期、主页插件挂件。
 
-全量测试的 7 个跳过为 3 个需要真实模型/原生环境的预载测试与 4 个按开关启用的截图测试；不是忽略失败。聊天截图已单独执行通过。
-
-## 截图证据
-
-```bash
-NORI_CAPTURE_CHAT=1 dotnet test Nori.Desktop.Tests -c Release --no-build --no-restore -m:1 --filter FullyQualifiedName~NativeChatVisualCapture
-```
-
-输出：`app/desktop/artifacts/native-chat/manifest.json` 与 36 张 PNG。覆盖中英文 × 720×480 / 960×640 / 1920×1080 × 空态、历史、Markdown、流式、错误、授权。使用真实 Avalonia/Skia headless 渲染和合成对话数据；检查主题、有效像素、横向溢出及输入区裁切。已抽查浅青气泡、代码/表格、窄窗授权和英文空态。
-
-截图必须使用上述独立测试进程；本机将默认 headless 功能测试与 Skia 截图混跑时曾出现字体/渲染器缓存污染（缺字或空帧）。独立运行后 36 张通过。这些截图不是实机窗口截图，也没有与旧 Vue 做自动像素差比较。
-
 ## 仍需实机人工验收
 
 以下没有在本轮自动化中声称通过：

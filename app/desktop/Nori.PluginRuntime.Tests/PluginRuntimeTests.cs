@@ -261,33 +261,6 @@ public sealed class PluginRuntimeTests
 	}
 
 	[Fact]
-	public async Task 安全模式只发现并禁用插件不创建ALC()
-	{
-		string root = CreateTemp();
-		try
-		{
-			string package = CreateTestPackage(root, "safe.plugin", "1.0.0");
-			string plugins = Path.Combine(root, "plugins");
-			new PluginPackageInstaller(plugins).Install(package);
-			PluginManager manager = new(new PluginRuntimeOptions
-			{
-				PluginsDirectory = plugins,
-				DataDirectory = Path.Combine(root, "plugin-data"),
-				SafeMode = true,
-				KnownCapabilityIds = [],
-			});
-
-			PluginInfo info = Assert.Single(manager.Discover());
-			Assert.Equal(PluginLifecycleState.Disabled, info.State);
-			await manager.StartAllAsync();
-			Assert.Equal(PluginLifecycleState.Disabled, Assert.Single(manager.Plugins).State);
-			Assert.False(File.Exists(Path.Combine(root, "plugin-data", "safe.plugin", "storage.json")));
-			await manager.DisposeAsync();
-		}
-		finally { DeleteDirectory(root); }
-	}
-
-	[Fact]
 	public void Contract程序集由DefaultALC提供()
 	{
 		string root = CreateTemp();

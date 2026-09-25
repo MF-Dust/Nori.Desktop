@@ -306,23 +306,11 @@ public sealed class ProactiveScheduler : IDisposable
 		}
 	}
 
-	private void Tick()
+	internal void Tick(DateTimeOffset? now = null)
 	{
-		DateTimeOffset now = DateTimeOffset.UtcNow;
-		long nowMs = now.ToUnixTimeMilliseconds();
-		FireDueReminders(nowMs);
-		CheckDailyGreetings(now);
-		CheckIdle();
-	}
-
-	/// <summary>供测试按指定 UTC 时间推进一次调度。</summary>
-	public void TickForTests(DateTime? nowUtc = null)
-	{
-		DateTimeOffset now = nowUtc is { } value
-			? new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc))
-			: DateTimeOffset.UtcNow;
-		FireDueReminders(now.ToUnixTimeMilliseconds());
-		CheckDailyGreetings(now);
+		DateTimeOffset instant = now ?? DateTimeOffset.UtcNow;
+		FireDueReminders(instant.ToUnixTimeMilliseconds());
+		CheckDailyGreetings(instant);
 		CheckIdle();
 	}
 

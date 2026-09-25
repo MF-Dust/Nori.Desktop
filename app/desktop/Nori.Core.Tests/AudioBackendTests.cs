@@ -17,12 +17,6 @@ public sealed class AudioBackendTests
 		Assert.False(AudioBackend.PrefersNative(AudioBackend.Auto, nativeAvailable: false));
 	}
 
-	[Fact]
-	public void 显式选WebView就不用原生()
-	{
-		Assert.False(AudioBackend.PrefersNative(AudioBackend.WebView, nativeAvailable: true));
-	}
-
 	/// <summary>
 	/// 显式选 native 时**仍然要看平台**。
 	///

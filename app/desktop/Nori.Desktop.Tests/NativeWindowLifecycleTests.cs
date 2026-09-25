@@ -136,4 +136,10 @@ public partial class BridgeCommandsTests
 		}
 		return Task.CompletedTask;
 	});
+
+	private static WindowDefinition FirstRunDefinition() =>
+		WindowDefinition.All.Single(item => item.Label == WindowLabels.FirstRun);
+
+	private static WindowDefinition InitDefinition() =>
+		WindowDefinition.All.Single(item => item.Label == WindowLabels.Init);
 }

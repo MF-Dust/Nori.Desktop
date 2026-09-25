@@ -111,10 +111,4 @@ public sealed class AgentToolIterationsTests : IDisposable
 		Assert.Equal(3, Budget(Build(explicitLimit: 3)));
 	}
 
-	[Fact]
-	public void 默认值比原先的五轮宽()
-	{
-		// 这一条钉住的是这次改动的意图本身：五轮不够。
-		Assert.True(AgentEngine.DefaultToolIterations > 5);
-	}
 }

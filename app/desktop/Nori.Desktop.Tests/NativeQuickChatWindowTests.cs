@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
@@ -139,4 +140,6 @@ public partial class BridgeCommandsTests
 		}));
 		Assert.Equal(new[] { "1", "50", "51" }, state.Messages.Select(message => message.Key));
 	}
+
+	private static JsonElement ChatEvent(object? value) => JsonSerializer.SerializeToElement(value);
 }

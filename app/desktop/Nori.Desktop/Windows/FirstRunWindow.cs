@@ -149,7 +149,7 @@ public sealed class FirstRunWindow : Window
 		heading.Children.Add(Place(_counter, 1, HorizontalAlignment.Right));
 		NativeWindowChrome header = new(this, IsEnglish, heading) { Height = 44 };
 
-		_back.Click += (_, _) => { _wizard.Prev(); Render(); };
+		_back.Click += (_, _) => Back();
 		_forward.Click += (_, _) => _ = AdvanceAsync();
 		StyleNav(_back, primary: false);
 		StyleNav(_forward, primary: true);
@@ -353,47 +353,7 @@ public sealed class FirstRunWindow : Window
 		_error.IsVisible = message.Length > 0;
 	}
 
-	// ── 测试用 ─────────────────────────────────────────────────────────────
-
-	/// <summary>当前处在哪一步。</summary>
-	internal WizardStep CurrentStepForTests => _wizard.Snapshot().Step;
-
-	/// <summary>底部那条错误行上现在写着什么。</summary>
-	internal string ErrorTextForTests => _error.Text ?? "";
-
-	/// <summary>前进按钮的文案与可用性 —— 末步会换成「开始使用」。</summary>
-	internal (string Text, bool Enabled) ForwardForTests => (_forward.Content as string ?? "", _forward.IsEnabled);
-
-	/// <summary>推进一步，走的是按钮那条路。</summary>
-	internal Task AdvanceForTests() => AdvanceAsync();
-
-	/// <summary>导入与当前选择，复用按钮实际执行的路径。</summary>
-	internal Task ImportModelForTests(string sourceKind) => _steps.ImportModelAsync(sourceKind, IsEnglish());
-	internal string SelectedModelForTests => _steps.SelectedModel;
-
-	/// <summary>
-	/// 直接跳到某一步，绕开守卫。
-	///
-	/// **只给测试用。** 选形象那一步在测试环境里必然被自己挡住（一个模型都没装），
-	/// 而末步和完成流程仍然要能测到。
-	/// </summary>
-	internal void ForceStepForTests(WizardStep? target = null)
-	{
-		WizardStep want = target ?? FirstRunWizard.Order[
-			Math.Min(FirstRunWizard.Order.Count - 1, _wizard.Snapshot().Index + 1)];
-		while (_wizard.Snapshot().Step != want && !_wizard.Snapshot().IsLast)
-		{
-			_wizard.ClearStep();
-			if (!_wizard.Next()) break;
-		}
-		Render();
-	}
-
-	/// <summary>指定选中的形象。**只给测试用** —— 测试环境里一个模型都没装。</summary>
-	internal void SelectModelForTests(string modelId) => _steps.SelectModelForTests(modelId);
-
-	/// <summary>后退一步。</summary>
-	internal void BackForTests()
+	private void Back()
 	{
 		_wizard.Prev();
 		Render();

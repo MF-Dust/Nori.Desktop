@@ -110,6 +110,28 @@ public sealed class StructuredLoggerTests : IDisposable
 	}
 
 	[Fact]
+	public async Task 系统临时目录可写且日志目录本身不能是符号链接()
+	{
+		string dir = Path.Combine(Path.GetTempPath(), "nori-log-" + Guid.NewGuid().ToString("N"));
+		try
+		{
+			await using FileLogger logger = new(dir);
+			logger.Write(LogSource.Backend, "info", "临时目录");
+			Assert.True(await logger.FlushAsync(TimeSpan.FromSeconds(5)));
+			Assert.NotEmpty(Directory.GetFiles(dir, "nori_*.jsonl"));
+		}
+		finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+
+		string real = Path.Combine(_root, "real");
+		Directory.CreateDirectory(real);
+		string link = Path.Combine(_root, "leaf-link");
+		try { Directory.CreateSymbolicLink(link, real); }
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException) { return; }
+		Assert.Throws<InvalidOperationException>(() => new FileLogger(link));
+		Assert.Empty(Directory.GetFiles(real, "nori_*.jsonl"));
+	}
+
+	[Fact]
 	public async Task 异常原文与任意元数据不进入结构化记录()
 	{
 		await using FileLogger logger = new(_root);

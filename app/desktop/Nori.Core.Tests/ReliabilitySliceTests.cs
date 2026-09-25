@@ -287,13 +287,13 @@ public sealed class ProactiveReliabilityTests
 			using ProactiveScheduler scheduler = new(new ReminderStore(database), config, logger, () => idle);
 			scheduler.Message += messages.Add;
 
-			scheduler.TickForTests(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
-			scheduler.TickForTests(new DateTime(2026, 1, 1, 0, 0, 1, DateTimeKind.Utc));
+			scheduler.Tick(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+			scheduler.Tick(new DateTime(2026, 1, 1, 0, 0, 1, DateTimeKind.Utc));
 			Assert.Single(messages);
 			idle = 0;
-			scheduler.TickForTests(new DateTime(2026, 1, 1, 0, 1, 0, DateTimeKind.Utc));
+			scheduler.Tick(new DateTime(2026, 1, 1, 0, 1, 0, DateTimeKind.Utc));
 			idle = 61;
-			scheduler.TickForTests(new DateTime(2026, 1, 1, 0, 2, 0, DateTimeKind.Utc));
+			scheduler.Tick(new DateTime(2026, 1, 1, 0, 2, 0, DateTimeKind.Utc));
 			Assert.Equal(2, messages.Count);
 		}
 		finally
@@ -326,13 +326,13 @@ public sealed class ProactiveReliabilityTests
 			using (ProactiveScheduler first = new(new ReminderStore(database), config, logger, () => null))
 			{
 				first.Message += firstMessages.Add;
-				first.TickForTests(now.UtcDateTime);
+				first.Tick(now.UtcDateTime);
 			}
 			List<ProactiveMessage> secondMessages = [];
 			using (ProactiveScheduler second = new(new ReminderStore(database), config, logger, () => null))
 			{
 				second.Message += secondMessages.Add;
-				second.TickForTests(now.UtcDateTime);
+				second.Tick(now.UtcDateTime);
 			}
 			Assert.Single(firstMessages);
 			Assert.Contains("Good morning", firstMessages[0].Text, StringComparison.Ordinal);
@@ -344,7 +344,7 @@ public sealed class ProactiveReliabilityTests
 			using (ProactiveScheduler scheduler = new(new ReminderStore(database), config, logger, () => null))
 			{
 				scheduler.Message += reminderMessages.Add;
-				scheduler.TickForTests(now.UtcDateTime);
+				scheduler.Tick(now.UtcDateTime);
 			}
 			Assert.Single(reminderMessages);
 			Assert.Contains("Reminder time", reminderMessages[0].Text, StringComparison.Ordinal);

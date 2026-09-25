@@ -357,8 +357,4 @@ public sealed class MainWindow : Window
 		base.OnClosed(e);
 	}
 
-	internal IReadOnlyList<string> LauncherLabelsForTests => [.. _launchers.Select(launcher => launcher.Label.Text ?? "")];
-	internal IReadOnlyList<bool> LauncherDotsForTests => [.. _launchers.Select(launcher => launcher.Dot.IsVisible)];
-	internal string HintsForTests => _hints.IsVisible ? _hints.Text ?? "" : "";
-	internal void RefreshForTests() => Refresh();
 }

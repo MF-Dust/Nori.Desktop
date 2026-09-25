@@ -110,7 +110,6 @@
 - `NativeMemoryTransferUiTests`：实际UTF-8流大小、非法编码/JSON、三种冲突策略、预览元数据、提交失败草稿保留、本地取消清空与旧令牌失效；通过流和内部方法驱动，未自动操作真实系统文件选择器。
 - `NativeMemoryHostTests`：原生来源/命令白名单、可见性、确认令牌、安全模式以及指定取消场景。
 - `Nori.Core.Tests/MemoryTransferTests.cs`：核心导出白名单、UTF-8和数量限制、事务提交、冲突策略、五分钟令牌及并发一次性消费。
-- `NativeMemoryVisualTests`：使用真实Avalonia/Skia渲染的headless截图，覆盖中英文、720×480、默认960×640与1920×1080；不是占位图，也不等于真实操作系统桌面人工验收。
 
 最终主验收记录（2026-09-13）：
 

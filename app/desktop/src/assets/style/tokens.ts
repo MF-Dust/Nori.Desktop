@@ -1,7 +1,7 @@
 /**
  * Nori 设计令牌 (单一色源)
  *
- * uno.config.ts、naiveTheme.ts 与 theme.less 的 :root 变量全部派生自这里。
+ * uno.config.ts 与 theme.less 的 :root 变量全部派生自这里。
  * 三处一致性由 tests/theme/tokens-sync.test.ts 看守, 任何一处漂移都会红。
  *
  * 参考 Nori.Web 的深灰蓝、低饱和青色与薄荷色对话。

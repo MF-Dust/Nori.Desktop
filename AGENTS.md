@@ -6,17 +6,17 @@ Welcome to the **Nori Desktop Pet** repository. This document serves as the comp
 
 ## 1. Project Overview & Architecture
 
-Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12** backend host and a **Vue 3 + TypeScript + UnoCSS** frontend rendered within platform-native webviews.
+Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12** native host. The bundled page is only the compatibility audio host; plugin widgets may open their own WebView.
 
 ### Key Architectural Pillars
 - **Root Entry & Slot Deployment (`Nori.AppLauncher`)**: The stable root binary `Nori` selects and launches an immutable deployment slot (`app-<version>-<revision>`) validated by `deployment.json`. The launcher does not own locks or update slots; all runtime state resides in `<PackageRoot>/data`.
 - **Window Architecture (`Nori.Desktop/Windows`)**:
-  - Three WebViews: `first-run` (wizard), `init` (loading/splash), and `main` (control panel, chat, and audio host). Windows are borderless (`WindowDecorations.None`) and transparent. Closing a window hides it; `main` is persistent for the app lifetime.
+  - User windows are native Avalonia: `first-run`, `init`, `main`, and `pet`, plus on-demand settings, memory, models, chat, and quick chat. Windows are borderless (`WindowDecorations.None`) and transparent. Closing a window hides it; `main` is persistent for the app lifetime.
+  - The only app WebView is the hidden audio host, created when the platform audio backend is not native.
   - Native Desk Pet (`pet`): An Avalonia `PetWindow` running native OpenGL ES 2.0 via `Live2DCSharpSDK` and Cubism Core. It renders directly to the desktop (no webview airspace clipping or transparency limitations).
   - Native Settings: `SettingsWindow` hosts Avalonia settings pages; inspect this native path for settings UI work.
-- **Native Live2D Desk Pet vs. Web Preview**:
-  - `PetWindow` + `PetGlControl`: Native C# pipeline (`AutoBlink`, `EyeFocus`, `BeatSync`, `LipSync`, `ExpressionStore`, `ExpressionBehavior`). Alpha mask sampling (~10Hz) computes a single bounding rectangle for hit-testing (`WM_NCHITTEST` on Windows, `XShape` on Linux X11, `setIgnoresMouseEvents:` on macOS, degraded whole-window hit on Wayland).
-  - Web Preview (`ModelManagement.vue`): PixiJS + `pixi-live2d-display` previewing local models through the loopback asset server.
+- **Native Live2D Desk Pet**:
+  - `PetWindow` + `PetGlControl`: Native C# pipeline (`AutoBlink`, `EyeFocus`, `BeatSync`, `LipSync`, `ExpressionStore`, `ExpressionBehavior`). Alpha mask sampling (~10Hz) computes a single bounding rectangle for hit-testing (`WM_NCHITTEST` on Windows, `XShape` on Linux X11, `setIgnoresMouseEvents:` on macOS, degraded whole-window hit on Wayland). Model preview is the native `ModelPreviewControl`, not a web view.
 - **IPC Bridge (`NoriBridge` & `BridgeCommands`)**:
   - Frontend invokes host methods via `src/services/runtime/` typed APIs (built on top of `src/services/host/invoke.ts`).
   - Host dispatches commands through `BridgeCommands.cs`. Envelopes are double-encoded (JSON envelope serialized as string into `InvokeScript`) to eliminate escaping vulnerabilities.
@@ -64,13 +64,10 @@ Nori-Desktop-Pet/
 │   ├── Nori.PluginRuntime.Tests/ # Plugin runtime isolation and lifecycle tests
 │   ├── public/                 # Static assets for the frontend
 │   ├── scripts/                # CI, coverage, todo-check, and packaging scripts
-│   ├── src/                    # Vue 3 SPA frontend
+│   ├── src/                    # Audio-host page and typed bridge client
 │   │   ├── assets/style/       # tokens.ts (single source of color truth), theme.less
-│   │   ├── components/         # UI components (ui/ atomic kit, chat/, settings/, etc.)
-│   │   ├── services/           # runtime/, host/, i18n/, icon/, router/, window/, audio/, telemetry/
-│   │   ├── views/              # FirstRunView.vue, InitView.vue, Main.vue, ChatView.vue
-│   │   ├── App.vue             # Window routing coordinator
-│   │   └── main.ts             # Vue bootstrap, Naive UI, UnoCSS, Sentry integration
+│   │   ├── services/           # runtime/, host/, i18n/, audio/, telemetry/
+│   │   └── bootstrap.ts        # Audio-host page entry
 │   ├── tests/                  # Frontend Vitest test suites (theme, i18n, runtime, components)
 │   ├── uno.config.ts           # UnoCSS atomic styles, shortcuts, and token integration
 │   ├── package.json            # Frontend dependencies and npm scripts

@@ -7,7 +7,7 @@ namespace Nori.Desktop.Windows;
 /// 窗口定义
 ///
 /// 逐条对应原 tauri.conf.json 的 app.windows 配置.
-/// WebView 窗口需要同步前端路由；原生设置、记忆、模型和对话窗口按需创建，不注册 WebView 路由。
+/// 启动时预建的原生窗口。设置、记忆、模型和对话窗口按需创建。
 /// </summary>
 public sealed record WindowDefinition
 {

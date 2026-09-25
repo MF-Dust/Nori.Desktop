@@ -59,8 +59,7 @@ export default defineConfig({
 	},
 	shortcuts: [
 		// ---- 窗口与容器 ----
-		// 三个 WebView 窗口 (main / init / first-run) 的根节点一律用这几个,
-		// 不要在 .vue 里手抄这串: 抄一遍就多一处会漂移的视觉定义。
+		// 窗口根节点的视觉定义只留在这里。
 		// window-chrome 只管圆角/描边/阴影, window-root 再补满屏尺寸,
 		// window-surface 是默认底纹 (first-run 用自己的分步渐变替换它)。
 		[

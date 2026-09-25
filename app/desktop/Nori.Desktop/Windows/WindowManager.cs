@@ -18,7 +18,7 @@ namespace Nori.Desktop.Windows;
 /// 窗口调度
 ///
 /// 承接原来 Rust 侧 lib.rs setup / tray.rs 与前端 services/window/index.ts 的窗口调度职责.
-/// 管理三个 WebView、原生伴侣视窗与按需创建的原生设置、记忆、模型和对话窗口。
+/// 用户窗口都是原生的。兼容音频宿主另行创建，不进入这个列表。
 /// </summary>
 public sealed class WindowManager : IWindowManager
 {
@@ -96,14 +96,7 @@ public sealed class WindowManager : IWindowManager
 			}
 			else
 			{
-				NoriWindow window = new(definition, bridge, _assetServer.WindowUrl(definition.Label), _storagePaths);
-				window.Closing += (_, args) =>
-				{
-					if (window.AllowClose) return;
-					args.Cancel = true;
-					window.Hide();
-				};
-				_windows[definition.Label] = window;
+				throw new InvalidOperationException($"窗口 {definition.Label} 没有原生实现");
 			}
 
 			TrackVisibility(definition.Label, _windows[definition.Label]);

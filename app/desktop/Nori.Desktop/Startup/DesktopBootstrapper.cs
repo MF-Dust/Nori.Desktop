@@ -138,6 +138,11 @@ internal sealed class DesktopBootstrapper
 		}
 		// 只有完成配置初始化并确认 consent=granted 后才允许初始化 Native Sentry。
 		telemetry.Configure(config.GetTelemetryConsent() == TelemetryConsent.Granted);
+		if (telemetry.IsEnabled)
+		{
+			// 设置匿名用户标识用于统计独立用户数量
+			telemetry.SetUser(MachineIdentifier.GetAnonymousId());
+		}
 		using ITelemetryTransaction startupTransaction = telemetry.StartTransaction("app.startup");
 		logger.Write(LogSource.Backend, "info", "数据库已打开", "Lifecycle", "database.ready");
 

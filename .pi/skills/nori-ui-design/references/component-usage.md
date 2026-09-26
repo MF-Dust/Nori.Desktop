@@ -1,32 +1,35 @@
-# Component Usage
+# Native Component Usage
 
-Reuse existing Nori primitives before creating new ones.
+Reuse existing Nori Avalonia primitives before creating new controls.
 
-Prefer:
-- AppButton
-- AppCard
-- AppChip
-- existing App* components
-- UnoCSS shortcuts
-- semantic design tokens
+## Theme access
+
+- Prefer `NoriThemeTokens.Brush("token-key")` for shared colors across chat, pet menus, and chrome.
+- Settings pages: `SettingsBrushes.Resolve(owner, "bg-card")` or a `SettingsBrushPalette` on long-lived presenters.
+- Load control templates from `SettingsTheme.axaml` (buttons, inputs, toggles, popups) instead of duplicating styles.
+
+## Layout patterns
+
+- **Settings / Memory / Models**: side navigation + scrollable sections; card grouping via `SettingsSectionViewModel` patterns in `Nori.Desktop/Settings`.
+- **Chat / Quick Chat**: `ChatTheme.axaml`, bubble templates, and markdown colors from `ChatMarkdown` token keys.
+- **Window chrome**: `NativeWindowChrome` for draggable title bar; close goes through window save/hide flow.
 
 Do not introduce:
-- Tailwind CSS
-- a second UI framework
-- a parallel token system
 
-## Cards
+- a second color system parallel to `tokens.ts`
+- hard-coded `#RRGGBB` in C# or AXAML
+- web-style atomic CSS or Vue component libraries
 
-Before adding a card, ask whether spacing and alignment are enough.
+## Cards and grouping
+
+Before adding a bordered panel, ask whether spacing and alignment are enough.
 Avoid nested cards unless they represent a real hierarchy boundary.
 
-## Chips
+## State chips and badges
 
-Use chips for concise state that benefits from scanning.
-Do not turn ordinary metadata into chips.
-If many chips appear together, consider quieter secondary text.
+Use compact text or subtle badges for scannable state.
+Do not turn ordinary metadata into decorative chips.
 
-## Naive UI
+## Dialogs
 
-Follow the repository's existing theme-override mechanism.
-Do not fight runtime component styling with brittle utility-class overrides.
+Reuse `NativeSettingsDialogs` / shared confirmation helpers instead of one-off `Window` subclasses.

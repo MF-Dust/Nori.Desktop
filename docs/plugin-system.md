@@ -223,7 +223,7 @@ ping
 
 ## AssetServer 附加路由
 
-Core 的 loopback `AssetServer` 只负责通用服务：随机前缀、Host allowlist、`/app`、`/nori-assets`、`/media` 和可注册的 `IAssetRoute`。扩展模块通过 `AdditionalRoutes` 注册路由，Core 不知道插件 ID 或 capability 策略。
+Core 的 loopback `AssetServer` 只负责通用服务：随机前缀、Host allowlist、`/app`、`/media` 和可注册的 `IAssetRoute`（含 `/plugins`）。扩展模块通过 `AdditionalRoutes` 注册路由，Core 不知道插件 ID 或 capability 策略。
 
 插件运行时注册：
 

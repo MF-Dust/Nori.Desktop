@@ -5,7 +5,7 @@ charset = utf-8
 end_of_line = lf
 insert_final_newline = true
 
-[*.{ts,tsx,vue,cs,less}]
+[*.{ts,tsx,cs}]
 indent_style = tab
 indent_size = 4
 tab_width = 4

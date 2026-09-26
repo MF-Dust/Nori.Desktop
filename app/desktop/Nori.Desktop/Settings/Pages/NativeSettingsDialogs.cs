@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Markup.Xaml.Styling;
+using Nori.Desktop.Settings;
 
 namespace Nori.Desktop.Settings.Pages;
 
@@ -11,20 +12,27 @@ internal static class NativeSettingsDialogs
 	/// <summary>表单字段描述。</summary>
 	internal sealed record Field(string Key, string Label, string Value, bool Password = false, bool Multiline = false);
 
-	/// <summary>显示确认窗口。</summary>
-	public static async Task<bool> ConfirmAsync(Window owner, string title, string message, bool destructive = false)
+	/// <summary>显示确认窗口。文案缺省为通用确认/取消；标题栏语言缺省与设置资源相同。</summary>
+	public static async Task<bool> ConfirmAsync(
+		Window owner,
+		string title,
+		string message,
+		bool destructive = false,
+		string? confirmText = null,
+		string? cancelText = null,
+		Func<bool>? english = null)
 	{
 		ArgumentNullException.ThrowIfNull(owner);
 		StackPanel body = new() {Spacing = 14, Margin = new Avalonia.Thickness(24)};
 		body.Children.Add(new TextBlock {Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 520});
 		StackPanel buttons = new() {Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8};
-		Button cancel = new() {Content = NativeSettingsResources.Get("common.cancel"), MinWidth = 88};
-		Button confirm = new() {Content = NativeSettingsResources.Get("common.confirm"), MinWidth = 88};
+		Button cancel = new() {Content = cancelText ?? NativeSettingsResources.Get("common.cancel"), MinWidth = 88};
+		Button confirm = new() {Content = confirmText ?? NativeSettingsResources.Get("common.confirm"), MinWidth = 88};
 		if (destructive) confirm.Classes.Add("danger");
 		buttons.Children.Add(cancel);
 		buttons.Children.Add(confirm);
 		body.Children.Add(buttons);
-		Window dialog = CreateWindow(title, body);
+		Window dialog = CreateWindow(title, body, english: english);
 		cancel.Click += (_, _) => dialog.Close(false);
 		confirm.Click += (_, _) => dialog.Close(true);
 		bool? result = await dialog.ShowDialog<bool?>(owner).ConfigureAwait(true);
@@ -113,7 +121,7 @@ internal static class NativeSettingsDialogs
 		return editors.ToDictionary(pair => pair.Key, pair => pair.Value.Text ?? string.Empty, StringComparer.Ordinal);
 	}
 
-	internal static Window CreateWindow(string title, Control content, double width = 500)
+	internal static Window CreateWindow(string title, Control content, double width = 500, Func<bool>? english = null)
 	{
 		Window dialog = new()
 		{
@@ -132,7 +140,7 @@ internal static class NativeSettingsDialogs
 		{
 			Source = new Uri("avares://Nori.Desktop/Settings/SettingsTheme.axaml"),
 		});
-		Nori.Desktop.Windows.NativeWindowChrome.Attach(dialog, () => NativeSettingsResources.Get("common.close") == "Close");
+		Nori.Desktop.Windows.NativeWindowChrome.Attach(dialog, english ?? (() => SettingsLocalization.IsEnglish));
 		return dialog;
 	}
 }

@@ -320,7 +320,6 @@ public sealed partial class MemoryWindow : Window
 		_description.Text = PageDescription();
 		foreach (Action action in _localize) action();
 		_editorLocalize?.Invoke();
-		foreach (Action action in _confirmationLocalizers.Values.ToArray()) action();
 	}
 	private TextBlock Label(string key, double size = 13, bool bold = false)
 	{

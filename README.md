@@ -153,16 +153,19 @@ Nori-Desktop-Pet/
 │   ├── package.json                 # 前端依赖与脚本配置
 │   ├── publish.bat / publish.sh     # 跨平台发布构建脚本
 │   └── vite.config.ts               # Vite 构建与 AssetServer 代理配置
-├── docs/                            # 架构设计文档与开发规范
-│   ├── banner.png                   # 官方主视觉横幅
-│   ├── 规范.md                      # 必须遵守的代码与风格契约
-│   ├── 技术.md                      # 模块技术图谱与架构全景
-│   ├── 跨平台.md                    # 平台矩阵与能力降级规范
-│   ├── windows.md                   # Avalonia 窗口属性参考
-│   ├── Sentry.md                    # 遥测与 Crash 报告规范
-│   └── 开发任务清单.md              # 研发里程碑与任务清单
+├── docs/                            # 架构设计文档与开发规范（完整列表见 docs/）
+│   ├── banner.png
+│   ├── 规范.md
+│   ├── 技术.md
+│   ├── 跨平台.md
+│   ├── windows.md
+│   ├── logging.md
+│   ├── plugin-system.md
+│   ├── Sentry.md
+│   ├── codex-cloud.md
+│   └── 开发任务清单.md
 ├── README.md                        # 项目说明文档
-└── CLAUDE.md                        # 架构契约与编码指南
+└── AGENTS.md                        # 权威开发指南（CLAUDE.md 为薄指针）
 ```
 
 ---
@@ -235,7 +238,7 @@ publish.bat
 
 ## 开发与贡献约定
 
-在提交代码前，请务必阅读 [`docs/规范.md`](./docs/规范.md)。主要开发契约包括：
+在提交代码前，请务必阅读 [`AGENTS.md`](./AGENTS.md) 与 [`docs/规范.md`](./docs/规范.md)。主要开发契约包括：
 
 - **代码风格**：
   - TypeScript 音频宿主与 C# 源码缩进统一采用 **Tab**，双引号，换行符使用 **LF**。

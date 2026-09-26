@@ -18,13 +18,13 @@ public partial class BridgeCommandsTests
 			await WaitUntilAsync(() => viewModel.Language == "zh-CN" && viewModel.ErrorMessage.Length == 0);
 
 			fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text("en-US"));
-			fixture._runtime.InvalidateSnapshot("general");
+			fixture._runtime.InvalidateSnapshot();
 			await WaitUntilAsync(() => viewModel.Language == "en-US");
 
 			window.Close();
 			await WaitUntilAsync(() => !window.IsVisible);
 			fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text("zh-CN"));
-			fixture._runtime.InvalidateSnapshot("general");
+			fixture._runtime.InvalidateSnapshot();
 			await Task.Delay(150);
 			Assert.Equal("en-US", viewModel.Language);
 
@@ -32,7 +32,7 @@ public partial class BridgeCommandsTests
 			Assert.Equal("zh-CN", viewModel.Language);
 
 			fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text("en-US"));
-			fixture._runtime.InvalidateSnapshot("general");
+			fixture._runtime.InvalidateSnapshot();
 			await Task.Delay(150);
 			Assert.Equal("zh-CN", viewModel.Language);
 			Assert.True(await viewModel.FlushPendingSavesAsync());

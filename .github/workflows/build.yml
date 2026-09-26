@@ -14,25 +14,8 @@ permissions:
 # Windows 另做 FDD 发布、ZIP 内容与双启动分支冒烟。
 # Linux / macOS 做 FDD 发布并上传 publish 产物。
 jobs:
-  source_scan:
-    name: first-party TODO/FIXME 扫描
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: app/desktop
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 24
-
-      - name: 扫描一方源码标记
-        run: node scripts/check-first-party-todos.mjs
-
   desktop:
     name: ${{ matrix.name }}
-    needs: source_scan
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -93,6 +76,10 @@ jobs:
       - name: 安装前端依赖
         run: pnpm install --frozen-lockfile
 
+      - name: 一方 TODO/FIXME 门禁
+        if: matrix.name == 'windows'
+        run: pnpm check:todo
+
       # ESLint 与平台无关，只在 Windows 门禁 job 跑一次，避免三平台重复消耗。
       - name: 前端门 · 静态检查
         if: matrix.name == 'windows'
@@ -118,6 +105,14 @@ jobs:
           path: app/desktop/coverage/*
           if-no-files-found: error
           retention-days: 7
+
+      - name: 脚本门 · 发布结构 fixture
+        if: matrix.name == 'windows'
+        run: node scripts/validate-publish-structure.test.mjs
+
+      - name: 脚本门 · 自动更新清单 fixture
+        if: matrix.name == 'windows'
+        run: node scripts/generate-update-manifest.test.mjs
 
       # 不把 build/test/publish 合并成并行 matrix 或后台任务, 避免共享 obj 文件锁。
       - name: 后端门 · 构建

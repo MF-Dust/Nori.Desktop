@@ -183,8 +183,6 @@ jobs:
             echo "构建产物不应包含 source map。" >&2
             exit 1
           fi
-      - name: 前端门 · 单元测试
-        run: pnpm test
       - name: 前端门 · 覆盖率
         run: pnpm coverage
       - name: 发布结构 fixture 门

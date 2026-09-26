@@ -2,13 +2,20 @@ import fs from "node:fs"
 import path from "node:path"
 
 const ROOT = process.cwd()
+const SCAN_SCRIPT = path.join(ROOT, "scripts", "check-first-party-todos.mjs")
 const FIRST_PARTY_ROOTS = [
 	"Nori.Core",
 	"Nori.Core.Tests",
 	"Nori.Desktop",
 	"Nori.Desktop.Tests",
+	"Nori.PluginRuntime",
+	"Nori.PluginRuntime.Tests",
+	"Nori.PluginRuntime.TestPlugin",
+	"Nori.AppLauncher",
+	"Nori.AppLauncher.Tests",
 	"src",
 	"tests",
+	"scripts",
 ]
 const TEXT_EXTENSIONS = new Set([
 	".cs",
@@ -18,6 +25,9 @@ const TEXT_EXTENSIONS = new Set([
 	".ts",
 	".json",
 	".md",
+	".mjs",
+	".ps1",
+	".sh",
 ])
 const EXCLUDED_PARTS = new Set([
 	"bin",
@@ -30,6 +40,7 @@ const EXCLUDED_PARTS = new Set([
 const MARKER_PATTERN = /\b(?:TODO|FIXME)\b/gi
 
 const SHOULD_SKIP = (filePath) => {
+	if (path.resolve(filePath) === SCAN_SCRIPT) return true
 	const relative = path.relative(ROOT, filePath)
 	const parts = relative.split(path.sep)
 	if (parts.some((part) => EXCLUDED_PARTS.has(part))) return true

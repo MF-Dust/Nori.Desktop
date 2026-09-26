@@ -19,7 +19,6 @@ public partial class BridgeCommandsTests
 		await using AssetServer assets = await AssetServer.StartAsync(new AssetServerOptions
 		{
 			AppRoot = fixture._tempDir,
-			ResourcesRoot = fixture._tempDir,
 		});
 		WindowManager manager = new(assets, new NativeWindowLifetime().Shutdown, fixture._services.Paths);
 		NoriBridge bridge = new(fixture._services);

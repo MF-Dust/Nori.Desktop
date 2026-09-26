@@ -193,7 +193,6 @@ internal sealed class DesktopBootstrapper
 		assetServer = await AssetServer.StartAsync(new AssetServerOptions
 		{
 			AppRoot = AppRoot(),
-			ResourcesRoot = paths.ResourcesInstalledDirectory,
 			DevMode = devMode,
 			AdditionalRoutes = [pluginRuntime.AssetRoute],
 		});

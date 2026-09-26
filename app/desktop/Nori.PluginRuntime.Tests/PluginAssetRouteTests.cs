@@ -14,10 +14,8 @@ public sealed class PluginAssetRouteTests : IAsyncLifetime
 	public async Task InitializeAsync()
 	{
 		string appRoot = Path.Combine(_root, "app");
-		string resourcesRoot = Path.Combine(_root, "resources");
 		string pluginRoot = Path.Combine(_root, "plugins", _pluginId, "1.0.0");
 		Directory.CreateDirectory(appRoot);
-		Directory.CreateDirectory(resourcesRoot);
 		Directory.CreateDirectory(Path.Combine(pluginRoot, "web"));
 		Directory.CreateDirectory(Path.Combine(_root, "plugins", _pluginId));
 		await File.WriteAllTextAsync(Path.Combine(appRoot, "index.html"), "app");
@@ -32,7 +30,6 @@ public sealed class PluginAssetRouteTests : IAsyncLifetime
 		_server = await AssetServer.StartAsync(new AssetServerOptions
 		{
 			AppRoot = appRoot,
-			ResourcesRoot = resourcesRoot,
 			AdditionalRoutes = [_runtime.AssetRoute],
 		});
 	}

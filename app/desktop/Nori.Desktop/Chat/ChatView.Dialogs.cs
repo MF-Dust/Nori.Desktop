@@ -8,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using static Nori.Desktop.SnapshotJson;
 
 namespace Nori.Desktop.Chat;
 
@@ -172,7 +173,7 @@ public sealed partial class ChatView
 		try
 		{
 			JsonElement result = await ExecuteAsync("chat_clear", cancellationToken: _lifetime.Token);
-			string note = NativeChatJson.S(result, "note");
+			string note = S(result, "note");
 			if (note.Length > 0) note = T(note, "Local history was cleared. Safe mode did not contact the external service; a new remote conversation will be used after restart.");
 			_state.Clear(note); _loadedHistory = true; _confirmOpen = false; ScrollToLatest();
 		}

@@ -12,6 +12,7 @@ using Avalonia.Threading;
 using Nori.Core.Configuration;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Memory;
+using static Nori.Desktop.SnapshotJson;
 
 namespace Nori.Desktop.Windows;
 
@@ -393,19 +394,9 @@ public sealed partial class MemoryWindow : Window
 		Text = text, AcceptsReturn = multiline, TextWrapping = TextWrapping.Wrap,
 		MinHeight = multiline ? 78 : 32, HorizontalAlignment = HorizontalAlignment.Stretch,
 	};
-	private static JsonElement P(JsonElement value, string key) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(key, out JsonElement item) ? item : default;
-	private static string S(JsonElement value, string key, string fallback = "") => P(value, key).ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? fallback : P(value, key).ToString();
-	private static double N(JsonElement value, string key, double fallback = 0) => P(value, key).TryGetDoubleSafe(fallback);
-	private static IEnumerable<JsonElement> Items(JsonElement value) => value.ValueKind == JsonValueKind.Array ? value.EnumerateArray() : [];
-	private static bool B(JsonElement value, string key) => P(value, key).ValueKind == JsonValueKind.True;
 	private string Kind(string kind) => Kinds.Contains(kind) ? L("add.kind" + char.ToUpperInvariant(kind[0]) + kind[1..]) : kind;
 	private string Status(string status) => status is "active" or "dormant" or "expired" or "archived" ? L("list." + status) : status;
 	private string Source(string source) => source is "agent" or "manual" ? L("list.source" + char.ToUpperInvariant(source[0]) + source[1..]) : source;
 	private static string Date(string value) => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var date) ? date.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) : value;
 	private void SetBrush(Control control, AvaloniaProperty property, string key) => control.SetValue(property, Nori.Desktop.Settings.SettingsBrushes.Resolve(this, key));
-}
-
-internal static class MemoryJsonExtensions
-{
-	public static double TryGetDoubleSafe(this JsonElement value, double fallback) => value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out double number) ? number : fallback;
 }

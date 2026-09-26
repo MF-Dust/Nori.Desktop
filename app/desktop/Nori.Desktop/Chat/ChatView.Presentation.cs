@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using static Nori.Desktop.SnapshotJson;
 
 namespace Nori.Desktop.Chat;
 
@@ -148,17 +149,17 @@ public sealed partial class ChatView
 
 	private void RenderHeader()
 	{
-		string model = NativeChatJson.S(NativeChatJson.P(_snapshot, "chat"), "model", NativeChatJson.S(NativeChatJson.P(_snapshot, "ai"), "model"));
-		if (NativeChatJson.S(NativeChatJson.P(_snapshot, "chat"), "backend") == "luolicore") model = NativeChatJson.S(_state.Metrics, "model", "LuoLiCore");
+		string model = S(P(_snapshot, "chat"), "model", S(P(_snapshot, "ai"), "model"));
+		if (S(P(_snapshot, "chat"), "backend") == "luolicore") model = S(_state.Metrics, "model", "LuoLiCore");
 		_modelLabel.Text = model.Length > 0 ? model : T("未知模型", "Unknown model"); ToolTip.SetTip(_modelLabel, _modelLabel.Text);
-		double total = NativeChatJson.N(_state.Metrics, "totalTokens"), duration = NativeChatJson.N(_state.Metrics, "durationMs");
-		double speed = duration > 0 ? NativeChatJson.N(_state.Metrics, "completionTokens") / (duration / 1000) : 0;
+		double total = N(_state.Metrics, "totalTokens"), duration = N(_state.Metrics, "durationMs");
+		double speed = duration > 0 ? N(_state.Metrics, "completionTokens") / (duration / 1000) : 0;
 		_usageLabel.Text = T("上下文 ", "Context ") + total.ToString("N0") + T(" 词元", " tokens") + (duration > 0 ? $"  {speed:0.#} t/s" : "");
 		_usageLabel.Foreground = total > 0 ? ChatPalette.Accent : ChatPalette.Muted;
-		_cacheLabel.Text = T("缓存命中 ", "Cache hit ") + NativeChatJson.N(_state.Metrics, "cacheHitRate").ToString("0.#") + "%";
-		_cacheLabel.Foreground = NativeChatJson.N(_state.Metrics, "cachedTokens") > 0 ? ChatPalette.Accent : ChatPalette.Muted;
-		int toolCount = NativeChatJson.P(_snapshot, "tools") is { ValueKind: System.Text.Json.JsonValueKind.Array } tools ? tools.EnumerateArray().Count(item => NativeChatJson.B(item, "enabled")) : 0;
-		_toolsLabel.Text = $"{NativeChatJson.N(_snapshot, "enabledSkillsCount"):0}" + T(" 技能 / ", " skills / ") + toolCount + T(" 工具", " tools");
+		_cacheLabel.Text = T("缓存命中 ", "Cache hit ") + N(_state.Metrics, "cacheHitRate").ToString("0.#") + "%";
+		_cacheLabel.Foreground = N(_state.Metrics, "cachedTokens") > 0 ? ChatPalette.Accent : ChatPalette.Muted;
+		int toolCount = P(_snapshot, "tools") is { ValueKind: System.Text.Json.JsonValueKind.Array } tools ? tools.EnumerateArray().Count(item => B(item, "enabled")) : 0;
+		_toolsLabel.Text = $"{N(_snapshot, "enabledSkillsCount"):0}" + T(" 技能 / ", " skills / ") + toolCount + T(" 工具", " tools");
 		_empty.IsVisible = _state.Messages.Count == 0;
 		_prompts.IsVisible = _configured && !_safeMode;
 		_settings.IsVisible = !_configured || _safeMode;

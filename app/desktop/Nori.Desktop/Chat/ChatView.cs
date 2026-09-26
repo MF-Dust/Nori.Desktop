@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Threading;
+using static Nori.Desktop.SnapshotJson;
 
 namespace Nori.Desktop.Chat;
 
@@ -104,10 +105,10 @@ public sealed partial class ChatView : UserControl, IDisposable
 	internal void ApplySnapshot(JsonElement snapshot)
 	{
 		_snapshot = snapshot;
-		JsonElement chat = NativeChatJson.P(snapshot, "chat");
-		_configured = chat.ValueKind == JsonValueKind.Object ? NativeChatJson.B(chat, "configured") : NativeChatJson.B(NativeChatJson.P(snapshot, "ai"), "configured");
-		_safeMode = NativeChatJson.B(NativeChatJson.P(snapshot, "app"), "safeMode");
-		string language = NativeChatJson.S(NativeChatJson.P(snapshot, "general"), "language", _language);
+		JsonElement chat = P(snapshot, "chat");
+		_configured = chat.ValueKind == JsonValueKind.Object ? B(chat, "configured") : B(P(snapshot, "ai"), "configured");
+		_safeMode = B(P(snapshot, "app"), "safeMode");
+		string language = S(P(snapshot, "general"), "language", _language);
 		if (language != _language) { _language = language; ApplyLanguage(); LanguageChanged?.Invoke(); }
 		QueueRender(); FlushRender();
 	}
@@ -169,7 +170,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 		{
 			if (_disposed) return;
 			_state.ApplyEvent(safePayload);
-			if (NativeChatJson.S(safePayload, "type") != "chunk") FlushRender();
+			if (S(safePayload, "type") != "chunk") FlushRender();
 		});
 	}
 	private void OnHostStateChanged() => Dispatcher.UIThread.Post(QueueRefresh);
@@ -211,7 +212,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 		try
 		{
 			JsonElement result = await ExecuteAsync("chat_start", new { text }, _lifetime.Token);
-			_state.AttachSession(result.ValueKind == JsonValueKind.String ? result.GetString() ?? "" : NativeChatJson.S(result, "sessionId"));
+			_state.AttachSession(result.ValueKind == JsonValueKind.String ? result.GetString() ?? "" : S(result, "sessionId"));
 		}
 		catch (Exception exception) { _state.StartFailed(exception); }
 		finally { _startOperation = null; FlushRender(); }
@@ -286,7 +287,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 		try
 		{
 			JsonElement result = await ExecuteAsync("stt_stop", cancellationToken: _lifetime.Token);
-			string transcript = NativeChatJson.S(result, "text");
+			string transcript = S(result, "text");
 			if (transcript.Length > 0)
 			{
 				_state.Draft = string.IsNullOrWhiteSpace(_state.Draft) ? transcript : _state.Draft + " " + transcript;

@@ -13,6 +13,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Nori.Core.Configuration;
 using Nori.Desktop.Chat;
+using static Nori.Desktop.SnapshotJson;
 
 namespace Nori.Desktop.QuickChat;
 
@@ -307,7 +308,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		try
 		{
 			JsonElement result = await ExecuteAsync("chat_start", new { text }, _lifetime.Token).ConfigureAwait(true);
-			_state.AcceptSession(result.ValueKind == JsonValueKind.String ? result.GetString() ?? "" : NativeChatJson.S(result, "sessionId"), _now());
+			_state.AcceptSession(result.ValueKind == JsonValueKind.String ? result.GetString() ?? "" : S(result, "sessionId"), _now());
 		}
 		catch (Exception exception) { _state.StartFailed(exception, _now()); }
 		finally { _startOperation = null; Render(); }

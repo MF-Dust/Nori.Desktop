@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text;
 using System.Text.Json;
+using static Nori.Desktop.SnapshotJson;
 
 namespace Nori.Desktop.Chat;
 
@@ -68,11 +69,11 @@ internal sealed class NativeChatState
 
 	internal void ApplyEvent(JsonElement payload)
 	{
-		string type = NativeChatJson.S(payload, "type"), sessionId = NativeChatJson.S(payload, "sessionId");
+		string type = S(payload, "type"), sessionId = S(payload, "sessionId");
 		if (type == "state" && sessionId.Length == 0)
 		{
 			// 自动朗读的 idle/speaking 不属于正在生成的新一轮。
-			if (!Sending) { AgentState = NativeChatJson.S(payload, "state"); Changed?.Invoke(); }
+			if (!Sending) { AgentState = S(payload, "state"); Changed?.Invoke(); }
 			return;
 		}
 		if (Sending && SessionId is null && sessionId.Length > 0) { _earlyEvents.Add(payload.Clone()); return; }
@@ -80,29 +81,29 @@ internal sealed class NativeChatState
 		LastActivity = DateTimeOffset.UtcNow;
 		switch (type)
 		{
-			case "chunk": _response?.Append(NativeChatJson.S(payload, "chunk")); break;
-			case "state": AgentState = NativeChatJson.S(payload, "state"); break;
-			case "tool-executing": ExecutingTool = NativeChatJson.S(payload, "toolName"); break;
+			case "chunk": _response?.Append(S(payload, "chunk")); break;
+			case "state": AgentState = S(payload, "state"); break;
+			case "tool-executing": ExecutingTool = S(payload, "toolName"); break;
 			case "tool-executed":
 				ExecutingTool = "";
-				if (!NativeChatJson.B(payload, "success")) Error = NativeChatJson.S(payload, "error");
+				if (!B(payload, "success")) Error = S(payload, "error");
 				break;
 			case "usage": Metrics = payload.Clone(); break;
 			case "approval-request":
-				string id = NativeChatJson.S(payload, "requestId");
+				string id = S(payload, "requestId");
 				if (id.Length == 0 || _resolvedApprovals.Contains(id) || Approvals.Any(item => item.RequestId == id)) break;
 				Approvals.Add(new NativeChatApproval(payload.Clone())); AgentState = "waiting_approval"; break;
 			case "approval-extended":
-				ExtendApproval(NativeChatJson.S(payload, "requestId"), NativeChatJson.Deadline(payload)); break;
+				ExtendApproval(S(payload, "requestId"), NativeChatJson.Deadline(payload)); break;
 			case "approval-result":
-				ResolveApproval(NativeChatJson.S(payload, "requestId"));
-				if (NativeChatJson.S(payload, "reason") == "timeout") Status = "approval-timeout";
+				ResolveApproval(S(payload, "requestId"));
+				if (S(payload, "reason") == "timeout") Status = "approval-timeout";
 				break;
 			case "complete":
 				// 最终正文即使为空也必须替换流式预览，不能残留已被服务端删掉的文本。
-				_response?.Replace(NativeChatJson.S(NativeChatJson.P(payload, "message"), "text")); Finish(false); break;
+				_response?.Replace(S(P(payload, "message"), "text")); Finish(false); break;
 			case "cancelled": Status = "cancelled"; Finish(true); break;
-			case "error": Error = NativeChatJson.S(payload, "error"); Finish(true); break;
+			case "error": Error = S(payload, "error"); Finish(true); break;
 			default: break;
 		}
 		Changed?.Invoke();
@@ -157,13 +158,13 @@ internal sealed class NativeChatState
 	internal bool AcceptHistory((long Generation, long Request) ticket, JsonElement page, int limit)
 	{
 		if (ticket != (_generation, _historyRequest) || page.ValueKind != JsonValueKind.Array) return false;
-		JsonElement[] rows = page.EnumerateArray().OrderBy(row => NativeChatJson.Id(row, "id")).ToArray();
+		JsonElement[] rows = page.EnumerateArray().OrderBy(row => Id(row, "id")).ToArray();
 		var older = new List<NativeChatMessage>();
 		foreach (JsonElement row in rows)
 		{
-			long id = NativeChatJson.Id(row, "id"); string role = NativeChatJson.S(row, "role");
+			long id = Id(row, "id"); string role = S(row, "role");
 			if (id <= 0 || role is not ("user" or "assistant") || !_historyIds.Add(id)) continue;
-			older.Add(new NativeChatMessage(id.ToString(System.Globalization.CultureInfo.InvariantCulture), role, NativeChatJson.S(row, "content")));
+			older.Add(new NativeChatMessage(id.ToString(System.Globalization.CultureInfo.InvariantCulture), role, S(row, "content")));
 			OldestId = OldestId == 0 ? id : Math.Min(OldestId, id);
 		}
 		for (int index = 0; index < older.Count; index++) Messages.Insert(index, older[index]);
@@ -176,10 +177,10 @@ internal sealed class NativeChatState
 	{
 		if (Sending || page.ValueKind != JsonValueKind.Array) return;
 		if (page.GetArrayLength() == 0) { Clear(""); return; }
-		foreach (JsonElement row in page.EnumerateArray().OrderBy(row => NativeChatJson.Id(row, "id")))
+		foreach (JsonElement row in page.EnumerateArray().OrderBy(row => Id(row, "id")))
 		{
-			long id = NativeChatJson.Id(row, "id");
-			string role = NativeChatJson.S(row, "role"), text = NativeChatJson.S(row, "content");
+			long id = Id(row, "id");
+			string role = S(row, "role"), text = S(row, "content");
 			if (id <= 0 || role is not ("user" or "assistant") || !_historyIds.Add(id)) continue;
 			NativeChatMessage? local = Messages.FirstOrDefault(message =>
 				!long.TryParse(message.Key, out _) && message.Role == role && message.Content == text);
@@ -216,11 +217,11 @@ internal sealed class NativeChatMessage(string key, string role, string text)
 
 internal sealed class NativeChatApproval(JsonElement payload)
 {
-	internal string RequestId { get; } = NativeChatJson.S(payload, "requestId");
-	internal string ToolName { get; } = NativeChatJson.S(payload, "toolName");
-	internal string Description { get; } = NativeChatJson.S(payload, "description");
-	internal string PermissionLevel { get; } = NativeChatJson.S(payload, "permissionLevel");
-	internal JsonElement Arguments { get; } = NativeChatJson.P(payload, "arguments");
+	internal string RequestId { get; } = S(payload, "requestId");
+	internal string ToolName { get; } = S(payload, "toolName");
+	internal string Description { get; } = S(payload, "description");
+	internal string PermissionLevel { get; } = S(payload, "permissionLevel");
+	internal JsonElement Arguments { get; } = P(payload, "arguments");
 	// 缺失或损坏的服务端截止时间只允许拒绝，不用本地时间虚构授权窗口。
 	internal DateTimeOffset Deadline { get; set; } = NativeChatJson.Deadline(payload);
 	internal int RemainingSeconds(DateTimeOffset now) => (int)Math.Clamp(Math.Ceiling((Deadline - now).TotalSeconds), 0, int.MaxValue);
@@ -228,10 +229,5 @@ internal sealed class NativeChatApproval(JsonElement payload)
 
 internal static class NativeChatJson
 {
-	internal static JsonElement P(JsonElement value, string key) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(key, out JsonElement result) ? result : default;
-	internal static string S(JsonElement value, string key, string fallback = "") => P(value, key).ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ? fallback : P(value, key).ToString();
-	internal static bool B(JsonElement value, string key) => P(value, key).ValueKind == JsonValueKind.True;
-	internal static double N(JsonElement value, string key) => P(value, key).ValueKind == JsonValueKind.Number && P(value, key).TryGetDouble(out double number) ? number : 0;
-	internal static long Id(JsonElement value, string key) => P(value, key).ValueKind == JsonValueKind.Number && P(value, key).TryGetInt64(out long number) ? number : 0;
 	internal static DateTimeOffset Deadline(JsonElement value) => DateTimeOffset.TryParse(S(value, "deadlineUtc"), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out DateTimeOffset deadline) ? deadline : DateTimeOffset.MinValue;
 }

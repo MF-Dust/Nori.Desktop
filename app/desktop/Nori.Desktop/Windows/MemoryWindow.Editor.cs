@@ -6,6 +6,7 @@ using Avalonia.Layout;
 using Avalonia.Styling;
 using Avalonia.Markup.Xaml.Styling;
 using Nori.Core.Configuration;
+using static Nori.Desktop.SnapshotJson;
 
 namespace Nori.Desktop.Windows;
 

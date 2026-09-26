@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Nori.Desktop.Chat;
+using static Nori.Desktop.SnapshotJson;
 
 namespace Nori.Desktop.QuickChat;
 
@@ -61,12 +62,12 @@ internal sealed class QuickChatState
 
 	internal void ApplySnapshot(JsonElement snapshot)
 	{
-		JsonElement chat = NativeChatJson.P(snapshot, "chat");
+		JsonElement chat = P(snapshot, "chat");
 		Configured = chat.ValueKind == JsonValueKind.Object
-			? NativeChatJson.B(chat, "configured")
-			: NativeChatJson.B(NativeChatJson.P(snapshot, "ai"), "configured");
-		SafeMode = NativeChatJson.B(NativeChatJson.P(snapshot, "app"), "safeMode");
-		Language = NativeChatJson.S(NativeChatJson.P(snapshot, "general"), "language", Language);
+			? B(chat, "configured")
+			: B(P(snapshot, "ai"), "configured");
+		SafeMode = B(P(snapshot, "app"), "safeMode");
+		Language = S(P(snapshot, "general"), "language", Language);
 		Changed?.Invoke();
 	}
 

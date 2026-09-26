@@ -7,6 +7,7 @@ using Nori.Desktop.Bridge;
 using Nori.Desktop.Memory;
 using Nori.Desktop.Models;
 using Nori.Desktop.Settings;
+using static Nori.Desktop.SnapshotJson;
 
 namespace Nori.Desktop.Windows;
 

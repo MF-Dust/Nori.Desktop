@@ -25,7 +25,7 @@ describe("专用音频宿主引导", () => {
 	})
 
 	it("其它页面不装配音频协议", async () => {
-		STATE.label = "main"
+		STATE.label = "pet"
 		await import("../../src/bootstrap")
 		expect(STATE.install).not.toHaveBeenCalled()
 	})

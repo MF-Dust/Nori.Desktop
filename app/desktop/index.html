@@ -13,13 +13,7 @@
 			const LISTENERS = new Map()
 			let seq = 0
 
-			// 资源基址: 生产下页面在 /<secret>/app/ 里, 资源在同级的 /<secret>/nori-assets/;
-			// 开发下页面由 vite 提供, /nori-assets 交给 vite 代理.
-			const INDEX = location.pathname.indexOf("/app/")
-			const ASSET_BASE = INDEX >= 0 ? location.pathname.slice(0, INDEX) + "/nori-assets/" : "/nori-assets/"
-
 			window.__nori = {
-				assetBase: ASSET_BASE,
 				// 当前窗口 label, 由宿主通过 URL 查询参数注入
 				label: new URLSearchParams(location.search).get("window"),
 
@@ -34,14 +28,6 @@
 							reject(error)
 						}
 					})
-				},
-
-				emit(event, payload) {
-					try {
-						invokeCSharpAction(JSON.stringify({kind: "emit", event, payload: payload === undefined ? null : payload}))
-					} catch (error) {
-						console.error("[nori] emit 失败:", error)
-					}
 				},
 
 				listen(event, handler) {

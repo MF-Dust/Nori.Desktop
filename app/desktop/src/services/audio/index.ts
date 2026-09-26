@@ -401,7 +401,7 @@ const stopRecording = async (payload?: RecordStopPayload): Promise<void> => {
 
 let unlisteners: UnlistenFn[] = []
 
-/** 安装音频宿主 (仅 main 窗口调用)。 */
+/** 安装音频宿主 (仅 audio-host 窗口调用)。 */
 export const installAudioHost = async (): Promise<void> => {
 	if (audioHostInstalled) return
 	audioHostInstalled = true

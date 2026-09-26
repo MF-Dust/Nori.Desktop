@@ -1,7 +1,6 @@
 /**
  * 命令调用
  *
- * 对应原 @tauri-apps/api/core 的 invoke.
  * 宿主不存在时 (纯 vite 调试) 一律 reject, 上层沿用原来的 try/catch 兜底逻辑.
  */
 import {host} from "./index"

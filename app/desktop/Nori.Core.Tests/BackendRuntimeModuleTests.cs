@@ -12,6 +12,7 @@ using Nori.Core.Memory;
 using Nori.Core.Proactive;
 using Nori.Core.Skills;
 using Nori.Core.Tools;
+using Nori.Core.Tests.TestSupport;
 using Nori.Core.Voice;
 
 namespace Nori.Core.Tests;
@@ -454,7 +455,8 @@ public class BackendRuntimeModuleTests : IDisposable
 	[Fact]
 	public void 情绪设置持久化并自然衰减回中性()
 	{
-		EmotionManager emotion = new(_config);
+		using MutableTimeProvider time = new();
+		EmotionManager emotion = new(_config, time);
 		emotion.Initialize();
 		emotion.SetEmotion("happy", 0.9);
 		Assert.Equal("happy", emotion.CurrentType);
@@ -463,8 +465,7 @@ public class BackendRuntimeModuleTests : IDisposable
 		for (int i = 0; i < 10; i++) emotion.TickDecay();
 		Assert.Equal("neutral", emotion.CurrentType);
 
-		// 持久化防抖 400ms 后可读回
-		Thread.Sleep(600);
+		time.Advance(TimeSpan.FromMilliseconds(500));
 		EmotionManager reloaded = new(_config);
 		reloaded.Initialize();
 		Assert.Equal("neutral", reloaded.CurrentType);

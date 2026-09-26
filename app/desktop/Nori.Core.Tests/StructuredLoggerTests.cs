@@ -50,16 +50,17 @@ public sealed class StructuredLoggerTests : IDisposable
 		Directory.CreateDirectory(_root);
 		string blocked = Path.Combine(_root, "blocked");
 		File.WriteAllText(blocked, "阻止创建目录");
-		await using FileLogger logger = new(blocked, "info", new FileLoggerOptions { QueueCapacity = 2 });
+		await using FileLogger logger = new(blocked, "info", new FileLoggerOptions { QueueCapacity = 2, WriteRetryInterval = TimeSpan.FromMilliseconds(1) });
 		Stopwatch timer = Stopwatch.StartNew();
 		for (int index = 0; index < 50; index++) logger.Write(LogSource.Backend, "error", "固定故障事件");
 		Assert.True(timer.Elapsed < TimeSpan.FromSeconds(1));
+		await Task.Delay(200);
 		Assert.True(logger.GetStatus().DroppedCount > 0);
 		Assert.False(await logger.FlushAsync(TimeSpan.FromMilliseconds(50)));
 		Assert.Equal(50, logger.RecentLogs().Count);
+		Assert.True(logger.GetStatus().WriteFailureCount > 0);
 		File.Delete(blocked);
 		Assert.True(await logger.FlushAsync(TimeSpan.FromSeconds(5)));
-		Assert.True(logger.GetStatus().WriteFailureCount > 0);
 		Assert.Null(logger.GetStatus().LastError);
 	}
 

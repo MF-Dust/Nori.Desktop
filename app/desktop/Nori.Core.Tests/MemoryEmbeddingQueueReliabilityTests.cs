@@ -19,9 +19,11 @@ public sealed class MemoryEmbeddingQueueReliabilityTests
 		{
 			using NoriDatabase database = NoriDatabase.Open(path);
 			ConfigStore config = CreateEmbeddingConfig(database);
-			const int total = 200;
+			// 1 条处理中 + 128 队列容量 + 1 触发饱和
+			const int total = 130;
 			SaturatingEmbedding embedding = new(total);
 			await using MemoryService service = new(new MemoryStore(database), embedding, config);
+			TaskCompletionSource allCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
 			List<MemoryItem> items = [await service.AddAsync("队列饱和 0")];
 			await embedding.FirstBatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -30,7 +32,15 @@ public sealed class MemoryEmbeddingQueueReliabilityTests
 			Assert.True(service.EmbeddingQueueStatus.SaturatedCount > 0);
 			embedding.ReleaseFirstBatch();
 			await embedding.AllInputsProcessed.Task.WaitAsync(TimeSpan.FromSeconds(10));
-			await WaitUntilAsync(() => service.EmbeddingQueueStatus.CompletedCount >= total);
+			_ = Task.Run(async () =>
+			{
+				while (service.EmbeddingQueueStatus.CompletedCount < total)
+				{
+					await Task.Delay(10);
+				}
+				allCompleted.TrySetResult();
+			});
+			await allCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
 			Assert.Equal(total, service.GetOverview().Total);
 			Assert.All(items, item => Assert.NotNull(service.Get(item.Id)!.GetVector()));

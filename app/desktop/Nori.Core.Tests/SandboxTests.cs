@@ -142,7 +142,7 @@ public sealed class SandboxTests : IDisposable
 
 		SandboxResult result = await new UnsandboxedLauncher().RunAsync(
 			command,
-			new SandboxPolicy { WorkspaceRoot = _root, Timeout = TimeSpan.FromSeconds(2) },
+			new SandboxPolicy { WorkspaceRoot = _root, Timeout = TimeSpan.FromMilliseconds(200) },
 			CancellationToken.None);
 
 		Assert.True(result.TimedOut);
@@ -284,6 +284,7 @@ public sealed class SandboxTests : IDisposable
 	/// 「界外写入没有落盘」而不是退出码 —— 被拒绝的写在不同 shell 下退出码不一致。
 	/// </summary>
 	[Fact]
+	[Trait("Category", "AppContainer")]
 	public async Task AppContainer里能跑命令且写不出工作目录()
 	{
 		if (!OperatingSystem.IsWindows()) return;

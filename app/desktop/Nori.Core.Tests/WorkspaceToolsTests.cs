@@ -708,7 +708,7 @@ public sealed class WorkspaceToolsTests : IDisposable
 	[Fact]
 	public async Task 命中过多时丢掉尾部而不是整个结果被压扁()
 	{
-		for (int index = 0; index < 300; index++)
+		for (int index = 0; index < WorkspaceAccess.MaxEntries + 1; index++)
 		{
 			Write($"f{index}.txt", "目标目标目标目标目标目标目标目标目标目标目标目标目标目标目标目标");
 		}

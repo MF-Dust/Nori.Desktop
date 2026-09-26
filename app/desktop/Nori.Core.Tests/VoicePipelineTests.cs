@@ -19,7 +19,7 @@ public sealed class VoicePipelineTests
 		{
 			try
 			{
-				await Task.Delay(1000, pipelineCts.Token);
+				await Task.Delay(50, pipelineCts.Token);
 			}
 			catch (OperationCanceledException)
 			{
@@ -48,7 +48,7 @@ public sealed class VoicePipelineTests
 		{
 			try
 			{
-				await Task.Delay(1000, pipelineCts.Token);
+				await Task.Delay(50, pipelineCts.Token);
 			}
 			catch (OperationCanceledException)
 			{

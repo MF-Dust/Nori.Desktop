@@ -17,12 +17,12 @@ public sealed class NoriHttpClientsTests
 		try
 		{
 			using NoriHttpClients clients = NoriHttpClients.Create(
-				allowInsecureLocalTls: false, timeout: TimeSpan.FromSeconds(2));
+				allowInsecureLocalTls: false, timeout: TimeSpan.FromMilliseconds(500));
 			using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
 			Exception? exception = await Record.ExceptionAsync(async () =>
 			{
 				using HttpResponseMessage response = await clients.Public.GetAsync(
-					"http://nori-network-test.invalid/", timeout.Token);
+					"http://127.0.0.1:1/", timeout.Token);
 			});
 
 			Assert.NotNull(exception);
@@ -44,13 +44,13 @@ public sealed class NoriHttpClientsTests
 		{
 			using NoriHttpClients clients = NoriHttpClients.Create(
 				allowInsecureLocalTls: false,
-				timeout: TimeSpan.FromSeconds(2),
+				timeout: TimeSpan.FromMilliseconds(500),
 				publicUseSystemProxy: true);
 			using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
 			Exception? exception = await Record.ExceptionAsync(async () =>
 			{
 				using HttpResponseMessage response = await clients.Public.GetAsync(
-					"http://nori-network-test.invalid/", timeout.Token);
+					"http://127.0.0.1:1/", timeout.Token);
 			});
 
 			Assert.NotNull(exception);

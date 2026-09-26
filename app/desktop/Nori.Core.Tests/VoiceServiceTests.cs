@@ -1,6 +1,7 @@
 using System.Net;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
+using Nori.Core.Tests.TestSupport;
 using Nori.Core.Voice;
 
 namespace Nori.Core.Tests;
@@ -8,13 +9,13 @@ namespace Nori.Core.Tests;
 /// <summary>语音流水线、取消和可观察状态测试。</summary>
 public class VoiceServiceTests : IDisposable
 {
-	private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"nori-voice-service-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-voice-service");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
 
 	public VoiceServiceTests()
 	{
-		_database = NoriDatabase.Open(_dbPath);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("0.1.0");
 		_config.Set("tts_provider", new ConfigValue.Text("openai"));
@@ -85,7 +86,7 @@ public class VoiceServiceTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
-		try { File.Delete(_dbPath); } catch (IOException) { }
+		_tempDatabase.Dispose();
 	}
 
 	private sealed class AudioHandler : HttpMessageHandler

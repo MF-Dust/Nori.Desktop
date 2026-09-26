@@ -1,20 +1,21 @@
 using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Security;
+using Nori.Core.Tests.TestSupport;
 using System.Text.Json;
 
 namespace Nori.Core.Tests;
 
 public sealed class AiSettingsTests : IDisposable
 {
-	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-ai-settings-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-ai-settings");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
 	private readonly AiSettingsStore _settings;
 
 	public AiSettingsTests()
 	{
-		_database = NoriDatabase.Open(_path);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("test");
 		_settings = new AiSettingsStore(_config);
@@ -106,14 +107,6 @@ public sealed class AiSettingsTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
-		try
-		{
-			File.Delete(_path);
-			File.Delete($"{_path}-wal");
-			File.Delete($"{_path}-shm");
-		}
-		catch (IOException)
-		{
-		}
+		_tempDatabase.Dispose();
 	}
 }

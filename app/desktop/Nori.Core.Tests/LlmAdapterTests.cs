@@ -5,6 +5,7 @@ using Microsoft.Extensions.AI;
 using Nori.Core.Chat;
 using Nori.Core.Chat.Adapters;
 using Nori.Core.Network;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
@@ -43,18 +44,10 @@ public class LlmProviderTests
 /// </summary>
 public class LlmAdapterTests
 {
-	private sealed class MockHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handler) : HttpMessageHandler
-	{
-		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-		{
-			return Task.FromResult(handler(request));
-		}
-	}
-
 	[Fact]
 	public async Task GoogleGenAiAdapter拉取模型列表()
 	{
-		using MockHttpMessageHandler handler = new(req =>
+		using HttpTestHandler handler = new(req =>
 		{
 			Assert.Equal(HttpMethod.Get, req.Method);
 			Assert.Equal("https://generativelanguage.googleapis.com/v1beta/models", req.RequestUri?.ToString());
@@ -98,7 +91,7 @@ public class LlmAdapterTests
 	[Fact]
 	public async Task 模型目录响应有大小上限且错误正文不外泄()
 	{
-		using MockHttpMessageHandler oversized = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+		using HttpTestHandler oversized = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
 		{
 			Content = new StringContent(new string('x', checked((int)UrlAccessPolicy.MaxResponseBytes + 1)))
 		});
@@ -107,7 +100,7 @@ public class LlmAdapterTests
 		await Assert.ThrowsAsync<InvalidOperationException>(() =>
 			oversizedAdapter.FetchModelsAsync("https://example.test/v1", "key"));
 
-		using MockHttpMessageHandler error = new(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+		using HttpTestHandler error = new(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
 		{
 			Content = new StringContent("secret=do-not-show")
 		});

@@ -1,6 +1,7 @@
 using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Security;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
@@ -9,21 +10,13 @@ namespace Nori.Core.Tests;
 /// </summary>
 public class ConfigStoreTests : IDisposable
 {
-	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-test-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-test");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
 
-	/// <summary>测试用主密钥: 固定值, 不碰用户真实数据目录</summary>
-	private sealed class FixedKeyStore : ISecretKeyStore
-	{
-		private readonly byte[] _key = Enumerable.Range(0, SecretKeyStore.KeySize).Select(index => (byte)index).ToArray();
-		public byte[] LoadOrCreate() => _key;
-		public bool IsFileFallback => true;
-	}
-
 	public ConfigStoreTests()
 	{
-		_database = NoriDatabase.Open(_path);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_config = new ConfigStore(_database, new FixedKeyStore());
 		_config.InitDefaults("0.1.0");
 		_config.EnsureSchemaVersion();
@@ -32,13 +25,7 @@ public class ConfigStoreTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
-		try
-		{
-			File.Delete(_path);
-		}
-		catch (IOException)
-		{
-		}
+		_tempDatabase.Dispose();
 		GC.SuppressFinalize(this);
 	}
 
@@ -51,8 +38,8 @@ public class ConfigStoreTests : IDisposable
 		_config.EnsureSchemaVersion();
 		_config.EnsureSchemaVersion();
 
-		string directory = Path.GetDirectoryName(_path)!;
-		string pattern = $"{Path.GetFileName(_path)}.pre-migration-*.bak";
+		string directory = Path.GetDirectoryName(_tempDatabase.Path)!;
+		string pattern = $"{Path.GetFileName(_tempDatabase.Path)}.pre-migration-*.bak";
 		string[] backups = Directory.GetFiles(directory, pattern);
 		Assert.Single(backups);
 		Assert.True(new FileInfo(backups[0]).Length > 0);
@@ -319,7 +306,7 @@ public class ConfigStoreTests : IDisposable
 		Assert.Equal(plainKey, value.ToStorage());
 
 		// 底层 SQLite 里必须是新格式密文, 且不含明文 (三平台一致)
-		using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_path}");
+		using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_tempDatabase.Path}");
 		connection.Open();
 		using var cmd = connection.CreateCommand();
 		cmd.CommandText = "SELECT value FROM config WHERE key = 'llm_api_key'";

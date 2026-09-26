@@ -3,6 +3,7 @@ using System.Text;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Skills;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
@@ -12,13 +13,13 @@ public sealed class SkillServiceTests : IDisposable
 {
 	private static readonly SemaphoreSlim RemoteRequestGate = new(1, 1);
 
-	private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"nori-skills-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-skills");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
 
 	public SkillServiceTests()
 	{
-		_database = NoriDatabase.Open(_databasePath);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("1.0.3");
 	}
@@ -188,7 +189,7 @@ public sealed class SkillServiceTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
-		try { File.Delete(_databasePath); } catch (IOException) { }
+		_tempDatabase.Dispose();
 		GC.SuppressFinalize(this);
 	}
 

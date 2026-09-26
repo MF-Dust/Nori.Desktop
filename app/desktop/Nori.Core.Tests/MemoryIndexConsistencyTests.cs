@@ -1,17 +1,18 @@
 using Nori.Core.Data;
 using Nori.Core.Memory;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
 public sealed class MemoryIndexConsistencyTests : IDisposable
 {
-	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-memory-index-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-memory-index");
 	private readonly NoriDatabase _database;
 	private readonly MemoryStore _store;
 
 	public MemoryIndexConsistencyTests()
 	{
-		_database = NoriDatabase.Open(_path);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_store = new MemoryStore(_database);
 	}
 
@@ -39,7 +40,6 @@ public sealed class MemoryIndexConsistencyTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
-		try { File.Delete(_path); File.Delete($"{_path}-wal"); File.Delete($"{_path}-shm"); }
-		catch (IOException) { }
+		_tempDatabase.Dispose();
 	}
 }

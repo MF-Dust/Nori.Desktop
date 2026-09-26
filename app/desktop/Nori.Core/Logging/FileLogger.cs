@@ -23,6 +23,9 @@ public sealed record FileLoggerOptions
 	public long TotalBytes { get; init; } = 64 * 1024 * 1024;
 	public TimeSpan Retention { get; init; } = TimeSpan.FromDays(7);
 	public TimeSpan MaintenanceInterval { get; init; } = TimeSpan.FromMinutes(5);
+
+	/// <summary>磁盘写入失败后的重试间隔。</summary>
+	public TimeSpan WriteRetryInterval { get; init; } = TimeSpan.FromSeconds(1);
 }
 
 /// <summary>本次运行的日志健康状态，不包含路径和异常正文。</summary>
@@ -61,7 +64,8 @@ public sealed class FileLogger : IDisposable, IAsyncDisposable
 		_directory = PhysicalLogDirectory(Path.GetFullPath(directory ?? new AppStoragePaths(Environment.CurrentDirectory).LogsDirectory));
 		_options = options ?? new FileLoggerOptions();
 		if (_options.QueueCapacity < 1 || _options.MemoryCapacity < 1 || _options.FileBytes < 1024
-			|| _options.TotalBytes < _options.FileBytes || _options.Retention <= TimeSpan.Zero || _options.MaintenanceInterval <= TimeSpan.Zero)
+			|| _options.TotalBytes < _options.FileBytes || _options.Retention <= TimeSpan.Zero || _options.MaintenanceInterval <= TimeSpan.Zero
+			|| _options.WriteRetryInterval <= TimeSpan.Zero)
 			throw new ArgumentOutOfRangeException(nameof(options), "日志容量和保留时间无效");
 		_minimumLevel = ParseLevel(minimumLevel).Ordinal;
 		_queue = Channel.CreateBounded<Pending>(new BoundedChannelOptions(_options.QueueCapacity)
@@ -230,7 +234,7 @@ public sealed class FileLogger : IDisposable, IAsyncDisposable
 						{
 							RecordFailure(failure);
 							if (Volatile.Read(ref _disposed) != 0) break;
-							await Task.Delay(TimeSpan.FromSeconds(1), _stop.Token).ConfigureAwait(false);
+							await Task.Delay(_options.WriteRetryInterval, _stop.Token).ConfigureAwait(false);
 						}
 					}
 					if (!written) Interlocked.Increment(ref _dropped);

@@ -19,7 +19,8 @@ public sealed class MemoryEmbeddingQueueReliabilityTests
 		{
 			using NoriDatabase database = NoriDatabase.Open(path);
 			ConfigStore config = CreateEmbeddingConfig(database);
-			const int total = 200;
+			// 1 条处理中 + 128 队列容量 + 1 触发饱和
+			const int total = 130;
 			SaturatingEmbedding embedding = new(total);
 			await using MemoryService service = new(new MemoryStore(database), embedding, config);
 

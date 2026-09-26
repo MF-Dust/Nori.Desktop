@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
+using Nori.Core.Tests.TestSupport;
 using Nori.Core.Voice;
 using Nori.Core.Voice.Audio;
 
@@ -11,13 +12,13 @@ namespace Nori.Core.Tests;
 /// <summary>IndexTTS-2 (优云智算) OpenAI 兼容请求映射与错误处理测试。</summary>
 public class IndexTtsProviderTests : IDisposable
 {
-	private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"nori-indextts-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-indextts");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
 
 	public IndexTtsProviderTests()
 	{
-		_database = NoriDatabase.Open(_dbPath);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("0.1.0");
 		_config.Set("tts_provider", new ConfigValue.Text("indextts"));
@@ -27,7 +28,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task 默认配置正确映射请求到Modelverse音频端点()
 	{
-		CaptureHandler handler = new(_ => WavResponse());
+		HttpTestHandler handler = new(_ => WavResponse());
 		using HttpClient client = new(handler);
 		IndexTtsProvider provider = new(client, _config);
 
@@ -55,7 +56,7 @@ public class IndexTtsProviderTests : IDisposable
 	public async Task 完整端点不会重复追加音频路径()
 	{
 		_config.Set("tts_base_url", new ConfigValue.Text("https://api.modelverse.cn/v1/audio/speech"));
-		CaptureHandler handler = new(_ => WavResponse());
+		HttpTestHandler handler = new(_ => WavResponse());
 		using HttpClient client = new(handler);
 		IndexTtsProvider provider = new(client, _config);
 
@@ -68,7 +69,7 @@ public class IndexTtsProviderTests : IDisposable
 	public async Task 配置模型名优先于默认值()
 	{
 		_config.Set("tts_model", new ConfigValue.Text("IndexTeam/IndexTTS-2-chinese"));
-		CaptureHandler handler = new(_ => WavResponse());
+		HttpTestHandler handler = new(_ => WavResponse());
 		using HttpClient client = new(handler);
 		IndexTtsProvider provider = new(client, _config);
 
@@ -82,7 +83,7 @@ public class IndexTtsProviderTests : IDisposable
 	public async Task 未配置APIKey时本地报错()
 	{
 		_config.Set("tts_api_key", new ConfigValue.Text(""));
-		CaptureHandler handler = new(_ => WavResponse());
+		HttpTestHandler handler = new(_ => WavResponse());
 		using HttpClient client = new(handler);
 		IndexTtsProvider provider = new(client, _config);
 
@@ -95,7 +96,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task 未配置音色ID时本地报错()
 	{
-		CaptureHandler handler = new(_ => WavResponse());
+		HttpTestHandler handler = new(_ => WavResponse());
 		using HttpClient client = new(handler);
 		IndexTtsProvider provider = new(client, _config);
 
@@ -108,7 +109,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task HTTP错误携带错误消息()
 	{
-		CaptureHandler handler = new(_ => JsonResponse(HttpStatusCode.Unauthorized, """
+		HttpTestHandler handler = new(_ => JsonResponse(HttpStatusCode.Unauthorized, """
 			{"error": {"message": "invalid api key"}}
 			"""));
 		using HttpClient client = new(handler);
@@ -122,97 +123,79 @@ public class IndexTtsProviderTests : IDisposable
 		Assert.Contains("invalid api key", error.Message, StringComparison.Ordinal);
 	}
 
-	[Fact]
-	public async Task 扩展字段按配置透传()
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public async Task 扩展字段按配置决定是否进入请求体(bool configured)
 	{
-		_config.Set("indextts_emo_text", new ConfigValue.Text("开心又期待"));
-		_config.Set("indextts_sample_rate", new ConfigValue.Text("44100"));
-		_config.Set("indextts_gain", new ConfigValue.Text("1.5"));
-		CaptureHandler handler = new(_ => WavResponse());
+		if (configured)
+		{
+			_config.Set("indextts_emo_text", new ConfigValue.Text("开心又期待"));
+			_config.Set("indextts_sample_rate", new ConfigValue.Text("44100"));
+			_config.Set("indextts_gain", new ConfigValue.Text("1.5"));
+		}
+		HttpTestHandler handler = new(_ => WavResponse());
 		using HttpClient client = new(handler);
 		IndexTtsProvider provider = new(client, _config);
 
 		await provider.SynthesizeAsync("测试", new TtsSynthesizeOptions {Voice = "uspeech:abc"}, CancellationToken.None);
 
 		JsonNode body = JsonNode.Parse(handler.LastBody!)!;
-		Assert.Equal("开心又期待", body["emo_text"]?.GetValue<string>());
-		Assert.Equal(44100, body["sample_rate"]?.GetValue<int>());
-		Assert.Equal(1.5, body["gain"]?.GetValue<double>());
+		if (configured)
+		{
+			Assert.Equal("开心又期待", body["emo_text"]?.GetValue<string>());
+			Assert.Equal(44100, body["sample_rate"]?.GetValue<int>());
+			Assert.Equal(1.5, body["gain"]?.GetValue<double>());
+		}
+		else
+		{
+			Assert.Null(body["emo_text"]);
+			Assert.Null(body["sample_rate"]);
+			Assert.Null(body["gain"]);
+			Assert.Null(body["interval_silence"]);
+		}
 	}
 
-	[Fact]
-	public async Task 未配置的扩展字段不进入请求体()
+	[Theory]
+	[MemberData(nameof(EmotionMappingCases))]
+	public async Task 情绪参数按选项与配置映射(
+		string emotion,
+		string? configAlpha,
+		string? configEmoText,
+		int? expectedMethod,
+		string? expectedText,
+		double? expectedWeight)
 	{
-		CaptureHandler handler = new(_ => WavResponse());
+		if (configAlpha is not null) _config.Set("indextts_emo_alpha", new ConfigValue.Text(configAlpha));
+		if (configEmoText is not null) _config.Set("indextts_emo_text", new ConfigValue.Text(configEmoText));
+		HttpTestHandler handler = new(_ => WavResponse());
 		using HttpClient client = new(handler);
 		IndexTtsProvider provider = new(client, _config);
 
-		await provider.SynthesizeAsync("测试", new TtsSynthesizeOptions {Voice = "uspeech:abc"}, CancellationToken.None);
+		await provider.SynthesizeAsync("测试", new TtsSynthesizeOptions {Voice = "uspeech:abc", EmotionText = emotion}, CancellationToken.None);
 
 		JsonNode body = JsonNode.Parse(handler.LastBody!)!;
-		Assert.Null(body["emo_text"]);
-		Assert.Null(body["sample_rate"]);
-		Assert.Null(body["gain"]);
-		Assert.Null(body["interval_silence"]);
+		if (expectedMethod is null)
+		{
+			Assert.Null(body["emo_control_method"]);
+			Assert.Null(body["emo_text"]);
+			Assert.Null(body["emo_weight"]);
+		}
+		else
+		{
+			Assert.Equal(expectedMethod.Value, body["emo_control_method"]?.GetValue<int>());
+			Assert.Equal(expectedText, body["emo_text"]?.GetValue<string>());
+			Assert.Equal(expectedWeight!.Value, body["emo_weight"]?.GetValue<double>());
+		}
 	}
 
-	[Fact]
-	public async Task 英文情绪值经选项映射为情感参数()
+	public static TheoryData<string, string?, string?, int?, string?, double?> EmotionMappingCases => new()
 	{
-		CaptureHandler handler = new(_ => WavResponse());
-		using HttpClient client = new(handler);
-		IndexTtsProvider provider = new(client, _config);
-
-		await provider.SynthesizeAsync("测试", new TtsSynthesizeOptions {Voice = "uspeech:abc", EmotionText = "happy"}, CancellationToken.None);
-
-		JsonNode body = JsonNode.Parse(handler.LastBody!)!;
-		Assert.Equal(3, body["emo_control_method"]?.GetValue<int>());
-		Assert.Equal("happy", body["emo_text"]?.GetValue<string>());
-		Assert.Equal(0.3, body["emo_weight"]?.GetValue<double>());
-	}
-
-	[Fact]
-	public async Task Neutral情绪不注入情感参数()
-	{
-		CaptureHandler handler = new(_ => WavResponse());
-		using HttpClient client = new(handler);
-		IndexTtsProvider provider = new(client, _config);
-
-		await provider.SynthesizeAsync("测试", new TtsSynthesizeOptions {Voice = "uspeech:abc", EmotionText = "neutral"}, CancellationToken.None);
-
-		JsonNode body = JsonNode.Parse(handler.LastBody!)!;
-		Assert.Null(body["emo_control_method"]);
-		Assert.Null(body["emo_text"]);
-		Assert.Null(body["emo_weight"]);
-	}
-
-	[Fact]
-	public async Task 情绪强度可配置覆盖默认值()
-	{
-		_config.Set("indextts_emo_alpha", new ConfigValue.Text("0.5"));
-		CaptureHandler handler = new(_ => WavResponse());
-		using HttpClient client = new(handler);
-		IndexTtsProvider provider = new(client, _config);
-
-		await provider.SynthesizeAsync("测试", new TtsSynthesizeOptions {Voice = "uspeech:abc", EmotionText = "sad"}, CancellationToken.None);
-
-		JsonNode body = JsonNode.Parse(handler.LastBody!)!;
-		Assert.Equal(0.5, body["emo_weight"]?.GetValue<double>());
-	}
-
-	[Fact]
-	public async Task 选项情绪优先于配置情绪()
-	{
-		_config.Set("indextts_emo_text", new ConfigValue.Text("angry"));
-		CaptureHandler handler = new(_ => WavResponse());
-		using HttpClient client = new(handler);
-		IndexTtsProvider provider = new(client, _config);
-
-		await provider.SynthesizeAsync("测试", new TtsSynthesizeOptions {Voice = "uspeech:abc", EmotionText = "happy"}, CancellationToken.None);
-
-		JsonNode body = JsonNode.Parse(handler.LastBody!)!;
-		Assert.Equal("happy", body["emo_text"]?.GetValue<string>());
-	}
+		{ "happy", null, null, 3, "happy", 0.3 },
+		{ "neutral", null, null, null, null, null },
+		{ "sad", "0.5", null, 3, "sad", 0.5 },
+		{ "happy", null, "angry", 3, "happy", 0.3 },
+	};
 
 	[Fact]
 	public async Task 克隆音色上传并返回VoiceId()
@@ -223,7 +206,7 @@ public class IndexTtsProviderTests : IDisposable
 		File.WriteAllBytes(template, MinimalWav());
 		AppStoragePaths paths = new(tempDir);
 
-		CaptureHandler handler = new(_ => JsonResponse(HttpStatusCode.OK, """{"id": "uspeech:uploaded-123"}"""));
+		HttpTestHandler handler = new(_ => JsonResponse(HttpStatusCode.OK, """{"id": "uspeech:uploaded-123"}"""));
 		using HttpClient client = new(handler);
 		IndexTtsProvider provider = new(client, _config, paths);
 
@@ -246,7 +229,7 @@ public class IndexTtsProviderTests : IDisposable
 		AppStoragePaths paths = new(tempDir);
 		_config.Set("indextts_template_audio", new ConfigValue.Text(template));
 
-		CaptureHandler handler = new(request => RouteByRequest(request, "uspeech:from-template"));
+		HttpTestHandler handler = new(request => RouteByRequest(request, "uspeech:from-template"));
 		using HttpClient client = new(handler);
 		IndexTtsProvider provider = new(client, _config, paths);
 
@@ -268,7 +251,7 @@ public class IndexTtsProviderTests : IDisposable
 		_config.Set("indextts_template_audio", new ConfigValue.Text(template));
 
 		int uploadCount = 0;
-		CaptureHandler handler = new(request =>
+		HttpTestHandler handler = new(request =>
 		{
 			bool isUpload = request.RequestUri?.AbsolutePath.EndsWith("/audio/voice/upload", StringComparison.Ordinal) ?? false;
 			if (isUpload) uploadCount++;
@@ -295,7 +278,7 @@ public class IndexTtsProviderTests : IDisposable
 		_config.Set("indextts_template_audio", new ConfigValue.Text(template));
 
 		int uploadCount = 0;
-		CaptureHandler handler = new(request =>
+		HttpTestHandler handler = new(request =>
 		{
 			bool isUpload = request.RequestUri?.AbsolutePath.EndsWith("/audio/voice/upload", StringComparison.Ordinal) ?? false;
 			if (isUpload) uploadCount++;
@@ -341,7 +324,7 @@ public class IndexTtsProviderTests : IDisposable
 
 		var uploadedVoices = new List<string>();
 		int voiceCounter = 0;
-		CaptureHandler handler = new(request =>
+		HttpTestHandler handler = new(request =>
 		{
 			bool isUpload = request.RequestUri?.AbsolutePath.EndsWith("/audio/voice/upload", StringComparison.Ordinal) ?? false;
 			if (isUpload)
@@ -386,7 +369,7 @@ public class IndexTtsProviderTests : IDisposable
 		AppStoragePaths paths = new(tempDir);
 
 		int uploadCount = 0;
-		CaptureHandler handler = new(request =>
+		HttpTestHandler handler = new(request =>
 		{
 			bool isUpload = request.RequestUri?.AbsolutePath.EndsWith("/audio/voice/upload", StringComparison.Ordinal) ?? false;
 			if (isUpload) uploadCount++;
@@ -416,9 +399,106 @@ public class IndexTtsProviderTests : IDisposable
 	}
 
 	[Fact]
+	public async Task 完整Speech端点克隆时会归一化到VoiceUpload且使用配置模型()
+	{
+		string tempDir = CreateTempDir();
+		string template = Path.Combine(tempDir, "voice.wav");
+		File.WriteAllBytes(template, MinimalWav());
+		_config.Set("tts_base_url", new ConfigValue.Text("https://api.modelverse.cn/v1/audio/speech"));
+		_config.Set("tts_model", new ConfigValue.Text("custom/index-tts-model"));
+
+		HttpTestHandler handler = new(_ => JsonResponse(HttpStatusCode.OK, """{"id":"uspeech:clone"}"""));
+		using HttpClient client = new(handler);
+		IndexTtsProvider provider = new(client, _config, new AppStoragePaths(tempDir));
+
+		await provider.CloneVoiceAsync(template, CancellationToken.None);
+
+		Assert.Equal(new Uri("https://api.modelverse.cn/v1/audio/voice/upload"), handler.LastUri);
+		Assert.Contains("custom/index-tts-model", handler.LastBody!, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task 原模板删除后过期音色仍从本地存档续期()
+	{
+		string tempDir = CreateTempDir();
+		string template = Path.Combine(tempDir, "voice.wav");
+		File.WriteAllBytes(template, MinimalWav());
+		AppStoragePaths paths = new(tempDir);
+		_config.Set("indextts_template_audio", new ConfigValue.Text(template));
+
+		int uploadCount = 0;
+		HttpTestHandler handler = new(request =>
+		{
+			bool isUpload = request.RequestUri?.AbsolutePath.EndsWith("/audio/voice/upload", StringComparison.Ordinal) == true;
+			if (isUpload)
+			{
+				uploadCount++;
+				return JsonResponse(HttpStatusCode.OK, $$"""{"id":"uspeech:renew-{{uploadCount}}"}""");
+			}
+			return WavResponse();
+		});
+		using HttpClient client = new(handler);
+		IndexTtsProvider provider = new(client, _config, paths);
+
+		Assert.Equal("uspeech:renew-1", await provider.CloneVoiceAsync(template, CancellationToken.None));
+
+		IndexTtsProvider.IndexTtsVoiceCache cache = System.Text.Json.JsonSerializer.Deserialize<IndexTtsProvider.IndexTtsVoiceCache>(
+			File.ReadAllText(paths.IndexTtsCachePath))!;
+		IndexTtsProvider.IndexTtsVoiceEntry entry = Assert.Single(cache.Voices.Values);
+		string archivedFile = entry.ArchiveFile;
+		entry.UploadUnixSeconds = DateTimeOffset.UtcNow.AddDays(-8).ToUnixTimeSeconds();
+		File.WriteAllText(paths.IndexTtsCachePath, System.Text.Json.JsonSerializer.Serialize(cache));
+		File.Delete(template);
+
+		string renewed = await provider.ResolveTemplateVoiceAsync(CancellationToken.None);
+
+		Assert.Equal("uspeech:renew-2", renewed);
+		Assert.Equal(2, uploadCount);
+		Assert.True(File.Exists(archivedFile));
+	}
+
+	[Fact]
+	public async Task 情绪强度零值按零发送()
+	{
+		_config.Set("indextts_emo_alpha", new ConfigValue.Text("0"));
+		HttpTestHandler handler = new(_ => WavResponse());
+		using HttpClient client = new(handler);
+		IndexTtsProvider provider = new(client, _config);
+
+		await provider.SynthesizeAsync(
+			"测试",
+			new TtsSynthesizeOptions {Voice = "uspeech:test", EmotionText = "happy"},
+			CancellationToken.None);
+
+		JsonNode body = JsonNode.Parse(handler.LastBody!)!;
+		Assert.Equal(0d, body["emo_weight"]?.GetValue<double>());
+	}
+
+	[Fact]
+	public async Task 情绪强度变化会生成新的合成缓存身份()
+	{
+		int synthCount = 0;
+		HttpTestHandler handler = new(request =>
+		{
+			if (request.RequestUri?.AbsolutePath.EndsWith("/audio/speech", StringComparison.Ordinal) == true) synthCount++;
+			return WavResponse();
+		});
+		using HttpClient client = new(handler);
+		using VoiceService service = new(client, _config, null, () => null);
+		TtsSynthesizeOptions options = new() {Voice = "uspeech:test", EmotionText = "happy"};
+
+		_config.Set("indextts_emo_alpha", new ConfigValue.Text("0.2"));
+		await service.SynthesizeAsync("同一句话", options, CancellationToken.None);
+		_config.Set("indextts_emo_alpha", new ConfigValue.Text("0.8"));
+		await service.SynthesizeAsync("同一句话", options, CancellationToken.None);
+
+		Assert.Equal(2, synthCount);
+	}
+
+	[Fact]
 	public void VoiceService能够创建IndexTtsProvider()
 	{
-		using HttpClient client = new(new CaptureHandler(_ => WavResponse()));
+		using HttpClient client = new(new HttpTestHandler(_ => WavResponse()));
 		using VoiceService service = new(client, _config, null, () => null);
 		Assert.IsType<IndexTtsProvider>(service.CreateProvider("indextts"));
 	}
@@ -436,7 +516,8 @@ public class IndexTtsProviderTests : IDisposable
 
 		int voiceCounter = 0;
 		var synthVoices = new List<string>();
-		AsyncCaptureHandler handler = new(async request =>
+		HttpTestHandler? handler = null;
+		handler = new HttpTestHandler(async (request, _) =>
 		{
 			bool isUpload = request.RequestUri?.AbsolutePath.EndsWith("/audio/voice/upload", StringComparison.Ordinal) ?? false;
 			if (isUpload)
@@ -445,8 +526,7 @@ public class IndexTtsProviderTests : IDisposable
 				return JsonResponse(HttpStatusCode.OK, $$"""{"id": "uspeech:svc-{{voiceCounter}}"}""");
 			}
 			// 记录合成请求里实际使用的 voice
-			string bodyText = request.Content is null ? "" : await request.Content.ReadAsStringAsync(CancellationToken.None);
-			var body = System.Text.Json.Nodes.JsonNode.Parse(bodyText) as System.Text.Json.Nodes.JsonObject;
+			var body = JsonNode.Parse(handler!.LastBody!) as JsonObject;
 			synthVoices.Add(body?["voice"]?.GetValue<string>() ?? "");
 			return WavResponse();
 		});
@@ -471,7 +551,14 @@ public class IndexTtsProviderTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
-		try { File.Delete(_dbPath); } catch (IOException) { }
+		_tempDatabase.Dispose();
+	}
+
+	private static string CreateTempDir()
+	{
+		string path = Path.Combine(Path.GetTempPath(), $"nori-indextts-files-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(path);
+		return path;
 	}
 
 	private static HttpResponseMessage WavResponse() => new(HttpStatusCode.OK)
@@ -516,28 +603,5 @@ public class IndexTtsProviderTests : IDisposable
 	{
 		bool isUpload = request.RequestUri?.AbsolutePath.EndsWith("/audio/voice/upload", StringComparison.Ordinal) ?? false;
 		return isUpload ? JsonResponse(HttpStatusCode.OK, $$"""{"id": "{{voiceId}}"}""") : WavResponse();
-	}
-
-	private sealed class CaptureHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
-	{
-		public Uri? LastUri { get; private set; }
-		public string? AuthorizationScheme { get; private set; }
-		public string? AuthorizationParameter { get; private set; }
-		public string? LastBody { get; private set; }
-
-		protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-		{
-			LastUri = request.RequestUri;
-			AuthorizationScheme = request.Headers.Authorization?.Scheme;
-			AuthorizationParameter = request.Headers.Authorization?.Parameter;
-			LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-			return responder(request);
-		}
-	}
-
-	private sealed class AsyncCaptureHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> responder) : HttpMessageHandler
-	{
-		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-			responder(request);
 	}
 }

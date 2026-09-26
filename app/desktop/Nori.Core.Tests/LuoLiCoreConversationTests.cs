@@ -5,36 +5,21 @@ using Nori.Core.Chat;
 using Nori.Core.Chat.LuoLiCore;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
-using Nori.Core.Security;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
 /// <summary>把一轮对话交给 LuoLiCore 这条路。用假的 HTTP 处理器，不需要真实服务端。</summary>
 public sealed class LuoLiCoreConversationTests : IDisposable
 {
-	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-luoli-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-luoli");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
 	private readonly LuoLiCoreSettingsStore _settings;
 
-	/// <summary>
-	/// 测试用固定主密钥。
-	///
-	/// `luolicore_api_key` 以 `_api_key` 结尾，因此和 `llm_api_key` 一样按敏感字段加密存储；
-	/// 不给固定密钥的话，测试环境里密钥库不可用，写进去的密钥读回来是空，表现成「配置不完整」。
-	/// </summary>
-	private sealed class FixedKeyStore : ISecretKeyStore
-	{
-		private readonly byte[] _key = Enumerable.Range(0, SecretKeyStore.KeySize).Select(index => (byte)index).ToArray();
-
-		public byte[] LoadOrCreate() => _key;
-
-		public bool IsFileFallback => true;
-	}
-
 	public LuoLiCoreConversationTests()
 	{
-		_database = NoriDatabase.Open(_path);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_config = new ConfigStore(_database, new FixedKeyStore());
 		_config.InitDefaults("test");
 		_settings = new LuoLiCoreSettingsStore(_config);
@@ -43,7 +28,7 @@ public sealed class LuoLiCoreConversationTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
-		try { File.Delete(_path); } catch (IOException) { /* 临时库删不掉不影响断言 */ }
+		_tempDatabase.Dispose();
 	}
 
 	private void Configure(bool enabled = true, string sessionId = "")
@@ -56,7 +41,7 @@ public sealed class LuoLiCoreConversationTests : IDisposable
 
 	private LuoLiCoreConversation Build(Func<HttpRequestMessage, HttpResponseMessage> responder)
 	{
-		HttpClient http = new(new StubHandler(responder));
+		HttpClient http = new(new HttpTestHandler(responder));
 		return new LuoLiCoreConversation(_settings, options => new LuoLiCoreSdkClient(http, options));
 	}
 
@@ -395,9 +380,4 @@ public sealed class LuoLiCoreConversationTests : IDisposable
 		Assert.Equal("", _config.GetStringOr(LuoLiCoreSettingsStore.KeySessionOwner, ""));
 	}
 
-	private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
-	{
-		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-			Task.FromResult(responder(request));
-	}
 }

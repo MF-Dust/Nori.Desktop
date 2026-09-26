@@ -25,35 +25,22 @@ public sealed class PluginDiagnosticsTests
 		Assert.Null(exception.DiagnosticAssemblyName);
 	}
 
-	[Fact]
-	public void FileLoad失败只附带程序集文件名不带完整路径()
+	[Theory]
+	[InlineData(@"C:\plugins\demo\vendor\Locked.dll", "Locked.dll", "C:")]
+	[InlineData("/home/user/.nori/plugins/demo/vendor/Locked.so", "Locked.so", "/home")]
+	public void FileLoad失败只附带程序集文件名不带完整路径(string filePath, string expectedName, string forbiddenFragment)
 	{
 		PluginException exception = new(
 			PluginErrorCodes.ActivationFailed,
 			"插件激活失败: Demo",
-			new FileLoadException("Could not load file.", @"C:\plugins\demo\vendor\Locked.dll"));
+			new FileLoadException("Could not load file.", filePath));
 
 		PluginDiagnostics.Attach(exception, "demo", "0.1.0", "2.0", "Dev");
 
 		Assert.Equal("System.IO.FileLoadException", exception.DiagnosticExceptionType);
-		Assert.Equal("Locked.dll", exception.DiagnosticAssemblyName);
+		Assert.Equal(expectedName, exception.DiagnosticAssemblyName);
 		Assert.DoesNotContain("vendor", exception.DiagnosticAssemblyName, StringComparison.Ordinal);
-		Assert.DoesNotContain("C:", exception.DiagnosticAssemblyName, StringComparison.Ordinal);
-	}
-
-	[Fact]
-	public void FileLoad失败在POSIX路径下同样只取文件名()
-	{
-		PluginException exception = new(
-			PluginErrorCodes.ActivationFailed,
-			"插件激活失败: Demo",
-			new FileLoadException("Could not load file.", "/home/user/.nori/plugins/demo/vendor/Locked.so"));
-
-		PluginDiagnostics.Attach(exception, "demo", "0.1.0", "2.0", "Dev");
-
-		Assert.Equal("Locked.so", exception.DiagnosticAssemblyName);
-		Assert.DoesNotContain("vendor", exception.DiagnosticAssemblyName, StringComparison.Ordinal);
-		Assert.DoesNotContain("/home", exception.DiagnosticAssemblyName, StringComparison.Ordinal);
+		Assert.DoesNotContain(forbiddenFragment, exception.DiagnosticAssemblyName, StringComparison.Ordinal);
 	}
 
 	[Fact]

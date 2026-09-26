@@ -1,5 +1,6 @@
 using Nori.Core.Data;
 using Nori.Core.Memory;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
@@ -8,26 +9,20 @@ namespace Nori.Core.Tests;
 /// </summary>
 public class MemoryStoreTests : IDisposable
 {
-	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-memory-test-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-memory-test");
 	private readonly NoriDatabase _database;
 	private readonly MemoryStore _memory;
 
 	public MemoryStoreTests()
 	{
-		_database = NoriDatabase.Open(_path);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_memory = new MemoryStore(_database);
 	}
 
 	public void Dispose()
 	{
 		_database.Dispose();
-		try
-		{
-			File.Delete(_path);
-		}
-		catch (IOException)
-		{
-		}
+		_tempDatabase.Dispose();
 		GC.SuppressFinalize(this);
 	}
 
@@ -210,18 +205,10 @@ public class MemoryStoreTests : IDisposable
 
 public class EmbeddingAdapterTests
 {
-	private sealed class MockHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handler) : HttpMessageHandler
-	{
-		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-		{
-			return Task.FromResult(handler(request));
-		}
-	}
-
 	[Fact]
 	public async Task OpenAiEmbeddingAdapter_解析BgeM3向量响应()
 	{
-		using MockHttpMessageHandler handler = new(req =>
+		using HttpTestHandler handler = new(req =>
 		{
 			Assert.Equal(HttpMethod.Post, req.Method);
 			Assert.Equal("https://api.siliconflow.cn/v1/embeddings", req.RequestUri?.ToString());
@@ -261,12 +248,8 @@ public class EmbeddingAdapterTests
 	[Fact]
 	public async Task OpenAiEmbeddingAdapter_指定维数时请求体携带dimensions()
 	{
-		string? capturedBody = null;
-
-		using MockHttpMessageHandler handler = new(req =>
+		using HttpTestHandler handler = new(req =>
 		{
-			capturedBody = req.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
-
 			string json = """
 				{
 				  "data": [
@@ -291,8 +274,8 @@ public class EmbeddingAdapterTests
 			"测试输入文本",
 			dimensions: 512);
 
-		Assert.NotNull(capturedBody);
-		Assert.Contains("\"dimensions\":512", capturedBody);
+		Assert.NotNull(handler.LastBody);
+		Assert.Contains("\"dimensions\":512", handler.LastBody);
 
 		// 不指定维数时请求体不应携带该字段, 避免不支持的端点报错
 		await adapter.GetEmbeddingAsync(
@@ -301,7 +284,7 @@ public class EmbeddingAdapterTests
 			"text-embedding-3-small",
 			"测试输入文本");
 
-		Assert.NotNull(capturedBody);
-		Assert.DoesNotContain("dimensions", capturedBody);
+		Assert.NotNull(handler.LastBody);
+		Assert.DoesNotContain("dimensions", handler.LastBody);
 	}
 }

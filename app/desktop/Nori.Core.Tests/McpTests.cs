@@ -4,25 +4,19 @@ using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Mcp;
 using Nori.Core.Security;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
 public class McpTests : IDisposable
 {
-	private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"nori-mcp-test-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-mcp-test");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _configStore;
 
-	private sealed class FixedKeyStore : ISecretKeyStore
-	{
-		private readonly byte[] _key = Enumerable.Range(0, SecretKeyStore.KeySize).Select(index => (byte)index).ToArray();
-		public byte[] LoadOrCreate() => _key;
-		public bool IsFileFallback => true;
-	}
-
 	public McpTests()
 	{
-		_database = NoriDatabase.Open(_dbPath);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_configStore = new ConfigStore(_database, new FixedKeyStore());
 		_configStore.InitDefaults("0.1.0");
 	}
@@ -30,13 +24,7 @@ public class McpTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
-		try
-		{
-			File.Delete(_dbPath);
-		}
-		catch (IOException)
-		{
-		}
+		_tempDatabase.Dispose();
 		GC.SuppressFinalize(this);
 	}
 

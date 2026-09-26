@@ -52,7 +52,7 @@ Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12
 
 - **`nori.db`**: SQLite key/value under `<PackageRoot>/data/core/database/`; values stored as TEXT. `ConfigValue.FromStorage` re-infers type on read (`"1"`/`"true"` → Boolean, digit strings → Integer, `{…}`/`[…]` → Json, else String). `"1.25"` stays String. Native readers must tolerate inferred types; see `Nori.Core.Tests` / `ConfigValueTests`.
 - **Live2D display keys**: Per-model `<base>_<modelId>` (e.g. `l2d_scale_arg-nori`) with fallback to legacy global keys — see `PetRuntime` and `BridgeCommands.model_get_meta`.
-- **Local models only**: Under `<PackageRoot>/data/resources/installed/live2d/`; import via `import_local_resource`; `ZipExtractor` rejects absolute paths, UNC, drive letters, `..`, control chars, and symlink entries, re-canonicalizes parents, and strips a single common top-level directory. Do not loosen it.
+- **Local models only**: Under `<PackageRoot>/data/resources/installed/live2d/`; native `ModelsWindow` (`ModelsWindow.Library.cs`) imports via `ModelService` allowlist command `model_import_local` (local ZIP or folder); `ZipExtractor` rejects absolute paths, UNC, drive letters, `..`, control chars, and symlink entries, re-canonicalizes parents, and strips a single common top-level directory. Do not loosen it.
 
 ---
 

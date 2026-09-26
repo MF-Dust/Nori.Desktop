@@ -24,45 +24,46 @@ const readString = (source: string, start: number): {value: string; end: number}
 
 	const VERBATIM = source[start - 1] === "@"
 	let value = ""
-	for (let INDEX = start + 1; INDEX < source.length; INDEX++) {
-		const CHAR = source[INDEX]
+	for (let index = start + 1; index < source.length; index++) {
+		const CHAR = source[index]
 		if (VERBATIM) {
 			if (CHAR === '"') {
-				if (source[INDEX + 1] === '"') {
+				if (source[index + 1] === '"') {
 					value += '"'
-					INDEX++
+					index++
 					continue
 				}
-				return {value, end: INDEX + 1}
+				return {value, end: index + 1}
 			}
 			value += CHAR
 			continue
 		}
 		if (CHAR === "\\") {
-			const NEXT = source[INDEX + 1]
+			const NEXT = source[index + 1]
 			if (NEXT === undefined) throw new Error("C# 字符串转义不完整")
 			value += NEXT
-			INDEX++
+			index++
 			continue
 		}
-		if (CHAR === '"') return {value, end: INDEX + 1}
+		if (CHAR === '"') return {value, end: index + 1}
 		value += CHAR
 	}
 	throw new Error("C# 字符串没有闭合")
 }
 
-/** 取指定 switch 表达式的花括号内容，避免把文件中其它 switch 当成命令分支。 */
-const readSwitchBody = (source: string, marker: string): string => {
-	const MARKER_INDEX = source.indexOf(marker)
-	if (MARKER_INDEX < 0) throw new Error(`未找到 switch 标记: ${marker}`)
-	const OPEN_INDEX = source.indexOf("{", MARKER_INDEX + marker.length)
-	if (OPEN_INDEX < 0) throw new Error(`未找到 switch 花括号: ${marker}`)
+type CodeVisitResult = void | "stop" | number
 
-	let depth = 1
+/** 在 C# 源码的代码区逐字符遍历，自动跳过字符串、逐字字符串、原始字符串、字符与注释。 */
+const walkCsCode = (
+	source: string,
+	start: number,
+	end: number,
+	visitor: (index: number, char: string, next: string) => CodeVisitResult,
+): void => {
 	let mode: ScanMode = "code"
-	for (let INDEX = OPEN_INDEX + 1; INDEX < source.length; INDEX++) {
-		const CHAR = source[INDEX]
-		const NEXT = source[INDEX + 1]
+	for (let index = start; index < end; index++) {
+		const CHAR = source[index]
+		const NEXT = source[index + 1]
 		if (mode === "lineComment") {
 			if (CHAR === "\n") mode = "code"
 			continue
@@ -70,50 +71,58 @@ const readSwitchBody = (source: string, marker: string): string => {
 		if (mode === "blockComment") {
 			if (CHAR === "*" && NEXT === "/") {
 				mode = "code"
-				INDEX++
+				index++
 			}
 			continue
 		}
 		if (mode === "string") {
-			if (CHAR === "\\") INDEX++
+			if (CHAR === "\\") index++
 			else if (CHAR === '"') mode = "code"
 			continue
 		}
 		if (mode === "verbatim") {
 			if (CHAR === '"') {
-				if (NEXT === '"') INDEX++
+				if (NEXT === '"') index++
 				else mode = "code"
 			}
 			continue
 		}
 		if (mode === "raw") {
-			if (source.startsWith('"""', INDEX)) {
+			if (source.startsWith('"""', index)) {
 				mode = "code"
-				INDEX += 2
+				index += 2
 			}
 			continue
 		}
 		if (mode === "char") {
-			if (CHAR === "\\") INDEX++
+			if (CHAR === "\\") index++
 			else if (CHAR === "'") mode = "code"
 			continue
 		}
 
 		if (CHAR === "/" && NEXT === "/") {
 			mode = "lineComment"
-			INDEX++
+			index++
 			continue
 		}
 		if (CHAR === "/" && NEXT === "*") {
 			mode = "blockComment"
-			INDEX++
+			index++
 			continue
 		}
+		if (CHAR === '"' || CHAR === "'") {
+			const RESULT = visitor(index, CHAR, NEXT)
+			if (RESULT === "stop") return
+			if (typeof RESULT === "number") {
+				index = RESULT
+				continue
+			}
+		}
 		if (CHAR === '"') {
-			if (source.startsWith('"""', INDEX)) {
+			if (source.startsWith('"""', index)) {
 				mode = "raw"
-				INDEX += 2
-			} else if (source[INDEX - 1] === "@") {
+				index += 2
+			} else if (source[index - 1] === "@") {
 				mode = "verbatim"
 			} else {
 				mode = "string"
@@ -124,16 +133,37 @@ const readSwitchBody = (source: string, marker: string): string => {
 			mode = "char"
 			continue
 		}
-		if (CHAR === "{") {
-			depth++
-			continue
-		}
-		if (CHAR === "}") {
-			depth--
-			if (depth === 0) return source.slice(OPEN_INDEX + 1, INDEX)
-		}
+
+		const RESULT = visitor(index, CHAR, NEXT)
+		if (RESULT === "stop") return
+		if (typeof RESULT === "number") index = RESULT
 	}
-	throw new Error(`switch 没有闭合: ${marker}`)
+}
+
+/** 取指定 switch 表达式的花括号内容，避免把文件中其它 switch 当成命令分支。 */
+const readSwitchBody = (source: string, marker: string): string => {
+	const MARKER_INDEX = source.indexOf(marker)
+	if (MARKER_INDEX < 0) throw new Error(`未找到 switch 标记: ${marker}`)
+	const OPEN_INDEX = source.indexOf("{", MARKER_INDEX + marker.length)
+	if (OPEN_INDEX < 0) throw new Error(`未找到 switch 花括号: ${marker}`)
+
+	let depth = 1
+	let body = ""
+	walkCsCode(source, OPEN_INDEX + 1, source.length, (index, char) => {
+		if (char === "{") {
+			depth++
+			return
+		}
+		if (char === "}") {
+			depth--
+			if (depth === 0) {
+				body = source.slice(OPEN_INDEX + 1, index)
+				return "stop"
+			}
+		}
+	})
+	if (depth !== 0) throw new Error(`switch 没有闭合: ${marker}`)
+	return body
 }
 
 /** 只提取 switch 表达式当前层的字符串命令分支，嵌套 switch 会被深度过滤。 */
@@ -141,68 +171,23 @@ const extractSwitchCommands = (source: string, marker: string): string[] => {
 	const BODY = readSwitchBody(source, marker)
 	const COMMANDS: string[] = []
 	let depth = 0
-	let mode: ScanMode = "code"
-	for (let INDEX = 0; INDEX < BODY.length; INDEX++) {
-		const CHAR = BODY[INDEX]
-		const NEXT = BODY[INDEX + 1]
-		if (mode === "lineComment") {
-			if (CHAR === "\n") mode = "code"
-			continue
-		}
-		if (mode === "blockComment") {
-			if (CHAR === "*" && NEXT === "/") {
-				mode = "code"
-				INDEX++
-			}
-			continue
-		}
-		if (mode !== "code") {
-			if (mode === "string" || mode === "char") {
-				if (CHAR === "\\") INDEX++
-				else if ((mode === "string" && CHAR === '"') || (mode === "char" && CHAR === "'")) mode = "code"
-			} else if (mode === "verbatim") {
-				if (CHAR === '"') {
-					if (NEXT === '"') INDEX++
-					else mode = "code"
-				}
-			} else if (mode === "raw" && BODY.startsWith('"""', INDEX)) {
-				mode = "code"
-				INDEX += 2
-			}
-			continue
-		}
-
-		if (CHAR === "/" && NEXT === "/") {
-			mode = "lineComment"
-			INDEX++
-			continue
-		}
-		if (CHAR === "/" && NEXT === "*") {
-			mode = "blockComment"
-			INDEX++
-			continue
-		}
-		if (CHAR === "{") {
+	walkCsCode(BODY, 0, BODY.length, (index, char) => {
+		if (char === "{") {
 			depth++
-			continue
+			return
 		}
-		if (CHAR === "}") {
+		if (char === "}") {
 			depth--
-			continue
+			return
 		}
-		if (CHAR === '"') {
-			const TOKEN = readString(BODY, INDEX)
+		if (char === '"') {
+			const TOKEN = readString(BODY, index)
 			const AFTER = TOKEN.end + (BODY.slice(TOKEN.end).match(/^\s*/) ?? [""])[0].length
 			if (depth === 0 && /^[a-z][a-z0-9_]*$/.test(TOKEN.value) && BODY.slice(AFTER, AFTER + 2) === "=>")
 				COMMANDS.push(TOKEN.value)
-			INDEX = TOKEN.end - 1
-			continue
+			return TOKEN.end - 1
 		}
-		if (CHAR === "'") {
-			mode = "char"
-			continue
-		}
-	}
+	})
 	return COMMANDS
 }
 
@@ -240,70 +225,16 @@ const listCsFiles = (directory: string): string[] => {
 /** 提取 ExecuteAsync( 后紧跟的命令字符串，允许参数跨行。 */
 const extractExecuteAsyncCommands = (source: string): string[] => {
 	const COMMANDS: string[] = []
-	let mode: ScanMode = "code"
-	for (let INDEX = 0; INDEX < source.length; INDEX++) {
-		const CHAR = source[INDEX]
-		const NEXT = source[INDEX + 1]
-		if (mode === "lineComment") {
-			if (CHAR === "\n") mode = "code"
-			continue
-		}
-		if (mode === "blockComment") {
-			if (CHAR === "*" && NEXT === "/") {
-				mode = "code"
-				INDEX++
-			}
-			continue
-		}
-		if (mode !== "code") {
-			if (mode === "string" || mode === "char") {
-				if (CHAR === "\\") INDEX++
-				else if ((mode === "string" && CHAR === '"') || (mode === "char" && CHAR === "'")) mode = "code"
-			} else if (mode === "verbatim") {
-				if (CHAR === '"') {
-					if (NEXT === '"') INDEX++
-					else mode = "code"
-				}
-			} else if (mode === "raw" && source.startsWith('"""', INDEX)) {
-				mode = "code"
-				INDEX += 2
-			}
-			continue
-		}
-
-		if (CHAR === "/" && NEXT === "/") {
-			mode = "lineComment"
-			INDEX++
-			continue
-		}
-		if (CHAR === "/" && NEXT === "*") {
-			mode = "blockComment"
-			INDEX++
-			continue
-		}
-		if (source.startsWith("ExecuteAsync(", INDEX) && (INDEX === 0 || !/[A-Za-z0-9_]/.test(source[INDEX - 1]))) {
-			let CURSOR = INDEX + "ExecuteAsync(".length
-			while (CURSOR < source.length && /\s/.test(source[CURSOR])) CURSOR++
-			if (source[CURSOR] === '"') {
-				const TOKEN = readString(source, CURSOR)
+	walkCsCode(source, 0, source.length, (index, char) => {
+		if (source.startsWith("ExecuteAsync(", index) && (index === 0 || !/[A-Za-z0-9_]/.test(source[index - 1]))) {
+			let cursor = index + "ExecuteAsync(".length
+			while (cursor < source.length && /\s/.test(source[cursor])) cursor++
+			if (source[cursor] === '"') {
+				const TOKEN = readString(source, cursor)
 				if (/^[a-z][a-z0-9_]*$/.test(TOKEN.value)) COMMANDS.push(TOKEN.value)
-				INDEX = TOKEN.end - 1
-				continue
 			}
 		}
-		if (CHAR === '"') {
-			if (source.startsWith('"""', INDEX)) {
-				mode = "raw"
-				INDEX += 2
-			} else if (source[INDEX - 1] === "@") {
-				mode = "verbatim"
-			} else {
-				mode = "string"
-			}
-			continue
-		}
-		if (CHAR === "'") mode = "char"
-	}
+	})
 	return COMMANDS
 }
 

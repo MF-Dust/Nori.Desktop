@@ -166,8 +166,11 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 		return stored.Exists ? MaterializeValue(key, stored.Value!) : null;
 	}
 
-	/// <summary>按指定键批量读取配置; 不公开数据库中的其它配置。</summary>
-	internal IReadOnlyDictionary<string, ConfigValue> GetMany(IEnumerable<string> keys)
+	/// <summary>
+	/// 按指定键批量读取配置，缺失的键不出现在结果中。
+	/// 每个值都经过 <see cref="ConfigValue.FromStorage"/> 做类型推断；敏感键先解密，无法解密的键同样不出现。
+	/// </summary>
+	public IReadOnlyDictionary<string, ConfigValue> GetMany(IEnumerable<string> keys)
 	{
 		ArgumentNullException.ThrowIfNull(keys);
 		string[] requested = keys.Distinct(StringComparer.Ordinal).ToArray();

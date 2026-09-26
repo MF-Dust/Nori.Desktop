@@ -233,23 +233,23 @@ public sealed class MainWindow : Window
 	{
 		if (_savingSidebar) return;
 		_savingSidebar = true;
-			_collapsed = !_collapsed;
-			ApplyMainRefresh(_lastData);
-			try
-			{
-				bool value = _collapsed;
-				await Task.Run(() => _services.Config.Set("ui_sidebar_collapsed", new ConfigValue.Boolean(value)), _services.ShutdownToken);
-				_error.IsVisible = false;
-			}
-			catch (Exception failure)
-			{
-				if (!_closed && !_services.ShutdownToken.IsCancellationRequested) ShowError(failure);
-			}
-			finally
-			{
-				_savingSidebar = false;
-				if (!_closed && !_services.ShutdownToken.IsCancellationRequested) QueueRefresh();
-			}
+		_collapsed = !_collapsed;
+		ApplyMainRefresh(_lastData);
+		try
+		{
+			bool value = _collapsed;
+			await Task.Run(() => _services.Config.Set("ui_sidebar_collapsed", new ConfigValue.Boolean(value)), _services.ShutdownToken);
+			_error.IsVisible = false;
+		}
+		catch (Exception failure)
+		{
+			if (!_closed && !_services.ShutdownToken.IsCancellationRequested) ShowError(failure);
+		}
+		finally
+		{
+			_savingSidebar = false;
+			if (!_closed && !_services.ShutdownToken.IsCancellationRequested) QueueRefresh();
+		}
 	}
 
 	private void RunAction(Action action)

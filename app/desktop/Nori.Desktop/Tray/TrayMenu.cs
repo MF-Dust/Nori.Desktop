@@ -50,8 +50,7 @@ public static class TrayMenu
 	private static AppServices? _services;
 
 	/// <summary>界面语言是不是英文。</summary>
-	private static bool IsEnglish(AppServices services) =>
-		services.Config.GetStringOr("language", "zh-CN") == "en-US";
+	private static bool IsEnglish(AppServices services) => UiLanguage.IsEnglish(services.Config);
 
 	/// <summary>
 	/// 显示 / 隐藏那一条的标题。

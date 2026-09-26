@@ -1,3 +1,5 @@
+using Nori.Core.Configuration;
+
 namespace Nori.Desktop.Settings;
 
 /// <summary>原生设置窗口的语言状态。</summary>
@@ -14,7 +16,7 @@ public static class SettingsLocalization
 	/// <summary>设置当前界面语言。</summary>
 	public static void SetLanguage(string? language)
 	{
-		int next = string.Equals(language, "en-US", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+		int next = UiLanguage.IsEnglish(language) ? 1 : 0;
 		if (Interlocked.Exchange(ref _english, next) == next) return;
 		Changed?.Invoke();
 	}

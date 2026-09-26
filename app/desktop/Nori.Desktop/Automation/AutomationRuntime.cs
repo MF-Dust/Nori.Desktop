@@ -532,18 +532,12 @@ public sealed class AutomationRuntime : IAsyncDisposable
 		NotifyChanged();
 	}
 
-	/// <summary>兼容现有桌面视觉调用的审批登记入口。</summary>
-	public void SetDesktopApproval(AutomationApprovalRequest request) => SetAutomationApproval(request);
-
 	/// <summary>清除高风险动作审批。</summary>
 	public void ClearAutomationApproval(Guid requestId)
 	{
 		lock (_desktopStateGate) _desktopApprovals.Remove(requestId);
 		NotifyChanged();
 	}
-
-	/// <summary>兼容现有桌面视觉调用的审批清理入口。</summary>
-	public void ClearDesktopApproval(Guid requestId) => ClearAutomationApproval(requestId);
 
 	/// <summary>记录由宿主现有审批协调器产生的固定结论。</summary>
 	public void RecordApprovalOutcome(AutomationApprovalRequest request, AutomationApprovalOutcome outcome)

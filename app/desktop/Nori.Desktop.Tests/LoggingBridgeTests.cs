@@ -61,19 +61,33 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public async Task 前端日志不接受正文与伪造来源且支持旧调用()
+	public async Task 前端日志不接受正文与伪造来源()
 	{
 		BridgeCommands commands = CreateCommands();
-		foreach (string eventId in new[] { "window.error", "user_private_content", "" })
-			await commands.InvokeAsync(new FakeBridgeSource("first-run"), "write_log", Args(new
-			{ level = "error", message = "聊天正文和请求正文", eventId, source = "backend", category = "私人内容", windowLabel = "settings", errorType = "私密错误名" }));
-		LogEntry[] logs = _services.Logger.RecentLogs().TakeLast(3).ToArray();
-		Assert.All(logs, entry => { Assert.Equal(LogSource.Frontend, entry.Source); Assert.Equal("first-run", entry.WindowLabel); Assert.Equal("Frontend", entry.Category); });
-		string json = JsonSerializer.Serialize(logs);
-		Assert.DoesNotContain("正文", json); Assert.DoesNotContain("私人", json); Assert.DoesNotContain("user_private", json);
-		Assert.Equal("client.event", logs[^1].EventId);
-		await commands.InvokeAsync(new FakeBridgeSource("main"), "write_log", Args(new { level = "warn", message = "旧参数正文" }));
-		Assert.Equal("client.event", _services.Logger.RecentLogs().Last().EventId);
+		foreach (string eventId in new[] { "window.error", "user_private_content", "", "diagnostics.test" })
+		{
+			int before = _services.Logger.RecentLogs().Count;
+			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource("first-run"), "write_log", Args(new
+			{ level = "error", message = "聊天正文和请求正文", eventId, source = "backend", category = "私人内容", windowLabel = "settings", errorType = "私密错误名" })));
+			Assert.Equal(before, _services.Logger.RecentLogs().Count);
+		}
+		int legacyBefore = _services.Logger.RecentLogs().Count;
+		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
+			new FakeBridgeSource("main"), "write_log", Args(new { level = "warn", message = "旧参数正文" })));
+		Assert.Equal(legacyBefore, _services.Logger.RecentLogs().Count);
+
+		await commands.InvokeAsync(new FakeBridgeSource("first-run"), "write_log", Args(new
+		{ level = "error", message = "聊天正文和请求正文", eventId = "audio.error", source = "backend", category = "私人内容", windowLabel = "settings", errorType = "TypeError" }));
+		LogEntry entry = _services.Logger.RecentLogs().Last();
+		Assert.Equal(LogSource.Frontend, entry.Source);
+		Assert.Equal("first-run", entry.WindowLabel);
+		Assert.Equal("Frontend", entry.Category);
+		Assert.Equal("audio.error", entry.EventId);
+		Assert.Equal("前端音频操作失败：TypeError", entry.Message);
+		string json = JsonSerializer.Serialize(entry);
+		Assert.DoesNotContain("正文", json);
+		Assert.DoesNotContain("私人", json);
+		Assert.DoesNotContain("user_private", json);
 	}
 
 	[Fact]
@@ -101,7 +115,7 @@ public partial class BridgeCommandsTests
 			await viewModel.WriteTestLogAsync();
 			LogEntry entry = fixture._services.Logger.RecentLogs().Last();
 			Assert.Equal(LogSource.Backend, entry.Source); Assert.Equal("settings", entry.WindowLabel);
-			viewModel.LevelFilter = "warn"; viewModel.SourceFilter = "backend"; viewModel.CategoryFilter = "NativeSettings"; viewModel.SearchText = "diagnostics.test";
+			viewModel.LevelFilter = "warn"; viewModel.SourceFilter = "backend"; viewModel.CategoryFilter = "NativeSettings"; viewModel.SearchText = "logging.suppressed";
 			Assert.Single(viewModel.FilteredLogs);
 			viewModel.SourceFilter = "frontend"; Assert.Empty(viewModel.FilteredLogs);
 			await viewModel.SetMinimumLevelAsync("debug"); Assert.Equal("debug", fixture._services.Logger.GetStatus().MinimumLevel);

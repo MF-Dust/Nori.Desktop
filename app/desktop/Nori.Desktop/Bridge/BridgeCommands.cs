@@ -28,15 +28,10 @@ using Nori.Desktop.Windows;
 namespace Nori.Desktop.Bridge;
 
 /// <summary>
-/// 桥接命令
+/// 桥接命令。
 ///
-/// 后端化后的命令面原则:
-/// - WebView 不再持有通用 get_config/set_config 与业务编排入口;
-///   前端只消费带版本号的 UI 快照 (ui_get_snapshot) 与领域命令。
-/// - 状态变更与敏感能力按来源窗口授权 (RequireLabel): 业务命令只允许 main,
-///   首次运行命令严格限制 first-run。
-/// - 秘密只写不读: 快照仅返回 hasApiKey 等脱敏标记, 明文绝不回传。
-/// 命令名保持 snake_case 且动词开头, 与前端 invoke("xxx") 完全一致。
+/// 生产入口是音频宿主的固定回报，以及设置、对话、模型、记忆四个原生窗口的白名单。
+/// 秘密只写不读。命令名保持 snake_case 且动词开头。
 /// </summary>
 public sealed class BridgeCommands
 {
@@ -73,56 +68,14 @@ public sealed class BridgeCommands
 		MemoryService.ValidateSourceCommand(source, cmd);
 		ModelService.ValidateSourceCommand(source, cmd);
 		NativeChatService.ValidateSourceCommand(source, cmd);
-		if (_services.SafeMode && cmd.StartsWith("automation_desktop_", StringComparison.Ordinal))
-		{
-			throw new InvalidOperationException("安全模式已禁用桌面视觉自动化，请退出安全模式后重试");
-		}
 		if (_services.SafeMode && IsNetworkCommand(cmd, args))
 		{
 			throw new InvalidOperationException("安全模式已禁用联网和外部服务，请退出安全模式后重试");
 		}
 		object? result = cmd switch
 		{
-		// ---- 应用 ----
-		// invoke("exit_app")
-		"exit_app" => await OnUi(() => RequireWebViewSource(source, () =>
-		{
-			_services.Windows.Shutdown();
-			return (object?)null;
-		})),
-
 		// invoke("write_log", {level: "info", message: "xxx"})
 		"write_log" => WriteFrontendLog(source, args),
-
-		// invoke("get_system_language")
-		"get_system_language" => ConfigStore.SystemLanguage(),
-
-		/// <summary>
-		/// 获取当前页面所属窗口实际生效的系统背景模糊。
-		/// 前端调用：invoke("window_get_backdrop_state")
-		/// </summary>
-		"window_get_backdrop_state" => await OnUi(() => (object)new { active = source is NoriWindow window && window.BackdropActive }),
-
-		/// invoke("complete_first_run", {modelId: "arg-nori", telemetryEnabled: true})
-		"complete_first_run" => await CompleteFirstRunAsync(source, args, cancellationToken),
-
-
-		// invoke("init_ready") → {initStartPending}
-		// init 页面订阅完 nori:init-start 后调用; 返回 true 说明广播已先于订阅发生, 页面应直接跑初始化
-		"init_ready" => RequireLabel(source, WindowLabels.Init, () => new
-		{
-			initStartPending = Runtime.ConsumeInitStartPending(),
-		}),
-
-		/// invoke("init_enter_main")
-		"init_enter_main" => await InitEnterMainAsync(source, cancellationToken),
-
-		// invoke("get_init_config")
-		"get_init_config" => _services.Config.GetInitConfig(),
-
-		// ---- UI 状态快照 ----
-		// invoke("ui_get_snapshot")
-		"ui_get_snapshot" => Runtime.BuildSnapshot(source),
 
 		// invoke("settings_ack_voice_notice")
 		"settings_ack_voice_notice" => RequireMain(source, () =>
@@ -136,7 +89,7 @@ public sealed class BridgeCommands
 		/// invoke("automation_get_snapshot")
 		"automation_get_snapshot" => source is INativeSettingsSource
 			? await RequireVisibleMainAsync(source, () => Automation.GetSnapshot())
-			: RequireWebViewSource(source, () => Automation.GetSnapshot()),
+			: throw new InvalidOperationException("自动化快照仅允许原生设置窗口读取"),
 
 		/// 更新自动化设置: invoke("automation_update_settings", {enabled?, allowPointer?, allowKeyboard?, allowScroll?, browserEnabled?})
 		"automation_update_settings" => await RequireVisibleMainAsync(source, () => UpdateAutomationSettings(args)),
@@ -168,15 +121,6 @@ public sealed class BridgeCommands
 		/// invoke("automation_probe_vision")
 		"automation_probe_vision" => await RequireVisibleMainAsync(source, () => Automation.ProbeVision()),
 
-		/// invoke("automation_desktop_list_windows") → [{token, width, height, isForeground}]
-		"automation_desktop_list_windows" => await AutomationDesktopListWindowsAsync(source),
-
-		/// invoke("automation_desktop_start", {task: "...", targetToken: "..."})
-		"automation_desktop_start" => await AutomationDesktopStartAsync(source, args),
-
-		/// invoke("automation_desktop_stop", {taskId: "..."})
-		"automation_desktop_stop" => await AutomationDesktopStopAsync(source, args),
-
 		/// invoke("automation_stop_task", {taskId: "..."})
 		"automation_stop_task" => await RequireVisibleMainAsync(source, () => Automation.StopTask(ParseGuid(args, "taskId"))),
 
@@ -186,8 +130,6 @@ public sealed class BridgeCommands
 		// ---- AI 设置 ----
 		// invoke("llm_fetch_models", {provider, baseUrl, apiKey})
 		"llm_fetch_models" => await FetchModelsWithSourceCheckAsync(source, args),
-		// invoke("llm_test_connection", {provider?, baseUrl?, apiKey?, model?})
-		"llm_test_connection" => await TestLlmConnectionAsync(source, args, cancellationToken),
 		/// invoke("ai_test_connection", {target: "chat" | "embedding", provider?, baseUrl?, apiKey?, model?, dimensions?})
 		"ai_test_connection" => await TestAiConnectionAsync(source, args, cancellationToken),
 
@@ -198,17 +140,6 @@ public sealed class BridgeCommands
 				UpdateUnifiedAiSettings(args);
 				Runtime.InvalidateSnapshot("ai", "embedding");
 			})),
-
-		// invoke("settings_update_ai", {provider?, baseUrl?, apiKey?, model?, persona?, embedding?: {...}})
-		"settings_update_ai" => RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () =>
-			Run(() =>
-			{
-				UpdateUnifiedAiSettings(args);
-				Runtime.InvalidateSnapshot("ai", "embedding");
-			})),
-
-		// invoke("settings_test_ai", {provider?, baseUrl?, apiKey?, model?, embedding?: {...}})
-		"settings_test_ai" => await TestAiConnectionsAsync(source, args, cancellationToken),
 
 		// invoke("settings_update_voice", {...})
 		"settings_update_voice" => RequireMain(source, () =>
@@ -396,19 +327,6 @@ public sealed class BridgeCommands
 				Runtime.InvalidateSnapshot("proactive");
 			})),
 
-		// invoke("settings_update_embedding", {model?, baseUrl?, apiKey?, dimensions?}) 兼容命令
-		"settings_update_embedding" => RequireMain(source, () =>
-			Run(() =>
-			{
-				UpdateEmbeddingSettings(args);
-				Runtime.InvalidateSnapshot("embedding");
-			})),
-
-		// invoke("settings_test_embedding", {baseUrl?, apiKey?, model?, dimensions?}) 兼容命令
-		"settings_test_embedding" => await TestEmbeddingConnectionAsync(source, args, cancellationToken),
-		// invoke("embedding_test_connection", {baseUrl?, apiKey?, model?, dimensions?})
-		"embedding_test_connection" => await TestEmbeddingConnectionAsync(source, args, cancellationToken),
-
 		// invoke("tools_set_enabled", {name: "getTime", enabled: false})
 		"tools_set_enabled" => RequireMain(source, () =>
 			Run(() =>
@@ -423,17 +341,13 @@ public sealed class BridgeCommands
 				Runtime.InvalidateSnapshot("tools");
 			})),
 
-		// ---- 模型 ----
-		// invoke("model_list")
-		"model_list" => RequireMain(source, () => Runtime.BuildSnapshot(source)),
-
 		// invoke("model_select", {modelId: "nori"})
 		"model_select" => RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () =>
 			Run(() =>
 			{
 				string modelId = RequireKnownInstalledModel(Str(args, "modelId"));
 				UpdateConfigDirect(ConfigStore.KeySelectedModel, modelId);
-				ApplyPetConfigAndBroadcast(ConfigStore.KeySelectedModel, modelId);
+				ApplyPetConfig(ConfigStore.KeySelectedModel, modelId);
 				_services.Logger.Write(LogSource.Backend, "info", $"启用模型: {modelId}");
 				Runtime.InvalidateSnapshot("models");
 			})),
@@ -520,9 +434,6 @@ public sealed class BridgeCommands
 		/// invoke("memory_add", {content, type?, importance?, tags?})
 		"memory_add" => await MemoryAddAsync(source, args),
 
-		/// invoke("memory_list", {limit?})
-		"memory_list" => await MemoryListAsync(source, args),
-
 		/// invoke("memory_update", {id, content, importance?, tags?})
 		"memory_update" => await MemoryUpdateAsync(source, args),
 
@@ -537,9 +448,6 @@ public sealed class BridgeCommands
 
 		/// invoke("memory_restore", {id})
 		"memory_restore" => RequireMain(source, () => RestoreMemory(args)),
-
-		/// invoke("memory_overview")
-		"memory_overview" => RequireMain(source, MemoryOverview),
 
 		/// invoke("memory_list_page", {query?, kind?, status?, limit?, offset?})
 		"memory_list_page" => RequireMain(source, () => MemoryListPage(args)),
@@ -562,14 +470,8 @@ public sealed class BridgeCommands
 		/// invoke("memory_recall_debug", {query})
 		"memory_recall_debug" => await MemoryRecallDebugAsync(source, args, cancellationToken),
 
-		/// invoke("memory_get_settings")
-		"memory_get_settings" => RequireMain(source, () => Runtime.Memory.Settings),
-
 		/// invoke("memory_update_settings", {settings: {...}})
 		"memory_update_settings" => RequireMain(source, () => UpdateMemorySettings(args)),
-
-		/// invoke("memory_search_hybrid", {keyword, limit?})
-		"memory_search_hybrid" => await MemorySearchHybridAsync(source, args, cancellationToken),
 
 		/// invoke("memory_reembed_all")
 		"memory_reembed_all" => await MemoryReembedAllAsync(source, cancellationToken),
@@ -625,9 +527,6 @@ public sealed class BridgeCommands
 		// invoke("skills_export", {id}) → JSON 字符串
 		"skills_export" => RequireMain(source, () => Runtime.Skills.Export(Str(args, "id"))),
 
-		// invoke("skills_import_json", {json})
-		"skills_import_json" => await SkillsImportJsonAsync(source, args),
-
 		// ---- MCP ----
 		// invoke("mcp_get_servers")
 		"mcp_get_servers" => await McpGetServersAsync(source),
@@ -639,8 +538,6 @@ public sealed class BridgeCommands
 		"mcp_connect_server" => await McpConnectServerAsync(source, args),
 		// invoke("mcp_disconnect_server", {id})
 		"mcp_disconnect_server" => await McpDisconnectServerAsync(source, args),
-		// invoke("mcp_list_tools")
-		"mcp_list_tools" => await McpListToolsAsync(source),
 		// invoke("mcp_test_server", {id, name, transport, command, args, env, url, enabled, autoConnect})
 		"mcp_test_server" => await McpTestServerAsync(source, args),
 		// invoke("mcp_call_tool", {serverId, toolName, arguments, sessionId?})
@@ -675,22 +572,6 @@ public sealed class BridgeCommands
 			object result = UpdateReminder(args);
 			Runtime.InvalidateSnapshot("proactive");
 			return result;
-		}),
-
-		/// invoke("reminder_snooze", {id, delayMinutes? or snoozedUntil?}) 推迟提醒
-		"reminder_snooze" => RequireMain(source, () =>
-		{
-			object result = SnoozeReminder(args);
-			Runtime.InvalidateSnapshot("proactive");
-			return result;
-		}),
-
-		/// invoke("reminder_complete", {id}) 完成提醒
-		"reminder_complete" => RequireMain(source, () =>
-		{
-			bool completed = Runtime.Proactive.CompleteReminder(Str(args, "id"));
-			if (completed) Runtime.InvalidateSnapshot("proactive");
-			return completed;
 		}),
 
 		/// invoke("reminder_list") 查询提醒状态
@@ -732,66 +613,6 @@ public sealed class BridgeCommands
 		// invoke("audio_upload_failed", {token, error?})
 		"audio_upload_failed" => RequireLabel(source, WindowLabels.AudioHost, () =>
 			Run(() => Runtime.ReportRecordingFailed(Str(args, "token"), OptionalStr(args, "error")))),
-
-		// ---- 伴侣 Live2D 原生控制 ----
-		// invoke("pet_play_motion", {name?})
-		"pet_play_motion" => RequireMain(source, () =>
-			Run(() => PlayPetMotion(args))),
-
-		// invoke("pet_reload_model", {modelId?})
-		"pet_reload_model" => RequireMain(source, () =>
-			Run(() => _services.PetRuntime.RequestModelLoad(OptionalStr(args, "modelId") ?? _services.PetRuntime.CurrentModelId))),
-
-		// invoke("pet_get_state")
-		"pet_get_state" => RequireMain(source, GetPetState),
-
-		// ---- 窗口 ----
-		/// <summary>
-		/// 打开原生设置窗口；仅可由可见主 WebView 调用。
-		/// 前端调用：invoke("window_open_settings", {page?: "ai"})
-		/// </summary>
-		"window_open_settings" => await OpenSettingsAsync(source, args),
-		/// <summary>
-		/// 打开原生记忆窗口。
-		/// 前端调用：invoke("window_open_memory", {page?: "overview"})
-		/// </summary>
-		"window_open_memory" => await OpenMemoryAsync(source, args),
-		/// <summary>
-		/// 打开原生模型窗口；仅可由可见主 WebView 调用。
-		/// 前端调用：invoke("window_open_models")
-		/// </summary>
-		"window_open_models" => await OpenModelsAsync(source),
-		/// <summary>
-		/// 打开原生对话窗口；仅允许可见主 WebView 调用。
-		/// 前端调用：invoke("window_open_chat")
-		/// </summary>
-		"window_open_chat" => await OpenChatAsync(source),
-		"window_show" => await OnUi(() => ShowWindow(source, args)),
-		"window_hide" => await OnUi(() => HideWindow(source, args)),
-		"window_close" => await OnUi(() => CloseWindow(source, args)),
-		/// <summary>
-		/// 最小化发起调用的宿主窗口。
-		/// 前端调用：invoke("window_minimize")
-		/// </summary>
-		"window_minimize" => await OnUi(() => Run(() => MinimizeSourceWindow(source))),
-		/// <summary>
-		/// 在当前宿主窗口的最大化和普通状态间切换，返回实际窗口状态。
-		/// 前端调用：invoke("window_toggle_maximized")
-		/// </summary>
-		"window_toggle_maximized" => await OnUi(() => ToggleSourceWindowMaximized(source)),
-		/// <summary>
-		/// 读取当前宿主窗口的最大化状态与缩放能力。
-		/// 前端调用：invoke("window_get_state")
-		/// </summary>
-		"window_get_state" => await OnUi(() => SourceWindowState(RequireSourceWindow(source))),
-		"window_focus" => await OnUi(() => Run(() => Target(source, args).Activate())),
-		"window_is_visible" => await OnUi(() => (object?)Target(source, args).IsVisible),
-		"window_scale_factor" => await OnUi(() => (object?)Target(source, args).RenderScaling),
-		"window_outer_position" => await OnUi(() => OuterPosition(Target(source, args))),
-		"window_outer_size" => await OnUi(() => OuterSize(Target(source, args))),
-		"window_set_size" => await OnUi(() => SetSize(Target(source, args), args)),
-		"window_set_position" => await OnUi(() => SetPosition(Target(source, args), args)),
-		"window_start_drag" => await OnUi(() => Run(() => PlatformServices.Current.StartWindowDrag(NativeHandleOf(Target(source, args))))),
 
 		// ---- 插件替代 ----
 		// invoke("open_url", {url: "https://..."})
@@ -841,13 +662,8 @@ public sealed class BridgeCommands
 	{
 		if (command is
 			"llm_fetch_models"
-			or "llm_test_connection"
-			or "embedding_test_connection"
-			or "settings_test_ai"
-			or "settings_test_embedding"
 			or "ai_test_connection"
 			or "chat_start"
-			or "memory_search_hybrid"
 			or "memory_reembed_all"
 			or "memory_recall_debug"
 			or "memory_knowledge_reindex"
@@ -870,99 +686,6 @@ public sealed class BridgeCommands
 			&& OptionalBool(args, "enabled") == true
 			&& OptionalBool(args, "autoConnect") == true) return true;
 		return false;
-	}
-
-	private static object? RequireWebViewSource(IBridgeSource source, Func<object?> factory)
-	{
-		if (source.Label is not (WindowLabels.FirstRun or WindowLabels.Init or WindowLabels.Main))
-			throw new InvalidOperationException("命令来源窗口无权执行此操作");
-		return factory();
-	}
-
-	private static NoriWindow RequireSourceWindow(IBridgeSource source)
-	{
-		if (source is not NoriWindow window
-			|| source.Label is not (WindowLabels.Main or WindowLabels.FirstRun or WindowLabels.Init))
-			throw new InvalidOperationException("此操作仅允许当前宿主窗口调用");
-		return window;
-	}
-
-	private static void MinimizeSourceWindow(IBridgeSource source)
-	{
-		NoriWindow window = RequireSourceWindow(source);
-		if (!window.CanMinimize) throw new InvalidOperationException("当前窗口不支持最小化");
-		window.WindowState = WindowState.Minimized;
-	}
-
-	private static object ToggleSourceWindowMaximized(IBridgeSource source)
-	{
-		NoriWindow window = RequireSourceWindow(source);
-		if (!window.CanResize) throw new InvalidOperationException("当前窗口不支持调整大小");
-		window.WindowState = window.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-		return SourceWindowState(window);
-	}
-
-	private static object SourceWindowState(NoriWindow window) => new
-	{
-		maximized = window.WindowState == WindowState.Maximized,
-		canResize = window.CanResize,
-	};
-
-	private async Task<object?> OpenSettingsAsync(IBridgeSource source, JsonElement args)
-	{
-		// 设置窗口只能由可见的 main WebView 打开；原生窗口上下文不能递归
-		// 调用此入口，避免把来源标记误用成主窗口身份。
-		if (source is INativeSettingsSource or INativeMemorySource or INativeModelSource || source.Label != WindowLabels.Main)
-			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
-		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
-		if (!visible) throw new InvalidOperationException("main 窗口不可见");
-		return await OnUi(() =>
-		{
-			string? page = OptionalStr(args, "page");
-			_services.Windows.ShowSettings(string.IsNullOrWhiteSpace(page) ? null : page);
-			return (object?)null;
-		}).ConfigureAwait(false);
-	}
-
-	private async Task<object?> OpenMemoryAsync(IBridgeSource source, JsonElement args)
-	{
-		if (source is INativeSettingsSource or INativeMemorySource or INativeModelSource || source.Label != WindowLabels.Main)
-			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
-		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
-		if (!visible) throw new InvalidOperationException("main 窗口不可见");
-		string? page = OptionalStr(args, "page");
-		if (!string.IsNullOrWhiteSpace(page) && !WindowManager.IsMemoryPage(page))
-			throw new InvalidOperationException("未知的记忆页面");
-		return await OnUi(() =>
-		{
-			_services.Windows.ShowMemory(string.IsNullOrWhiteSpace(page) ? null : page);
-			return (object?)null;
-		}).ConfigureAwait(false);
-	}
-
-	private async Task<object?> OpenModelsAsync(IBridgeSource source)
-	{
-		if (source is INativeSettingsSource or INativeMemorySource or INativeModelSource || source.Label != WindowLabels.Main)
-			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
-		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
-		if (!visible) throw new InvalidOperationException("main 窗口不可见");
-		return await OnUi(() =>
-		{
-			_services.Windows.ShowModels();
-			return (object?)null;
-		}).ConfigureAwait(false);
-	}
-
-	private async Task<object?> OpenChatAsync(IBridgeSource source)
-	{
-		if (source is INativeSettingsSource or INativeMemorySource or INativeModelSource or INativeChatSource || source.Label != WindowLabels.Main)
-			throw new InvalidOperationException($"命令只能由 {WindowLabels.Main} 窗口调用");
-		return await OnUi(() =>
-		{
-			if (!source.IsVisible) throw new InvalidOperationException("main 窗口不可见");
-			_services.Windows.ShowChat();
-			return (object?)null;
-		}).ConfigureAwait(false);
 	}
 
 	/// <summary>main 或已通过领域白名单校验的原生窗口校验 (无返回值场景)</summary>
@@ -1007,28 +730,6 @@ public sealed class BridgeCommands
 			desktopEnabled,
 			desktopEnabled,
 			OptionalBool(args, "browserEnabled"));
-	}
-
-	private async Task<object?> AutomationDesktopListWindowsAsync(IBridgeSource source)
-	{
-		await RequireVisibleMainVoidAsync(source);
-		return Automation.ListDesktopWindows();
-	}
-
-	private async Task<object?> AutomationDesktopStartAsync(IBridgeSource source, JsonElement args)
-	{
-		await RequireVisibleMainVoidAsync(source);
-		string task = OptionalStr(args, "task") ?? OptionalStr(args, "goal")
-			?? throw new InvalidOperationException("缺少参数: task");
-		string targetToken = OptionalStr(args, "targetToken") ?? OptionalStr(args, "windowToken")
-			?? throw new InvalidOperationException("缺少参数: targetToken");
-		return Automation.StartDesktopTask(task, targetToken);
-	}
-
-	private async Task<object?> AutomationDesktopStopAsync(IBridgeSource source, JsonElement args)
-	{
-		await RequireVisibleMainVoidAsync(source);
-		return Automation.StopDesktopTask(ParseGuid(args, "taskId"));
 	}
 
 	private async Task<object?> AutomationBrowserStartAsync(IBridgeSource source, CancellationToken cancellationToken)
@@ -1194,12 +895,6 @@ public sealed class BridgeCommands
 		return item;
 	}
 
-	private Task<object?> MemoryListAsync(IBridgeSource source, JsonElement args)
-	{
-		RequireMainVoid(source);
-		return Task.FromResult<object?>(_services.Memory.GetAll(ClampLimit(OptionalInt(args, "limit"), 50)));
-	}
-
 	private async Task<object?> MemoryUpdateAsync(IBridgeSource source, JsonElement args)
 	{
 		RequireMainVoid(source);
@@ -1215,12 +910,6 @@ public sealed class BridgeCommands
 			OptionalDouble(args, "confidence"));
 		if (updated) Runtime.InvalidateSnapshot("memory");
 		return updated;
-	}
-
-	private async Task<object?> MemorySearchHybridAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
-	{
-		RequireMainVoid(source);
-		return await Runtime.Memory.SearchHybridAsync(Str(args, "keyword"), ClampLimit(OptionalInt(args, "limit"), 20), cancellationToken);
 	}
 
 	private async Task<object?> MemoryReembedAllAsync(IBridgeSource source, CancellationToken cancellationToken)
@@ -1347,25 +1036,6 @@ public sealed class BridgeCommands
 		return null;
 	}
 
-	private object MemoryOverview()
-	{
-		(int active, int atoms, int archived, int total) = Runtime.Memory.GetOverview();
-		MemorySettings settings = Runtime.Memory.Settings;
-		return new
-		{
-			activeMemories = active,
-			atomCount = atoms,
-			archivedMemories = archived,
-			totalMemories = total,
-			knowledgeChunks = Runtime.Knowledge.Status.Total,
-			reflectionCursor = Runtime.Memory.Store.GetEngineState("reflection_cursor"),
-			lastReflection = Runtime.Memory.Store.GetEngineState("last_reflection_at"),
-			lastMaintenance = Runtime.Memory.Store.GetEngineState("last_maintenance_at"),
-			index = Runtime.Knowledge.Status,
-			settings,
-		};
-	}
-
 	private object MemoryListPage(JsonElement args)
 	{
 		string query = OptionalStr(args, "query")?.Trim() ?? "";
@@ -1487,14 +1157,6 @@ public sealed class BridgeCommands
 		return saved;
 	}
 
-	private async Task<object?> SkillsImportJsonAsync(IBridgeSource source, JsonElement args)
-	{
-		RequireMainVoid(source);
-		Runtime.Skills.ImportJson(Str(args, "json"));
-		Runtime.InvalidateSnapshot("skills");
-		return null;
-	}
-
 	private async Task<object?> McpGetServersAsync(IBridgeSource source)
 	{
 		RequireMainVoid(source);
@@ -1507,12 +1169,6 @@ public sealed class BridgeCommands
 			Runtime.InvalidateSnapshot("mcp", "tools");
 		}
 		return servers;
-	}
-
-	private async Task<object?> McpListToolsAsync(IBridgeSource source)
-	{
-		RequireMainVoid(source);
-		return await _services.Mcp.GetAllToolsAsync();
 	}
 
 	private async Task<object?> ToolsExecuteManualAsync(IBridgeSource source, JsonElement args)
@@ -1549,20 +1205,6 @@ public sealed class BridgeCommands
 		if (time.DelayMinutes is { } delay)
 			return Runtime.Proactive.UpdateReminderAfter(id, content, delay, repeatDaily, timezone, recurrenceJson);
 		return Runtime.Proactive.UpdateReminder(id, content, time.TriggerAt, repeatDaily, timezone, recurrenceJson);
-	}
-
-	private object SnoozeReminder(JsonElement args)
-	{
-		string id = Str(args, "id");
-		bool hasDelay = HasProperty(args, "delayMinutes");
-		string? absoluteName = HasProperty(args, "snoozedUntil") ? "snoozedUntil"
-			: HasProperty(args, "snoozeUntil") ? "snoozeUntil" : null;
-		if (hasDelay && absoluteName is not null) throw new InvalidOperationException("只能指定一种推迟时间");
-		if (hasDelay)
-			return Runtime.Proactive.SnoozeReminder(id, ReadReminderNumber(args, "delayMinutes")!.Value);
-		if (absoluteName is not null)
-			return Runtime.Proactive.SnoozeReminderUntil(id, ReadReminderTimestamp(args, absoluteName));
-		throw new InvalidOperationException("缺少参数: delayMinutes");
 	}
 
 	private static (long? TriggerAt, double? DelayMinutes) ReadReminderUpdateTime(JsonElement args)
@@ -1726,7 +1368,6 @@ public sealed class BridgeCommands
 		config.ValidateBindings(meta.Motions, meta.Expressions);
 		_services.Config.Set(PetInteractionConfig.StorageKey(modelId), new ConfigValue.Json(config.ToJsonNode()));
 		_services.PetRuntime?.SetInteractionConfig(modelId, config);
-		PostBroadcast("nori:config-changed", new {key = PetInteractionConfig.StorageKey(modelId), value = config});
 		Runtime.InvalidateSnapshot("models");
 		await Task.CompletedTask;
 		return null;
@@ -1811,7 +1452,7 @@ public sealed class BridgeCommands
 	private void ApplyDisplayKey(string key, string storage)
 	{
 		UpdateConfigDirect(key, storage);
-		ApplyPetConfigAndBroadcast(key, storage);
+		ApplyPetConfig(key, storage);
 	}
 
 	/// <summary>行为开关批量写入并热应用</summary>
@@ -1869,73 +1510,6 @@ public sealed class BridgeCommands
 	{
 		RequireLabel(source, WindowLabels.Main, () => (object?)null);
 		return await factory();
-	}
-
-	/// <summary>
-	/// 首次启动完成: 只允许可见的 first-run 窗口调用。
-	/// </summary>
-	private async Task<object?> CompleteFirstRunAsync(
-		IBridgeSource source,
-		JsonElement args,
-		CancellationToken cancellationToken)
-	{
-		if (source.Label != WindowLabels.FirstRun)
-		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"拒绝 complete_first_run: 来源窗口 label={source.Label}");
-			throw new InvalidOperationException("只能从首次运行窗口调用 complete_first_run");
-		}
-		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
-		if (!visible)
-		{
-			_services.Logger.Write(LogSource.Backend, "warn", "拒绝 complete_first_run: 首次运行窗口不可见");
-			throw new InvalidOperationException("首次运行窗口不可见");
-		}
-
-		string modelId = RequireKnownInstalledModel(Str(args, "modelId"));
-		bool telemetryEnabled = RequiredBool(args, "telemetryEnabled");
-		cancellationToken.ThrowIfCancellationRequested();
-		// 配置层在单个 SQLite 事务中提交所有首次运行结果, 不能留下半完成状态。
-		_services.Config.CompleteFirstRun(modelId, telemetryEnabled);
-		_services.Telemetry.Configure(telemetryEnabled);
-		_services.Logger.Write(LogSource.Backend, "info", $"首次初始化完成: model={modelId}");
-
-		// 先置位再广播: init 页面就绪晚于广播时可经 init_ready 回放, 不会卡在转圈
-		Runtime.MarkInitStartPending();
-
-		cancellationToken.ThrowIfCancellationRequested();
-		await OnUi(() =>
-		{
-			_services.Windows.Close(WindowLabels.FirstRun);
-			_services.Windows.Show(WindowLabels.Init);
-			// 通知 init 窗口 (首次运行路径下为隐藏启动) 开始初始化流程
-			_services.Windows.Broadcast("nori:init-start", null);
-			return (object?)null;
-		});
-		return null;
-	}
-
-	/// <summary>
-	/// 初始化页进入主界面: 只允许可见的 init 窗口调用。
-	/// 宿主在这里统一完成 main/pet/init 的切换, 前端不直接调窗口命令。
-	/// </summary>
-	private async Task<object?> InitEnterMainAsync(IBridgeSource source, CancellationToken cancellationToken)
-	{
-		if (source.Label != WindowLabels.Init)
-		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"拒绝 init_enter_main: 来源窗口 label={source.Label}");
-			throw new InvalidOperationException("只能从初始化窗口调用 init_enter_main");
-		}
-		bool visible = await OnUi(() => (object?)source.IsVisible) is true;
-		if (!visible) throw new InvalidOperationException("初始化窗口不可见");
-
-		cancellationToken.ThrowIfCancellationRequested();
-		// 判定与切换都在 Runtime 上：原生初始化窗口走同一条路，两处各写一份会漂。
-		await OnUi(() =>
-		{
-			Runtime.EnterMainFromInit();
-			return (object?)null;
-		});
-		return null;
 	}
 
 	/// <summary>校验已知模型 ID 且确认本地模型资源已安装。</summary>
@@ -2129,7 +1703,7 @@ public sealed class BridgeCommands
 	private void UpdateConfigDirect(string key, string value) =>
 		_services.Config.Set(key, new ConfigValue.Text(value));
 
-	/// <summary>统一更新聊天与 Embedding 配置; 旧分领域命令仍通过此领域服务兼容。</summary>
+	/// <summary>更新聊天与 Embedding 配置。</summary>
 	private void UpdateUnifiedAiSettings(JsonElement args)
 	{
 		JsonElement chat = args;
@@ -2169,12 +1743,6 @@ public sealed class BridgeCommands
 		return args.ValueKind == JsonValueKind.Object
 			&& args.TryGetProperty(name, out value)
 			&& value.ValueKind == JsonValueKind.Object;
-	}
-
-	private void UpdateEmbeddingSettings(JsonElement args)
-	{
-		_services.AiSettings.UpdateEmbedding(BuildEmbeddingPatch(args, null));
-		Runtime.QueueEmbeddingRebuild();
 	}
 
 	private static AiEmbeddingSettingsPatch BuildEmbeddingPatch(JsonElement args, string? prefix)
@@ -2262,7 +1830,7 @@ public sealed class BridgeCommands
 		}
 	}
 
-	/// <summary>行为开关写入并热应用到伴侣视窗 + 广播给预览</summary>
+	/// <summary>行为开关写入并热应用到伴侣视窗。</summary>
 	private void SetBehaviorKey(JsonElement args, string argName, string configKey)
 	{
 		if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty(argName, out JsonElement value)) return;
@@ -2270,14 +1838,13 @@ public sealed class BridgeCommands
 			throw new InvalidOperationException($"{argName} 必须是布尔值");
 		string storage = value.GetBoolean() ? "1" : "0";
 		UpdateConfigDirect(configKey, storage);
-		ApplyPetConfigAndBroadcast(configKey, storage);
+		ApplyPetConfig(configKey, storage);
 	}
 
-	private void ApplyPetConfigAndBroadcast(string key, string storage)
+	private void ApplyPetConfig(string key, string storage)
 	{
 		_services.PetRuntime?.ApplyConfig(key, storage);
 		if (key == "l2d_click_through") _uiDispatcher.Post(() => _services.Windows.Pet?.ReapplyInputState());
-		PostBroadcast("nori:config-changed", new {key, value = storage});
 	}
 
 	/// <summary>持久化工具禁用清单</summary>
@@ -2343,21 +1910,6 @@ public sealed class BridgeCommands
 		string model = OptionalStr(args, "model") ?? chat.Model;
 		ProviderConnectionTester tester = new(_services.Http, _services.Embedding);
 		return await tester.TestLlmAsync(provider, baseUrl, apiKey, model, cancellationToken);
-	}
-
-	private async Task<object?> TestAiConnectionsAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
-	{
-		RequireMainVoid(source);
-		ProviderConnectionTestResult llm = await TestLlmConnectionAsync(source, args, cancellationToken);
-		JsonElement embeddingArgs = args;
-		if (args.ValueKind == JsonValueKind.Object
-			&& args.TryGetProperty("embedding", out JsonElement nested)
-			&& nested.ValueKind == JsonValueKind.Object)
-		{
-			embeddingArgs = nested;
-		}
-		ProviderConnectionTestResult embedding = await TestEmbeddingConnectionAsync(source, embeddingArgs, cancellationToken);
-		return new {llm, embedding};
 	}
 
 	private async Task<ProviderConnectionTestResult> TestEmbeddingConnectionAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
@@ -2495,7 +2047,6 @@ public sealed class BridgeCommands
 		};
 	}
 
-
 	private async Task<object?> McpSaveServerAsync(IBridgeSource source, JsonElement args)
 	{
 		RequireMainVoid(source);
@@ -2551,43 +2102,6 @@ public sealed class BridgeCommands
 	// ===================================================================
 	// 伴侣状态
 	// ===================================================================
-
-	private object GetPetState()
-	{
-		var pet = _services.PetRuntime;
-		return new
-		{
-			modelId = pet?.CurrentModelId ?? "arg-nori",
-			expressions = pet?.Expressions ?? [],
-			motionGroups = pet?.MotionGroups ?? [],
-			userScale = pet?.UserScale ?? 1.0f,
-			opacity = pet?.Opacity ?? 1.0f,
-			autoBlink = pet?.AutoBlinkEnabled ?? true,
-			eyeTracking = pet?.EyeTrackingEnabled ?? true,
-			idleEyeAnimation = pet?.IdleEyeAnimationEnabled ?? true,
-			idleAnimation = pet?.IdleAnimationEnabled ?? true,
-			expressionEnabled = pet?.ExpressionEnabled ?? true,
-			shadow = pet?.ShadowEnabled ?? true,
-			lipSync = pet?.LipSyncEnabled ?? true,
-			beatSync = pet?.BeatSyncEnabled ?? false,
-			clickInteraction = pet?.ClickInteraction ?? true,
-			renderScale = pet?.RenderScale ?? Live2DRenderSettings.DefaultRenderScale,
-			qualityMode = pet?.QualityMode ?? Live2DRenderSettings.DefaultQualityMode,
-			maxFps = pet?.MaxFps ?? 0,
-			render = pet?.RenderMetrics,
-		};
-	}
-
-	private object? PlayPetMotion(JsonElement args)
-	{
-		if (_services.PetRuntime is null) return false;
-		string? name = OptionalStr(args, "name");
-		if (!string.IsNullOrEmpty(name))
-		{
-			return _services.PetRuntime.PlayMotionByName(name);
-		}
-		return _services.PetRuntime.PlayTapBodyOrRandomMotion();
-	}
 
 	/// <summary>
 	/// 选择 IndexTTS 音频模板文件并写入配置 (仅保存路径, 不克隆)。
@@ -2693,9 +2207,6 @@ public sealed class BridgeCommands
 			() => _services.Resources.Import(type, filePath, cancellationToken),
 			cancellationToken);
 		_services.Logger.Write(LogSource.Backend, "info", $"成功导入本地 Live2D 资源: {string.Join(", ", imported)}");
-
-		// 广播资源更新
-		PostBroadcast("nori:config-changed", new {key = "resource_imported", value = string.Join(",", imported)});
 		Runtime.InvalidateSnapshot("models");
 		return imported;
 	}
@@ -2819,28 +2330,18 @@ public sealed class BridgeCommands
 		return null;
 	}
 
-	/// <summary>记录白名单事件，窗口身份由宿主赋值。前端调用：invoke("write_log", {level: "info", eventId: "app.mounted", message: ""})</summary>
+	/// <summary>记录白名单事件，窗口身份由宿主赋值。前端调用：invoke("write_log", {level: "error", eventId: "audio.error", message: ""})</summary>
 	private object? WriteFrontendLog(IBridgeSource source, JsonElement args)
 	{
 		string level = Str(args, "level").Trim().ToLowerInvariant();
 		if (!FileLogger.IsLevel(level))
 			throw new InvalidOperationException("日志级别无效");
 		string eventId = OptionalStr(args, "eventId") ?? "";
-		if (source.Label == WindowLabels.AudioHost
-			&& eventId is not ("audio.error" or "logging.suppressed"))
-			throw new InvalidOperationException("音频宿主日志事件无效");
-		string message = eventId switch
-		{
-			"vue.error" => "Vue 组件发生异常", "window.error" => "前端脚本发生异常",
-			"promise.rejection" => "前端异步操作发生异常", "resource.error" => "前端资源加载失败",
-			"feedback.error" => "前端操作失败", "logging.suppressed" => "重复前端事件已被限流",
-			"audio.error" => "前端音频操作失败", "app.initialization_failed" => "前端初始化失败",
-			"app.mounted" => "前端窗口已挂载", "app.initialized" => "前端初始化完成",
-			"pet.shown" => "显示桌宠", "pet.hidden" => "隐藏桌宠", "clipboard.copied" => "复制操作完成",
-			"diagnostics.test" => "调试日志链路正常", _ => "客户端运行事件",
-		};
-		if (message == "客户端运行事件") eventId = "client.event";
-		if (eventId == "logging.suppressed") message += $"：{Math.Clamp(OptionalInt(args, "suppressedCount") ?? 1, 1, 1_000_000)}";
+		if (eventId is not ("audio.error" or "logging.suppressed"))
+			throw new InvalidOperationException("日志事件无效");
+		string message = eventId == "logging.suppressed"
+			? $"重复前端事件已被限流：{Math.Clamp(OptionalInt(args, "suppressedCount") ?? 1, 1, 1_000_000)}"
+			: "前端音频操作失败";
 		string errorType = OptionalStr(args, "errorType") ?? "";
 		if (errorType is "Error" or "TypeError" or "RangeError" or "ReferenceError" or "SyntaxError" or "URIError" or "EvalError" or "AggregateError")
 			message += $"：{errorType}";
@@ -2864,82 +2365,6 @@ public sealed class BridgeCommands
 	// ===================================================================
 	// 通用辅助
 	// ===================================================================
-
-	/// <summary>切到 UI 线程后向所有 WebView 窗口广播事件</summary>
-	private void PostBroadcast(string name, object payload) => _uiDispatcher.Post(() => _services.Windows.Broadcast(name, payload));
-
-	private string AuthorizedWindowLabel(IBridgeSource source, JsonElement args, bool allowMainToTargetPet = false)
-	{
-		string label = OptionalLabel(args) ?? source.Label;
-		bool self = label == source.Label;
-		bool mainToPet = allowMainToTargetPet && source.Label == WindowLabels.Main && label == WindowLabels.Pet;
-		if (!self && !mainToPet) throw new InvalidOperationException("不能操作其它窗口");
-		return label;
-	}
-
-	private object? ShowWindow(IBridgeSource source, JsonElement args)
-	{
-		string label = AuthorizedWindowLabel(source, args, allowMainToTargetPet: true);
-		if (label == WindowLabels.Pet && !IsKnownInstalledModel(_services.Config.GetStringOr(ConfigStore.KeySelectedModel, "")))
-			throw new InvalidOperationException("当前 Live2D 模型不可用, 请先重新导入");
-		_services.Windows.Show(label);
-		return null;
-	}
-
-	private object? HideWindow(IBridgeSource source, JsonElement args)
-	{
-		string label = AuthorizedWindowLabel(source, args, allowMainToTargetPet: true);
-		_services.Windows.Hide(label);
-		return null;
-	}
-
-	private object? CloseWindow(IBridgeSource source, JsonElement args)
-	{
-		string label = AuthorizedWindowLabel(source, args);
-		_services.Windows.Close(label);
-		return null;
-	}
-
-	/// <summary>只有当前 WebView 可以读取或修改自己的窗口属性。</summary>
-	private Window Target(IBridgeSource source, JsonElement args)
-	{
-		string label = AuthorizedWindowLabel(source, args);
-		return _services.Windows.Get(label) ?? source.Self
-			?? throw new InvalidOperationException("目标窗口不存在");
-	}
-
-	private static nint NativeHandleOf(Window window) => window.TryGetPlatformHandle()?.Handle ?? 0;
-
-	private static string? OptionalLabel(JsonElement args) =>
-		args.ValueKind == JsonValueKind.Object && args.TryGetProperty("label", out JsonElement value) && value.ValueKind == JsonValueKind.String
-			? value.GetString()
-			: null;
-
-	private static object OuterPosition(Window window) => new {x = window.Position.X, y = window.Position.Y};
-
-	private static object OuterSize(Window window)
-	{
-		double scale = window.RenderScaling;
-		return new
-		{
-			width = (int)Math.Round(window.FrameSize?.Width * scale ?? window.Bounds.Width * scale),
-			height = (int)Math.Round(window.FrameSize?.Height * scale ?? window.Bounds.Height * scale),
-		};
-	}
-
-	private static object? SetSize(Window window, JsonElement args)
-	{
-		double scale = window.RenderScaling;
-		window.Width = Num(args, "width") / scale;
-		window.Height = Num(args, "height") / scale;
-		return null;
-	}
-
-	private static object? SetPosition(Window window, JsonElement args)
-	{
-		window.Position = new PixelPoint((int)Math.Round(Num(args, "x")), (int)Math.Round(Num(args, "y")));
-		return null;
-	}
 
 	private float? ReadFloatConfig(string key)
 	{

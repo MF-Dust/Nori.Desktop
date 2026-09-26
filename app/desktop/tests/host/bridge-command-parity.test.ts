@@ -308,7 +308,18 @@ const extractExecuteAsyncCommands = (source: string): string[] => {
 }
 
 const SETTINGS_SERVICE_SOURCE = readSource("Nori.Desktop/Settings/SettingsService.cs")
+const CHAT_SERVICE_SOURCE = readSource("Nori.Desktop/Chat/NativeChatService.cs")
+const MODEL_SERVICE_SOURCE = readSource("Nori.Desktop/Models/ModelService.cs")
+const MEMORY_SERVICE_SOURCE = readSource("Nori.Desktop/Memory/MemoryService.cs")
 const SETTINGS_ALLOWED = extractFrozenSetCommands(SETTINGS_SERVICE_SOURCE, "AllowedCommands = new[]")
+const NATIVE_ALLOWED = sorted([
+	...SETTINGS_ALLOWED,
+	...extractFrozenSetCommands(CHAT_SERVICE_SOURCE, "AllowedCommands = new[]"),
+	...extractFrozenSetCommands(CHAT_SERVICE_SOURCE, "QuickCommands = new[]"),
+	...extractFrozenSetCommands(MODEL_SERVICE_SOURCE, "AllowedCommands = new[]"),
+	...extractFrozenSetCommands(MEMORY_SERVICE_SOURCE, "AllowedCommands = new[]"),
+])
+const SETTINGS_INTERNAL_COMMANDS = ["settings_get_plugin_trust", "settings_set_plugin_trust"]
 const SETTINGS_EXECUTED = listCsFiles(join(ROOT, "Nori.Desktop/Settings")).flatMap(PATH =>
 	extractExecuteAsyncCommands(readFileSync(PATH, "utf8").replace(/\r\n?/g, "\n")))
 
@@ -352,6 +363,13 @@ describe("Bridge 跨语言命令契约", () => {
 		expect(BRIDGE_COMMANDS_SOURCE).not.toContain('"plugin_list" =>')
 		expect(BRIDGE_ROUTER_SOURCE).toContain('command.StartsWith("plugin_", StringComparison.Ordinal)')
 		expect(BRIDGE_ROUTER_SOURCE).toContain("runtime.InvokeManagementAsync")
+	})
+
+	it("桥命令与四个原生白名单双向可达", () => {
+		const COVERED = new Set([...NATIVE_ALLOWED, ...AUDIO_HOST_COMMANDS])
+		const REACHABLE = new Set([...HOST_COMMANDS, ...PLUGIN_MANAGEMENT_COMMANDS, ...SETTINGS_INTERNAL_COMMANDS])
+		expect(sorted(HOST_COMMANDS).filter(COMMAND => !COVERED.has(COMMAND))).toEqual([])
+		expect(NATIVE_ALLOWED.filter(COMMAND => !REACHABLE.has(COMMAND))).toEqual([])
 	})
 
 	it("插件 WebView RPC 仍保留独立页面白名单", () => {

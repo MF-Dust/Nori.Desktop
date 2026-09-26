@@ -13,25 +13,14 @@ using Nori.Desktop.Bridge;
 namespace Nori.Desktop.Windows;
 
 /// <summary>
-/// 承载前端页面的窗口
+/// 隐藏的音频宿主窗口。
 ///
-/// 四个窗口共用这一个类, 差异全部来自 WindowDefinition. 每个窗口内含一个
-/// NativeWebView, 加载同一份 Vue bundle, 靠 URL 上的 ?window=&lt;label&gt; 决定显示哪个页面.
+/// 只承载 WebAudio 与 MediaRecorder，不进入用户可见的窗口列表。
 /// </summary>
 public sealed class NoriWindow : Window, IBridgeSource
 {
 	/// <summary>窗口标签</summary>
 	public string Label { get; }
-
-	/// <summary>当前窗口实际获得的系统背景模糊状态。</summary>
-	internal bool BackdropActive { get; private set; }
-
-	internal void SetBackdropActive(bool active)
-	{
-		if (BackdropActive == active) return;
-		BackdropActive = active;
-		PostEvent("nori:window-backdrop", new { active });
-	}
 
 	/// <summary>底层 Avalonia 窗口 (即自身)</summary>
 	public Window? Self => this;
@@ -46,7 +35,6 @@ public sealed class NoriWindow : Window, IBridgeSource
 	private readonly NativeWebView _webView;
 	private readonly NoriBridge _bridge;
 	private readonly WebViewScriptDispatcher _scriptDispatcher;
-	private readonly DispatcherTimer _metricsTimer;
 	private readonly AppStoragePaths _storagePaths;
 
 	public NoriWindow(WindowDefinition definition, NoriBridge bridge, string url, AppStoragePaths storagePaths)
@@ -88,34 +76,11 @@ public sealed class NoriWindow : Window, IBridgeSource
 		{
 			if (args.Property != WindowStateProperty && args.Property != CanResizeProperty) return;
 			if (Content is Border frame) frame.Padding = CanResize && WindowState == WindowState.Normal ? new Thickness(5) : default;
-			if (Label != WindowLabels.AudioHost) PostWindowState();
 		};
 		_webView.Source = new Uri(url);
 
-		// 窗口移动 / DPI 变化时主动推度量, 前端据此免掉每帧的位置与缩放往返。
-		// 拖动时 PositionChanged 每个像素都触发, 用 50ms 定时器合帧:
-		// 移动中至多 ~20Hz, 停下后必补发一次最终值。
-		_metricsTimer = new DispatcherTimer {Interval = TimeSpan.FromMilliseconds(50)};
-		_metricsTimer.Tick += (_, _) =>
-		{
-			_metricsTimer.Stop();
-			PostMetrics();
-		};
-		PositionChanged += (_, _) =>
-		{
-			if (_scriptDispatcher.IsClosed) return;
-			if (!_metricsTimer.IsEnabled) _metricsTimer.Start();
-		};
-		ScalingChanged += (_, _) =>
-		{
-			if (!_scriptDispatcher.IsClosed) PostMetrics();
-		};
-		// 窗口真正销毁时停掉度量定时器并停止一切脚本派发 (隐藏不关闭的窗口不受影响)。
-		Closed += (_, _) =>
-		{
-			_metricsTimer.Stop();
-			_scriptDispatcher.Close();
-		};
+		// 窗口真正销毁时停止一切脚本派发 (隐藏不关闭的窗口不受影响)。
+		Closed += (_, _) => _scriptDispatcher.Close();
 	}
 
 	/// <summary>挂接原生 WebView 后隐藏；不激活、不在任务栏留下窗口。</summary>
@@ -129,23 +94,6 @@ public sealed class NoriWindow : Window, IBridgeSource
 		Opacity = 0;
 		WindowDecorations = WindowDecorations.None;
 		Show();
-	}
-
-	/// <summary>
-	/// 把当前窗口度量推给页面 (物理像素)
-	/// </summary>
-	public void PostMetrics()
-	{
-		double scale = RenderScaling;
-		PostEvent("nori:window-metrics", new
-		{
-			label = Label,
-			x = Position.X,
-			y = Position.Y,
-			width = (int)Math.Round((FrameSize?.Width ?? Bounds.Width) * scale),
-			height = (int)Math.Round((FrameSize?.Height ?? Bounds.Height) * scale),
-			scaleFactor = scale,
-		});
 	}
 
 	/// <summary>
@@ -212,22 +160,10 @@ public sealed class NoriWindow : Window, IBridgeSource
 			return;
 		}
 		_scriptDispatcher.MarkReady();
-		if (Label == WindowLabels.AudioHost)
-		{
-			// 原生控件必须先挂到窗口才会导航；导航后隐藏不会卸载音频页面。
-			Dispatcher.UIThread.Post(Hide, DispatcherPriority.Background);
-			return;
-		}
-		// 页面就绪后先给一份度量, 免得首次调用还要往返
-		PostMetrics();
-		PostEvent("nori:window-backdrop", new { active = BackdropActive });
-		PostWindowState();
+		if (Label != WindowLabels.AudioHost) return;
+		// 原生控件必须先挂到窗口才会导航；导航后隐藏不会卸载音频页面。
+		Dispatcher.UIThread.Post(Hide, DispatcherPriority.Background);
 	}
-
-	private void PostWindowState() => PostEvent("nori:window-state", new
-	{
-		maximized = WindowState == WindowState.Maximized, canResize = CanResize,
-	});
 
 	/// <summary>
 	/// 窗口原生句柄, 供平台服务发起拖动

@@ -41,9 +41,7 @@ namespace Nori.Desktop.Runtime;
 /// 记忆/语音服务装配, 以及面向 WebView 的带版本号 UI 状态快照。
 ///
 /// 事件出口约定:
-/// - nori:agent-event   → 仅推送给发起会话的窗口 (状态/chunk/用量/授权/完成/错误)
-/// - nori:state-changed → 全局广播 (快照版本 + 变更主题)
-/// - nori:proactive-message / nori:stt-result / nori:voice-notice → 对应窗口或全局
+/// - nori:agent-event → 只推送给发起会话的原生对话窗口 (状态/chunk/用量/授权/完成/错误)
 ///
 /// 秘密纪律: 快照只返回 hasApiKey 等脱敏标记, 明文绝不回传事件/日志/错误。
 /// </summary>
@@ -150,11 +148,9 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	public bool TrayAvailable { get; set; } = true;
 
 	/// <summary>
-	/// 标记“初始化开始”已发生
+	/// 标记初始化窗口需要补跑开始流程。
 	///
-	/// 首启路径下 init 窗口隐藏启动, 向导完成时广播的 nori:init-start 有可能早于
-	/// init 页面订阅 (WebView 加载比广播慢), 事件就会永久丢失 —— 页面卡在转圈.
-	/// 因此额外留一个标志供页面就绪时回放.
+	/// 首次运行向导会先置位再打开初始化窗口。窗口变为可见后取走这一位。
 	/// </summary>
 	public void MarkInitStartPending() => Interlocked.Exchange(ref _initStartPending, 1);
 
@@ -428,7 +424,6 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		{
 			/* 伴侣未加载时忽略 */
 		}
-		BroadcastEvent("nori:proactive-message", new {text = message.Text});
 		bool autoTts = ParseBoolFlag(Services.Config.GetStringOr("tts_auto_play", "")) ?? false;
 		if (autoTts)
 		{
@@ -1433,26 +1428,8 @@ public sealed partial class AppRuntime : IAsyncDisposable
 				expired.Dispose();
 				Services.Automation?.ClearAutomationApproval(request.RequestId);
 				Services.Automation?.RecordApprovalOutcome(request, AutomationApprovalOutcome.Expired);
-				PostAgentEvent(WindowLabels.Main, new
-				{
-					type = "approval-result",
-					requestId = request.RequestId,
-					approved = false,
-					reason = "timeout",
-				});
 			}
 		});
-		PostAgentEvent(WindowLabels.Main, new
-		{
-			type = "approval-request",
-			requestId = request.RequestId,
-			taskId = request.TaskId,
-			actionKinds = request.ActionKinds,
-			permissionLevel = "confirm",
-			category = "automation",
-			deadlineUtc = approval.DeadlineUtc,
-		});
-
 		try
 		{
 			bool approved = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -1514,14 +1491,6 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		Services.Automation?.RecordApprovalOutcome(
 			desktopApproval.Request,
 			approved ? AutomationApprovalOutcome.Approved : AutomationApprovalOutcome.Denied);
-		PostAgentEvent(WindowLabels.Main, new
-		{
-			type = "approval-result",
-			requestId,
-			taskId = desktopApproval.Request.TaskId,
-			approved,
-			reason = approved ? "approved" : "denied",
-		});
 		return desktopApproval.Tcs.TrySetResult(approved);
 	}
 
@@ -1536,7 +1505,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	/// <summary>前端回报实时播放音量 (0~1), 驱动伴侣口型</summary>
 	public void ReportAudioLevel(double level) => _webViewPlayback?.ReportLevel(level);
 
-	/// <summary>前端 main WebView 完成监听器安装后的就绪握手。</summary>
+	/// <summary>音频宿主完成监听器安装后的就绪握手。</summary>
 	public void MarkAudioHostReady() => _audioChannel.MarkReady();
 
 	/// <summary>前端回报 MediaRecorder 已获权并开始。</summary>
@@ -1549,12 +1518,12 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	// UI 状态快照
 	// ===================================================================
 
-	/// <summary>使快照失效并广播变更主题</summary>
+	/// <summary>使快照失效并通知已订阅的原生窗口。</summary>
 	public void InvalidateSnapshot(params string[] topics)
 	{
+		_ = topics;
 		Interlocked.Increment(ref _snapshotVersion);
 		RaiseStateChanged();
-		BroadcastEvent("nori:state-changed", new {version = SnapshotVersion, topics});
 	}
 
 	/// <summary>构建脱敏 UI 状态快照; 同一版本直接复用不可变 DTO。</summary>
@@ -1946,50 +1915,22 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	private void PostAgentEvent(IBridgeSource source, object payload)
 	{
 		if (Volatile.Read(ref _disposed) != 0) return;
-		if (source is not INativeChatSource native)
-		{
-			PostAgentEvent(source.Label, payload);
-			return;
-		}
+		if (source is not INativeChatSource native) return;
 		if (!Nori.Desktop.Chat.NativeChatService.IsTrustedSource(native) || native.LifetimeToken.IsCancellationRequested) return;
 		try { source.PostEvent(AgentEventName, payload); }
 		catch { /* 窗口退出不影响会话收尾。 */ }
 	}
 
-	/// <summary>向指定 WebView 推送 Agent 事件，不解析原生窗口标签。</summary>
-	private void PostAgentEvent(string label, object payload)
-	{
-		if (Volatile.Read(ref _disposed) != 0) return;
-		try { Services.Windows.GetNoriWindow(label)?.PostEvent(AgentEventName, payload); }
-		catch { /* windows may already be closing */ }
-	}
-
-	/// <summary>自动化状态变化只广播脱敏生命周期汇总。</summary>
+	/// <summary>自动化状态变化时刷新脱敏快照。</summary>
 	private void OnAutomationChanged()
 	{
 		if (Volatile.Read(ref _disposed) != 0) return;
 		InvalidateSnapshot("automation");
-		AutomationSnapshot? snapshot = Services.Automation?.GetSnapshot();
-		if (snapshot is not null) BroadcastEvent("nori:automation-changed", snapshot);
 	}
 
 	private void OnUpdateStatusChanged()
 	{
 		if (Volatile.Read(ref _disposed) == 0) InvalidateSnapshot("updater");
-	}
-
-	/// <summary>向所有 WebView 窗口广播</summary>
-	private void BroadcastEvent(string name, object payload)
-	{
-		if (Volatile.Read(ref _disposed) != 0) return;
-		Dispatcher.UIThread.Post(() =>
-		{
-			if (Volatile.Read(ref _disposed) == 0)
-			{
-				try { Services.Windows.Broadcast(name, payload); }
-				catch { /* windows may already be closing */ }
-			}
-		});
 	}
 
 	/// <summary>Agent 事件通道名</summary>

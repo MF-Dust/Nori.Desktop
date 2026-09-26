@@ -97,7 +97,6 @@ public partial class BridgeCommandsTests
 		Assert.Equal(1, handler.ResetCount);
 		Assert.Empty(_services.Chat.GetHistory());
 		Assert.DoesNotContain(source.Events, item => item.GetProperty("type").GetString() == "state" && !item.TryGetProperty("sessionId", out _));
-		Assert.DoesNotContain(_windows.Broadcasts, item => item.Name == AppRuntime.AgentEventName);
 	});
 
 	[Fact]

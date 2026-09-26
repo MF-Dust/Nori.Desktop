@@ -107,7 +107,6 @@ internal sealed class WindowBackdropController : IDisposable
 		window.Resources["NoriWindowSurfaceBrush"] = surface;
 		// WebView 的页面根节点已铺材质色，宿主保持透明以免叠加两层染色。
 		window.Background = active && window is NoriWindow ? Brushes.Transparent : surface;
-		if (window is NoriWindow web) web.SetBackdropActive(active);
 	}
 
 	private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs args)

@@ -6,7 +6,7 @@ namespace Nori.Desktop.Windows;
 /// <summary>
 /// 可替换的窗口调度边界
 ///
-/// 定义 BridgeCommands 与托盘所需的窗口查询、显示、关闭、广播与退出能力,
+/// 定义 BridgeCommands 与托盘所需的窗口查询、显示、关闭与退出能力,
 /// 真实实现是 WindowManager, 测试可提供记录调用的替身.
 /// </summary>
 public interface IWindowManager
@@ -17,7 +17,7 @@ public interface IWindowManager
 	/// <summary>按标签取窗口, 不存在返回 null</summary>
 	Window? Get(string? label);
 
-	/// <summary>按标签取 WebView2 窗口</summary>
+	/// <summary>取隐藏音频宿主窗口。</summary>
 	NoriWindow? GetNoriWindow(string? label);
 
 	/// <summary>原生伴侣视窗引用</summary>
@@ -60,9 +60,6 @@ public interface IWindowManager
 
 	/// <summary>窗口显隐变化 (label, 是否可见); 托盘切换伴侣也会触发</summary>
 	event Action<string, bool>? VisibilityChanged;
-
-	/// <summary>向所有 WebView2 窗口广播事件</summary>
-	void Broadcast(string name, object? payload);
 
 	/// <summary>在原生伴侣窗口显示临时短句</summary>
 	void ShowPetSpeech(string text);

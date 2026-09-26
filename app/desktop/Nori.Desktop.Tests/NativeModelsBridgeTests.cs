@@ -21,34 +21,11 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public async Task WindowOpenModelsAcceptsOnlyVisibleMainSource()
-	{
-		BridgeCommands commands = CreateCommands();
-		Assert.Null(await commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main),
-			"window_open_models",
-			Args(new { })));
-		Assert.Equal(1, _windows.ModelsShowCount);
-
-		IBridgeSource[] rejected =
-		[
-			new FakeBridgeSource(WindowLabels.Main, false),
-			new FakeBridgeSource(WindowLabels.Init),
-			new NativeModelTestSource(),
-			new NativeModelTestSource(label: WindowLabels.Main),
-		];
-		foreach (IBridgeSource source in rejected)
-			await Assert.ThrowsAsync<InvalidOperationException>(() =>
-				commands.InvokeAsync(source, "window_open_models", Args(new { })));
-		Assert.Equal(1, _windows.ModelsShowCount);
-	}
-
-	[Fact]
 	public async Task NativeModelPolicyCannotBeBypassedAtEitherHostEntry()
 	{
 		string[] allowed =
 		[
-			"model_get_meta", "model_import_local", "model_list", "model_select",
+			"model_get_meta", "model_import_local", "model_select",
 			"model_set_behavior", "model_set_display", "model_set_interactions",
 		];
 		Assert.Equal(allowed, ModelService.Commands.Order(StringComparer.Ordinal));
@@ -71,10 +48,9 @@ public partial class BridgeCommandsTests
 	{
 		InstallKnownModel("nori");
 		BridgeCommands commands = CreateCommands();
-		Assert.NotNull(await commands.InvokeAsync(new NativeModelTestSource(), "model_list", Args(new { })));
 		Assert.NotNull(await commands.InvokeAsync(new NativeModelTestSource(), "model_get_meta", Args(new {modelId = "nori"})));
 		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Models), "model_list", Args(new { })));
+			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Models), "model_get_meta", Args(new {modelId = "nori"})));
 	}
 
 	[Fact]
@@ -129,11 +105,10 @@ public partial class BridgeCommandsTests
 		using BridgeCommandsTests fixture = new(safeMode: true);
 		BridgeCommands commands = fixture.CreateCommands();
 		NativeModelTestSource source = new();
-		Assert.NotNull(await commands.InvokeAsync(source, "model_list", Args(new { })));
 		await commands.InvokeAsync(source, "model_set_behavior", Args(new {aiInteraction = true}));
 		Assert.True(fixture._config.GetBoolOr(Nori.Core.Live2D.PetInteractionConfig.AiEnabledKey, false));
 
-		object? snapshot = await commands.InvokeAsync(source, "model_list", Args(new { }));
+		object snapshot = fixture._runtime.BuildSnapshot();
 		using JsonDocument document = JsonDocument.Parse(JsonSerializer.Serialize(snapshot, BridgeJson.Options));
 		Assert.True(document.RootElement.GetProperty("app").GetProperty("safeMode").GetBoolean());
 		Assert.False(document.RootElement.GetProperty("behaviors").GetProperty("aiInteraction").GetBoolean());
@@ -175,7 +150,7 @@ public partial class BridgeCommandsTests
 		int before = changes;
 		_runtime.InvalidateSnapshot("models");
 		Assert.Equal(before, changes);
-		await Assert.ThrowsAsync<ObjectDisposedException>(() => service.ExecuteAsync("model_list"));
+		await Assert.ThrowsAsync<ObjectDisposedException>(() => service.ExecuteAsync("model_get_meta"));
 	});
 
 	[Fact]

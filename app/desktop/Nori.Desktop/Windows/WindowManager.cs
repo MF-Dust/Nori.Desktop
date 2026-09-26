@@ -154,10 +154,8 @@ public sealed class WindowManager : IWindowManager
 	/// </summary>
 	public Window? Get(string? label) => label is not null && _windows.TryGetValue(label, out Window? window) ? window : null;
 
-	/// <summary>
-	/// 按标签取 WebView2 窗口
-	/// </summary>
-	public NoriWindow? GetNoriWindow(string? label) => label == WindowLabels.AudioHost ? _audioHost : Get(label) as NoriWindow;
+	/// <summary>取隐藏音频宿主；其它标签没有 WebView 窗口。</summary>
+	public NoriWindow? GetNoriWindow(string? label) => label == WindowLabels.AudioHost ? _audioHost : null;
 
 	/// <summary>
 	/// 原生伴侣视窗引用
@@ -471,20 +469,6 @@ public sealed class WindowManager : IWindowManager
 
 	/// <inheritdoc />
 	public void ClearPetSpeech() => _petWindow?.ClearSpeech();
-
-	/// <summary>
-	/// 向所有 WebView2 窗口广播事件
-	/// </summary>
-	public void Broadcast(string name, object? payload)
-	{
-		foreach (Window window in _windows.Values)
-		{
-			if (window is NoriWindow noriWindow)
-			{
-				noriWindow.PostEvent(name, payload);
-			}
-		}
-	}
 
 	/// <summary>
 	/// 退出应用

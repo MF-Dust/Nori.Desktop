@@ -137,11 +137,11 @@ public partial class BridgeCommandsTests
 		Assert.False(snapshot.GetProperty("ai").GetProperty("configured").GetBoolean());
 		Assert.DoesNotContain("native-only-secret", snapshot.GetRawText(), StringComparison.Ordinal);
 		Assert.Equal(JsonValueKind.Array, (await service.ExecuteAsync("chat_history_page")).ValueKind);
-		_runtime.InvalidateSnapshot("chat");
+		_runtime.InvalidateSnapshot();
 		Assert.True(changes > 0);
 		service.Dispose();
 		int before = changes;
-		_runtime.InvalidateSnapshot("chat");
+		_runtime.InvalidateSnapshot();
 		Assert.Equal(before, changes);
 		await Assert.ThrowsAsync<ObjectDisposedException>(() => service.GetSnapshotAsync());
 	});

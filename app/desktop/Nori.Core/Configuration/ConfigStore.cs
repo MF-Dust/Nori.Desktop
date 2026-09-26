@@ -835,7 +835,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 		if (!Exists(KeyInitializedAt)) Set(KeyInitializedAt, new ConfigValue.Text(Now()));
 	}
 
-	/// <summary>首次初始化配置快照, 对应前端 invoke("get_init_config")。</summary>
+	/// <summary>读取首次初始化状态，供原生首启向导和初始化窗口核对。</summary>
 	public InitConfig GetInitConfig()
 	{
 		string? initializedAt = Get(KeyInitializedAt) is ConfigValue.Text text && text.Value.Length > 0 ? text.Value : null;

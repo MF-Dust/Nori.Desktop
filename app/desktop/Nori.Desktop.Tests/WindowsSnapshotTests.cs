@@ -11,7 +11,7 @@ namespace Nori.Desktop.Tests;
 /// 靠的就是这四个布尔量。
 ///
 /// 这一段此前**不存在**，而 <c>VisibilityChanged</c> 里一直在调
-/// <c>InvalidateSnapshot("windows")</c> —— 也就是说刷新那条路早就接好了，缺的是
+/// <c>InvalidateSnapshot()</c> —— 也就是说刷新那条路早就接好了，缺的是
 /// 被刷新的东西本身，而缺了不报错：界面只是永远拿不到状态，于是只能画一个恒为假的
 /// 「未选中」。这一族钉住它别再消失。
 /// </summary>

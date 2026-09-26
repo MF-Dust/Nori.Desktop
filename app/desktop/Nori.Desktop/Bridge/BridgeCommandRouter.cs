@@ -14,7 +14,6 @@ namespace Nori.Desktop.Bridge;
 public enum BridgeCommandDomain
 {
 	Application,
-	Window,
 	Automation,
 	Ai,
 	Voice,

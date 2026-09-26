@@ -82,7 +82,7 @@ public sealed class BridgeCommands
 			Run(() =>
 			{
 				UpdateConfigDirect("voice_notice_pending", "0");
-				Runtime.InvalidateSnapshot("voice");
+				Runtime.InvalidateSnapshot();
 			})),
 
 		// ---- 自动化宿主接线 ----
@@ -138,7 +138,7 @@ public sealed class BridgeCommands
 			Run(() =>
 			{
 				UpdateUnifiedAiSettings(args);
-				Runtime.InvalidateSnapshot("ai", "embedding");
+				Runtime.InvalidateSnapshot();
 			})),
 
 		// invoke("settings_update_voice", {...})
@@ -171,7 +171,7 @@ public sealed class BridgeCommands
 					}
 					if (HasTtsConfigurationChange(args) || HasString(args, "ttsModel")) _services.Runtime.Voice.NotifyConfigurationChanged();
 				}
-				Runtime.InvalidateSnapshot("voice");
+				Runtime.InvalidateSnapshot();
 			})),
 
 		/// <summary>
@@ -197,7 +197,7 @@ public sealed class BridgeCommands
 				// 托盘菜单是另一棵原生控件树, 不吃前端快照。语言改了要单独推给它,
 				// 否则会一直停在启动那一刻的语言上。
 				Avalonia.Threading.Dispatcher.UIThread.Post(Tray.TrayMenu.Refresh);
-				Runtime.InvalidateSnapshot("general", "telemetry");
+				Runtime.InvalidateSnapshot();
 			})),
 
 		/// <summary>
@@ -238,7 +238,7 @@ public sealed class BridgeCommands
 			// 关掉时要把开始菜单快捷方式和注册表项清掉 —— 用户关的是「别在我机器上留东西」，
 			// 只停止发送等于留了一半。
 			Runtime.SyncNotificationRegistration();
-			Runtime.InvalidateSnapshot("workspace");
+			Runtime.InvalidateSnapshot();
 		})),
 
 		"settings_update_screen" => RequireMain(source, () => Run(() =>
@@ -246,7 +246,7 @@ public sealed class BridgeCommands
 			UpdateBoolConfig(args, "enabled", ConfigStore.KeyScreenReadingEnabled);
 			// 工具注册表按开关构建，不重建则要到下次启动才生效。
 			Runtime.RebuildTools();
-			Runtime.InvalidateSnapshot("workspace", "tools");
+			Runtime.InvalidateSnapshot();
 		})),
 
 		/// <summary>
@@ -264,7 +264,7 @@ public sealed class BridgeCommands
 		{
 			var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
 			var check = await update.CheckForUpdateAsync(cancellationToken);
-			Runtime.InvalidateSnapshot("updater");
+			Runtime.InvalidateSnapshot();
 			return (object?)new
 			{
 				available = check.Available,
@@ -284,7 +284,7 @@ public sealed class BridgeCommands
 		{
 			var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
 			var commit = await update.DownloadAndInstallAsync(progress: null, cancellationToken);
-			Runtime.InvalidateSnapshot("updater");
+			Runtime.InvalidateSnapshot();
 			return (object?)new
 			{
 				success = true,
@@ -301,7 +301,7 @@ public sealed class BridgeCommands
 		{
 			var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
 			update.CancelActiveOperation();
-			Runtime.InvalidateSnapshot("updater");
+			Runtime.InvalidateSnapshot();
 			return (object?)true;
 		}),
 
@@ -324,7 +324,7 @@ public sealed class BridgeCommands
 				UpdateBoolConfig(args, "idleEnabled", "proactive_idle_enabled");
 				UpdateNumberConfig(args, "idleMinutes", "proactive_idle_minutes");
 				UpdateBoolConfig(args, "dailyGreeting", "proactive_daily_greeting");
-				Runtime.InvalidateSnapshot("proactive");
+				Runtime.InvalidateSnapshot();
 			})),
 
 		// invoke("tools_set_enabled", {name: "getTime", enabled: false})
@@ -338,7 +338,7 @@ public sealed class BridgeCommands
 					throw new InvalidOperationException($"未找到工具: {name}");
 				}
 				PersistDisabledTools();
-				Runtime.InvalidateSnapshot("tools");
+				Runtime.InvalidateSnapshot();
 			})),
 
 		// invoke("model_select", {modelId: "nori"})
@@ -349,7 +349,7 @@ public sealed class BridgeCommands
 				UpdateConfigDirect(ConfigStore.KeySelectedModel, modelId);
 				ApplyPetConfig(ConfigStore.KeySelectedModel, modelId);
 				_services.Logger.Write(LogSource.Backend, "info", $"启用模型: {modelId}");
-				Runtime.InvalidateSnapshot("models");
+				Runtime.InvalidateSnapshot();
 			})),
 
 		// invoke("model_import_local", {resourceType?: "live2d"})
@@ -495,7 +495,7 @@ public sealed class BridgeCommands
 			string skillId = Str(args, "skillId").Trim();
 			if (skillId.Length == 0) throw new InvalidOperationException("技能 ID 不能为空");
 			SkillRecord installed = Runtime.Skills.InstallFromMarketplace(skillId);
-			Runtime.InvalidateSnapshot("skills");
+			Runtime.InvalidateSnapshot();
 			return RedactedSkillDto(installed);
 		}),
 
@@ -507,7 +507,7 @@ public sealed class BridgeCommands
 				{
 					throw new InvalidOperationException($"未找到技能: {Str(args, "id")}");
 				}
-				Runtime.InvalidateSnapshot("skills");
+				Runtime.InvalidateSnapshot();
 			})),
 
 		// invoke("skills_install_url", {url})
@@ -521,7 +521,7 @@ public sealed class BridgeCommands
 			Run(() =>
 			{
 				Runtime.Skills.Uninstall(Str(args, "id"));
-				Runtime.InvalidateSnapshot("skills");
+				Runtime.InvalidateSnapshot();
 			})),
 
 		// invoke("skills_export", {id}) → JSON 字符串
@@ -554,7 +554,7 @@ public sealed class BridgeCommands
 		{
 			double delayMinutes = ReadReminderNumber(args, "delayMinutes", allowMissing: true) ?? 15;
 			Nori.Core.Proactive.ReminderItem item = Runtime.Proactive.AddReminder(Str(args, "content"), delayMinutes);
-			Runtime.InvalidateSnapshot("proactive");
+			Runtime.InvalidateSnapshot();
 			return item;
 		}),
 
@@ -562,7 +562,7 @@ public sealed class BridgeCommands
 		"reminder_cancel" => RequireMain(source, () =>
 		{
 			bool cancelled = Runtime.Proactive.CancelReminder(Str(args, "id"));
-			if (cancelled) Runtime.InvalidateSnapshot("proactive");
+			if (cancelled) Runtime.InvalidateSnapshot();
 			return cancelled;
 		}),
 
@@ -570,7 +570,7 @@ public sealed class BridgeCommands
 		"reminder_update" => RequireMain(source, () =>
 		{
 			object result = UpdateReminder(args);
-			Runtime.InvalidateSnapshot("proactive");
+			Runtime.InvalidateSnapshot();
 			return result;
 		}),
 
@@ -891,7 +891,7 @@ public sealed class BridgeCommands
 			OptionalStr(args, "tags"),
 			"manual",
 			kind);
-		Runtime.InvalidateSnapshot("memory");
+		Runtime.InvalidateSnapshot();
 		return item;
 	}
 
@@ -908,7 +908,7 @@ public sealed class BridgeCommands
 			OptionalStr(args, "canonicalSummary"),
 			OptionalStr(args, "personaSummary"),
 			OptionalDouble(args, "confidence"));
-		if (updated) Runtime.InvalidateSnapshot("memory");
+		if (updated) Runtime.InvalidateSnapshot();
 		return updated;
 	}
 
@@ -916,7 +916,7 @@ public sealed class BridgeCommands
 	{
 		RequireMainVoid(source);
 		int count = await Runtime.Memory.ReembedAllAsync(cancellationToken);
-		Runtime.InvalidateSnapshot("memory");
+		Runtime.InvalidateSnapshot();
 		return count;
 	}
 
@@ -982,7 +982,7 @@ public sealed class BridgeCommands
 		MemoryTransferConflictStrategy strategy = ParseMemoryTransferConflictStrategy(OptionalStr(args, "conflictStrategy"));
 		// 刻意不读取 args.items：提交只能使用服务端令牌保存的已校验预览。
 		MemoryTransferCommitResult result = Runtime.Memory.CommitTransfer(OptionalStr(args, "previewToken"), strategy);
-		if (result.Succeeded) Runtime.InvalidateSnapshot("memory");
+		if (result.Succeeded) Runtime.InvalidateSnapshot();
 		MemoryTransferError? error = result.Errors.FirstOrDefault();
 		return new
 		{
@@ -1008,21 +1008,21 @@ public sealed class BridgeCommands
 		if (args.ValueKind != JsonValueKind.Object || OptionalStr(args, "confirmToken") != "DELETE_MEMORY")
 			throw new InvalidOperationException("删除记忆需要明确确认");
 		bool deleted = Runtime.Memory.Delete((long)Num(args, "id"));
-		if (deleted) Runtime.InvalidateSnapshot("memory");
+		if (deleted) Runtime.InvalidateSnapshot();
 		return deleted;
 	}
 
 	private object? ArchiveMemory(JsonElement args)
 	{
 		bool archived = Runtime.Memory.Archive((long)Num(args, "id"));
-		if (archived) Runtime.InvalidateSnapshot("memory");
+		if (archived) Runtime.InvalidateSnapshot();
 		return archived;
 	}
 
 	private object? RestoreMemory(JsonElement args)
 	{
 		bool restored = Runtime.Memory.Restore((long)Num(args, "id"));
-		if (restored) Runtime.InvalidateSnapshot("memory");
+		if (restored) Runtime.InvalidateSnapshot();
 		return restored;
 	}
 
@@ -1032,7 +1032,7 @@ public sealed class BridgeCommands
 			throw new InvalidOperationException("清空记忆需要明确确认");
 		Runtime.Memory.Clear();
 		Runtime.Memory.ClearCache();
-		Runtime.InvalidateSnapshot("memory");
+		Runtime.InvalidateSnapshot();
 		return null;
 	}
 
@@ -1076,7 +1076,7 @@ public sealed class BridgeCommands
 	{
 		RequireMainVoid(source);
 		MemoryIndexStatus status = await Runtime.Knowledge.ReindexAsync(cancellationToken).ConfigureAwait(false);
-		Runtime.InvalidateSnapshot("memory");
+		Runtime.InvalidateSnapshot();
 		return status;
 	}
 
@@ -1115,7 +1115,7 @@ public sealed class BridgeCommands
 		SetMemoryDouble(settings, "minSimilarity", "memory_min_similarity");
 		SetMemoryDouble(settings, "sourceRetentionThreshold", "memory_source_retention_threshold");
 		SetMemoryDouble(settings, "archiveThreshold", "memory_archive_threshold");
-		Runtime.InvalidateSnapshot("memory");
+		Runtime.InvalidateSnapshot();
 		return Runtime.Memory.Settings;
 	}
 
@@ -1143,7 +1143,7 @@ public sealed class BridgeCommands
 	{
 		RequireMainVoid(source);
 		object skill = await Runtime.Skills.InstallFromUrlAsync(Str(args, "url"));
-		Runtime.InvalidateSnapshot("skills");
+		Runtime.InvalidateSnapshot();
 		return skill;
 	}
 
@@ -1153,7 +1153,7 @@ public sealed class BridgeCommands
 		SkillRecord skill = args.GetProperty("skill").Deserialize<SkillRecord>(BridgeJson.Options)
 			?? throw new InvalidOperationException("技能数据不能为空");
 		object saved = Runtime.Skills.SaveCustom(skill);
-		Runtime.InvalidateSnapshot("skills");
+		Runtime.InvalidateSnapshot();
 		return saved;
 	}
 
@@ -1166,7 +1166,7 @@ public sealed class BridgeCommands
 		if (source is not INativeSettingsSource)
 		{
 			await Runtime.RefreshMcpToolsAsync();
-			Runtime.InvalidateSnapshot("mcp", "tools");
+			Runtime.InvalidateSnapshot();
 		}
 		return servers;
 	}
@@ -1368,7 +1368,7 @@ public sealed class BridgeCommands
 		config.ValidateBindings(meta.Motions, meta.Expressions);
 		_services.Config.Set(PetInteractionConfig.StorageKey(modelId), new ConfigValue.Json(config.ToJsonNode()));
 		_services.PetRuntime?.SetInteractionConfig(modelId, config);
-		Runtime.InvalidateSnapshot("models");
+		Runtime.InvalidateSnapshot();
 		await Task.CompletedTask;
 		return null;
 	}
@@ -1425,7 +1425,7 @@ public sealed class BridgeCommands
 			ApplyDisplayKey($"l2d_expression_{modelId}", expElem.GetRawText());
 		}
 		await Task.CompletedTask;
-		Runtime.InvalidateSnapshot("models");
+		Runtime.InvalidateSnapshot();
 		return null;
 	}
 
@@ -1470,7 +1470,7 @@ public sealed class BridgeCommands
 		SetBehaviorKey(args, "beatSync", "l2d_beat_sync");
 		SetBehaviorKey(args, "aiInteraction", PetInteractionConfig.AiEnabledKey);
 		await Task.CompletedTask;
-		Runtime.InvalidateSnapshot("behaviors");
+		Runtime.InvalidateSnapshot();
 		return null;
 	}
 
@@ -1565,7 +1565,7 @@ public sealed class BridgeCommands
 
 		// 关掉会改桌面设置的通道时立刻还原，不等退出 —— 用户关它多半就是想让桌面变回去。
 		if (!_services.Config.GetBoolOr(key, false)) Runtime.RestoreDesktopState();
-		Runtime.InvalidateSnapshot("expression");
+		Runtime.InvalidateSnapshot();
 	}
 
 	private void UpdateTaskSettings(JsonElement args)
@@ -1596,7 +1596,7 @@ public sealed class BridgeCommands
 
 		Runtime.RebuildTools();
 		Runtime.ReleaseStaleGrants(granted);
-		Runtime.InvalidateSnapshot("workspace", "tools");
+		Runtime.InvalidateSnapshot();
 	}
 
 	/// <summary>
@@ -1635,7 +1635,7 @@ public sealed class BridgeCommands
 			new ConfigValue.Text(gear == PermissionGear.Bypass
 				? ToolPermissionPolicy.FormatDeadline(ToolPermissionPolicy.BypassDeadline(DateTimeOffset.UtcNow))
 				: string.Empty));
-		Runtime.InvalidateSnapshot("workspace");
+		Runtime.InvalidateSnapshot();
 	}
 
 	private void UpdateWorkspaceSettings(JsonElement args)
@@ -1675,7 +1675,7 @@ public sealed class BridgeCommands
 
 		// 沙箱授权是磁盘上的 ACL，换了工作目录不释放的话旧目录上的 ACE 会永久残留。
 		Runtime.ReleaseStaleGrants(granted);
-		Runtime.InvalidateSnapshot("workspace", "tools");
+		Runtime.InvalidateSnapshot();
 	}
 
 	/// <summary>
@@ -2097,7 +2097,7 @@ public sealed class BridgeCommands
 		RequireMainVoid(source);
 		return await CallMcpToolCoreAsync(source, args, cancellationToken);
 	}
-	private void InvalidateMcpSnapshot() => Runtime.InvalidateSnapshot("mcp");
+	private void InvalidateMcpSnapshot() => Runtime.InvalidateSnapshot();
 
 	// ===================================================================
 	// 伴侣状态
@@ -2128,7 +2128,7 @@ public sealed class BridgeCommands
 		});
 		if (string.IsNullOrWhiteSpace(filePath)) return null;
 		_services.Config.Set("indextts_template_audio", new Nori.Core.Configuration.ConfigValue.Text(filePath));
-		Runtime.InvalidateSnapshot("voice");
+		Runtime.InvalidateSnapshot();
 		return filePath!;
 	}
 
@@ -2152,7 +2152,7 @@ public sealed class BridgeCommands
 		Nori.Core.Voice.IndexTtsProvider provider =
 			new(_services.Http, _services.Config, _services.Paths);
 		string voiceId = await provider.CloneVoiceAsync(templatePath, cancellationToken);
-		Runtime.InvalidateSnapshot("voice");
+		Runtime.InvalidateSnapshot();
 		return new {voiceId};
 	}
 
@@ -2207,7 +2207,7 @@ public sealed class BridgeCommands
 			() => _services.Resources.Import(type, filePath, cancellationToken),
 			cancellationToken);
 		_services.Logger.Write(LogSource.Backend, "info", $"成功导入本地 Live2D 资源: {string.Join(", ", imported)}");
-		Runtime.InvalidateSnapshot("models");
+		Runtime.InvalidateSnapshot();
 		return imported;
 	}
 
@@ -2337,11 +2337,17 @@ public sealed class BridgeCommands
 		if (!FileLogger.IsLevel(level))
 			throw new InvalidOperationException("日志级别无效");
 		string eventId = OptionalStr(args, "eventId") ?? "";
-		if (eventId is not ("audio.error" or "logging.suppressed"))
+		bool audioHost = source.Label == WindowLabels.AudioHost;
+		if (audioHost
+			? eventId is not ("audio.error" or "logging.suppressed")
+			: eventId is not ("audio.error" or "logging.suppressed" or "diagnostics.test"))
 			throw new InvalidOperationException("日志事件无效");
-		string message = eventId == "logging.suppressed"
-			? $"重复前端事件已被限流：{Math.Clamp(OptionalInt(args, "suppressedCount") ?? 1, 1, 1_000_000)}"
-			: "前端音频操作失败";
+		string message = eventId switch
+		{
+			"logging.suppressed" => $"重复前端事件已被限流：{Math.Clamp(OptionalInt(args, "suppressedCount") ?? 1, 1, 1_000_000)}",
+			"diagnostics.test" => "调试日志链路正常",
+			_ => "前端音频操作失败",
+		};
 		string errorType = OptionalStr(args, "errorType") ?? "";
 		if (errorType is "Error" or "TypeError" or "RangeError" or "ReferenceError" or "SyntaxError" or "URIError" or "EvalError" or "AggregateError")
 			message += $"：{errorType}";

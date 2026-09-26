@@ -63,7 +63,7 @@ public partial class BridgeCommandsTests : IDisposable
 				Assert.Equal("Nori · 模型", models.Title);
 				Assert.Contains("记忆", memory.Title);
 				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text("en-US"));
-				fixture._runtime.InvalidateSnapshot("general");
+				fixture._runtime.InvalidateSnapshot();
 				await models.RefreshAsync(); await memory.RefreshAsync();
 				await WaitUntilAsync(() => models.Title == "Nori · Models" && memory.Title?.Contains("Memory", StringComparison.Ordinal) == true);
 				Assert.Equal("Nori · Models", models.Title);
@@ -861,7 +861,7 @@ public partial class BridgeCommandsTests : IDisposable
 			new FakeBridgeSource(WindowLabels.Main), "settings_update_workspace", Args(new { root = folder }));
 
 		Directory.Delete(folder);
-		_runtime.InvalidateSnapshot("workspace");
+		_runtime.InvalidateSnapshot();
 
 		JsonElement snapshot = JsonSerializer.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options);
 		JsonElement workspace = snapshot.GetProperty("workspace");
@@ -2070,7 +2070,7 @@ public partial class BridgeCommandsTests : IDisposable
 		object cached = _runtime.BuildSnapshot(source);
 		Assert.Same(first, cached);
 
-		_runtime.InvalidateSnapshot("test");
+		_runtime.InvalidateSnapshot();
 		object rebuilt = _runtime.BuildSnapshot(source);
 		Assert.NotSame(first, rebuilt);
 	}

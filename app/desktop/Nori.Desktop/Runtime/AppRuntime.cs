@@ -195,7 +195,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			try { services.Logger.Write(LogSource.Backend, severity, message); } catch { }
 		};
 		Knowledge = new KnowledgeService(services.Database, Memory, config, services.Paths.KnowledgePath);
-		Knowledge.StatusChanged = () => InvalidateSnapshot("memory");
+		Knowledge.StatusChanged = () => InvalidateSnapshot();
 		Memory.Knowledge = Knowledge;
 		Lifecycle = new MemoryLifecycleService(Memory);
 		ReflectionService reflection = new(services.Http, services.Chat, Memory, config);
@@ -203,7 +203,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		{
 			try { services.Logger.Write(LogSource.Backend, "warn", $"记忆整理失败: {ReflectionDiagnostics.Format(exception)}"); }
 			catch { }
-		}, () => InvalidateSnapshot("memory"));
+		}, () => InvalidateSnapshot());
 		Skills = new SkillService(config, services.PublicHttp);
 		Emotion = new EmotionManager(config);
 
@@ -277,7 +277,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 					CancelPetInteractionRequest();
 					CancelPetInteractionSpeech();
 				}
-				InvalidateSnapshot(label == WindowLabels.Pet ? "pet" : "windows");
+				InvalidateSnapshot();
 			};
 		}
 	}
@@ -375,7 +375,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 				/* 伴侣未加载时忽略 */
 			}
 		};
-		Voice.SpeakingChanged += _ => InvalidateSnapshot("voice");
+		Voice.SpeakingChanged += _ => InvalidateSnapshot();
 
 		Voice.VolumeChanged += volume => _playback.SetDeviceVolume(volume);
 		_playback.SetDeviceVolume(Voice.GetVolume());
@@ -386,7 +386,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			TrackBackground(() => RefreshMcpToolsAsync(), "MCP tools refresh");
 		}
 
-		InvalidateSnapshot("all");
+		InvalidateSnapshot();
 	}
 
 	/// <summary>安全获取系统空闲秒数 (非 Windows 返回 null)</summary>
@@ -605,7 +605,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		Dispatcher.UIThread.Post(Services.Windows.ClearPetSpeech);
 	}
 
-	private void OnPetModelStateChanged() => InvalidateSnapshot("models", "pet");
+	private void OnPetModelStateChanged() => InvalidateSnapshot();
 
 	private void CancelPetInteractionSpeech()
 	{
@@ -1219,7 +1219,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	internal void NotifyChatHistoryChanged()
 	{
 		Interlocked.Increment(ref _chatHistoryRevision);
-		InvalidateSnapshot("chat");
+		InvalidateSnapshot();
 	}
 
 	private async Task AutoSpeakAsync(string text, string? messageEmotion, CancellationToken ct)
@@ -1519,9 +1519,8 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	// ===================================================================
 
 	/// <summary>使快照失效并通知已订阅的原生窗口。</summary>
-	public void InvalidateSnapshot(params string[] topics)
+	public void InvalidateSnapshot()
 	{
-		_ = topics;
 		Interlocked.Increment(ref _snapshotVersion);
 		RaiseStateChanged();
 	}
@@ -1730,7 +1729,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			 * 状态, 只好统一画成"未选中", 于是点了「对话」之后窗口开在旁边, 侧边栏
 			 * 却还是一副什么都没发生的样子。
 			 *
-			 * 注意 VisibilityChanged 里本来就在调 InvalidateSnapshot("windows") ——
+			 * 注意 VisibilityChanged 里本来就在调 InvalidateSnapshot() ——
 			 * 也就是说刷新这条路早就接好了, 缺的一直是这一段本身, 而缺了也不报错。 */
 			windows = new
 			{
@@ -1925,12 +1924,12 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	private void OnAutomationChanged()
 	{
 		if (Volatile.Read(ref _disposed) != 0) return;
-		InvalidateSnapshot("automation");
+		InvalidateSnapshot();
 	}
 
 	private void OnUpdateStatusChanged()
 	{
-		if (Volatile.Read(ref _disposed) == 0) InvalidateSnapshot("updater");
+		if (Volatile.Read(ref _disposed) == 0) InvalidateSnapshot();
 	}
 
 	/// <summary>Agent 事件通道名</summary>
@@ -2073,7 +2072,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	{
 		TrackBackground(() => Knowledge.ReindexAsync(_lifetimeCts.Token), "Memory.md embedding rebuild");
 		TrackBackground(() => Memory.ReembedAllAsync(_lifetimeCts.Token, false), "memory embedding rebuild");
-		InvalidateSnapshot("memory", "embedding");
+		InvalidateSnapshot();
 	}
 
 	private async Task RunMemoryMaintenanceAsync()
@@ -2081,7 +2080,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		while (!_lifetimeCts.IsCancellationRequested)
 		{
 			int changed = Lifecycle.RunOnce();
-			if (changed > 0) InvalidateSnapshot("memory");
+			if (changed > 0) InvalidateSnapshot();
 			try { await Task.Delay(TimeSpan.FromHours(6), _lifetimeCts.Token).ConfigureAwait(false); }
 			catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) { break; }
 		}

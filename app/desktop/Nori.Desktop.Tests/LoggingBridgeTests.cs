@@ -64,7 +64,7 @@ public partial class BridgeCommandsTests
 	public async Task 前端日志不接受正文与伪造来源()
 	{
 		BridgeCommands commands = CreateCommands();
-		foreach (string eventId in new[] { "window.error", "user_private_content", "", "diagnostics.test" })
+		foreach (string eventId in new[] { "window.error", "user_private_content", "" })
 		{
 			int before = _services.Logger.RecentLogs().Count;
 			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource("first-run"), "write_log", Args(new
@@ -88,6 +88,25 @@ public partial class BridgeCommandsTests
 		Assert.DoesNotContain("正文", json);
 		Assert.DoesNotContain("私人", json);
 		Assert.DoesNotContain("user_private", json);
+	}
+
+	[Fact]
+	public async Task 调试日志事件拒绝音频宿主并允许原生设置()
+	{
+		BridgeCommands commands = CreateCommands();
+		int before = _services.Logger.RecentLogs().Count;
+		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
+			new FakeBridgeSource(WindowLabels.AudioHost), "write_log", Args(new {level = "warn", eventId = "diagnostics.test", message = "伪造正文"})));
+		Assert.Equal(before, _services.Logger.RecentLogs().Count);
+
+		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Settings), "write_log", Args(new {level = "warn", eventId = "diagnostics.test", message = "不应写入的正文"}));
+		LogEntry entry = _services.Logger.RecentLogs().Last();
+		Assert.Equal(LogSource.Backend, entry.Source);
+		Assert.Equal(WindowLabels.Settings, entry.WindowLabel);
+		Assert.Equal("NativeSettings", entry.Category);
+		Assert.Equal("diagnostics.test", entry.EventId);
+		Assert.Equal("调试日志链路正常", entry.Message);
+		Assert.DoesNotContain("不应写入", entry.Message);
 	}
 
 	[Fact]
@@ -115,7 +134,9 @@ public partial class BridgeCommandsTests
 			await viewModel.WriteTestLogAsync();
 			LogEntry entry = fixture._services.Logger.RecentLogs().Last();
 			Assert.Equal(LogSource.Backend, entry.Source); Assert.Equal("settings", entry.WindowLabel);
-			viewModel.LevelFilter = "warn"; viewModel.SourceFilter = "backend"; viewModel.CategoryFilter = "NativeSettings"; viewModel.SearchText = "logging.suppressed";
+			Assert.Equal("diagnostics.test", entry.EventId);
+			Assert.Equal("调试日志链路正常", entry.Message);
+			viewModel.LevelFilter = "warn"; viewModel.SourceFilter = "backend"; viewModel.CategoryFilter = "NativeSettings"; viewModel.SearchText = "diagnostics.test";
 			Assert.Single(viewModel.FilteredLogs);
 			viewModel.SourceFilter = "frontend"; Assert.Empty(viewModel.FilteredLogs);
 			await viewModel.SetMinimumLevelAsync("debug"); Assert.Equal("debug", fixture._services.Logger.GetStatus().MinimumLevel);

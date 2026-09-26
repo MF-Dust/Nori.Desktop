@@ -145,7 +145,7 @@ public partial class BridgeCommandsTests
 		await service.WaitForPendingOperationsAsync();
 		service.Dispose();
 		int before = changes;
-		_runtime.InvalidateSnapshot("memory");
+		_runtime.InvalidateSnapshot();
 		Assert.Equal(before, changes);
 		await Assert.ThrowsAsync<ObjectDisposedException>(() => service.ExecuteAsync("memory_list_page"));
 	});

@@ -148,7 +148,7 @@ public partial class BridgeCommandsTests
 		await service.WaitForPendingOperationsAsync();
 		service.Dispose();
 		int before = changes;
-		_runtime.InvalidateSnapshot("models");
+		_runtime.InvalidateSnapshot();
 		Assert.Equal(before, changes);
 		await Assert.ThrowsAsync<ObjectDisposedException>(() => service.ExecuteAsync("model_get_meta"));
 	});

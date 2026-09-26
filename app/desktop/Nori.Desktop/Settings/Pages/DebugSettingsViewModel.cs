@@ -173,7 +173,7 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>写入一条调试日志。</summary>
 	public async Task WriteTestLogAsync(CancellationToken cancellationToken = default)
 	{
-		await ExecuteAsync("write_log", new {level = "warn", eventId = "logging.suppressed", message = "", suppressedCount = 1}, cancellationToken).ConfigureAwait(true);
+		await ExecuteAsync("write_log", new {level = "warn", eventId = "diagnostics.test", message = ""}, cancellationToken).ConfigureAwait(true);
 		await RefreshLogsCoreAsync(cancellationToken).ConfigureAwait(true);
 	}
 

@@ -263,7 +263,7 @@ public sealed class SettingsService : IDisposable
 
 		bool confirmed = value.GetBoolean();
 		_services.Config.Set(PluginTrustConfigKey, new Nori.Core.Configuration.ConfigValue.Text(confirmed ? "1" : "0"));
-		if (_services.Runtime is { } runtime) runtime.InvalidateSnapshot("plugins");
+		if (_services.Runtime is { } runtime) runtime.InvalidateSnapshot();
 		else RaiseStateChanged();
 		return new {confirmed};
 	}

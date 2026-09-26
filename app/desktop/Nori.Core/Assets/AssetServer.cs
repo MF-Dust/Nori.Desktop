@@ -18,10 +18,7 @@ public sealed record AssetServerOptions
 	/// <summary>前端 bundle 目录 (生产模式下的 dist)</summary>
 	public required string AppRoot { get; init; }
 
-	/// <summary>资源目录 (data/resources)</summary>
-	public required string ResourcesRoot { get; init; }
-
-	/// <summary>开发模式: 固定端口且不加随机前缀, 让 vite 能把 /nori-assets 代理过来</summary>
+	/// <summary>开发模式: 固定端口且不加随机前缀, 让 vite 能把 /media、/plugins 代理过来</summary>
 	public bool DevMode { get; init; }
 
 	/// <summary>开发模式下的固定端口</summary>
@@ -44,7 +41,7 @@ public sealed record AssetServerOptions
 public sealed class AssetServer : IAsyncDisposable
 {
 	private const string AppSegment = "app";
-	private const string AssetSegment = "nori-assets";
+	private const string LegacyAssetSegment = "nori-assets";
 	private const string MediaSegment = "media";
 	private const long MaxMediaUploadBytes = VoiceAudioLimits.MaxBytes;
 
@@ -99,9 +96,7 @@ public sealed class AssetServer : IAsyncDisposable
 
 		WebApplication app = builder.Build();
 		PhysicalFileProvider appProvider = new(options.AppRoot);
-		PhysicalFileProvider resourceProvider = new(options.ResourcesRoot, Microsoft.Extensions.FileProviders.Physical.ExclusionFilters.None);
 		PathString appPath = new($"{prefix}/{AppSegment}");
-		PathString resourcePath = new($"{prefix}/{AssetSegment}");
 		IReadOnlyList<IAssetRoute> additionalRoutes = options.AdditionalRoutes?.ToArray() ?? [];
 		ValidateAdditionalRoutes(additionalRoutes);
 
@@ -256,21 +251,16 @@ public sealed class AssetServer : IAsyncDisposable
 		{
 			string requestPath = context.Request.Path.Value ?? "";
 			string appPathValue = appPath.Value ?? string.Empty;
-			string resourcePathValue = resourcePath.Value ?? string.Empty;
-			string? rootPath = IsPathUnder(requestPath, appPathValue)
-				? appPathValue
-				: IsPathUnder(requestPath, resourcePathValue) ? resourcePathValue : null;
-			if (rootPath is null)
+			if (!IsPathUnder(requestPath, appPathValue))
 			{
 				await next();
 				return;
 			}
 
-			string relative = requestPath[rootPath.Length..].TrimStart('/');
+			string relative = requestPath[appPathValue.Length..].TrimStart('/');
 			string? decoded = AssetPath.PercentDecode(relative);
-			string root = rootPath == appPathValue ? options.AppRoot : options.ResourcesRoot;
 			string? resolved = decoded is not null && AssetPath.IsSafeRelativePath(decoded)
-				? AssetPath.Resolve(root, decoded)
+				? AssetPath.ResolveExact(options.AppRoot, decoded)
 				: null;
 			if (resolved is null)
 			{
@@ -278,8 +268,8 @@ public sealed class AssetServer : IAsyncDisposable
 				return;
 			}
 
-			string normalized = Path.GetRelativePath(root, resolved).Replace(Path.DirectorySeparatorChar, '/');
-			context.Request.Path = new PathString($"{rootPath}/{normalized}");
+			string normalized = Path.GetRelativePath(options.AppRoot, resolved).Replace(Path.DirectorySeparatorChar, '/');
+			context.Request.Path = new PathString($"{appPathValue}/{normalized}");
 			await next();
 		});
 
@@ -300,26 +290,6 @@ public sealed class AssetServer : IAsyncDisposable
 				if (string.Equals(Path.GetExtension(context.File.Name), ".html", StringComparison.OrdinalIgnoreCase))
 				{
 					context.Context.Response.ContentType = "text/html; charset=utf-8";
-				}
-			},
-		});
-		app.UseStaticFiles(new StaticFileOptions
-		{
-			FileProvider = resourceProvider,
-			RequestPath = resourcePath,
-			ServeUnknownFileTypes = true,
-			DefaultContentType = "application/octet-stream",
-			ContentTypeProvider = contentTypes,
-			OnPrepareResponse = context =>
-			{
-				context.Context.Response.Headers.CacheControl = "public, max-age=3600";
-				context.Context.Response.Headers["Access-Control-Allow-Origin"] = "*";
-				if (string.Equals(Path.GetExtension(context.File.Name), ".json", StringComparison.OrdinalIgnoreCase) ||
-					string.Equals(Path.GetExtension(context.File.Name), ".motion3", StringComparison.OrdinalIgnoreCase) ||
-					string.Equals(Path.GetExtension(context.File.Name), ".physics3", StringComparison.OrdinalIgnoreCase) ||
-					string.Equals(Path.GetExtension(context.File.Name), ".exp3", StringComparison.OrdinalIgnoreCase))
-				{
-					context.Context.Response.ContentType = "application/json; charset=utf-8";
 				}
 			},
 		});
@@ -375,7 +345,7 @@ public sealed class AssetServer : IAsyncDisposable
 
 	private static bool IsReservedRouteSegment(string value) =>
 		value.Equals(AppSegment, StringComparison.OrdinalIgnoreCase) ||
-		value.Equals(AssetSegment, StringComparison.OrdinalIgnoreCase) ||
+		value.Equals(LegacyAssetSegment, StringComparison.OrdinalIgnoreCase) ||
 		value.Equals(MediaSegment, StringComparison.OrdinalIgnoreCase);
 
 	private static bool IsSafeRoutePath(string path) =>

@@ -54,9 +54,4 @@ public sealed record SecretReadResult(string? Value, SecretIssueCategory Issue)
 		&& Issue is not SecretIssueCategory.KeyStoreUnavailable
 		and not SecretIssueCategory.CorruptCiphertext
 		and not SecretIssueCategory.LegacyUnsupported;
-
-	/// <summary>是否需要用户重新填写或修复密钥库。</summary>
-	public bool RequiresUserAction => Issue is SecretIssueCategory.KeyStoreUnavailable
-		or SecretIssueCategory.CorruptCiphertext
-		or SecretIssueCategory.LegacyUnsupported;
 }

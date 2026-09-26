@@ -27,15 +27,6 @@ public static class ResourceTypeExtensions
 		ResourceType.Live2D => "live2d",
 		_ => throw new ArgumentOutOfRangeException(nameof(type)),
 	};
-
-	/// <summary>
-	/// 从字符串解析资源类型, 无法识别返回 null
-	/// </summary>
-	public static ResourceType? Parse(string value) => value.Trim().ToLowerInvariant() switch
-	{
-		"live2d" => ResourceType.Live2D,
-		_ => null,
-	};
 }
 
 /// <summary>

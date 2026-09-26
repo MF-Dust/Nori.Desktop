@@ -1,7 +1,5 @@
 /**
- * 事件收发
- *
- * 对应原 @tauri-apps/api/event 的 listen / emit.
+ * 宿主事件监听
  */
 import {host} from "./index"
 
@@ -24,11 +22,4 @@ export const listen = async <T = unknown>(event: string, handler: (message: Host
 	const HOST = host()
 	if (!HOST) return () => {}
 	return HOST.listen(event, (message) => { handler(message as HostEvent<T>) })
-}
-
-/**
- * 向宿主发事件 (宿主会再全局广播给所有窗口)
- */
-export const emit = async (event: string, payload?: unknown): Promise<void> => {
-	host()?.emit(event, payload)
 }

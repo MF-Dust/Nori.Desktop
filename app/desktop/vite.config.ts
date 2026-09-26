@@ -16,10 +16,6 @@ export default defineConfig({
 		strictPort: true,
 		// 音频宿主和受控插件页面使用同源相对资源路径。
 		proxy: {
-			"/nori-assets": {
-				target: `http://127.0.0.1:${HOST_ASSET_PORT}`,
-				changeOrigin: false,
-			},
 			"/media": {
 				target: `http://127.0.0.1:${HOST_ASSET_PORT}`,
 				changeOrigin: false,

@@ -33,9 +33,6 @@ public static partial class SensitiveDataRedactor
 	/// <summary>构造可写入本地日志的异常摘要。</summary>
 	public static string ExceptionSummary(Exception? exception) => ExceptionType(exception);
 
-	/// <summary>把日志中的响应正文、请求正文或 stderr 替换为固定占位符。</summary>
-	public static string RedactBody(string label) => $"{label}: [redacted]";
-
 	[GeneratedRegex(@"(?i)(https?://)[^\s/@:]+(?::[^\s/@]*)?@", RegexOptions.CultureInvariant)]
 	private static partial Regex CredentialUrlRegex();
 

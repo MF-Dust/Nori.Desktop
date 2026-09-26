@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace Nori.Core.Configuration;
@@ -44,11 +43,6 @@ public static partial class ConfigValidation
 		!string.IsNullOrWhiteSpace(value)
 		&& value.Length <= 256
 		&& EnvironmentNameRegex().IsMatch(value);
-
-	/// <summary>校验一个字符串配置值是否为有限的 invariant 小数。</summary>
-	public static bool TryParseInvariantDouble(string? value, out double result) =>
-		double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result)
-		&& double.IsFinite(result);
 
 	/// <summary>校验一个配置键是否为敏感字段。</summary>
 	public static bool IsSensitiveKey(string key) => ConfigStore.IsSensitiveKey(key);

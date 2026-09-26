@@ -741,15 +741,16 @@ public partial class BridgeCommandsTests : IDisposable
 
 
 	/// <summary>
-	/// 把 LuoLiCore 配成「已启用、已有会话、地址指向一个没人监听的端口」。
+	/// 把 LuoLiCore 配成「已启用、已有会话、地址指向一个不可达的测试域名」。
 	///
-	/// 端口选 1 是因为它不会有人在听：非安全模式下真去调那个重置端点必然连接失败，安全模式下
-	/// 必须压根不发这次请求 —— 两条用例靠这个差别互为对照。
+	/// 用 <c>nori-network-test.invalid</c> 让 DNS 立即失败，避免 Windows 上对未监听回环端口
+	/// 连接时的长时间重试。非安全模式下真去调那个重置端点必然连接失败，安全模式下必须压根
+	/// 不发这次请求 —— 两条用例靠这个差别互为对照。
 	/// </summary>
 	private void ConfigureUnreachableLuoLiCore()
 	{
 		_config.Set(LuoLiCoreSettingsStore.KeyEnabled, new ConfigValue.Boolean(true));
-		_config.Set(LuoLiCoreSettingsStore.KeyBaseUrl, new ConfigValue.Text("http://127.0.0.1:1"));
+		_config.Set(LuoLiCoreSettingsStore.KeyBaseUrl, new ConfigValue.Text("http://nori-network-test.invalid"));
 		_config.Set(LuoLiCoreSettingsStore.KeyApiKey, new ConfigValue.Text("sk-unreachable"));
 		_config.Set(LuoLiCoreSettingsStore.KeySessionId, new ConfigValue.Text("sess_fixed"));
 	}

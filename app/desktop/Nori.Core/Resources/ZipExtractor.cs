@@ -38,6 +38,9 @@ public static class ZipExtractor
 		return string.Join('/', parts);
 	}
 
+	/// <summary>目录条目的名称部分为空。文件条目即使路径以分隔符写法出现，也不靠后缀判断。</summary>
+	public static bool IsDirectoryEntry(ZipArchiveEntry entry) => entry.Name.Length == 0;
+
 	/// <summary>
 	/// 找出所有条目共有的唯一顶层目录.
 	/// 没有共同顶层目录 (或顶层就是文件) 时返回 null.
@@ -121,7 +124,7 @@ public static class ZipExtractor
 				cancellationToken.ThrowIfCancellationRequested();
 				string sanitized = SanitizePath(entry.FullName);
 				if (sanitized.Length == 0) continue;
-				bool isDirectory = entry.Name.Length == 0;
+				bool isDirectory = IsDirectoryEntry(entry);
 				if (!isDirectory)
 				{
 					if (entry.Length < 0 || entry.Length > effectiveLimits.MaxSingleFileBytes)

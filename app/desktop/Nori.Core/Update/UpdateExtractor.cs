@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Nori.Core.Data;
+using Nori.Core.Resources;
 
 namespace Nori.Core.Update;
 
@@ -280,7 +281,7 @@ public static class UpdateExtractor
 			if ((fileType != 0 && fileType != 0x8000 && fileType != 0x4000) || (unixMode & 0xe00) != 0
 				|| (entry.ExternalAttributes & (int)FileAttributes.ReparsePoint) != 0)
 				throw new InvalidOperationException($"ZIP 包含链接、特殊文件或特殊权限: {entry.FullName}");
-			bool isDirectory = entry.Name.Length == 0;
+			bool isDirectory = ZipExtractor.IsDirectoryEntry(entry);
 			if (isDirectory)
 			{
 				Directory.CreateDirectory(outPath);

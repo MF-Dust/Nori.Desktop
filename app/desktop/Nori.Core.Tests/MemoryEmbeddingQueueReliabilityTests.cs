@@ -23,7 +23,6 @@ public sealed class MemoryEmbeddingQueueReliabilityTests
 			const int total = 130;
 			SaturatingEmbedding embedding = new(total);
 			await using MemoryService service = new(new MemoryStore(database), embedding, config);
-			TaskCompletionSource allCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
 			List<MemoryItem> items = [await service.AddAsync("队列饱和 0")];
 			await embedding.FirstBatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -32,15 +31,7 @@ public sealed class MemoryEmbeddingQueueReliabilityTests
 			Assert.True(service.EmbeddingQueueStatus.SaturatedCount > 0);
 			embedding.ReleaseFirstBatch();
 			await embedding.AllInputsProcessed.Task.WaitAsync(TimeSpan.FromSeconds(10));
-			_ = Task.Run(async () =>
-			{
-				while (service.EmbeddingQueueStatus.CompletedCount < total)
-				{
-					await Task.Delay(10);
-				}
-				allCompleted.TrySetResult();
-			});
-			await allCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+			await WaitUntilAsync(() => service.EmbeddingQueueStatus.CompletedCount >= total);
 
 			Assert.Equal(total, service.GetOverview().Total);
 			Assert.All(items, item => Assert.NotNull(service.Get(item.Id)!.GetVector()));

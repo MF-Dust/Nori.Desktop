@@ -138,9 +138,7 @@ public sealed class FirstRunWindow : Window
 			?? throw new InvalidOperationException("请选择本地模型 ZIP 文件") : null;
 	}
 
-	private bool IsEnglish() =>
-		_services.Config.GetStringOr(ConfigStore.KeyLanguage, "zh-CN")
-			.StartsWith("en", StringComparison.OrdinalIgnoreCase);
+	private bool IsEnglish() => UiLanguage.IsEnglish(_services.Config);
 
 	private Control BuildChrome()
 	{

@@ -2,6 +2,7 @@ using Avalonia.Animation;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Nori.Core.Configuration;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Settings;
 
@@ -21,7 +22,7 @@ public partial class SettingsWindow : Window
 	{
 		InitializeComponent();
 		NativeWindowSizing.Apply(this, NativeWindowSizing.DefaultSize);
-		NativeWindowChrome.Attach(this, () => _viewModel?.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase) == true);
+		NativeWindowChrome.Attach(this, () => UiLanguage.IsEnglish(_viewModel?.Language));
 		PagePresenter.DataContextChanged += OnPageChanged;
 	}
 

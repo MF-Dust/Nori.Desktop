@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Threading;
+using Nori.Core.Configuration;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Memory;
 
@@ -55,7 +56,7 @@ public sealed partial class MemoryWindow : Window
 		WindowStartupLocation = WindowStartupLocation.CenterScreen;
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/Settings/SettingsTheme.axaml") });
 		BuildShell();
-		NativeWindowChrome.Attach(this, () => _language.StartsWith("en", StringComparison.OrdinalIgnoreCase));
+		NativeWindowChrome.Attach(this, () => UiLanguage.IsEnglish(_language));
 		BuildPages();
 		ApplyLanguage();
 		Navigate("overview");
@@ -310,7 +311,7 @@ public sealed partial class MemoryWindow : Window
 	};
 
 	private string L(string key) => MemoryResources.Get(key, _language);
-	private string T(string chinese, string english) => _language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? english : chinese;
+	private string T(string chinese, string english) => UiLanguage.IsEnglish(_language) ? english : chinese;
 	private void ApplyLanguage()
 	{
 		Title = L("header.title");

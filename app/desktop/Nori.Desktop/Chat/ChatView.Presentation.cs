@@ -1,3 +1,4 @@
+using Nori.Core.Configuration;
 using Nori.Desktop.Appearance;
 using Avalonia;
 using Avalonia.Automation;
@@ -217,7 +218,7 @@ public sealed partial class ChatView
 		_voiceTime.Text = (DateTimeOffset.UtcNow - _recordStarted).ToString(@"mm\:ss", System.Globalization.CultureInfo.InvariantCulture);
 	}
 
-	private string T(string chinese, string english) => _language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? english : chinese;
+	private string T(string chinese, string english) => UiLanguage.IsEnglish(_language) ? english : chinese;
 	private void Localize(Action action) { _localize.Add(action); action(); }
 	private void ApplyLanguage()
 	{

@@ -6,13 +6,14 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Nori.Core.Configuration;
 using Nori.Desktop.Settings;
 
 namespace Nori.Desktop.Windows;
 
 public sealed partial class ModelsWindow
 {
-	private string T(string chinese, string english) => _language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? english : chinese;
+	private string T(string chinese, string english) => UiLanguage.IsEnglish(_language) ? english : chinese;
 	private void Localize(Action action) { (_buildingAdjust ? _adjustLocalize : _localize).Add(action); action(); }
 	private static TextBlock Text(string value, double size = 13, bool bold = false) => new() { Text = value, FontSize = size, FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal, TextWrapping = TextWrapping.Wrap };
 	private TextBlock Local(Func<string> value, double size = 13, bool bold = false)

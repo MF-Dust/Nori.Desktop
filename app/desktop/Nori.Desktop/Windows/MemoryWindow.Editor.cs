@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Styling;
 using Avalonia.Markup.Xaml.Styling;
+using Nori.Core.Configuration;
 
 namespace Nori.Desktop.Windows;
 
@@ -178,7 +179,7 @@ public sealed partial class MemoryWindow
 			finally { confirmClosing = false; }
 		};
 		dialog.Closed += (_, _) => { _editor = null; _editorDirty = null; _discardEditor = null; _editorLocalize = null; };
-		NativeWindowChrome.Attach(dialog, () => _language.StartsWith("en", StringComparison.OrdinalIgnoreCase));
+		NativeWindowChrome.Attach(dialog, () => UiLanguage.IsEnglish(_language));
 		_ = dialog.ShowDialog(this);
 		Success();
 	}
@@ -222,7 +223,7 @@ public sealed partial class MemoryWindow
 		};
 		dialog.Closed += (_, _) => _confirmationLocalizers.Remove(dialog);
 		dialog.Content = new Border { Padding = new Thickness(24), Child = Stack(title, description, Row(cancel, confirm)) };
-		NativeWindowChrome.Attach(dialog, () => _language.StartsWith("en", StringComparison.OrdinalIgnoreCase));
+		NativeWindowChrome.Attach(dialog, () => UiLanguage.IsEnglish(_language));
 		return await dialog.ShowDialog<bool>(owner ?? this);
 	}
 

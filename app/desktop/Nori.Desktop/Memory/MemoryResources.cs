@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using Nori.Core.Configuration;
 
 namespace Nori.Desktop.Memory;
 
@@ -235,5 +236,5 @@ internal static class MemoryResources
 	}.ToFrozenDictionary();
 
 	public static string Get(string key, string language) => Strings.TryGetValue(key, out var text)
-		? (language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? text.English : text.Chinese) : key;
+		? (UiLanguage.IsEnglish(language) ? text.English : text.Chinese) : key;
 }

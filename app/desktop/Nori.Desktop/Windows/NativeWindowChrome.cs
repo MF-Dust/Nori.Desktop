@@ -8,6 +8,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using Nori.Core.Configuration;
 using Nori.Core.Platform;
 using Nori.Desktop.Appearance;
 
@@ -27,7 +28,7 @@ internal sealed class NativeWindowChrome : Border
 	internal NativeWindowChrome(Window window, Func<bool>? english = null, Control? heading = null, Action? onClose = null)
 	{
 		_window = window;
-		_english = english ?? (() => System.Globalization.CultureInfo.CurrentUICulture.Name.StartsWith("en", StringComparison.OrdinalIgnoreCase));
+		_english = english ?? (() => UiLanguage.IsEnglish(System.Globalization.CultureInfo.CurrentUICulture.Name));
 		Name = "NativeWindowTitleBar";
 		Height = 40;
 		Background = NoriThemeTokens.Brush("bg-sidebar");

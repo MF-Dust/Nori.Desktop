@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Windows.Input;
 using Avalonia.Threading;
+using Nori.Core.Configuration;
 using Nori.Desktop.Settings.Pages;
 
 namespace Nori.Desktop.Settings;
@@ -211,7 +212,7 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 				JsonElement snapshot = await _service.GetSnapshotAsync(_lifetimeCts.Token).ConfigureAwait(true);
 				if (_disposed) return;
 				string language = SettingsSnapshotReader.String(snapshot, Language, "general", "language");
-				if (language is not ("zh-CN" or "en-US")) language = language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? "en-US" : "zh-CN";
+				if (language is not ("zh-CN" or "en-US")) language = UiLanguage.IsEnglish(language) ? "en-US" : "zh-CN";
 				Language = language;
 				foreach (SettingsPageBase page in _pages.Values) page.ApplySnapshot(snapshot);
 				// 未显示的复杂页面在导航时读取，避免每次运行时变化都查询所有宿主服务。

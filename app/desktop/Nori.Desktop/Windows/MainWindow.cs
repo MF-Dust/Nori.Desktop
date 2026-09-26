@@ -311,8 +311,7 @@ public sealed class MainWindow : Window
 
 	private MainRefreshData ReadMainRefreshData()
 	{
-		bool english = _services.Config.GetStringOr(ConfigStore.KeyLanguage, "zh-CN")
-			.StartsWith("en", StringComparison.OrdinalIgnoreCase);
+		bool english = UiLanguage.IsEnglish(_services.Config);
 		bool collapsed = _services.Config.GetStringOr("ui_sidebar_collapsed", "false") is "true" or "1";
 		string modelId = _services.Config.GetStringOr(ConfigStore.KeySelectedModel, ConfigStore.DefaultModel);
 		bool modelReady = false;

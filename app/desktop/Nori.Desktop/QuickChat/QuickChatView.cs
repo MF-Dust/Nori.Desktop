@@ -11,6 +11,7 @@ using Avalonia.Layout;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Nori.Core.Configuration;
 using Nori.Desktop.Chat;
 
 namespace Nori.Desktop.QuickChat;
@@ -691,7 +692,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		finally { _operations.Remove(task); Render(); }
 	}
 
-	private string T(string chinese, string english) => _state.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? english : chinese;
+	private string T(string chinese, string english) => UiLanguage.IsEnglish(_state.Language) ? english : chinese;
 
 	private static TextBlock Text(string value, double size, FontWeight weight, IBrush brush) => new()
 	{

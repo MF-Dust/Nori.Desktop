@@ -136,8 +136,7 @@ public sealed partial class AppRuntime
 		Notifications.Windows.ToastActivator.Register(arguments => _ = OnToastActivatedAsync(arguments));
 
 		Notifications.Windows.WindowsToastNotifier notifier = new(
-			() => Services.Config.GetStringOr(ConfigStore.KeyLanguage, "zh-CN")
-				.StartsWith("en", StringComparison.OrdinalIgnoreCase),
+			() => UiLanguage.IsEnglish(Services.Config),
 			(level, message) => Services.Logger.Write(LogSource.Backend, level, message));
 		return notifier.TryStart() ? notifier : NullNativeNotifier.Instance;
 	}

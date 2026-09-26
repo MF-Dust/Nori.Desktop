@@ -410,7 +410,7 @@ public sealed class ProactiveScheduler : IDisposable
 		_ => fallback,
 	};
 
-	private bool IsEnglish() => _config.GetStringOr(ConfigStore.KeyLanguage, "zh-CN").StartsWith("en", StringComparison.OrdinalIgnoreCase);
+	private bool IsEnglish() => UiLanguage.IsEnglish(_config);
 
 	public void Dispose()
 	{

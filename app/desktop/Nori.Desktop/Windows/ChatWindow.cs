@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Nori.Core.Configuration;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
 
@@ -25,7 +26,7 @@ public sealed class ChatWindow : Window
 		Background = ChatPalette.Background;
 		_service = new NativeChatService(services, this);
 		Body = new ChatView(_service) { Margin = new Thickness(12) }; Content = Body;
-		NativeWindowChrome.Attach(this, () => Body.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase));
+		NativeWindowChrome.Attach(this, () => UiLanguage.IsEnglish(Body.Language));
 		UpdateTitle(); Body.LanguageChanged += UpdateTitle;
 		Opened += (_, _) => Body.SetHostVisible(true);
 		PropertyChanged += (_, args) => { if (args.Property == IsVisibleProperty && !_prepared) Body.SetHostVisible(IsVisible); };
@@ -53,7 +54,7 @@ public sealed class ChatWindow : Window
 		Activate();
 	}
 
-	private void UpdateTitle() => Title = Body.Language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? "Nori · Chat" : "Nori · 对话";
+	private void UpdateTitle() => Title = UiLanguage.IsEnglish(Body.Language) ? "Nori · Chat" : "Nori · 对话";
 	private async void OnClosing(object? sender, WindowClosingEventArgs args)
 	{
 		if (AllowClose) return;

@@ -8,6 +8,7 @@ using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Nori.Core.Configuration;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Memory;
 using Nori.Desktop.Models;
@@ -65,7 +66,7 @@ public sealed partial class ModelsWindow : Window
 		WindowStartupLocation = WindowStartupLocation.CenterScreen;
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/Settings/SettingsTheme.axaml") });
 		BuildShell();
-		NativeWindowChrome.Attach(this, () => _language.StartsWith("en", StringComparison.OrdinalIgnoreCase));
+		NativeWindowChrome.Attach(this, () => UiLanguage.IsEnglish(_language));
 		BuildLibrary();
 		_behaviors = Scroller(BuildBehaviorPage());
 		InitializePreview(services);

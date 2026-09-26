@@ -83,9 +83,7 @@ public sealed class InitWindow : Window
 		};
 	}
 
-	private bool IsEnglish() =>
-		_services.Config.GetStringOr(ConfigStore.KeyLanguage, "zh-CN")
-			.StartsWith("en", StringComparison.OrdinalIgnoreCase);
+	private bool IsEnglish() => UiLanguage.IsEnglish(_services.Config);
 
 	/// <summary>
 	/// 起跑。

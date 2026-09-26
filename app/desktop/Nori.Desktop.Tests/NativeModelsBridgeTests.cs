@@ -20,6 +20,36 @@ public partial class BridgeCommandsTests
 		public void PostResult(long id, object? value, string? error) { }
 	}
 
+	// ---- 初始化握手与窗口状态 ----
+
+	private void InstallKnownModel(string modelId)
+	{
+		string directory = _services.Resources.ResourceDir(ResourceType.Live2D, modelId);
+		Directory.CreateDirectory(directory);
+		File.WriteAllText(Path.Combine(directory, $"{modelId}.model3.json"),
+			"{\"FileReferences\":{\"Moc\":\"model.moc3\",\"Textures\":[]}}");
+		File.WriteAllText(Path.Combine(directory, "model.moc3"), "MOC3");
+	}
+
+	[Fact]
+	public async Task model_select与显示参数拒绝未知未安装和越界输入()
+	{
+		BridgeCommands commands = CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			commands.InvokeAsync(main, "model_select", Args(new {modelId = "other"})));
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			commands.InvokeAsync(main, "model_select", Args(new {modelId = "nori"})));
+
+		InstallKnownModel("nori");
+		await commands.InvokeAsync(main, "model_select", Args(new {modelId = "nori"}));
+		Assert.Equal("nori", _config.GetStringOr(ConfigStore.KeySelectedModel, ""));
+
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			commands.InvokeAsync(main, "model_set_display", Args(new {modelId = "nori", opacity = 2})));
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			commands.InvokeAsync(main, "model_set_display", Args(new {modelId = "nori", qualityMode = "unknown"})));
+	}
 	[Fact]
 	public async Task NativeModelPolicyCannotBeBypassedAtEitherHostEntry()
 	{

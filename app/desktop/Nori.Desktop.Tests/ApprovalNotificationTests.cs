@@ -350,4 +350,12 @@ public partial class BridgeCommandsTests
 		Assert.False(after.GetProperty("toastApprovals").GetBoolean());
 		Assert.Equal(System.OperatingSystem.IsWindows(), after.GetProperty("toastSupported").GetBoolean());
 	}
+	[Fact]
+	public async Task approval_respond未匹配请求返回false()
+	{
+		BridgeCommands commands = CreateCommands();
+		object? result = await commands.InvokeAsync(
+			new FakeBridgeSource("main"), "approval_respond", Args(new {requestId = "missing", approved = true}));
+		Assert.Equal(false, result);
+	}
 }

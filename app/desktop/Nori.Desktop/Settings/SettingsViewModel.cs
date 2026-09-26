@@ -40,6 +40,8 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 	private bool _disposed;
 	private Task? _refreshTask;
 	private bool _refreshPending;
+	private int _hostVisible;
+	private int _refreshWhenShown;
 
 	/// <summary>创建设置窗口状态。</summary>
 	public SettingsViewModel(SettingsService service)
@@ -264,9 +266,26 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 		Dispose();
 	}
 
+	/// <summary>窗口隐藏时只记下待刷新，再次显示时读取一次最新快照。</summary>
+	internal void SetHostVisible(bool visible)
+	{
+		if (_disposed) return;
+		Volatile.Write(ref _hostVisible, visible ? 1 : 0);
+		if (visible && Interlocked.Exchange(ref _refreshWhenShown, 0) == 1)
+			_ = RefreshSnapshotAsync(_lifetimeCts.Token);
+	}
+
 	private void OnStateChanged()
 	{
 		if (_disposed) return;
+		if (Volatile.Read(ref _hostVisible) == 0)
+		{
+			Volatile.Write(ref _refreshWhenShown, 1);
+			// 标记写入后窗口可能刚好变为可见，补一次刷新以免丢掉这次状态。
+			if (Volatile.Read(ref _hostVisible) != 0 && Interlocked.Exchange(ref _refreshWhenShown, 0) == 1)
+				_ = RefreshSnapshotAsync(_lifetimeCts.Token);
+			return;
+		}
 		_ = RefreshSnapshotAsync(_lifetimeCts.Token);
 	}
 

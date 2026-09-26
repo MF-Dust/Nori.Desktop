@@ -38,7 +38,13 @@ public partial class SettingsWindow : Window
 		Opened += (_, _) =>
 		{
 			PagePresenter.RefreshPage();
+			_viewModel.SetHostVisible(true);
 			_ = _viewModel.RefreshSnapshotAsync();
+		};
+		PropertyChanged += (_, args) =>
+		{
+			if (_prepared || args.Property != IsVisibleProperty) return;
+			_viewModel.SetHostVisible(IsVisible);
 		};
 	}
 

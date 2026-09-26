@@ -25,6 +25,8 @@ public sealed class PetGlControl : OpenGlControlBase
 	private const double MaskSampleIntervalSeconds = 0.150;
 
 	private readonly PetRuntime _runtime;
+	private readonly Action<RenderFrameArgs> _renderFrame;
+	private readonly record struct RenderFrameArgs(GlInterface Gl, int Framebuffer);
 	private LAppDelegateOpenGL? _lapp;
 	private AvaloniaGlApi? _glApi;
 	private bool _sdkLeaseAcquired;
@@ -56,6 +58,7 @@ public sealed class PetGlControl : OpenGlControlBase
 	public PetGlControl(PetRuntime runtime)
 	{
 		_runtime = runtime;
+		_renderFrame = RenderFrame;
 	}
 
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "GL 初始化失败后的资源回滚不能覆盖原始异常。")]
@@ -147,18 +150,20 @@ public sealed class PetGlControl : OpenGlControlBase
 
 	protected override unsafe void OnOpenGlRender(GlInterface gl, int fb)
 	{
-		CubismFramework.RunSynchronized(() =>
+		CubismFramework.RunSynchronized(new RenderFrameArgs(gl, fb), _renderFrame);
+	}
+
+	private unsafe void RenderFrame(RenderFrameArgs args)
+	{
+		try
 		{
-			try
-			{
-				RenderCore(gl, fb);
-			}
-			catch (Exception exception)
-			{
-				// 渲染回调跑在合成器提交路径上, 抛出去就是进程级崩溃
-				_runtime.WriteCubismLog($"伴侣渲染帧异常: {exception}");
-			}
-		});
+			RenderCore(args.Gl, args.Framebuffer);
+		}
+		catch (Exception exception)
+		{
+			// 渲染回调跑在合成器提交路径上, 抛出去就是进程级崩溃
+			_runtime.WriteCubismLog($"伴侣渲染帧异常: {exception}");
+		}
 	}
 
 	private unsafe void RenderCore(GlInterface gl, int fb)
@@ -166,7 +171,7 @@ public sealed class PetGlControl : OpenGlControlBase
 		Interlocked.Exchange(ref _framePending, 0);
 		if (!_renderActive || _glApi is null || _lapp is null) return;
 
-		Stopwatch frameTimer = Stopwatch.StartNew();
+		long frameStart = Stopwatch.GetTimestamp();
 		double scale = 1.0;
 		if (VisualRoot is Avalonia.Controls.TopLevel topLevel)
 		{
@@ -217,13 +222,13 @@ public sealed class PetGlControl : OpenGlControlBase
 		if (nowSec - _lastMaskSampleTime >= MaskSampleIntervalSeconds)
 		{
 			_lastMaskSampleTime = nowSec;
-			Stopwatch maskTimer = Stopwatch.StartNew();
+			long maskStart = Stopwatch.GetTimestamp();
 			SampleAlphaMask(viewportW, viewportH, fb);
-			_runtime.RecordRenderMetrics(frameTimer.Elapsed.TotalMilliseconds, maskTimer.Elapsed.TotalMilliseconds);
+			_runtime.RecordRenderMetrics(ElapsedMilliseconds(frameStart), ElapsedMilliseconds(maskStart));
 		}
 		else
 		{
-			_runtime.RecordRenderMetrics(frameTimer.Elapsed.TotalMilliseconds, 0);
+			_runtime.RecordRenderMetrics(ElapsedMilliseconds(frameStart), 0);
 		}
 	}
 
@@ -389,6 +394,17 @@ public sealed class PetGlControl : OpenGlControlBase
 			return PetHitMask.BuildHitRegions(_maskBounds, clientWidth, clientHeight);
 		}
 	}
+
+	internal PetHitMask.Bounds MaskBounds
+	{
+		get
+		{
+			lock (_maskLock) return _maskBounds;
+		}
+	}
+
+	private static double ElapsedMilliseconds(long startedAt) =>
+		Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
 
 	private void StartRenderLoop()
 	{

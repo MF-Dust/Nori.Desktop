@@ -11,10 +11,10 @@ public sealed class MemoryService : IDisposable
 {
 	private static readonly FrozenSet<string> AllowedCommands = new[]
 	{
-		"memory_add", "memory_list", "memory_update", "memory_delete", "memory_clear",
-		"memory_archive", "memory_restore", "memory_overview", "memory_list_page", "memory_get",
+		"memory_add", "memory_update", "memory_delete", "memory_clear",
+		"memory_archive", "memory_restore", "memory_list_page", "memory_get",
 		"memory_atom_list", "memory_knowledge_status", "memory_knowledge_reindex", "memory_knowledge_open",
-		"memory_recall_debug", "memory_get_settings", "memory_update_settings", "memory_search_hybrid",
+		"memory_recall_debug", "memory_update_settings",
 		"memory_reembed_all", "memory_export", "memory_import_preview", "memory_import_commit",
 		"clipboard_write_text",
 	}.ToFrozenSet(StringComparer.Ordinal);
@@ -144,9 +144,9 @@ public sealed class MemoryService : IDisposable
 		or "memory_restore" or "memory_knowledge_reindex" or "memory_update_settings" or "memory_reembed_all" or "memory_import_commit";
 
 	internal static bool IsBackgroundCommand(string command) => command is
-		"memory_list" or "memory_overview" or "memory_list_page" or "memory_get" or "memory_atom_list"
+		"memory_list_page" or "memory_get" or "memory_atom_list"
 		or "memory_knowledge_status" or "memory_knowledge_reindex" or "memory_recall_debug"
-		or "memory_get_settings" or "memory_search_hybrid" or "memory_reembed_all" or "memory_export" or "memory_import_preview";
+		or "memory_reembed_all" or "memory_export" or "memory_import_preview";
 
 	private void DisposeContext()
 	{

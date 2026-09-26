@@ -66,8 +66,8 @@ public sealed class InitWindow : Window
 		PropertyChanged += (sender, args) =>
 		{
 			if (args.Property != IsVisibleProperty) return;
-			// 首次运行路径下这个窗口是隐藏启动的，向导完成后宿主 Show 它 —— 变可见
-			// 就是原来那条 nori:init-start 广播的等价信号，不必再走一次事件总线。
+			// 首次运行路径下这个窗口是隐藏启动的，向导完成后宿主 Show 它。
+			// 变为可见时补跑开始流程。
 			if (IsVisible) Dispatcher.UIThread.Post(() => _ = BeginAsync(), DispatcherPriority.Loaded);
 			else
 			{

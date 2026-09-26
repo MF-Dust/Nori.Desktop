@@ -110,11 +110,4 @@ public partial class BridgeCommandsTests
 		}
 		finally { release.Set(); window.Close(); }
 	});
-
-	[Fact]
-	public async Task BackgroundBlurStateForNonWindowSourcesIsInactive()
-	{
-		object? result = await CreateCommands().InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "window_get_backdrop_state", Args(new { }));
-		Assert.False(JsonSerializer.SerializeToElement(result).GetProperty("active").GetBoolean());
-	}
 }

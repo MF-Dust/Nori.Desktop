@@ -29,7 +29,7 @@ public static class BridgeJson
 /// </summary>
 public sealed record BridgeMessage
 {
-	/// <summary>消息种类: invoke / emit</summary>
+	/// <summary>消息种类: invoke</summary>
 	[JsonPropertyName("kind")]
 	public string Kind { get; init; } = "";
 
@@ -44,14 +44,6 @@ public sealed record BridgeMessage
 	/// <summary>命令参数</summary>
 	[JsonPropertyName("args")]
 	public JsonElement Args { get; init; }
-
-	/// <summary>emit 的事件名</summary>
-	[JsonPropertyName("event")]
-	public string? Event { get; init; }
-
-	/// <summary>emit 的载荷</summary>
-	[JsonPropertyName("payload")]
-	public JsonElement Payload { get; init; }
 }
 
 /// <summary>

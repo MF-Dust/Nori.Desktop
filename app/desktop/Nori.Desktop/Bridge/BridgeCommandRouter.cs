@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Windows;
 using Nori.Desktop.Automation.Browser;
@@ -15,7 +14,6 @@ namespace Nori.Desktop.Bridge;
 public enum BridgeCommandDomain
 {
 	Application,
-	Window,
 	Automation,
 	Ai,
 	Voice,
@@ -32,8 +30,8 @@ public enum BridgeCommandDomain
 /// <summary>
 /// Bridge 的领域路由边界。
 ///
-/// 当前具体业务实现仍由 BridgeCommands 承担；插件管理是第一个独立领域 handler，
-/// 只服务宿主主 WebView，不改变 PluginBridge 的插件侧白名单。
+/// 当前具体业务实现仍由 BridgeCommands 承担；插件管理命令转给 PluginRuntime，
+/// 不改变 PluginBridge 的插件侧白名单。
 /// </summary>
 public sealed class BridgeCommandRouter(AppServices services)
 {
@@ -53,37 +51,6 @@ public sealed class BridgeCommandRouter(AppServices services)
 		ModelService.ValidateSourceCommand(source, command);
 		NativeChatService.ValidateSourceCommand(source, command);
 		BridgeCommandDomain domain = Classify(command);
-
-		// 插件动作调用 (宿主聊天控制卡): 仅主窗口可调, 转发到活跃插件的 IPluginActionContribution。
-		if (command == "plugin_action")
-		{
-			PluginRuntimeHost runtime = _services.PluginRuntime
-				?? throw new InvalidOperationException("插件运行时尚未就绪");
-			if (!string.Equals(source.Label, WindowLabels.Main, StringComparison.Ordinal))
-				throw new InvalidOperationException("plugin_action 仅允许宿主主窗口调用");
-			string pluginId = args.TryGetProperty("pluginId", out JsonElement pluginIdElement) ? pluginIdElement.GetString() ?? "" : "";
-			string actionId = args.TryGetProperty("actionId", out JsonElement actionIdElement) ? actionIdElement.GetString() ?? "" : "";
-			JsonNode? actionArgs = args.TryGetProperty("args", out JsonElement argsElement) && argsElement.ValueKind == JsonValueKind.Object
-				? JsonNode.Parse(argsElement.GetRawText())
-				: null;
-			return await runtime.InvokePluginActionAsync(pluginId, actionId, actionArgs, cancellationToken).ConfigureAwait(false);
-		}
-
-		// 插件聊天卡片部件列表 (通用卡片槽挂载用): 仅主窗口。
-		if (command == "plugin_widgets")
-		{
-			PluginRuntimeHost runtime = _services.PluginRuntime
-				?? throw new InvalidOperationException("插件运行时尚未就绪");
-			if (!string.Equals(source.Label, WindowLabels.Main, StringComparison.Ordinal))
-				throw new InvalidOperationException("plugin_widgets 仅允许宿主主窗口调用");
-			// 返回形状必须与前端 commands.ts 的类型契约一致: {widgets: [...]}
-			return new
-			{
-				widgets = runtime.GetChatWidgets()
-					.Select(widget => new { pluginId = widget.PluginId, title = widget.Title, entry = widget.EntryUrl.ToString() })
-					.ToArray(),
-			};
-		}
 
 		if (domain == BridgeCommandDomain.Plugins)
 		{
@@ -144,22 +111,17 @@ public sealed class BridgeCommandRouter(AppServices services)
 	public static BridgeCommandDomain Classify(string command)
 	{
 		if (string.IsNullOrWhiteSpace(command)) return BridgeCommandDomain.Other;
-		if (command.StartsWith("window_", StringComparison.Ordinal)) return BridgeCommandDomain.Window;
 		if (command.StartsWith("automation_", StringComparison.Ordinal)) return BridgeCommandDomain.Automation;
 		if (command.StartsWith("llm_", StringComparison.Ordinal)
 			|| command.StartsWith("ai_", StringComparison.Ordinal)
-			|| command.StartsWith("embedding_", StringComparison.Ordinal)
-			|| command.StartsWith("settings_update_ai", StringComparison.Ordinal)
-			|| command.StartsWith("settings_test_ai", StringComparison.Ordinal)
-			|| command.StartsWith("settings_update_embedding", StringComparison.Ordinal)
-			|| command.StartsWith("settings_test_embedding", StringComparison.Ordinal))
+			|| command.StartsWith("settings_update_ai", StringComparison.Ordinal))
 			return BridgeCommandDomain.Ai;
 		if (command.StartsWith("tts_", StringComparison.Ordinal)
 			|| command.StartsWith("stt_", StringComparison.Ordinal)
 			|| command.StartsWith("audio_", StringComparison.Ordinal)
 			|| command.StartsWith("settings_update_voice", StringComparison.Ordinal))
 			return BridgeCommandDomain.Voice;
-		if (command.StartsWith("model_", StringComparison.Ordinal) || command.StartsWith("pet_", StringComparison.Ordinal))
+		if (command.StartsWith("model_", StringComparison.Ordinal))
 			return BridgeCommandDomain.Model;
 		if (command.StartsWith("memory_", StringComparison.Ordinal)) return BridgeCommandDomain.Memory;
 		if (command.StartsWith("skills_", StringComparison.Ordinal)) return BridgeCommandDomain.Skills;
@@ -172,7 +134,7 @@ public sealed class BridgeCommandRouter(AppServices services)
 			|| command.StartsWith("approval_", StringComparison.Ordinal)
 			|| command.StartsWith("reminder_", StringComparison.Ordinal)
 			|| command.StartsWith("settings_", StringComparison.Ordinal)
-			|| command is "ui_get_snapshot" or "exit_app" or "write_log" or "get_system_language" or "complete_first_run" or "init_ready" or "init_enter_main" or "get_init_config" or "clipboard_write_text" or "open_url")
+			|| command is "write_log" or "clipboard_write_text" or "open_url")
 			return BridgeCommandDomain.Application;
 		return BridgeCommandDomain.Other;
 	}

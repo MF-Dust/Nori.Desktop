@@ -13,7 +13,7 @@ internal static class QuickChatSettings
 	internal static async Task SetEnabledAsync(AppServices services, bool enabled)
 	{
 		await Task.Run(() => services.Config.Set(ConfigStore.KeyQuickChatEnabled, new ConfigValue.Boolean(enabled)), services.ShutdownToken).ConfigureAwait(false);
-		services.Runtime?.InvalidateSnapshot("general");
+		services.Runtime?.InvalidateSnapshot();
 		await Dispatcher.UIThread.InvokeAsync(TrayMenu.Refresh);
 	}
 }

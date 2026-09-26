@@ -22,13 +22,7 @@ public sealed class SettingsService : IDisposable
 	{
 		"ai_test_connection",
 		"llm_fetch_models",
-		"llm_test_connection",
-		"settings_update_ai",
 		"settings_update_ai_providers",
-		"settings_test_ai",
-		"settings_update_embedding",
-		"settings_test_embedding",
-		"embedding_test_connection",
 		"settings_update_voice",
 		"settings_ack_voice_notice",
 		"indextts_pick_template",
@@ -40,14 +34,14 @@ public sealed class SettingsService : IDisposable
 		"settings_update_workspace",
 		"settings_pick_workspace",
 		"settings_update_tasks",
+		"settings_update_notifications",
+		"settings_update_permission",
 		"settings_update_screen",
 		"settings_update_expression",
 		"settings_update_proactive",
 		"reminder_add",
 		"reminder_cancel",
 		"reminder_update",
-		"reminder_snooze",
-		"reminder_complete",
 		"reminder_list",
 		"settings_update_automation",
 		"automation_get_snapshot",
@@ -70,13 +64,11 @@ public sealed class SettingsService : IDisposable
 		"skills_save_custom",
 		"skills_uninstall",
 		"skills_export",
-		"skills_import_json",
 		"mcp_get_servers",
 		"mcp_save_server",
 		"mcp_delete_server",
 		"mcp_connect_server",
 		"mcp_disconnect_server",
-		"mcp_list_tools",
 		"mcp_test_server",
 		"mcp_call_tool",
 		"mcp_import_url",
@@ -271,7 +263,7 @@ public sealed class SettingsService : IDisposable
 
 		bool confirmed = value.GetBoolean();
 		_services.Config.Set(PluginTrustConfigKey, new Nori.Core.Configuration.ConfigValue.Text(confirmed ? "1" : "0"));
-		if (_services.Runtime is { } runtime) runtime.InvalidateSnapshot("plugins");
+		if (_services.Runtime is { } runtime) runtime.InvalidateSnapshot();
 		else RaiseStateChanged();
 		return new {confirmed};
 	}
@@ -303,14 +295,11 @@ public sealed class SettingsService : IDisposable
 			or "reminder_add"
 			or "reminder_cancel"
 			or "reminder_update"
-			or "reminder_snooze"
-			or "reminder_complete"
 			or "skills_install_marketplace"
 			or "skills_toggle"
 			or "skills_install_url"
 			or "skills_save_custom"
 			or "skills_uninstall"
-			or "skills_import_json"
 			or "mcp_save_server"
 			or "mcp_delete_server"
 			or "mcp_connect_server"

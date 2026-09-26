@@ -63,7 +63,7 @@ public partial class BridgeCommandsTests : IDisposable
 				Assert.Equal("Nori · 模型", models.Title);
 				Assert.Contains("记忆", memory.Title);
 				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text("en-US"));
-				fixture._runtime.InvalidateSnapshot("general");
+				fixture._runtime.InvalidateSnapshot();
 				await models.RefreshAsync(); await memory.RefreshAsync();
 				await WaitUntilAsync(() => models.Title == "Nori · Models" && memory.Title?.Contains("Memory", StringComparison.Ordinal) == true);
 				Assert.Equal("Nori · Models", models.Title);
@@ -100,6 +100,15 @@ public partial class BridgeCommandsTests : IDisposable
 		public void PostResult(long id, object? value, string? error)
 		{
 		}
+	}
+
+	private sealed class NativeSettingsCommandSource(bool isVisible = true) : INativeSettingsSource
+	{
+		public string Label => WindowLabels.Settings;
+		public bool IsVisible => isVisible;
+		public Window? Self => null;
+		public void PostEvent(string name, object? payload) { }
+		public void PostResult(long id, object? value, string? error) { }
 	}
 
 	private sealed class FakeBrowserRunner : IAutomationBrowserRunner
@@ -249,7 +258,6 @@ public partial class BridgeCommandsTests : IDisposable
 
 	private sealed class FakeWindowManager : IWindowManager
 	{
-		public List<(string Name, object? Payload)> Broadcasts { get; } = [];
 		public List<string?> SettingsPages { get; } = [];
 		public List<string?> MemoryPages { get; } = [];
 		public int ModelsShowCount { get; private set; }
@@ -293,7 +301,6 @@ public partial class BridgeCommandsTests : IDisposable
 			VisibilityChanged?.Invoke(label, visible);
 		}
 
-		public void Broadcast(string name, object? payload) => Broadcasts.Add((name, payload));
 
 		public void ShowPetSpeech(string text)
 		{
@@ -541,18 +548,16 @@ public partial class BridgeCommandsTests : IDisposable
 		await commands.InvokeAsync(source, "model_set_behavior", Args(new {aiInteraction = true}));
 
 		Assert.True(_config.GetBoolOr(PetInteractionConfig.AiEnabledKey, false));
-		object? snapshot = await commands.InvokeAsync(source, "ui_get_snapshot", Args(new { }));
+		object snapshot = _runtime.BuildSnapshot();
 		Assert.Contains("\"aiInteraction\":true", JsonSerializer.Serialize(snapshot, BridgeJson.Options), StringComparison.Ordinal);
 	}
 
 	[Fact]
-	public async Task ui_get_snapshot任意窗口可读且秘密不回传()
+	public void 快照不回传密钥()
 	{
 		_config.Set("llm_api_key", new ConfigValue.Text("sk-super-secret"));
-		BridgeCommands commands = CreateCommands();
 
-		object? snapshot = await commands.InvokeAsync(new FakeBridgeSource("init"), "ui_get_snapshot", Args(new { }));
-		string json = JsonSerializer.Serialize(snapshot);
+		string json = JsonSerializer.Serialize(_runtime.BuildSnapshot());
 
 		Assert.Contains("\"hasApiKey\":true", json, StringComparison.Ordinal);
 		Assert.Contains("\"aiInteraction\":false", json, StringComparison.Ordinal);
@@ -856,7 +861,7 @@ public partial class BridgeCommandsTests : IDisposable
 			new FakeBridgeSource(WindowLabels.Main), "settings_update_workspace", Args(new { root = folder }));
 
 		Directory.Delete(folder);
-		_runtime.InvalidateSnapshot("workspace");
+		_runtime.InvalidateSnapshot();
 
 		JsonElement snapshot = JsonSerializer.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options);
 		JsonElement workspace = snapshot.GetProperty("workspace");
@@ -1209,7 +1214,9 @@ public partial class BridgeCommandsTests : IDisposable
 	public async Task 自动化默认关闭且快照不含敏感正文()
 	{
 		BridgeCommands commands = CreateCommands();
-		object? result = await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "automation_get_snapshot", Args(new { }));
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "automation_get_snapshot", Args(new { })));
+		object? result = await commands.InvokeAsync(new NativeSettingsCommandSource(), "automation_get_snapshot", Args(new { }));
 		string json = JsonSerializer.Serialize(result, BridgeJson.Options);
 
 		Assert.Contains("\"enabled\":false", json, StringComparison.Ordinal);
@@ -1235,26 +1242,23 @@ public partial class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task 桌面视觉命令在默认关闭安全模式非Windows和错误调用方时拒绝()
+	public void 桌面视觉在默认关闭安全模式和非Windows时拒绝()
 	{
 		using BridgeCommandsTests defaultFixture = new(false, true, automationVision: true);
-		BridgeCommands defaultCommands = defaultFixture.CreateCommands();
-		InvalidOperationException defaultError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			defaultCommands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "automation_desktop_list_windows", Args(new { })));
+		InvalidOperationException defaultError = Assert.Throws<InvalidOperationException>(() =>
+			defaultFixture._services.Automation!.ListDesktopWindows());
 		Assert.Contains("默认关闭", defaultError.Message, StringComparison.Ordinal);
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			defaultCommands.InvokeAsync(new FakeBridgeSource(WindowLabels.Init), "automation_desktop_list_windows", Args(new { })));
 
 		using BridgeCommandsTests safeFixture = new(true, true, automationVision: true);
 		safeFixture.ConfigureDesktop();
-		InvalidOperationException safeError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			safeFixture.CreateCommands().InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "automation_desktop_list_windows", Args(new { })));
+		InvalidOperationException safeError = Assert.Throws<InvalidOperationException>(() =>
+			safeFixture._services.Automation!.ListDesktopWindows());
 		Assert.Contains("安全模式", safeError.Message, StringComparison.Ordinal);
 
 		using BridgeCommandsTests linuxFixture = new(false, false, automationVision: true);
 		linuxFixture.ConfigureDesktop();
-		InvalidOperationException linuxError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			linuxFixture.CreateCommands().InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "automation_desktop_list_windows", Args(new { })));
+		InvalidOperationException linuxError = Assert.Throws<InvalidOperationException>(() =>
+			linuxFixture._services.Automation!.ListDesktopWindows());
 		Assert.Contains("Windows", linuxError.Message, StringComparison.Ordinal);
 	}
 
@@ -1272,9 +1276,7 @@ public partial class BridgeCommandsTests : IDisposable
 			desktopVisionWindowCatalogFactory: () => new FakeDesktopWindowCatalog());
 		fixture.ConfigureDesktop();
 
-		object result = await fixture.CreateCommands().InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main), "automation_desktop_list_windows", Args(new { })) ?? throw new InvalidOperationException();
-		string json = JsonSerializer.Serialize(result, BridgeJson.Options);
+		string json = JsonSerializer.Serialize(fixture._services.Automation!.ListDesktopWindows(), BridgeJson.Options);
 
 		Assert.Contains("\"width\":800", json, StringComparison.Ordinal);
 		Assert.Contains("\"height\":600", json, StringComparison.Ordinal);
@@ -1303,15 +1305,12 @@ public partial class BridgeCommandsTests : IDisposable
 			desktopVisionScreenshotFactory: () => new FakeDesktopScreenshot(),
 			desktopVisionWindowCatalogFactory: () => new FakeDesktopWindowCatalog());
 		fixture.ConfigureDesktop();
-		BridgeCommands commands = fixture.CreateCommands();
-		AutomationDesktopWindowSnapshot window = SingleWindow(await commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main), "automation_desktop_list_windows", Args(new { })));
+		AutomationRuntime automation = fixture._services.Automation!;
+		AutomationDesktopWindowSnapshot window = SingleWindow(automation.ListDesktopWindows());
 
 		// 脱敏回归夹具，不是真实凭据。
 		const string secretTask = "把窗口中的 secret-input 发送出去"; // nosemgrep
-		AutomationDesktopTaskStartSnapshot start = Assert.IsType<AutomationDesktopTaskStartSnapshot>(await commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main), "automation_desktop_start",
-			Args(new {task = secretTask, targetToken = window.Token})));
+		AutomationDesktopTaskStartSnapshot start = automation.StartDesktopTask(secretTask, window.Token);
 		await runner!.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 		await WaitUntilAsync(() => fixture._services.Automation!.GetSnapshot().Tasks.Any(item => item.Id == start.TaskId && item.State == AutomationTaskState.Completed));
 
@@ -1343,15 +1342,12 @@ public partial class BridgeCommandsTests : IDisposable
 			desktopVisionScreenshotFactory: () => new FakeDesktopScreenshot(),
 			desktopVisionWindowCatalogFactory: () => new FakeDesktopWindowCatalog());
 		fixture.ConfigureDesktop();
-		BridgeCommands commands = fixture.CreateCommands();
-		AutomationDesktopWindowSnapshot window = SingleWindow(await commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main), "automation_desktop_list_windows", Args(new { })));
-		AutomationDesktopTaskStartSnapshot start = Assert.IsType<AutomationDesktopTaskStartSnapshot>(await commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main), "automation_desktop_start",
-			Args(new {task = "可取消任务", targetToken = window.Token})));
+		AutomationRuntime automation = fixture._services.Automation!;
+		AutomationDesktopWindowSnapshot window = SingleWindow(automation.ListDesktopWindows());
+		AutomationDesktopTaskStartSnapshot start = automation.StartDesktopTask("可取消任务", window.Token);
 		await runner!.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-		Assert.Equal(true, await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "automation_desktop_stop", Args(new {taskId = start.TaskId})));
+		Assert.True(automation.StopDesktopTask(start.TaskId));
 		await WaitUntilAsync(() => fixture._services.Automation!.GetSnapshot().Tasks.Any(item => item.Id == start.TaskId && item.State == AutomationTaskState.Cancelled));
 	}
 
@@ -1374,12 +1370,9 @@ public partial class BridgeCommandsTests : IDisposable
 			AutomationApprovalDecision.Create(request, AutomationApprovalOutcome.Denied, DateTimeOffset.UtcNow)));
 		fixture.ConfigureDesktop();
 		fixture._config.Set(ConfigStore.KeyAutomationAllowKeyboard, new ConfigValue.Boolean(true));
-		BridgeCommands commands = fixture.CreateCommands();
-		AutomationDesktopWindowSnapshot window = SingleWindow(await commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main), "automation_desktop_list_windows", Args(new { })));
-		AutomationDesktopTaskStartSnapshot start = Assert.IsType<AutomationDesktopTaskStartSnapshot>(await commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main), "automation_desktop_start",
-			Args(new {task = "高风险输入", targetToken = window.Token})));
+		AutomationRuntime automation = fixture._services.Automation!;
+		AutomationDesktopWindowSnapshot window = SingleWindow(automation.ListDesktopWindows());
+		AutomationDesktopTaskStartSnapshot start = automation.StartDesktopTask("高风险输入", window.Token);
 
 		await WaitUntilAsync(() => fixture._services.Automation!.GetSnapshot().Tasks.Any(item => item.Id == start.TaskId && item.ErrorCategory == "approval_denied"));
 		Assert.Equal(0, action.Count);
@@ -1401,12 +1394,9 @@ public partial class BridgeCommandsTests : IDisposable
 			desktopVisionScreenshotFactory: () => new FakeDesktopScreenshot(),
 			desktopVisionWindowCatalogFactory: () => new FakeDesktopWindowCatalog());
 		fixture.ConfigureDesktop();
-		BridgeCommands commands = fixture.CreateCommands();
-		AutomationDesktopWindowSnapshot window = SingleWindow(await commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main), "automation_desktop_list_windows", Args(new { })));
-		AutomationDesktopTaskStartSnapshot start = Assert.IsType<AutomationDesktopTaskStartSnapshot>(await commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main), "automation_desktop_start",
-			Args(new {task = "正文 secret-task", targetToken = window.Token})));
+		AutomationRuntime automation = fixture._services.Automation!;
+		AutomationDesktopWindowSnapshot window = SingleWindow(automation.ListDesktopWindows());
+		AutomationDesktopTaskStartSnapshot start = automation.StartDesktopTask("正文 secret-task", window.Token);
 
 		await WaitUntilAsync(() => fixture._services.Automation!.GetSnapshot().Tasks.Any(item => item.Id == start.TaskId && item.ErrorCategory == "invalid_action"));
 		string json = JsonSerializer.Serialize(fixture._services.Automation!.GetSnapshot(), BridgeJson.Options);
@@ -1459,7 +1449,7 @@ public partial class BridgeCommandsTests : IDisposable
 		Assert.Equal(1, fake.StartCount);
 
 		string snapshotJson = JsonSerializer.Serialize(
-			await commands.InvokeAsync(main, "automation_get_snapshot", Args(new { })), BridgeJson.Options);
+			await commands.InvokeAsync(new NativeSettingsCommandSource(), "automation_get_snapshot", Args(new { })), BridgeJson.Options);
 		Assert.Contains("\"browser\":", snapshotJson, StringComparison.Ordinal);
 		Assert.Contains("\"running\":true", snapshotJson, StringComparison.Ordinal);
 		Assert.DoesNotContain("https://example.test", snapshotJson, StringComparison.Ordinal);
@@ -1714,8 +1704,8 @@ public partial class BridgeCommandsTests : IDisposable
 		BridgeCommands commands = safeFixture.CreateCommands();
 		string[] networkCommands =
 		[
-			"llm_fetch_models", "llm_test_connection", "embedding_test_connection", "settings_test_ai", "settings_test_embedding", "ai_test_connection", "chat_start",
-			"memory_search_hybrid", "memory_reembed_all", "memory_recall_debug", "memory_knowledge_reindex",
+			"llm_fetch_models", "ai_test_connection", "chat_start",
+			"memory_reembed_all", "memory_recall_debug", "memory_knowledge_reindex",
 			"skills_install_url", "mcp_get_servers", "mcp_connect_server", "mcp_test_server",
 			"mcp_call_tool", "mcp_import_url", "tts_test", "stt_start", "stt_stop", "open_url",
 		];
@@ -1762,26 +1752,10 @@ public partial class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task 窗口命令只能操作自身且主界面唤出伴侣要求有效模型()
-	{
-		BridgeCommands commands = CreateCommands();
-		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.FirstRun), "exit_app", Args(new { }));
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Init), "window_show", Args(new {label = WindowLabels.Main})));
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "window_show", Args(new {label = WindowLabels.Pet})));
-
-		InstallKnownModel("nori");
-		_config.Set(ConfigStore.KeySelectedModel, new ConfigValue.Text("nori"));
-		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "window_show", Args(new {label = WindowLabels.Pet}));
-		Assert.True(_windows.IsWindowVisible(WindowLabels.Pet));
-	}
-
-	[Fact]
 	public async Task 首启与主界面都可更新AI设置但密钥只写不读()
 	{
 		BridgeCommands commands = CreateCommands();
-		await commands.InvokeAsync(new FakeBridgeSource("first-run"), "settings_update_ai", Args(new
+		await commands.InvokeAsync(new FakeBridgeSource("first-run"), "settings_update_ai_providers", Args(new
 		{
 			baseUrl = "https://api.example.com/v1",
 			apiKey = "sk-new", // nosemgrep
@@ -1790,7 +1764,7 @@ public partial class BridgeCommandsTests : IDisposable
 		Assert.Equal("sk-new", _config.GetStringOr("llm_api_key", ""));
 
 		// 显式空串清除密钥
-		await commands.InvokeAsync(new FakeBridgeSource("main"), "settings_update_ai", Args(new {apiKey = ""})); // nosemgrep
+		await commands.InvokeAsync(new FakeBridgeSource("main"), "settings_update_ai_providers", Args(new {apiKey = ""})); // nosemgrep
 		Assert.False(_config.Exists("llm_api_key"));
 	}
 
@@ -1798,7 +1772,7 @@ public partial class BridgeCommandsTests : IDisposable
 	public async Task 统一AI设置更新保持聊天与Embedding独立()
 	{
 		BridgeCommands commands = CreateCommands();
-		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "settings_update_ai", Args(new
+		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "settings_update_ai_providers", Args(new
 		{
 			baseUrl = "https://chat.example/v1",
 			apiKey = "chat-secret", // nosemgrep
@@ -1885,7 +1859,7 @@ public partial class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task reminder_update_snooze_complete更新快照并停止调度()
+	public async Task reminder_update更新快照并可被列表读回()
 	{
 		BridgeCommands commands = CreateCommands();
 		FakeBridgeSource main = new(WindowLabels.Main);
@@ -1910,14 +1884,9 @@ public partial class BridgeCommandsTests : IDisposable
 		Assert.Equal("UTC", updated.Timezone);
 		Assert.Equal("{\"type\":\"daily\"}", updated.RecurrenceJson);
 
-		Nori.Core.Proactive.ReminderItem snoozed = Assert.IsType<Nori.Core.Proactive.ReminderItem>(await commands.InvokeAsync(
-			main, "reminder_snooze", Args(new {id = added.Id, delayMinutes = 15})));
-		Assert.NotNull(snoozed.SnoozedUntil);
-		Assert.Equal(true, await commands.InvokeAsync(main, "reminder_complete", Args(new {id = added.Id})));
-		Assert.Empty(new Nori.Core.Proactive.ReminderStore(_database).TakeDue(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 86_400_000));
 		object? listed = await commands.InvokeAsync(main, "reminder_list", Args(new { }));
-		Assert.NotNull(listed);
-		Assert.Empty((IReadOnlyList<Nori.Core.Proactive.ReminderItem>)listed!);
+		Nori.Core.Proactive.ReminderItem shown = Assert.Single((IReadOnlyList<Nori.Core.Proactive.ReminderItem>)listed!);
+		Assert.Equal("更新提醒", shown.Content);
 	}
 
 	[Fact]
@@ -1937,7 +1906,7 @@ public partial class BridgeCommandsTests : IDisposable
 	{
 		BridgeCommands commands = CreateCommands();
 		FakeBridgeSource pet = new(WindowLabels.Pet);
-		string[] commandsToCheck = ["reminder_update", "reminder_snooze", "reminder_complete", "reminder_list"];
+		string[] commandsToCheck = ["reminder_update", "reminder_list"];
 		foreach (string command in commandsToCheck)
 		{
 			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(pet, command, Args(new {id = "missing"})));
@@ -1947,8 +1916,6 @@ public partial class BridgeCommandsTests : IDisposable
 			new FakeBridgeSource(WindowLabels.Main), "reminder_add", Args(new {content = new string('x', 201), delayMinutes = 15})));
 		Nori.Core.Proactive.ReminderItem added = Assert.IsType<Nori.Core.Proactive.ReminderItem>(await commands.InvokeAsync(
 			new FakeBridgeSource(WindowLabels.Main), "reminder_add", Args(new {content = "边界提醒", delayMinutes = 15})));
-		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main), "reminder_snooze", Args(new {id = added.Id, delayMinutes = 0})));
 		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
 			new FakeBridgeSource(WindowLabels.Main), "reminder_update", Args(new {id = added.Id, timezone = "Not/AZone"})));
 		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
@@ -2013,65 +1980,14 @@ public partial class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task 首启初始化和窗口命令通过同步UI调度器完成()
-	{
-		InstallKnownModel("nori");
-		SynchronousUiDispatcher dispatcher = new();
-		BridgeCommands commands = CreateCommands(dispatcher);
-
-		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.FirstRun), "complete_first_run",
-			Args(new {modelId = "nori", telemetryEnabled = false}));
-		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Init), "init_enter_main", Args(new { }));
-		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "window_hide", Args(new { }));
-		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "window_show", Args(new { }));
-
-		Assert.True(_windows.IsWindowVisible(WindowLabels.Main));
-		Assert.False(_windows.IsWindowVisible(WindowLabels.Init));
-		Assert.Equal(6, dispatcher.InvokeCount);
-	}
-
-	[Fact]
-	public async Task complete_first_run要求可见首启窗口和已安装已知模型并原子提交()
-	{
-		InstallKnownModel("nori");
-		BridgeCommands commands = CreateCommands();
-
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "complete_first_run",
-				Args(new {modelId = "nori", telemetryEnabled = false})));
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.FirstRun, false), "complete_first_run",
-				Args(new {modelId = "nori", telemetryEnabled = false})));
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.FirstRun), "complete_first_run",
-				Args(new {modelId = "other", telemetryEnabled = false})));
-		Assert.True(_config.IsFirstRun());
-
-		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.FirstRun), "complete_first_run",
-			Args(new {modelId = "nori", telemetryEnabled = false}));
-
-		Assert.False(_config.IsFirstRun());
-		Assert.Equal("nori", _config.GetStringOr(ConfigStore.KeySelectedModel, ""));
-		Assert.False(_config.GetBoolOr(ConfigStore.KeyTelemetryEnabled, true));
-		Assert.NotNull(_config.GetInitConfig().InitializedAt);
-		Assert.True(_windows.IsWindowVisible(WindowLabels.Init));
-	}
-
-	[Fact]
-	public async Task init_enter_main只允许可见init并按有效模型和自动唤出切换窗口()
+	public void EnterMainFromInit按有效模型和自动唤出切换窗口()
 	{
 		InstallKnownModel("arg-nori");
 		_config.Set(ConfigStore.KeySelectedModel, new ConfigValue.Text("arg-nori"));
 		_config.Set("pet_auto_summon", new ConfigValue.Boolean(true));
-		BridgeCommands commands = CreateCommands();
-
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "init_enter_main", Args(new { })));
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Init, false), "init_enter_main", Args(new { })));
-
 		_windows.Show(WindowLabels.Init);
-		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Init), "init_enter_main", Args(new { }));
+
+		_runtime.EnterMainFromInit();
 
 		Assert.True(_windows.IsWindowVisible(WindowLabels.Main));
 		Assert.True(_windows.IsWindowVisible(WindowLabels.Pet));
@@ -2079,14 +1995,13 @@ public partial class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task init_enter_main无效模型时不显示伴侣但仍进入主界面()
+	public void EnterMainFromInit无效模型时不显示伴侣但仍进入主界面()
 	{
 		_config.Set(ConfigStore.KeySelectedModel, new ConfigValue.Text("other"));
 		_windows.Show(WindowLabels.Init);
 		_windows.Show(WindowLabels.Pet);
-		BridgeCommands commands = CreateCommands();
 
-		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Init), "init_enter_main", Args(new { }));
+		_runtime.EnterMainFromInit();
 
 		Assert.True(_windows.IsWindowVisible(WindowLabels.Main));
 		Assert.False(_windows.IsWindowVisible(WindowLabels.Pet));
@@ -2094,25 +2009,12 @@ public partial class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task init_ready只允许init窗口且标志只能取一次()
+	public void ConsumeInitStartPending只能取一次()
 	{
-		BridgeCommands commands = CreateCommands();
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource("main"), "init_ready", Args(new { })));
-
-		// 尚未发生时为 false
-		string before = JsonSerializer.Serialize(
-			await commands.InvokeAsync(new FakeBridgeSource("init"), "init_ready", Args(new { })));
-		Assert.Contains("\"initStartPending\":false", before, StringComparison.Ordinal);
-
+		Assert.False(_runtime.ConsumeInitStartPending());
 		_runtime.MarkInitStartPending();
-		string first = JsonSerializer.Serialize(
-			await commands.InvokeAsync(new FakeBridgeSource("init"), "init_ready", Args(new { })));
-		string second = JsonSerializer.Serialize(
-			await commands.InvokeAsync(new FakeBridgeSource("init"), "init_ready", Args(new { })));
-
-		Assert.Contains("\"initStartPending\":true", first, StringComparison.Ordinal);
-		Assert.Contains("\"initStartPending\":false", second, StringComparison.Ordinal);
+		Assert.True(_runtime.ConsumeInitStartPending());
+		Assert.False(_runtime.ConsumeInitStartPending());
 	}
 
 	[Fact]
@@ -2121,7 +2023,7 @@ public partial class BridgeCommandsTests : IDisposable
 		BridgeCommands commands = CreateCommands();
 
 		string hidden = JsonSerializer.Serialize(
-			await commands.InvokeAsync(new FakeBridgeSource("main"), "ui_get_snapshot", Args(new { })));
+			_runtime.BuildSnapshot());
 		using JsonDocument hiddenDocument = JsonDocument.Parse(hidden);
 		Assert.False(hiddenDocument.RootElement.GetProperty("pet").GetProperty("visible").GetBoolean());
 		Assert.False(hiddenDocument.RootElement.GetProperty("general").GetProperty("sidebarCollapsed").GetBoolean());
@@ -2130,7 +2032,7 @@ public partial class BridgeCommandsTests : IDisposable
 		await commands.InvokeAsync(new FakeBridgeSource("main"), "settings_update_general", Args(new {sidebarCollapsed = true}));
 
 		string shown = JsonSerializer.Serialize(
-			await commands.InvokeAsync(new FakeBridgeSource("main"), "ui_get_snapshot", Args(new { })));
+			_runtime.BuildSnapshot());
 		using JsonDocument shownDocument = JsonDocument.Parse(shown);
 		Assert.True(shownDocument.RootElement.GetProperty("pet").GetProperty("visible").GetBoolean());
 		Assert.True(shownDocument.RootElement.GetProperty("general").GetProperty("sidebarCollapsed").GetBoolean());
@@ -2142,7 +2044,7 @@ public partial class BridgeCommandsTests : IDisposable
 		_config.SetTelemetryConsent(TelemetryConsent.Granted);
 		BridgeCommands commands = CreateCommands();
 		string before = JsonSerializer.Serialize(
-			await commands.InvokeAsync(new FakeBridgeSource("main"), "ui_get_snapshot", Args(new { })));
+			_runtime.BuildSnapshot());
 		using JsonDocument beforeDocument = JsonDocument.Parse(before);
 		JsonElement beforeTelemetry = beforeDocument.RootElement.GetProperty("telemetry");
 		Assert.True(beforeTelemetry.GetProperty("enabled").GetBoolean());
@@ -2152,7 +2054,7 @@ public partial class BridgeCommandsTests : IDisposable
 		await commands.InvokeAsync(new FakeBridgeSource("main"), "settings_update_general", Args(new {telemetryEnabled = false}));
 		Assert.Equal(TelemetryConsent.Denied, _config.GetTelemetryConsent());
 		string after = JsonSerializer.Serialize(
-			await commands.InvokeAsync(new FakeBridgeSource("main"), "ui_get_snapshot", Args(new { })));
+			_runtime.BuildSnapshot());
 		using JsonDocument afterDocument = JsonDocument.Parse(after);
 		JsonElement afterTelemetry = afterDocument.RootElement.GetProperty("telemetry");
 		Assert.False(afterTelemetry.GetProperty("enabled").GetBoolean());
@@ -2168,7 +2070,7 @@ public partial class BridgeCommandsTests : IDisposable
 		object cached = _runtime.BuildSnapshot(source);
 		Assert.Same(first, cached);
 
-		_runtime.InvalidateSnapshot("test");
+		_runtime.InvalidateSnapshot();
 		object rebuilt = _runtime.BuildSnapshot(source);
 		Assert.NotSame(first, rebuilt);
 	}
@@ -2176,7 +2078,7 @@ public partial class BridgeCommandsTests : IDisposable
 	[Fact]
 	public void 伴侣显隐变化作废快照()
 	{
-		// 广播本体走 Dispatcher.UIThread, 单测无 UI 循环, 因此只验证版本递增与快照投影
+		// 显隐会递增快照版本。
 		int before = _runtime.SnapshotVersion;
 
 		_windows.TogglePet();
@@ -2186,41 +2088,12 @@ public partial class BridgeCommandsTests : IDisposable
 	}
 
 	[Fact]
-	public async Task Snapshot_ContainsUpdaterState()
+	public void Snapshot_ContainsUpdaterState()
 	{
-		BridgeCommands commands = CreateCommands();
-		object? snapshot = await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "ui_get_snapshot", Args(new { }));
-		Assert.NotNull(snapshot);
-
-		string json = JsonSerializer.Serialize(snapshot);
+		string json = JsonSerializer.Serialize(_runtime.BuildSnapshot());
 		using JsonDocument doc = JsonDocument.Parse(json);
 		Assert.True(doc.RootElement.TryGetProperty("updater", out JsonElement updaterEl));
 		Assert.Equal("idle", updaterEl.GetProperty("state").GetString());
-	}
-
-	[Fact]
-	public async Task WindowOpenSettings_MainSourceDelegatesToWindowManager()
-	{
-		BridgeCommands commands = CreateCommands();
-		object? result = await commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Main),
-			"window_open_settings",
-			Args(new {page = "ai"}));
-
-		Assert.Null(result);
-		Assert.Equal(["ai"], _windows.SettingsPages);
-	}
-
-	[Fact]
-	public async Task WindowOpenSettings_NonMainSourceThrows()
-	{
-		BridgeCommands commands = CreateCommands();
-
-		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
-			new FakeBridgeSource(WindowLabels.Pet),
-			"window_open_settings",
-			Args(new {page = "ai"})));
-		Assert.Empty(_windows.SettingsPages);
 	}
 
 	[Fact]
@@ -2467,7 +2340,7 @@ public partial class BridgeCommandsTests : IDisposable
 		Assert.Equal("false", _config.GetStringOr("auto_check_updates", "true"));
 
 		// 验证快照反映该值
-		object? snapshot = await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "ui_get_snapshot", Args(new { }));
+		object snapshot = _runtime.BuildSnapshot();
 		string snapshotJson = JsonSerializer.Serialize(snapshot);
 		using JsonDocument doc = JsonDocument.Parse(snapshotJson);
 		Assert.False(doc.RootElement.GetProperty("general").GetProperty("autoCheckUpdates").GetBoolean());

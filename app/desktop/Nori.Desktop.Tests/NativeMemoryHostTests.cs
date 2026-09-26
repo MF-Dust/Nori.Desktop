@@ -19,33 +19,6 @@ public partial class BridgeCommandsTests
 	}
 
 	[Theory]
-	[InlineData("overview")]
-	[InlineData("memories")]
-	[InlineData("atoms")]
-	[InlineData("knowledge")]
-	[InlineData("archive")]
-	[InlineData("transfer")]
-	[InlineData("debugger")]
-	[InlineData("advanced")]
-	[InlineData(null)]
-	public async Task WindowOpenMemoryAcceptsVisibleMainAndKnownPages(string? page)
-	{
-		await CreateCommands().InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "window_open_memory", Args(new {page}));
-		Assert.Equal([page], _windows.MemoryPages);
-	}
-
-	[Fact]
-	public async Task WindowOpenMemoryRejectsHiddenForeignAndRecursiveSources()
-	{
-		BridgeCommands commands = CreateCommands();
-		IBridgeSource[] rejected = [new FakeBridgeSource(WindowLabels.Main, false), new FakeBridgeSource(WindowLabels.Init), new NativeMemoryTestSource(), new NativeMemoryTestSource(label: WindowLabels.Main)];
-		foreach (IBridgeSource source in rejected)
-			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(source, "window_open_memory", Args(new { })));
-		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "window_open_memory", Args(new {page = "unknown"})));
-		Assert.Empty(_windows.MemoryPages);
-	}
-
-	[Theory]
 	[InlineData("chat_clear")]
 	[InlineData("settings_update_general")]
 	[InlineData("plugin_list")]
@@ -67,9 +40,9 @@ public partial class BridgeCommandsTests
 	public async Task NativeMemoryReadsRequireTrustedMarkerAndPreserveWebSourceRules()
 	{
 		BridgeCommands commands = CreateCommands();
-		Assert.NotNull(await commands.InvokeAsync(new NativeMemoryTestSource(), "memory_overview", Args(new { })));
-		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Memory), "memory_overview", Args(new { })));
-		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Pet), "memory_list", Args(new { })));
+		Assert.NotNull(await commands.InvokeAsync(new NativeMemoryTestSource(), "memory_list_page", Args(new { })));
+		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Memory), "memory_list_page", Args(new { })));
+		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Pet), "memory_list_page", Args(new { })));
 	}
 
 	[Theory]
@@ -102,7 +75,7 @@ public partial class BridgeCommandsTests
 		BridgeCommands commands = fixture.CreateCommands();
 		NativeMemoryTestSource source = new();
 		Assert.NotNull(await commands.InvokeAsync(source, "memory_list_page", Args(new { })));
-		foreach (string command in new[] {"memory_search_hybrid", "memory_reembed_all", "memory_recall_debug", "memory_knowledge_reindex"})
+		foreach (string command in new[] {"memory_reembed_all", "memory_recall_debug", "memory_knowledge_reindex"})
 		{
 			InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(source, command, Args(new { })));
 			Assert.Contains("安全模式", exception.Message);
@@ -152,8 +125,9 @@ public partial class BridgeCommandsTests
 		}
 		finally { fixture._runtime.StateChanged -= CancelWhenIndexStarts; }
 		await service.WaitForPendingOperationsAsync();
-		JsonElement overview = await service.ExecuteAsync("memory_overview");
-		Assert.True(overview.TryGetProperty("activeMemories", out _));
+		JsonElement page = await service.ExecuteAsync("memory_list_page");
+		Assert.True(page.TryGetProperty("items", out _));
+		Assert.True(page.TryGetProperty("total", out _));
 	});
 
 	[Fact]
@@ -171,9 +145,9 @@ public partial class BridgeCommandsTests
 		await service.WaitForPendingOperationsAsync();
 		service.Dispose();
 		int before = changes;
-		_runtime.InvalidateSnapshot("memory");
+		_runtime.InvalidateSnapshot();
 		Assert.Equal(before, changes);
-		await Assert.ThrowsAsync<ObjectDisposedException>(() => service.ExecuteAsync("memory_overview"));
+		await Assert.ThrowsAsync<ObjectDisposedException>(() => service.ExecuteAsync("memory_list_page"));
 	});
 
 	[Fact]

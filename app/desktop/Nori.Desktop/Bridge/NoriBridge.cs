@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using Avalonia.Threading;
 using Nori.Core.Logging;
 using Nori.Core.Resources;
 using Nori.Core.Security;
@@ -14,7 +13,7 @@ namespace Nori.Desktop.Bridge;
 /// 前端 ↔ 宿主 桥接内核
 ///
 /// NativeWebView 只提供 JS→宿主的 invokeCSharpAction(string) 与宿主→JS 的 InvokeScript,
-/// 这里仅负责请求/响应关联、事件广播与传输层错误回写；命令策略由 BridgeCommandRouter 处理。
+/// 这里仅负责请求/响应关联与传输层错误回写；命令策略由 BridgeCommandRouter 处理。
 /// </summary>
 public sealed class NoriBridge(AppServices services)
 {
@@ -47,17 +46,6 @@ public sealed class NoriBridge(AppServices services)
 				TrackInvoke(source, message);
 				break;
 			case "emit":
-				if (source.Label == WindowLabels.AudioHost) return;
-				if (message.Event is { Length: > 0 } name)
-				{
-					object? payload = message.Payload.ValueKind == JsonValueKind.Undefined ? null : message.Payload.Clone();
-					Dispatcher.UIThread.Post(() =>
-					{
-						if (Volatile.Read(ref _disposed) != 0) return;
-						try { _services.Windows.Broadcast(name, payload); }
-						catch { /* closing windows must not fault the dispatcher */ }
-					});
-				}
 				break;
 			default:
 				_services.Logger.Write(LogSource.Backend, "warn", "未知的桥接消息种类", "Bridge", "bridge.unknown_kind");

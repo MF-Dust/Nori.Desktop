@@ -342,7 +342,7 @@ public partial class BridgeCommandsTests
 
 		// 这里只验证快照投影，不能调用会删除真实快捷方式与注册表项的注销命令。
 		_config.Set(ConfigStore.KeyToastApprovals, new ConfigValue.Boolean(false));
-		_runtime.InvalidateSnapshot("workspace");
+		_runtime.InvalidateSnapshot();
 
 		JsonElement after = JsonSerializer
 			.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options)

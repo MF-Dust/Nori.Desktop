@@ -5,11 +5,9 @@ using Nori.Desktop.Windows;
 namespace Nori.Desktop.Runtime;
 
 /// <summary>
-/// 初始化窗口交接给主界面的那一步。
+/// 初始化窗口交接给主界面。
 ///
-/// 提到这里是因为现在有**两条路**会走它：原生初始化窗口直接调，而
-/// <c>init_enter_main</c> 这条桥命令仍然留着（WebView 版本尚未从代码里移除，
-/// 且外部调用方可能仍在用）。同一段判定写两份必然漂。
+/// 原生初始化窗口在 UI 线程上调用。窗口显隐必须成组完成。
 /// </summary>
 public sealed partial class AppRuntime
 {

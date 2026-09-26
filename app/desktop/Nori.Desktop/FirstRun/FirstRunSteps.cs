@@ -128,7 +128,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 			list.Children.Add(Choice(name, sub, code == current, () =>
 			{
 				_services.Config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(code));
-				_services.Runtime?.InvalidateSnapshot("general");
+				_services.Runtime?.InvalidateSnapshot();
 				// 整幅重画：标题、按钮、以及这一页自己的文案都要跟着换。
 				_onRebuild();
 			}));
@@ -224,7 +224,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 				lifetimeToken);
 			lifetimeToken.ThrowIfCancellationRequested();
 			SelectedModel = imported.FirstOrDefault() ?? SelectedModel;
-			_services.Runtime?.InvalidateSnapshot("models");
+			_services.Runtime?.InvalidateSnapshot();
 		}
 		catch (OperationCanceledException) when (lifetimeToken.IsCancellationRequested) { }
 		catch (Exception failure)
@@ -398,7 +398,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 				ApiKey: patch.ApiKey,
 				Model: patch.Model,
 				ApiKeySpecified: patch.ApiKey is not null));
-			_services.Runtime?.InvalidateSnapshot("ai");
+			_services.Runtime?.InvalidateSnapshot();
 			AiSaved = true;
 			return true;
 		}

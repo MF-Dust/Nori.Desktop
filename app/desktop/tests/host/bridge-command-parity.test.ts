@@ -1,4 +1,4 @@
-import {readFileSync} from "node:fs"
+import {readdirSync, readFileSync} from "node:fs"
 import {join, resolve} from "node:path"
 import {describe, expect, it} from "vitest"
 
@@ -216,6 +216,113 @@ const extractTypedCommands = (source: string): string[] => {
 
 const sorted = (commands: string[]): string[] => [...new Set(commands)].sort()
 
+/** 提取 FrozenSet 初始化数组里的命令名。 */
+const extractFrozenSetCommands = (source: string, marker: string): string[] => {
+	const START = source.indexOf(marker)
+	if (START < 0) throw new Error(`未找到集合标记: ${marker}`)
+	const OPEN = source.indexOf("{", START)
+	const CLOSE = source.indexOf("}.ToFrozenSet", OPEN)
+	if (OPEN < 0 || CLOSE < 0) throw new Error(`未找到 FrozenSet: ${marker}`)
+	return [...source.slice(OPEN, CLOSE).matchAll(/"([a-z][a-z0-9_]*)"/g)].map(MATCH => MATCH[1])
+}
+
+/** 递归列出目录下的 C# 源文件。 */
+const listCsFiles = (directory: string): string[] => {
+	const FILES: string[] = []
+	for (const ENTRY of readdirSync(directory, {withFileTypes: true})) {
+		const PATH = join(directory, ENTRY.name)
+		if (ENTRY.isDirectory()) FILES.push(...listCsFiles(PATH))
+		else if (ENTRY.name.endsWith(".cs")) FILES.push(PATH)
+	}
+	return FILES
+}
+
+/** 提取 ExecuteAsync( 后紧跟的命令字符串，允许参数跨行。 */
+const extractExecuteAsyncCommands = (source: string): string[] => {
+	const COMMANDS: string[] = []
+	let mode: ScanMode = "code"
+	for (let INDEX = 0; INDEX < source.length; INDEX++) {
+		const CHAR = source[INDEX]
+		const NEXT = source[INDEX + 1]
+		if (mode === "lineComment") {
+			if (CHAR === "\n") mode = "code"
+			continue
+		}
+		if (mode === "blockComment") {
+			if (CHAR === "*" && NEXT === "/") {
+				mode = "code"
+				INDEX++
+			}
+			continue
+		}
+		if (mode !== "code") {
+			if (mode === "string" || mode === "char") {
+				if (CHAR === "\\") INDEX++
+				else if ((mode === "string" && CHAR === '"') || (mode === "char" && CHAR === "'")) mode = "code"
+			} else if (mode === "verbatim") {
+				if (CHAR === '"') {
+					if (NEXT === '"') INDEX++
+					else mode = "code"
+				}
+			} else if (mode === "raw" && source.startsWith('"""', INDEX)) {
+				mode = "code"
+				INDEX += 2
+			}
+			continue
+		}
+
+		if (CHAR === "/" && NEXT === "/") {
+			mode = "lineComment"
+			INDEX++
+			continue
+		}
+		if (CHAR === "/" && NEXT === "*") {
+			mode = "blockComment"
+			INDEX++
+			continue
+		}
+		if (source.startsWith("ExecuteAsync(", INDEX) && (INDEX === 0 || !/[A-Za-z0-9_]/.test(source[INDEX - 1]))) {
+			let CURSOR = INDEX + "ExecuteAsync(".length
+			while (CURSOR < source.length && /\s/.test(source[CURSOR])) CURSOR++
+			if (source[CURSOR] === '"') {
+				const TOKEN = readString(source, CURSOR)
+				if (/^[a-z][a-z0-9_]*$/.test(TOKEN.value)) COMMANDS.push(TOKEN.value)
+				INDEX = TOKEN.end - 1
+				continue
+			}
+		}
+		if (CHAR === '"') {
+			if (source.startsWith('"""', INDEX)) {
+				mode = "raw"
+				INDEX += 2
+			} else if (source[INDEX - 1] === "@") {
+				mode = "verbatim"
+			} else {
+				mode = "string"
+			}
+			continue
+		}
+		if (CHAR === "'") mode = "char"
+	}
+	return COMMANDS
+}
+
+const SETTINGS_SERVICE_SOURCE = readSource("Nori.Desktop/Settings/SettingsService.cs")
+const CHAT_SERVICE_SOURCE = readSource("Nori.Desktop/Chat/NativeChatService.cs")
+const MODEL_SERVICE_SOURCE = readSource("Nori.Desktop/Models/ModelService.cs")
+const MEMORY_SERVICE_SOURCE = readSource("Nori.Desktop/Memory/MemoryService.cs")
+const SETTINGS_ALLOWED = extractFrozenSetCommands(SETTINGS_SERVICE_SOURCE, "AllowedCommands = new[]")
+const NATIVE_ALLOWED = sorted([
+	...SETTINGS_ALLOWED,
+	...extractFrozenSetCommands(CHAT_SERVICE_SOURCE, "AllowedCommands = new[]"),
+	...extractFrozenSetCommands(CHAT_SERVICE_SOURCE, "QuickCommands = new[]"),
+	...extractFrozenSetCommands(MODEL_SERVICE_SOURCE, "AllowedCommands = new[]"),
+	...extractFrozenSetCommands(MEMORY_SERVICE_SOURCE, "AllowedCommands = new[]"),
+])
+const SETTINGS_INTERNAL_COMMANDS = ["settings_get_plugin_trust", "settings_set_plugin_trust"]
+const SETTINGS_EXECUTED = listCsFiles(join(ROOT, "Nori.Desktop/Settings")).flatMap(PATH =>
+	extractExecuteAsyncCommands(readFileSync(PATH, "utf8").replace(/\r\n?/g, "\n")))
+
 const HOST_COMMANDS = extractSwitchCommands(BRIDGE_COMMANDS_SOURCE, "object? result = cmd switch")
 const PLUGIN_MANAGEMENT_COMMANDS = extractSwitchCommands(PLUGIN_MANAGEMENT_SOURCE, "return command switch")
 const PLUGIN_PAGE_COMMANDS = extractSwitchCommands(PLUGIN_BRIDGE_SOURCE, "return command switch")
@@ -231,6 +338,12 @@ const AUDIO_HOST_COMMANDS = [
 ]
 
 describe("Bridge 跨语言命令契约", () => {
+	it("设置页 ExecuteAsync 字面量命令都在设置白名单内", () => {
+		expect(SETTINGS_EXECUTED.length).toBeGreaterThan(0)
+		const MISSING = sorted(SETTINGS_EXECUTED).filter(COMMAND => !SETTINGS_ALLOWED.includes(COMMAND))
+		expect(MISSING).toEqual([])
+	})
+
 	it("音频宿主 typed map 只公开实际调用并已注册的命令", () => {
 		expect(sorted(TYPED_COMMANDS)).toEqual(sorted(AUDIO_HOST_COMMANDS))
 		for (const command of TYPED_COMMANDS) expect(HOST_COMMANDS).toContain(command)
@@ -250,6 +363,13 @@ describe("Bridge 跨语言命令契约", () => {
 		expect(BRIDGE_COMMANDS_SOURCE).not.toContain('"plugin_list" =>')
 		expect(BRIDGE_ROUTER_SOURCE).toContain('command.StartsWith("plugin_", StringComparison.Ordinal)')
 		expect(BRIDGE_ROUTER_SOURCE).toContain("runtime.InvokeManagementAsync")
+	})
+
+	it("桥命令与四个原生白名单双向可达", () => {
+		const COVERED = new Set([...NATIVE_ALLOWED, ...AUDIO_HOST_COMMANDS])
+		const REACHABLE = new Set([...HOST_COMMANDS, ...PLUGIN_MANAGEMENT_COMMANDS, ...SETTINGS_INTERNAL_COMMANDS])
+		expect(sorted(HOST_COMMANDS).filter(COMMAND => !COVERED.has(COMMAND))).toEqual([])
+		expect(NATIVE_ALLOWED.filter(COMMAND => !REACHABLE.has(COMMAND))).toEqual([])
 	})
 
 	it("插件 WebView RPC 仍保留独立页面白名单", () => {

@@ -49,22 +49,6 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public async Task NativeChatWindowEntryAllowsOnlyVisibleMain()
-	{
-		BridgeCommands commands = CreateCommands();
-		Assert.Null(await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "window_open_chat", Args(new { })));
-		Assert.Equal(1, _windows.ChatShowCount);
-		IBridgeSource[] rejected =
-		[
-			new FakeBridgeSource(WindowLabels.Main, false), new FakeBridgeSource(WindowLabels.Init),
-			new FakeBridgeSource(WindowLabels.Chat), new NativeChatTestSource(), new NativeChatTestSource(WindowLabels.Main),
-		];
-		foreach (IBridgeSource source in rejected)
-			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(source, "window_open_chat", Args(new { })));
-		Assert.Equal(1, _windows.ChatShowCount);
-	}
-
-	[Fact]
 	public async Task NativeChatWhitelistAndTrustedIdentityAreEnforcedAtBothEntries()
 	{
 		string[] allowed =
@@ -153,11 +137,11 @@ public partial class BridgeCommandsTests
 		Assert.False(snapshot.GetProperty("ai").GetProperty("configured").GetBoolean());
 		Assert.DoesNotContain("native-only-secret", snapshot.GetRawText(), StringComparison.Ordinal);
 		Assert.Equal(JsonValueKind.Array, (await service.ExecuteAsync("chat_history_page")).ValueKind);
-		_runtime.InvalidateSnapshot("chat");
+		_runtime.InvalidateSnapshot();
 		Assert.True(changes > 0);
 		service.Dispose();
 		int before = changes;
-		_runtime.InvalidateSnapshot("chat");
+		_runtime.InvalidateSnapshot();
 		Assert.Equal(before, changes);
 		await Assert.ThrowsAsync<ObjectDisposedException>(() => service.GetSnapshotAsync());
 	});

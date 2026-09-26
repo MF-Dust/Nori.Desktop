@@ -367,12 +367,13 @@ public sealed class BridgeCommands
 			string modelId = RequireKnownInstalledModel(Str(args, "modelId"));
 			string dir = _services.Resources.ResourceDir(ResourceType.Live2D, modelId);
 			Nori.Core.Live2D.Model3MetaInfo meta = Nori.Core.Live2D.Model3Meta.Read(dir);
-			float? scale = ReadFloatConfig($"l2d_scale_{modelId}") ?? ReadFloatConfig("l2d_scale") ?? 1f;
-			float? opacity = ReadFloatConfig($"l2d_opacity_{modelId}") ?? ReadFloatConfig("l2d_opacity") ?? 1f;
-			float? renderScale = ReadFloatConfig($"l2d_render_scale_{modelId}") ?? ReadFloatConfig("l2d_render_scale") ?? 2f;
-			string qualityMode = _services.Config.GetStringOr($"l2d_quality_mode_{modelId}", _services.Config.GetStringOr("l2d_quality_mode", "adaptive"));
-			int maxFps = (int)(ReadFloatConfig($"l2d_max_fps_{modelId}") ?? ReadFloatConfig("l2d_max_fps") ?? 0);
-			bool shadow = _services.Config.GetBoolOr($"l2d_shadow_{modelId}", _services.Config.GetBoolOr("l2d_shadow", true));
+			IReadOnlyDictionary<string, ConfigValue> display = _services.Config.GetMany(Live2DModelConfig.DisplayKeys(modelId));
+			float scale = Live2DModelConfig.ReadFloat(display, Live2DModelConfig.ScaleKey, modelId, 1f);
+			float opacity = Live2DModelConfig.ReadFloat(display, Live2DModelConfig.OpacityKey, modelId, 1f);
+			float renderScale = Live2DModelConfig.ReadFloat(display, Live2DModelConfig.RenderScaleKey, modelId, 2f);
+			string qualityMode = Live2DModelConfig.ReadPreferredText(display, Live2DModelConfig.QualityModeKey, modelId, "adaptive");
+			int maxFps = (int)Live2DModelConfig.ReadFloat(display, Live2DModelConfig.MaxFpsKey, modelId, 0f);
+			bool shadow = Live2DModelConfig.ReadBool(display, Live2DModelConfig.ShadowKey, modelId, true);
 			return new
 			{
 				modelId,
@@ -2371,15 +2372,6 @@ public sealed class BridgeCommands
 	// ===================================================================
 	// 通用辅助
 	// ===================================================================
-
-	private float? ReadFloatConfig(string key)
-	{
-		string raw = _services.Config.GetStringOr(key, "");
-		if (raw.Length == 0) return null;
-		if (raw.Equals("true", StringComparison.OrdinalIgnoreCase)) return 1f;
-		if (raw.Equals("false", StringComparison.OrdinalIgnoreCase)) return 0f;
-		return float.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float value) ? value : null;
-	}
 
 	private static string Str(JsonElement args, string name) =>
 		args.ValueKind == JsonValueKind.Object && args.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String

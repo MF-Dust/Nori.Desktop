@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -317,40 +316,20 @@ public sealed class PetRuntime
 
 	public void LoadConfigs()
 	{
-		string scaleKey = $"l2d_scale_{_currentModelId}";
 		string interactionKey = PetInteractionConfig.StorageKey(_currentModelId);
 		IReadOnlyDictionary<string, ConfigValue> values = _services.Config.GetMany(
 		[
-			scaleKey,
-			"l2d_scale",
-			ModelConfigKey("l2d_opacity"),
-			"l2d_opacity",
-			ModelConfigKey("l2d_shadow"),
-			"l2d_shadow",
-			ModelConfigKey("l2d_render_scale"),
-			"l2d_render_scale",
-			ModelConfigKey("l2d_quality_mode"),
-			"l2d_quality_mode",
-			ModelConfigKey("l2d_max_fps"),
-			"l2d_max_fps",
-			"l2d_auto_blink",
-			"l2d_eye_tracking",
-			"l2d_idle_eye_animation",
-			"l2d_idle_animation",
-			"l2d_expression_enabled",
-			"l2d_lip_sync",
-			"l2d_beat_sync",
-			"l2d_click_interaction",
-			"l2d_click_through",
+			.. Live2DModelConfig.DisplayKeys(_currentModelId),
+			.. Live2DModelConfig.BehaviorKeys,
 			interactionKey,
 		]);
 
-		float userScale = ParseFloatText(ReadStoredText(values, scaleKey), ParseFloatText(ReadStoredText(values, "l2d_scale"), 1.0f));
-		float opacity = ParseFloatText(ReadStoredText(values, ModelConfigKey("l2d_opacity")), ParseFloatText(ReadStoredText(values, "l2d_opacity"), Live2DRenderSettings.DefaultOpacity));
-		bool shadow = ParseBoolText(ReadStoredText(values, ModelConfigKey("l2d_shadow")), ParseBoolText(ReadStoredText(values, "l2d_shadow"), true));
-		float renderScale = ParseFloatText(ReadStoredText(values, ModelConfigKey("l2d_render_scale")), ParseFloatText(ReadStoredText(values, "l2d_render_scale"), Live2DRenderSettings.DefaultRenderScale));
-		string qualityMode = ReadPreferredText(values, ModelConfigKey("l2d_quality_mode"), "l2d_quality_mode", Live2DRenderSettings.DefaultQualityMode);
-		int maxFps = (int)ParseFloatText(ReadStoredText(values, ModelConfigKey("l2d_max_fps")), ParseFloatText(ReadStoredText(values, "l2d_max_fps"), Live2DRenderSettings.DefaultMaxFps));
+		float userScale = Live2DModelConfig.ReadFloat(values, Live2DModelConfig.ScaleKey, _currentModelId, 1.0f);
+		float opacity = Live2DModelConfig.ReadFloat(values, Live2DModelConfig.OpacityKey, _currentModelId, Live2DRenderSettings.DefaultOpacity);
+		bool shadow = Live2DModelConfig.ReadBool(values, Live2DModelConfig.ShadowKey, _currentModelId, true);
+		float renderScale = Live2DModelConfig.ReadFloat(values, Live2DModelConfig.RenderScaleKey, _currentModelId, Live2DRenderSettings.DefaultRenderScale);
+		string qualityMode = Live2DModelConfig.ReadPreferredText(values, Live2DModelConfig.QualityModeKey, _currentModelId, Live2DRenderSettings.DefaultQualityMode);
+		int maxFps = (int)Live2DModelConfig.ReadFloat(values, Live2DModelConfig.MaxFpsKey, _currentModelId, Live2DRenderSettings.DefaultMaxFps);
 
 		Live2DRenderSettings settings = Live2DRenderSettings.Normalize(
 			_currentModelId,
@@ -368,15 +347,15 @@ public sealed class PetRuntime
 		MaxFps = settings.MaxFps;
 		lock (_qualityGate) _qualityPolicy.Update(settings, PowerSourceDetector.Detect());
 
-		AutoBlinkEnabled = ParseBoolText(ReadStoredText(values, "l2d_auto_blink"), true);
-		EyeTrackingEnabled = ParseBoolText(ReadStoredText(values, "l2d_eye_tracking"), true);
-		IdleEyeAnimationEnabled = ParseBoolText(ReadStoredText(values, "l2d_idle_eye_animation"), true);
-		IdleAnimationEnabled = ParseBoolText(ReadStoredText(values, "l2d_idle_animation"), true);
-		ExpressionEnabled = ParseBoolText(ReadStoredText(values, "l2d_expression_enabled"), true);
-		LipSyncEnabled = ParseBoolText(ReadStoredText(values, "l2d_lip_sync"), true);
-		BeatSyncEnabled = ParseBoolText(ReadStoredText(values, "l2d_beat_sync"), false);
-		ClickInteraction = ParseBoolText(ReadStoredText(values, "l2d_click_interaction"), true);
-		ClickThroughEnabled = ParseBoolText(ReadStoredText(values, "l2d_click_through"), false);
+		AutoBlinkEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_auto_blink")) ?? true;
+		EyeTrackingEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_eye_tracking")) ?? true;
+		IdleEyeAnimationEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_idle_eye_animation")) ?? true;
+		IdleAnimationEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_idle_animation")) ?? true;
+		ExpressionEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_expression_enabled")) ?? true;
+		LipSyncEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_lip_sync")) ?? true;
+		BeatSyncEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_beat_sync")) ?? false;
+		ClickInteraction = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_click_interaction")) ?? true;
+		ClickThroughEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_click_through")) ?? false;
 		LoadInteractionConfig(values.TryGetValue(interactionKey, out ConfigValue? interaction) ? interaction : null);
 	}
 
@@ -406,49 +385,11 @@ public sealed class PetRuntime
 		lock (_interactionGate) _interactionConfig = config;
 	}
 
-	private string ModelConfigKey(string baseKey) => $"{baseKey}_{_currentModelId}";
+	private string ModelConfigKey(string baseKey) => Live2DModelConfig.ModelKey(baseKey, _currentModelId);
 
-	/// <summary>
-	/// 按 <see cref="ConfigValue.AsStringOr"/> 还原批量读取结果。
-	///
-	/// ConfigValue 是 record, 直接 ToString() 会得到 "Integer { Value = 30 }" 这种调试字符串,
-	/// 必须走 AsStringOr. 另外 ConfigStore 读取时会重新推断类型, 存进去的 "1" / "0" 会变成
-	/// 布尔再还原成 "true" / "false", 所以这里要一并接住 (与前端 parseNumber 的处境相同).
-	/// </summary>
-	private static string ReadStoredText(IReadOnlyDictionary<string, ConfigValue> values, string key) =>
-		values.TryGetValue(key, out ConfigValue? value) ? ConfigValue.AsStringOr(value, "") : "";
+	private static bool? ParseBool(string raw) => Live2DModelConfig.ParseBool(raw);
 
-	private static string ReadPreferredText(IReadOnlyDictionary<string, ConfigValue> values, string modelKey, string globalKey, string fallback)
-	{
-		string modelValue = ReadStoredText(values, modelKey);
-		return modelValue.Length > 0 ? modelValue : ReadStoredText(values, globalKey) is {Length: > 0} globalValue ? globalValue : fallback;
-	}
-
-	private static float ParseFloatText(string raw, float fallback) => ParseFloat(raw) ?? fallback;
-
-	private static bool ParseBoolText(string raw, bool fallback) => ParseBool(raw) ?? fallback;
-
-	/// <summary>
-	/// 解析布尔文本: 与前端 parseBoolean 同口径
-	/// </summary>
-	private static bool? ParseBool(string raw) => raw switch
-	{
-		"1" => true,
-		"0" => false,
-		_ when raw.Equals("true", StringComparison.OrdinalIgnoreCase) => true,
-		_ when raw.Equals("false", StringComparison.OrdinalIgnoreCase) => false,
-		_ => null,
-	};
-
-	/// <summary>
-	/// 解析数值文本: 与 ParseFloatConfig 同口径, 供配置热更新使用
-	/// </summary>
-	private static float? ParseFloat(string raw)
-	{
-		if (raw.Equals("true", StringComparison.OrdinalIgnoreCase)) return 1.0f;
-		if (raw.Equals("false", StringComparison.OrdinalIgnoreCase)) return 0.0f;
-		return float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out float value) ? value : null;
-	}
+	private static float? ParseFloat(string raw) => Live2DModelConfig.ParseFloat(raw);
 
 	/// <summary>
 	/// 请求切换模型 (线程安全): 递增世代并在后台开始元数据准备.

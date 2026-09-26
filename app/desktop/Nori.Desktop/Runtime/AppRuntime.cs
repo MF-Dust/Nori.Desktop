@@ -1588,11 +1588,12 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		}).ToArray();
 
 		string selectedModel = config.GetStringOr("selected_model", ConfigStore.DefaultModel);
-		float modelOpacity = ReadFloat(config, $"l2d_opacity_{selectedModel}") ?? ReadFloat(config, "l2d_opacity") ?? 1.0f;
-		float modelRenderScale = ReadFloat(config, $"l2d_render_scale_{selectedModel}") ?? ReadFloat(config, "l2d_render_scale") ?? 2.0f;
-		bool modelShadow = ParseBoolFlag(ReadModelString(config, "l2d_shadow", selectedModel, "true")) ?? true;
-		string modelQualityMode = ReadModelString(config, "l2d_quality_mode", selectedModel, "adaptive");
-		int modelMaxFps = (int)(ReadFloat(config, $"l2d_max_fps_{selectedModel}") ?? ReadFloat(config, "l2d_max_fps") ?? 0);
+		IReadOnlyDictionary<string, ConfigValue> modelDisplay = config.GetMany(Live2DModelConfig.DisplayKeys(selectedModel));
+		float modelOpacity = Live2DModelConfig.ReadFloat(modelDisplay, Live2DModelConfig.OpacityKey, selectedModel, 1.0f);
+		float modelRenderScale = Live2DModelConfig.ReadFloat(modelDisplay, Live2DModelConfig.RenderScaleKey, selectedModel, 2.0f);
+		bool modelShadow = Live2DModelConfig.ReadBool(modelDisplay, Live2DModelConfig.ShadowKey, selectedModel, true);
+		string modelQualityMode = Live2DModelConfig.ReadPreferredText(modelDisplay, Live2DModelConfig.QualityModeKey, selectedModel, "adaptive");
+		int modelMaxFps = (int)Live2DModelConfig.ReadFloat(modelDisplay, Live2DModelConfig.MaxFpsKey, selectedModel, 0f);
 		Live2DRenderSettings modelRenderSettings = Live2DRenderSettings.Normalize(
 			selectedModel, modelOpacity, modelShadow, modelRenderScale, modelQualityMode, modelMaxFps);
 
@@ -1716,7 +1717,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 				selected = selectedModel,
 				items = models,
 				loadError = Services.PetRuntime?.LastModelLoadError,
-				scale = ReadFloat(config, $"l2d_scale_{selectedModel}") ?? ReadFloat(config, "l2d_scale") ?? 1.0,
+				scale = (double)Live2DModelConfig.ReadFloat(modelDisplay, Live2DModelConfig.ScaleKey, selectedModel, 1f),
 				expressions = ModelExpressions(selectedModel),
 			},
 			pet = new
@@ -1954,29 +1955,10 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		return System.Text.Json.Nodes.JsonNode.Parse(json);
 	}
 
-	private static bool? ParseBoolFlag(string raw) => raw switch
-	{
-		"1" => true,
-		"0" => false,
-		_ when raw.Equals("true", StringComparison.OrdinalIgnoreCase) => true,
-		_ when raw.Equals("false", StringComparison.OrdinalIgnoreCase) => false,
-		_ => null,
-	};
+	private static bool? ParseBoolFlag(string raw) => Live2DModelConfig.ParseBool(raw);
 
-	private static string ReadModelString(ConfigStore config, string baseKey, string modelId, string fallback)
-	{
-		string modelValue = config.GetStringOr($"{baseKey}_{modelId}", "");
-		return modelValue.Length > 0 ? modelValue : config.GetStringOr(baseKey, fallback);
-	}
-
-	private static float? ReadFloat(ConfigStore config, string key)
-	{
-		string raw = config.GetStringOr(key, "");
-		if (raw.Length == 0) return null;
-		if (raw.Equals("true", StringComparison.OrdinalIgnoreCase)) return 1f;
-		if (raw.Equals("false", StringComparison.OrdinalIgnoreCase)) return 0f;
-		return float.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float value) ? value : null;
-	}
+	private static float? ReadFloat(ConfigStore config, string key) =>
+		Live2DModelConfig.ParseFloat(config.GetStringOr(key, ""));
 
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "退出清理按资源逐项隔离，单项失败不能阻断其余释放。")]
 	public async ValueTask DisposeAsync()

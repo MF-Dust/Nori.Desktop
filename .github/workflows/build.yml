@@ -106,6 +106,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: 脚本门 · 发布结构 fixture
+        if: matrix.name == 'windows'
+        run: node scripts/validate-publish-structure.test.mjs
+
+      - name: 脚本门 · 自动更新清单 fixture
+        if: matrix.name == 'windows'
+        run: node scripts/generate-update-manifest.test.mjs
+
       # 不把 build/test/publish 合并成并行 matrix 或后台任务, 避免共享 obj 文件锁。
       - name: 后端门 · 构建
         run: dotnet build Nori.slnx --configuration Release

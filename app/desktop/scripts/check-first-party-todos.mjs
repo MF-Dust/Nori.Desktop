@@ -39,12 +39,6 @@ const EXCLUDED_PARTS = new Set([
 ])
 const MARKER_PATTERN = /\b(?:TODO|FIXME)\b/gi
 
-const IS_EXCLUDED_DIRECTORY = (name) => {
-	if (EXCLUDED_PARTS.has(name)) return true
-	if (name === "Live2D") return true
-	return name.startsWith("Live2DCSharpSDK")
-}
-
 const SHOULD_SKIP = (filePath) => {
 	if (path.resolve(filePath) === SCAN_SCRIPT) return true
 	const relative = path.relative(ROOT, filePath)
@@ -61,7 +55,7 @@ const WALK = (directory) => {
 	for (const entry of fs.readdirSync(directory, {withFileTypes: true})) { // nosemgrep
 		const entryPath = path.join(directory, entry.name)
 		if (entry.isDirectory()) {
-			if (!IS_EXCLUDED_DIRECTORY(entry.name)) files.push(...WALK(entryPath))
+			if (!EXCLUDED_PARTS.has(entry.name)) files.push(...WALK(entryPath))
 		} else if (!SHOULD_SKIP(entryPath)) {
 			files.push(entryPath)
 		}

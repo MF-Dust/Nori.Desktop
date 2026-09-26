@@ -101,18 +101,42 @@ internal static class PetHitMask
 			&& row >= bounds.Top && row <= bounds.Bottom;
 	}
 
+	/// <summary>上次提交给平台的输入形状。未指定表示必须重新设置。</summary>
+	public readonly record struct InputShapeSignature(
+		Bounds Mask,
+		double ClientWidth,
+		double ClientHeight,
+		double RenderScale,
+		bool ClickThrough,
+		bool IsSpecified)
+	{
+		public static InputShapeSignature Unspecified => default;
+	}
+
+	/// <summary>边界、窗口尺寸、缩放和穿透开关都没变时，可以跳过平台调用。</summary>
+	public static bool SameInputShape(InputShapeSignature previous, InputShapeSignature next)
+	{
+		if (!previous.IsSpecified || !next.IsSpecified || previous.ClickThrough != next.ClickThrough) return false;
+		if (next.ClickThrough) return true;
+		return previous.Mask == next.Mask
+			&& SameCoordinate(previous.ClientWidth, next.ClientWidth)
+			&& SameCoordinate(previous.ClientHeight, next.ClientHeight)
+			&& SameCoordinate(previous.RenderScale, next.RenderScale);
+	}
+
 	/// <summary>把网格外接边界转换为单个客户端逻辑像素矩形。</summary>
-	public static List<(int X, int Y, int Width, int Height)> BuildHitRegions(
+	public static bool TryGetHitRegion(
 		Bounds bounds,
 		double clientWidth,
-		double clientHeight)
+		double clientHeight,
+		out (int X, int Y, int Width, int Height) region)
 	{
-		List<(int X, int Y, int Width, int Height)> regions = [];
+		region = default;
 		if (bounds.IsEmpty
 			|| !double.IsFinite(clientWidth) || !double.IsFinite(clientHeight)
 			|| clientWidth <= 0 || clientHeight <= 0)
 		{
-			return regions;
+			return false;
 		}
 
 		double cellWidth = clientWidth / Width;
@@ -121,9 +145,24 @@ internal static class PetHitMask
 		int y = (int)Math.Floor(bounds.Top * cellHeight);
 		int regionRight = (int)Math.Ceiling((bounds.Right + 1) * cellWidth);
 		int regionBottom = (int)Math.Ceiling((bounds.Bottom + 1) * cellHeight);
-		regions.Add((x, y, Math.Max(1, regionRight - x), Math.Max(1, regionBottom - y)));
+		region = (x, y, Math.Max(1, regionRight - x), Math.Max(1, regionBottom - y));
+		return true;
+	}
+
+	/// <summary>把网格外接边界转换为单个客户端逻辑像素矩形。</summary>
+	public static List<(int X, int Y, int Width, int Height)> BuildHitRegions(
+		Bounds bounds,
+		double clientWidth,
+		double clientHeight)
+	{
+		List<(int X, int Y, int Width, int Height)> regions = [];
+		if (TryGetHitRegion(bounds, clientWidth, clientHeight, out (int X, int Y, int Width, int Height) region))
+			regions.Add(region);
 		return regions;
 	}
+
+	private static bool SameCoordinate(double previous, double next) =>
+		BitConverter.DoubleToInt64Bits(previous) == BitConverter.DoubleToInt64Bits(next);
 
 	private static bool HasVisibleSample(ReadOnlySpan<byte> pixels, int width, int height, int column, int row)
 	{

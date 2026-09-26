@@ -5,16 +5,22 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using Nori.Core.Configuration;
-using Nori.Core.Live2D;
 using Nori.Core.Logging;
-using Nori.Core.Resources;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
 using Nori.Desktop.Runtime;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Main;
+
+/// <summary>主界面一次刷新所需的、已在后台读完的模型与 AI 状态。</summary>
+public readonly record struct HomeRefreshData(
+	string ModelId,
+	bool ModelReady,
+	bool ChatConfigured,
+	string ChatModel);
 
 /// <summary>沿用 Vue 首页的角色舞台、运行概况、快捷入口与社区层级。</summary>
 public sealed class HomeView : Panel
@@ -47,6 +53,7 @@ public sealed class HomeView : Panel
 	private readonly ShortcutCard[] _shortcuts;
 	private Bitmap? _avatarBitmap;
 	private string? _avatarModelId;
+	private int _qqCopyRevision;
 	private bool _readingMcp;
 	private bool _english;
 	private bool _modelReady;
@@ -120,7 +127,7 @@ public sealed class HomeView : Panel
 	}
 
 	/// <summary>仅更新现有控件的数据，保留键盘焦点、头像和展开的插件卡片。</summary>
-	public void Refresh(bool english)
+	public void Refresh(bool english, HomeRefreshData data)
 	{
 		_english = english;
 		_communityTitle.Text = english ? "COMMUNITY" : "生态社区";
@@ -131,8 +138,8 @@ public sealed class HomeView : Panel
 		_bilibili.Content = english ? "Bilibili" : "哔哩哔哩";
 		_widgets.Refresh(english);
 		if (!_readingMcp) _ = RefreshMcpCountAsync();
-		string modelId = _services.Config.GetStringOr(ConfigStore.KeySelectedModel, ConfigStore.DefaultModel);
-		_modelReady = IsInstalled(modelId);
+		string modelId = data.ModelId;
+		_modelReady = data.ModelReady;
 		bool petVisible = _services.Windows?.IsWindowVisible(WindowLabels.Pet) ?? false;
 		_missingBanner.IsVisible = !_modelReady;
 		_safeBanner.IsVisible = _services.SafeMode;
@@ -152,9 +159,8 @@ public sealed class HomeView : Panel
 		_wave.Content = english ? "Say hello" : "打个招呼";
 		_wave.IsVisible = petVisible && _modelReady;
 		UpdateAvatar(modelId);
-		AiChatSettings chat = _services.AiSettings.Read().Chat;
-		_stats[0].Set(english ? "Model provider" : "模型服务", chat.IsConfigured ? english ? "Ready" : "已就绪" : english ? "Not set" : "未配置",
-			chat.Model is {Length: > 0} model ? model : english ? "Connect in Settings" : "前往设置连接模型", chat.IsConfigured);
+		_stats[0].Set(english ? "Model provider" : "模型服务", data.ChatConfigured ? english ? "Ready" : "已就绪" : english ? "Not set" : "未配置",
+			data.ChatModel is {Length: > 0} model ? model : english ? "Connect in Settings" : "前往设置连接模型", data.ChatConfigured);
 		_stats[1].Set(english ? "Skills enabled" : "启用技能", SkillCount().ToString(), english ? "Ready to help" : "随时为你提供帮助", true);
 		_stats[2].Set(english ? "Available tools" : "可用工具", ToolCount().ToString(), english ? "Built-in and MCP" : "内置能力与 MCP 工具", true);
 		_stats[3].Set(english ? "MCP servers" : "MCP 服务", _stats[3].Value.Text ?? "—", english ? "Configured services" : "已配置的外部服务", false);
@@ -288,9 +294,11 @@ public sealed class HomeView : Panel
 		{
 			IClipboard clipboard = TopLevel.GetTopLevel(this)?.Clipboard ?? throw new InvalidOperationException("当前窗口无法访问剪贴板");
 			await clipboard.SetTextAsync("1041616195");
+			int revision = ++_qqCopyRevision;
 			_qqCopiedUntil = DateTimeOffset.UtcNow.AddSeconds(2);
 			_qq.Content = _english ? "Copied" : "已复制";
 			_communityError.IsVisible = false;
+			_ = RevertQqLabelAsync(revision);
 		}
 		catch (Exception failure)
 		{
@@ -298,6 +306,23 @@ public sealed class HomeView : Panel
 			_communityError.IsVisible = true;
 			_services.Logger.Write(LogSource.Backend, "warn", $"复制 QQ 群号失败：{failure.GetType().Name}");
 		}
+	}
+
+	private async Task RevertQqLabelAsync(int revision)
+	{
+		try
+		{
+			await Task.Delay(TimeSpan.FromSeconds(2), _services.ShutdownToken).ConfigureAwait(true);
+		}
+		catch (OperationCanceledException) when (_services.ShutdownToken.IsCancellationRequested)
+		{
+			return;
+		}
+		await Dispatcher.UIThread.InvokeAsync(() =>
+		{
+			if (revision != _qqCopyRevision || DateTimeOffset.UtcNow < _qqCopiedUntil) return;
+			_qq.Content = _english ? "QQ group" : "QQ 交流群";
+		});
 	}
 
 	private async Task RefreshMcpCountAsync()
@@ -316,12 +341,6 @@ public sealed class HomeView : Panel
 			_services.Logger.Write(LogSource.Backend, "warn", $"读取首页 MCP 统计失败：{failure.GetType().Name}");
 		}
 		finally { _readingMcp = false; }
-	}
-
-	private bool IsInstalled(string modelId)
-	{
-		try { return SupportedModelIds.Normalize(modelId) is not null && _services.Resources.IsInstalled(ResourceType.Live2D, modelId); }
-		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ResourceException) { return false; }
 	}
 
 	private int SkillCount()

@@ -52,6 +52,15 @@ public static class CubismFramework
 	}
 
 	/// <summary>
+	/// 串行执行带状态的操作。状态按值传递，热路径不必为每次调用分配闭包。
+	/// </summary>
+	public static void RunSynchronized<TState>(TState state, Action<TState> action)
+	{
+		ArgumentNullException.ThrowIfNull(action);
+		lock (s_runtimeGate) action(state);
+	}
+
+	/// <summary>
 	/// 串行执行会访问 Cubism 全局状态并返回结果的操作。
 	/// </summary>
 	public static T RunSynchronized<T>(Func<T> action)

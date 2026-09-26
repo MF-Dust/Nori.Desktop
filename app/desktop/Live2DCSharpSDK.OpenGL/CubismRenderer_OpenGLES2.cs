@@ -59,6 +59,8 @@ public class CubismRenderer_OpenGLES2 : CubismRenderer
     internal VBO[] vbo = new VBO[512];
 
     private readonly LAppDelegate _lapp;
+    // [Nori Modification] 已写入 GPU 的各向异性；NaN 表示尚未应用或纹理绑定已失效。
+    private float _appliedAnisotropy = float.NaN;
 
     public unsafe CubismRenderer_OpenGLES2(OpenGLApi gl, LAppDelegate lapp, CubismModel model, int maskBufferCount = 1) : base(model)
     {
@@ -104,7 +106,9 @@ public class CubismRenderer_OpenGLES2 : CubismRenderer
     /// <param name="glTextureNo">OpenGLテクスチャの番号</param>
     public void BindTexture(int modelTextureNo, int glTextureNo)
     {
+        if (_textures.TryGetValue(modelTextureNo, out int current) && current == glTextureNo) return;
         _textures[modelTextureNo] = glTextureNo;
+        _appliedAnisotropy = float.NaN;
     }
 
     /// <summary>
@@ -262,13 +266,14 @@ public class CubismRenderer_OpenGLES2 : CubismRenderer
         GL.BindBuffer(GL.GL_ARRAY_BUFFER, 0); //前にバッファがバインドされていたら破棄する必要がある
 
         //異方性フィルタリング。プラットフォームのOpenGLによっては未対応の場合があるので、未設定のときは設定しない
-        if (Anisotropy > 0.0f)
+        if (Anisotropy > 0.0f && BitConverter.SingleToInt32Bits(_appliedAnisotropy) != BitConverter.SingleToInt32Bits(Anisotropy))
         {
             for (int i = 0; i < _textures.Count; i++)
             {
                 GL.BindTexture(GL.GL_TEXTURE_2D, _textures[i]);
                 GL.TexParameterf(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAX_ANISOTROPY_EXT, Anisotropy);
             }
+            _appliedAnisotropy = Anisotropy;
         }
     }
 

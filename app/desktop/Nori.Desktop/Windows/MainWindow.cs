@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Nori.Desktop.Appearance;
 using Avalonia;
 using Avalonia.Automation;
@@ -10,8 +11,10 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Nori.Core.Configuration;
+using Nori.Core.Live2D;
 using Nori.Core.Logging;
 using Nori.Core.Platform;
+using Nori.Core.Resources;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
 using Nori.Desktop.Main;
@@ -38,11 +41,20 @@ public sealed class MainWindow : Window
 	private readonly Button _exit = new();
 	private NativeWindowChrome _windowChrome = null!;
 	private readonly List<LauncherEntry> _launchers = [];
-	private DispatcherTimer? _refresh;
+	private static readonly long RefreshIntervalTicks = (long)(Stopwatch.Frequency * 0.4);
+	private MainRefreshData _lastData;
+	private long _nextAllowed;
+	private int _dirty;
+	private int _pumpQueued;
+	private bool _stateHooked;
 	private bool _collapsed;
 	private bool _savingSidebar;
-	private bool _closed;
+	private volatile bool _updatesEnabled;
+	private volatile bool _closed;
+	private bool _english;
 	private (bool English, bool Collapsed)? _chromeState;
+
+	private readonly record struct MainRefreshData(bool English, bool Collapsed, HomeRefreshData Home);
 
 	private sealed record LauncherEntry(string Window, Button Button, TextBlock Label, Ellipse Dot, Ellipse Badge);
 
@@ -74,10 +86,12 @@ public sealed class MainWindow : Window
 			Source = new Uri("avares://Nori.Desktop/Main/MainTheme.axaml"),
 		});
 		WindowDecorations = WindowDecorations.None;
-		_collapsed = ReadCollapsed();
-		_home = new HomeView(services, Refresh);
+		_lastData = ReadMainRefreshData();
+		_english = _lastData.English;
+		_collapsed = _lastData.Collapsed;
+		_home = new HomeView(services, RefreshFromCache);
 		Content = BuildChrome();
-		Refresh();
+		ApplyMainRefresh(_lastData);
 		Opened += (_, _) => StartRefreshing();
 		Closing += (_, args) =>
 		{
@@ -93,10 +107,7 @@ public sealed class MainWindow : Window
 		};
 	}
 
-	private bool IsEnglish() => _services.Config.GetStringOr(ConfigStore.KeyLanguage, "zh-CN")
-		.StartsWith("en", StringComparison.OrdinalIgnoreCase);
-
-	private bool ReadCollapsed() => _services.Config.GetStringOr("ui_sidebar_collapsed", "false") is "true" or "1";
+	private bool IsEnglish() => _english;
 
 	private Control BuildChrome()
 	{
@@ -223,7 +234,7 @@ public sealed class MainWindow : Window
 		if (_savingSidebar) return;
 		_savingSidebar = true;
 		_collapsed = !_collapsed;
-		Refresh();
+		ApplyMainRefresh(_lastData);
 		try
 		{
 			bool value = _collapsed;
@@ -237,7 +248,7 @@ public sealed class MainWindow : Window
 		finally
 		{
 			_savingSidebar = false;
-			if (!_closed && !_services.ShutdownToken.IsCancellationRequested) Refresh();
+			if (!_closed && !_services.ShutdownToken.IsCancellationRequested) QueueRefresh();
 		}
 	}
 
@@ -245,7 +256,7 @@ public sealed class MainWindow : Window
 	{
 		try { action(); _error.IsVisible = false; }
 		catch (Exception failure) { ShowError(failure); }
-		Refresh();
+		RefreshFromCache();
 	}
 
 	private void ShowError(Exception failure)
@@ -292,19 +303,47 @@ public sealed class MainWindow : Window
 		}
 	}
 
-	private void Refresh()
+	private void RefreshFromCache()
 	{
-		bool english = IsEnglish();
-		if (!_savingSidebar) _collapsed = ReadCollapsed();
+		if (_closed) return;
+		ApplyMainRefresh(_lastData);
+	}
+
+	private MainRefreshData ReadMainRefreshData()
+	{
+		bool english = _services.Config.GetStringOr(ConfigStore.KeyLanguage, "zh-CN")
+			.StartsWith("en", StringComparison.OrdinalIgnoreCase);
+		bool collapsed = _services.Config.GetStringOr("ui_sidebar_collapsed", "false") is "true" or "1";
+		string modelId = _services.Config.GetStringOr(ConfigStore.KeySelectedModel, ConfigStore.DefaultModel);
+		bool modelReady = false;
+		try
+		{
+			modelReady = SupportedModelIds.Normalize(modelId) is not null
+				&& _services.Resources.IsInstalled(ResourceType.Live2D, modelId);
+		}
+		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ResourceException)
+		{
+			modelReady = false;
+		}
+		AiChatSettings chat = _services.AiSettings.Read().Chat;
+		return new MainRefreshData(english, collapsed, new HomeRefreshData(modelId, modelReady, chat.IsConfigured, chat.Model));
+	}
+
+	private void ApplyMainRefresh(MainRefreshData data)
+	{
+		_lastData = data;
+		_english = data.English;
+		if (!_savingSidebar) _collapsed = data.Collapsed;
+		bool english = _english;
 		RefreshChrome(english);
 		foreach (LauncherEntry launcher in _launchers)
 		{
 			launcher.Dot.IsVisible = _services.Windows.IsWindowVisible(launcher.Window);
-			launcher.Badge.IsVisible = launcher.Window == WindowLabels.Settings && !_services.AiSettings.Read().Chat.IsConfigured;
+			launcher.Badge.IsVisible = launcher.Window == WindowLabels.Settings && !data.Home.ChatConfigured;
 		}
-		_home.Refresh(english);
+		_home.Refresh(english, data.Home);
 		bool visible = _services.Windows.IsWindowVisible(WindowLabels.Pet);
-		string model = _services.Config.GetStringOr(ConfigStore.KeySelectedModel, ConfigStore.DefaultModel);
+		string model = data.Home.ModelId;
 		string modelName = model switch {"nori" => "Nori", "arg-nori" => "ARG Nori", _ => model};
 		_petStatus.Text = (visible ? english ? "On your desktop" : "伴侣已在桌面" : english ? "Resting" : "伴侣休息中") + "  ·  " + modelName;
 		_petDot.Fill = visible ? ChatPalette.Teal : ChatPalette.Faint;
@@ -337,17 +376,75 @@ public sealed class MainWindow : Window
 
 	private void StartRefreshing()
 	{
-		if (_refresh is not null) return;
-		_refresh = new DispatcherTimer {Interval = TimeSpan.FromSeconds(2)};
-		_refresh.Tick += (_, _) => Refresh();
-		_refresh.Start();
-		Refresh();
+		if (_closed || _updatesEnabled) return;
+		_updatesEnabled = true;
+		if (!_stateHooked && _services.Runtime is { } runtime)
+		{
+			runtime.StateChanged += OnRuntimeStateChanged;
+			_stateHooked = true;
+		}
+		_nextAllowed = 0;
+		QueueRefresh();
 	}
 
 	private void StopRefreshing()
 	{
-		_refresh?.Stop();
-		_refresh = null;
+		_updatesEnabled = false;
+		if (!_stateHooked) return;
+		_stateHooked = false;
+		if (_services.Runtime is { } runtime) runtime.StateChanged -= OnRuntimeStateChanged;
+	}
+
+	private void OnRuntimeStateChanged()
+	{
+		if (!_updatesEnabled || _closed) return;
+		QueueRefresh();
+	}
+
+	private void QueueRefresh()
+	{
+		if (!_updatesEnabled || _closed) return;
+		Interlocked.Exchange(ref _dirty, 1);
+		if (Interlocked.CompareExchange(ref _pumpQueued, 1, 0) != 0) return;
+		Dispatcher.UIThread.Post(() => _ = PumpRefreshAsync(), DispatcherPriority.Background);
+	}
+
+	private async Task PumpRefreshAsync()
+	{
+		try
+		{
+			while (_updatesEnabled && !_closed && Volatile.Read(ref _dirty) == 1)
+			{
+				long now = Stopwatch.GetTimestamp();
+				if (now < _nextAllowed)
+				{
+					await Task.Delay(Stopwatch.GetElapsedTime(now, _nextAllowed), _services.ShutdownToken).ConfigureAwait(true);
+					continue;
+				}
+				Interlocked.Exchange(ref _dirty, 0);
+				MainRefreshData data;
+				try
+				{
+					data = await Task.Run(ReadMainRefreshData, _services.ShutdownToken).ConfigureAwait(true);
+				}
+				catch (Exception exception) when (exception is not OperationCanceledException)
+				{
+					_services.Logger.Write(LogSource.Backend, "warn", $"刷新主界面失败：{exception.GetType().Name}");
+					break;
+				}
+				if (!_updatesEnabled || _closed || !IsVisible) break;
+				ApplyMainRefresh(data);
+				_nextAllowed = Stopwatch.GetTimestamp() + RefreshIntervalTicks;
+			}
+		}
+		catch (OperationCanceledException) when (_services.ShutdownToken.IsCancellationRequested)
+		{
+		}
+		finally
+		{
+			Interlocked.Exchange(ref _pumpQueued, 0);
+			if (_updatesEnabled && !_closed && Volatile.Read(ref _dirty) == 1) QueueRefresh();
+		}
 	}
 
 	protected override void OnClosed(EventArgs e)

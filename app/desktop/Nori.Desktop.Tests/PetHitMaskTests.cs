@@ -158,6 +158,39 @@ public sealed class PetHitMaskTests
 		Assert.Equal(0L, allocated);
 	}
 
+	[Fact]
+	public void TryGetHitRegionMatchesBuildHitRegions()
+	{
+		PetHitMask.Bounds bounds = new(3, 2, 7, 5, HasBounds: true);
+		List<(int X, int Y, int Width, int Height)> regions = PetHitMask.BuildHitRegions(bounds, 101.5, 203.25);
+		Assert.True(PetHitMask.TryGetHitRegion(bounds, 101.5, 203.25, out (int X, int Y, int Width, int Height) region));
+		Assert.Equal(Assert.Single(regions), region);
+		Assert.False(PetHitMask.TryGetHitRegion(PetHitMask.Bounds.Empty, 100, 100, out _));
+		Assert.False(PetHitMask.TryGetHitRegion(bounds, 0, 100, out _));
+	}
+
+	[Fact]
+	public void SameInputShapeSkipsStableBoundsAndFollowsSizeScaleAndVisibility()
+	{
+		PetHitMask.Bounds bounds = new(3, 2, 7, 5, HasBounds: true);
+		PetHitMask.InputShapeSignature current = new(bounds, 192, 256, 1.5, ClickThrough: false, IsSpecified: true);
+		Assert.False(PetHitMask.SameInputShape(PetHitMask.InputShapeSignature.Unspecified, current));
+		Assert.True(PetHitMask.SameInputShape(current, current));
+		Assert.False(PetHitMask.SameInputShape(current, current with { ClientWidth = 200 }));
+		Assert.False(PetHitMask.SameInputShape(current, current with { ClientHeight = 240 }));
+		Assert.False(PetHitMask.SameInputShape(current, current with { RenderScale = 2 }));
+		Assert.False(PetHitMask.SameInputShape(current, current with { Mask = bounds with { Right = 8 } }));
+		Assert.False(PetHitMask.SameInputShape(current, current with { ClickThrough = true }));
+
+		PetHitMask.InputShapeSignature through = current with { ClickThrough = true };
+		Assert.True(PetHitMask.SameInputShape(through, through with { ClientWidth = 20, RenderScale = 3, Mask = bounds with { Left = 1 } }));
+
+		long before = GC.GetAllocatedBytesForCurrentThread();
+		for (int index = 0; index < 32; index++)
+			Assert.True(PetHitMask.SameInputShape(current, current));
+		Assert.Equal(0L, GC.GetAllocatedBytesForCurrentThread() - before);
+	}
+
 	private static byte[] CreatePixels(int width, int height) => new byte[checked(width * height * 4)];
 
 	private static void SetAlphaAtTop(byte[] pixels, int width, int height, int x, int topY, byte alpha = byte.MaxValue)

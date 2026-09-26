@@ -3,19 +3,20 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
+using Nori.Core.Tests.TestSupport;
 using Nori.Core.Voice;
 
 namespace Nori.Core.Tests;
 
 public class GeminiTtsProviderTests : IDisposable
 {
-    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"nori-gemini-tts-{Guid.NewGuid():N}.db");
+    private readonly TempDatabase _tempDatabase = new("nori-gemini-tts");
     private readonly NoriDatabase _database;
     private readonly ConfigStore _config;
 
     public GeminiTtsProviderTests()
     {
-        _database = NoriDatabase.Open(_dbPath);
+        _database = NoriDatabase.Open(_tempDatabase.Path);
         _config = new ConfigStore(_database);
         _config.InitDefaults("0.1.0");
         _config.Set("tts_provider", new ConfigValue.Text("gemini"));
@@ -27,13 +28,18 @@ public class GeminiTtsProviderTests : IDisposable
     [Fact]
     public async Task GenerateContentMapsRequestAndWrapsPcmAsWav()
     {
-        CaptureHandler handler = new(_ => Success([1, 0, 2, 0]));
+        string? apiKey = null;
+        HttpTestHandler handler = new(request =>
+        {
+            apiKey = request.Headers.TryGetValues("x-goog-api-key", out IEnumerable<string>? values) ? values.SingleOrDefault() : null;
+            return Success([1, 0, 2, 0]);
+        });
         using HttpClient client = new(handler);
         GeminiTtsProvider provider = new(client, _config);
         EncodedAudio audio = await provider.SynthesizeAsync("你好", new TtsSynthesizeOptions {Voice = "Kore"}, CancellationToken.None);
 
         Assert.Equal(new Uri("https://relay.example/v1beta/models/gemini-3.1-flash-tts-preview:generateContent"), handler.LastUri);
-        Assert.Equal("secret", handler.ApiKey);
+        Assert.Equal("secret", apiKey);
         Assert.Equal("audio/wav", audio.Mime);
         Assert.Equal("RIFF", Encoding.ASCII.GetString(audio.Bytes, 0, 4));
         JsonNode body = JsonNode.Parse(handler.LastBody!)!;
@@ -44,7 +50,7 @@ public class GeminiTtsProviderTests : IDisposable
     [Fact]
     public void VoiceServiceCreatesGeminiProvider()
     {
-        using HttpClient client = new(new CaptureHandler(_ => Success([0, 0])));
+        using HttpClient client = new(new HttpTestHandler(_ => Success([0, 0])));
         using VoiceService service = new(client, _config, null, () => null);
         Assert.IsType<GeminiTtsProvider>(service.CreateProvider("gemini"));
     }
@@ -52,7 +58,7 @@ public class GeminiTtsProviderTests : IDisposable
     public void Dispose()
     {
         _database.Dispose();
-        try { File.Delete(_dbPath); } catch (IOException) { }
+        _tempDatabase.Dispose();
     }
 
     private static HttpResponseMessage Success(byte[] pcm)
@@ -86,17 +92,4 @@ public class GeminiTtsProviderTests : IDisposable
         };
     }
 
-    private sealed class CaptureHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
-    {
-        public Uri? LastUri { get; private set; }
-        public string? ApiKey { get; private set; }
-        public string? LastBody { get; private set; }
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            LastUri = request.RequestUri;
-            ApiKey = request.Headers.TryGetValues("x-goog-api-key", out IEnumerable<string>? values) ? values.SingleOrDefault() : null;
-            LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-            return responder(request);
-        }
-    }
 }

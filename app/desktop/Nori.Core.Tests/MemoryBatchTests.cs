@@ -3,19 +3,20 @@ using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Embedding;
 using Nori.Core.Memory;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
 public sealed class MemoryBatchTests : IDisposable
 {
-	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-memory-batch-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-memory-batch");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
 	private readonly MemoryStore _store;
 
 	public MemoryBatchTests()
 	{
-		_database = NoriDatabase.Open(_path);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("test");
 		_config.Set("memory_enabled", new ConfigValue.Boolean(true));
@@ -121,15 +122,7 @@ public sealed class MemoryBatchTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
-		try
-		{
-			File.Delete(_path);
-			File.Delete($"{_path}-wal");
-			File.Delete($"{_path}-shm");
-		}
-		catch (IOException)
-		{
-		}
+		_tempDatabase.Dispose();
 		GC.SuppressFinalize(this);
 	}
 

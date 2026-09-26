@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Nori.Core.Data;
 using Nori.Core.Proactive;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
@@ -9,8 +10,8 @@ public sealed class ReminderStoreTests
 	[Fact]
 	public void 逐级提醒迁移保留旧列并回填领取字段()
 	{
-		string path = NewPath();
-		try
+		using TempDatabase tempDatabase = new("nori-reminder");
+		string path = tempDatabase.Path;
 		{
 			using (SqliteConnection connection = new($"Data Source={path}"))
 			{
@@ -39,14 +40,14 @@ public sealed class ReminderStoreTests
 			Assert.Equal("{\"type\":\"daily\"}", row.recurrence);
 			Assert.Equal("2026-01-01T00:00:00Z", row.updated);
 		}
-		finally { DeleteDatabase(path); }
+		DeleteMigrationBackups(path);
 	}
 
 	[Fact]
 	public async Task 并发领取同一提醒只返回一份()
 	{
-		string path = NewPath();
-		try
+		using TempDatabase tempDatabase = new("nori-reminder");
+		string path = tempDatabase.Path;
 		{
 			using NoriDatabase firstDatabase = NoriDatabase.Open(path);
 			ReminderStore first = new(firstDatabase);
@@ -60,14 +61,14 @@ public sealed class ReminderStoreTests
 			Assert.Contains(results, items => items.Count == 0);
 			Assert.Equal("claimed", Assert.Single(results.SelectMany(items => items)).Status);
 		}
-		finally { DeleteDatabase(path); }
+		DeleteMigrationBackups(path);
 	}
 
 	[Fact]
 	public void 领取失败释放后可重试并确认后结束()
 	{
-		string path = NewPath();
-		try
+		using TempDatabase tempDatabase = new("nori-reminder");
+		string path = tempDatabase.Path;
 		{
 			using NoriDatabase database = NoriDatabase.Open(path);
 			ReminderStore store = new(database);
@@ -81,14 +82,14 @@ public sealed class ReminderStoreTests
 			Assert.Empty(store.TakeDue(now));
 			Assert.Empty(store.List());
 		}
-		finally { DeleteDatabase(path); }
+		DeleteMigrationBackups(path);
 	}
 
 	[Fact]
 	public void 过期领取租约可以重试()
 	{
-		string path = NewPath();
-		try
+		using TempDatabase tempDatabase = new("nori-reminder");
+		string path = tempDatabase.Path;
 		{
 			using NoriDatabase database = NoriDatabase.Open(path);
 			ReminderStore store = new(database);
@@ -103,14 +104,14 @@ public sealed class ReminderStoreTests
 			});
 			Assert.Single(store.TakeDue(now));
 		}
-		finally { DeleteDatabase(path); }
+		DeleteMigrationBackups(path);
 	}
 
 	[Fact]
 	public void 更新推迟后重启仍可领取并兼容每日重复()
 	{
-		string path = NewPath();
-		try
+		using TempDatabase tempDatabase = new("nori-reminder");
+		string path = tempDatabase.Path;
 		{
 			long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 			ReminderItem added;
@@ -141,7 +142,7 @@ public sealed class ReminderStoreTests
 				Assert.Equal(now - 1 + 86_400_000, repeated.TriggerAt);
 			}
 		}
-		finally { DeleteDatabase(path); }
+		DeleteMigrationBackups(path);
 	}
 
 	[Fact]
@@ -175,8 +176,8 @@ public sealed class ReminderStoreTests
 	[Fact]
 	public void 完成或取消后不会再次进入到期领取()
 	{
-		string path = NewPath();
-		try
+		using TempDatabase tempDatabase = new("nori-reminder");
+		string path = tempDatabase.Path;
 		{
 			using NoriDatabase database = NoriDatabase.Open(path);
 			ReminderStore store = new(database);
@@ -193,14 +194,14 @@ public sealed class ReminderStoreTests
 			Assert.False(store.MarkFired(cancelled.Id));
 			Assert.Empty(store.TakeDue(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
 		}
-		finally { DeleteDatabase(path); }
+		DeleteMigrationBackups(path);
 	}
 
 	[Fact]
 	public void 领取中完成不会被旧投递确认复活()
 	{
-		string path = NewPath();
-		try
+		using TempDatabase tempDatabase = new("nori-reminder");
+		string path = tempDatabase.Path;
 		{
 			using NoriDatabase database = NoriDatabase.Open(path);
 			ReminderStore store = new(database);
@@ -211,7 +212,7 @@ public sealed class ReminderStoreTests
 			Assert.Equal("completed", store.Get(item.Id)!.Status);
 			Assert.Empty(store.TakeDue(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
 		}
-		finally { DeleteDatabase(path); }
+		DeleteMigrationBackups(path);
 	}
 
 	private static long ReadVersion(SqliteConnection connection)
@@ -221,13 +222,10 @@ public sealed class ReminderStoreTests
 		return Convert.ToInt64(command.ExecuteScalar());
 	}
 
-	private static string NewPath() => Path.Combine(Path.GetTempPath(), $"nori-reminder-{Guid.NewGuid():N}.db");
-
-	private static void DeleteDatabase(string path)
+	private static void DeleteMigrationBackups(string path)
 	{
 		try
 		{
-			File.Delete(path); File.Delete($"{path}-wal"); File.Delete($"{path}-shm");
 			foreach (string backup in Directory.GetFiles(Path.GetDirectoryName(path)!, $"{Path.GetFileName(path)}.pre-migration-*.bak")) File.Delete(backup);
 		}
 		catch (IOException) { }

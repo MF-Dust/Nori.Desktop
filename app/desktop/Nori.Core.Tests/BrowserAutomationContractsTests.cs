@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Nori.Core.Automation;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
@@ -81,14 +82,5 @@ public sealed class BrowserAutomationContractsTests
 		Assert.NotNull(store.Get(taskId));
 		clock.Advance(BrowserAutomationResultStore.ResultTtl + TimeSpan.FromSeconds(1));
 		Assert.Null(store.Get(taskId));
-	}
-
-	private sealed class MutableTimeProvider(DateTimeOffset now) : TimeProvider
-	{
-		private DateTimeOffset _now = now;
-
-		public override DateTimeOffset GetUtcNow() => _now;
-
-		public void Advance(TimeSpan duration) => _now = _now.Add(duration);
 	}
 }

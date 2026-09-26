@@ -6,7 +6,7 @@ using Nori.Core.Chat.LuoLiCore;
 using Nori.Core.Emotion;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
-using Nori.Core.Security;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
@@ -18,23 +18,14 @@ namespace Nori.Core.Tests;
 /// </summary>
 public sealed class AgentEngineLuoLiCoreTests : IDisposable
 {
-	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-engine-luoli-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-engine-luoli");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
 	private readonly List<IDisposable> _disposables = [];
 
-	private sealed class FixedKeyStore : ISecretKeyStore
-	{
-		private readonly byte[] _key = Enumerable.Range(0, SecretKeyStore.KeySize).Select(index => (byte)index).ToArray();
-
-		public byte[] LoadOrCreate() => _key;
-
-		public bool IsFileFallback => true;
-	}
-
 	public AgentEngineLuoLiCoreTests()
 	{
-		_database = NoriDatabase.Open(_path);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_config = new ConfigStore(_database, new FixedKeyStore());
 		_config.InitDefaults("test");
 	}
@@ -43,7 +34,7 @@ public sealed class AgentEngineLuoLiCoreTests : IDisposable
 	{
 		foreach (IDisposable item in _disposables) item.Dispose();
 		_database.Dispose();
-		try { File.Delete(_path); } catch (IOException) { /* 临时库删不掉不影响断言 */ }
+		_tempDatabase.Dispose();
 	}
 
 	private void EnableLuoLiCore(bool enabled = true)
@@ -56,7 +47,7 @@ public sealed class AgentEngineLuoLiCoreTests : IDisposable
 
 	private LuoLiCoreConversation Conversation(Func<HttpRequestMessage, HttpResponseMessage> responder)
 	{
-		HttpClient http = new(new StubHandler(responder));
+		HttpClient http = new(new HttpTestHandler(responder));
 		return new LuoLiCoreConversation(new LuoLiCoreSettingsStore(_config), options => new LuoLiCoreSdkClient(http, options));
 	}
 
@@ -449,9 +440,4 @@ public sealed class AgentEngineLuoLiCoreTests : IDisposable
 		Assert.False(BuildEngine(null).HasRemoteContext);
 	}
 
-	private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
-	{
-		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-			Task.FromResult(responder(request));
-	}
 }

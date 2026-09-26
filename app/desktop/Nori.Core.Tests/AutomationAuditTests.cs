@@ -1,18 +1,19 @@
 using Microsoft.Data.Sqlite;
 using Nori.Core.Automation;
 using Nori.Core.Data;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
 /// <summary>自动化审计迁移、留存和脱敏边界测试。</summary>
 public sealed class AutomationAuditTests : IDisposable
 {
-	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-automation-audit-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-automation-audit");
 
 	[Fact]
 	public void v7迁移创建审计表并保留迁移备份()
 	{
-		using (NoriDatabase initial = NoriDatabase.Open(_path))
+		using (NoriDatabase initial = NoriDatabase.Open(_tempDatabase.Path))
 		{
 			initial.Locked(connection =>
 			{
@@ -22,7 +23,7 @@ public sealed class AutomationAuditTests : IDisposable
 			});
 		}
 
-		using NoriDatabase migrated = NoriDatabase.Open(_path);
+		using NoriDatabase migrated = NoriDatabase.Open(_tempDatabase.Path);
 		long version = migrated.Locked(connection =>
 		{
 			using SqliteCommand command = connection.CreateCommand();
@@ -38,13 +39,13 @@ public sealed class AutomationAuditTests : IDisposable
 
 		Assert.Equal(NoriDatabase.DatabaseSchemaVersion, version);
 		Assert.Equal(1, tableCount);
-		Assert.Single(Directory.GetFiles(Path.GetDirectoryName(_path)!, $"{Path.GetFileName(_path)}.pre-migration-*.bak"));
+		Assert.Single(Directory.GetFiles(Path.GetDirectoryName(_tempDatabase.Path)!, $"{Path.GetFileName(_tempDatabase.Path)}.pre-migration-*.bak"));
 	}
 
 	[Fact]
 	public void 审计只保存固定字段并将自由失败文本降级()
 	{
-		using NoriDatabase database = NoriDatabase.Open(_path);
+		using NoriDatabase database = NoriDatabase.Open(_tempDatabase.Path);
 		AutomationAuditRepository repository = new(database);
 		Guid taskId = Guid.NewGuid();
 		repository.Record(new AutomationAuditEvent(
@@ -77,7 +78,7 @@ public sealed class AutomationAuditTests : IDisposable
 	public void 审计保留最多五百条并清除三十天前记录()
 	{
 		MutableTimeProvider clock = new(new DateTimeOffset(2026, 1, 31, 0, 0, 0, TimeSpan.Zero));
-		using NoriDatabase database = NoriDatabase.Open(_path);
+		using NoriDatabase database = NoriDatabase.Open(_tempDatabase.Path);
 		AutomationAuditRepository repository = new(database, clock);
 		repository.Record(new AutomationAuditEvent(
 			clock.GetUtcNow() - AutomationAuditRepository.Retention - TimeSpan.FromSeconds(1),
@@ -113,20 +114,11 @@ public sealed class AutomationAuditTests : IDisposable
 	{
 		try
 		{
-			File.Delete(_path);
-			File.Delete($"{_path}-wal");
-			File.Delete($"{_path}-shm");
-			foreach (string backup in Directory.GetFiles(Path.GetDirectoryName(_path)!, $"{Path.GetFileName(_path)}.pre-migration-*.bak")) File.Delete(backup);
+			foreach (string backup in Directory.GetFiles(Path.GetDirectoryName(_tempDatabase.Path)!, $"{Path.GetFileName(_tempDatabase.Path)}.pre-migration-*.bak")) File.Delete(backup);
 		}
 		catch (IOException)
 		{
 		}
-	}
-
-	private sealed class MutableTimeProvider(DateTimeOffset now) : TimeProvider
-	{
-		private readonly DateTimeOffset _now = now;
-
-		public override DateTimeOffset GetUtcNow() => _now;
+		_tempDatabase.Dispose();
 	}
 }

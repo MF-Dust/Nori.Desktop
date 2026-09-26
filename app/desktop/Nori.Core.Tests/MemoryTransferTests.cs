@@ -1,13 +1,14 @@
 using System.Text.Json;
 using Nori.Core.Data;
 using Nori.Core.Memory;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
 /// <summary>nori-memory-v1 的白名单、事务写入、去重与令牌回归测试。</summary>
 public sealed class MemoryTransferTests : IDisposable
 {
-	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-memory-transfer-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-memory-transfer");
 	private readonly NoriDatabase _database;
 	private readonly MemoryStore _store;
 	private readonly MutableTimeProvider _clock = new(new DateTimeOffset(2026, 8, 26, 0, 0, 0, TimeSpan.Zero));
@@ -15,7 +16,7 @@ public sealed class MemoryTransferTests : IDisposable
 
 	public MemoryTransferTests()
 	{
-		_database = NoriDatabase.Open(_path);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_store = new MemoryStore(_database);
 		_service = new MemoryTransferService(_store, timeProvider: _clock);
 	}
@@ -248,24 +249,8 @@ public sealed class MemoryTransferTests : IDisposable
 	{
 		_service.Dispose();
 		_database.Dispose();
-		try
-		{
-			File.Delete(_path);
-			File.Delete($"{_path}-wal");
-			File.Delete($"{_path}-shm");
-		}
-		catch (IOException)
-		{
-		}
+		_clock.Dispose();
+		_tempDatabase.Dispose();
 		GC.SuppressFinalize(this);
-	}
-
-	private sealed class MutableTimeProvider(DateTimeOffset now) : TimeProvider
-	{
-		private DateTimeOffset _now = now;
-
-		public override DateTimeOffset GetUtcNow() => _now;
-
-		public void Advance(TimeSpan duration) => _now = _now.Add(duration);
 	}
 }

@@ -22,7 +22,7 @@ namespace Nori.Core.Tests;
 /// </summary>
 public class BackendRuntimeModuleTests : IDisposable
 {
-	private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"nori-runtime-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-runtime");
 	private readonly string _tempDir = Path.Combine(Path.GetTempPath(), $"nori-runtime-{Guid.NewGuid():N}");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
@@ -32,7 +32,7 @@ public class BackendRuntimeModuleTests : IDisposable
 	{
 		Directory.CreateDirectory(_tempDir);
 		_logger = new FileLogger(Path.Combine(_tempDir, "logs"));
-		_database = NoriDatabase.Open(_dbPath);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("0.1.0");
 	}
@@ -43,7 +43,7 @@ public class BackendRuntimeModuleTests : IDisposable
 		_logger.Dispose();
 		try
 		{
-			File.Delete(_dbPath);
+			_tempDatabase.Dispose();
 			Directory.Delete(_tempDir, true);
 		}
 		catch (IOException)

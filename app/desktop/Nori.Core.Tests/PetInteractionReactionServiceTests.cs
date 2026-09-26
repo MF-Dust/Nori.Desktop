@@ -4,19 +4,12 @@ using Nori.Core.Chat;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Live2D;
-using Nori.Core.Security;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
 public sealed class PetInteractionReactionServiceTests : IDisposable
 {
-	private sealed class FixedKeyStore : ISecretKeyStore
-	{
-		private readonly byte[] _key = Enumerable.Range(0, SecretKeyStore.KeySize).Select(index => (byte)index).ToArray();
-		public byte[] LoadOrCreate() => _key;
-		public bool IsFileFallback => true;
-	}
-
 	private sealed class StubAdapter(string response) : ILlmAdapter
 	{
 		public string? SystemPrompt { get; private set; }
@@ -33,13 +26,13 @@ public sealed class PetInteractionReactionServiceTests : IDisposable
 			throw new NotSupportedException();
 	}
 
-	private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"nori-pet-reaction-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-pet-reaction");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
 
 	public PetInteractionReactionServiceTests()
 	{
-		_database = NoriDatabase.Open(_dbPath);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_config = new ConfigStore(_database, new FixedKeyStore());
 		_config.InitDefaults("0.1.0");
 		_config.Set("llm_provider", new ConfigValue.Text("openai"));
@@ -52,7 +45,7 @@ public sealed class PetInteractionReactionServiceTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
-		try { File.Delete(_dbPath); } catch (IOException) { }
+		_tempDatabase.Dispose();
 		GC.SuppressFinalize(this);
 	}
 

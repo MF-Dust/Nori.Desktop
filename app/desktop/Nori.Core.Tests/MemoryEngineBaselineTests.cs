@@ -3,6 +3,7 @@ using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Embedding;
 using Nori.Core.Memory;
+using Nori.Core.Tests.TestSupport;
 
 namespace Nori.Core.Tests;
 
@@ -10,13 +11,13 @@ namespace Nori.Core.Tests;
 [SuppressMessage("Security", "S5332", Justification = "HTTP 地址是内存中的模拟端点，不会发起网络请求。")]
 public sealed class MemoryEngineBaselineTests : IDisposable
 {
-	private readonly string _path = Path.Combine(Path.GetTempPath(), $"nori-memory-baseline-{Guid.NewGuid():N}.db");
+	private readonly TempDatabase _tempDatabase = new("nori-memory-baseline");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
 
 	public MemoryEngineBaselineTests()
 	{
-		_database = NoriDatabase.Open(_path);
+		_database = NoriDatabase.Open(_tempDatabase.Path);
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("test");
 		_config.Set("embedding_api_base", new ConfigValue.Text("http://embedding.test/v1"));
@@ -102,13 +103,7 @@ public sealed class MemoryEngineBaselineTests : IDisposable
 	public void Dispose()
 	{
 		_database.Dispose();
-		try
-		{
-			File.Delete(_path);
-			File.Delete($"{_path}-wal");
-			File.Delete($"{_path}-shm");
-		}
-		catch (IOException) { }
+		_tempDatabase.Dispose();
 		GC.SuppressFinalize(this);
 	}
 

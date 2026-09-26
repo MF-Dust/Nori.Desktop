@@ -47,6 +47,10 @@ public sealed class PetWindow : Window
 	private ContextMenu? _contextMenu;
 	/// <summary>上一次推给系统的穿透状态, 避免重复调用</summary>
 	private bool? _lastClickThrough;
+	/// <summary>上一次提交的输入形状；显示、隐藏或尺寸变化后清空以强制重设。</summary>
+	private PetHitMask.InputShapeSignature _inputShape = PetHitMask.InputShapeSignature.Unspecified;
+	private readonly (int X, int Y, int Width, int Height)[] _hitRegion = new (int, int, int, int)[1];
+	private static readonly (int X, int Y, int Width, int Height)[] EmptyHitRegions = [];
 
 	// 拖拽状态
 	private bool _isDragPending;
@@ -129,6 +133,7 @@ public sealed class PetWindow : Window
 		base.OnPropertyChanged(change);
 		if (change.Property != Visual.IsVisibleProperty) return;
 
+		_inputShape = PetHitMask.InputShapeSignature.Unspecified;
 		if (change.GetNewValue<bool>())
 		{
 			_glControl.ResumeRenderLoop();
@@ -229,7 +234,22 @@ public sealed class PetWindow : Window
 		{
 			if (OperatingSystem.IsLinux() && PlatformServices.Current is LinuxPlatformServices linux)
 			{
-				linux.SetInputShape(handle, _runtime.ClickThroughEnabled ? [] : _glControl.BuildHitRegions(Bounds.Width, Bounds.Height));
+				PetHitMask.InputShapeSignature next = new(
+					_glControl.MaskBounds,
+					Bounds.Width,
+					Bounds.Height,
+					RenderScaling,
+					_runtime.ClickThroughEnabled,
+					IsSpecified: true);
+				if (PetHitMask.SameInputShape(_inputShape, next)) return;
+				if (next.ClickThrough || !PetHitMask.TryGetHitRegion(next.Mask, next.ClientWidth, next.ClientHeight, out (int X, int Y, int Width, int Height) region))
+					linux.SetInputShape(handle, EmptyHitRegions);
+				else
+				{
+					_hitRegion[0] = region;
+					linux.SetInputShape(handle, _hitRegion);
+				}
+				_inputShape = next;
 				return;
 			}
 

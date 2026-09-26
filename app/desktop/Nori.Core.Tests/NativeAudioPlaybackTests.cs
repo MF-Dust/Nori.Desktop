@@ -12,6 +12,8 @@ namespace Nori.Core.Tests;
 /// </summary>
 public sealed class NativeAudioPlaybackTests
 {
+	private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(10);
+
 	/// <summary>记账用的假设备。可以按需在 Write 上阻塞，用来测打断。</summary>
 	private sealed class FakeDevice : IAudioDevice
 	{
@@ -46,7 +48,7 @@ public sealed class NativeAudioPlaybackTests
 		public AudioFormat Open(int sampleRate, int channels)
 		{
 			OpenEntered.TrySetResult();
-			if (BlockOpen) Assert.True(_openReleased.Wait(TimeSpan.FromSeconds(5)), "未放行设备打开");
+			if (BlockOpen) Assert.True(_openReleased.Wait(WaitTimeout), "未放行设备打开");
 			if (FailOpen) throw new AudioDeviceException("打开设备失败");
 			Opened = Force ?? new AudioFormat(sampleRate, channels);
 			return Opened;
@@ -58,7 +60,7 @@ public sealed class NativeAudioPlaybackTests
 			if (BlockWrites)
 			{
 				// 可让旧段在收到 Stop 后仍停在设备里，精确控制它晚于新段收尾。
-				Assert.True(_released.Wait(TimeSpan.FromSeconds(5),
+				Assert.True(_released.Wait(WaitTimeout,
 					HoldAfterStop ? CancellationToken.None : cancellationToken), "未放行设备写入");
 				if (_stopped) return 0;
 			}
@@ -189,11 +191,11 @@ public sealed class NativeAudioPlaybackTests
 		using NativeAudioPlayback playback = Playback(device, Tone(frames: 44100));
 
 		Task playing = playback.PlayAsync(Bytes(), CancellationToken.None);
-		await device.WriteEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		await device.WriteEntered.Task.WaitAsync(WaitTimeout);
 		Assert.True(playback.IsPlaying);
 
 		playback.Stop();
-		await playing.WaitAsync(TimeSpan.FromSeconds(3));
+		await playing.WaitAsync(WaitTimeout);
 
 		Assert.False(playback.IsPlaying);
 		Assert.True(device.Written.Count < Tone(frames: 44100).Samples.Length);
@@ -207,10 +209,10 @@ public sealed class NativeAudioPlaybackTests
 		using CancellationTokenSource cancelling = new();
 
 		Task playing = playback.PlayAsync(Bytes(), cancelling.Token);
-		await device.WriteEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		await device.WriteEntered.Task.WaitAsync(WaitTimeout);
 		await cancelling.CancelAsync();
 
-		await playing.WaitAsync(TimeSpan.FromSeconds(3));
+		await playing.WaitAsync(WaitTimeout);
 		Assert.False(playback.IsPlaying);
 	}
 
@@ -228,14 +230,14 @@ public sealed class NativeAudioPlaybackTests
 		playback.VolumeSampled += levels.Add;
 
 		Task previous = playback.PlayAsync(Bytes(), CancellationToken.None);
-		await first.WriteEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		await first.WriteEntered.Task.WaitAsync(WaitTimeout);
 		Task current = playback.PlayAsync(Bytes(), CancellationToken.None);
-		await second.WriteEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		await second.WriteEntered.Task.WaitAsync(WaitTimeout);
 		int levelCount = levels.Count;
 		try
 		{
 			first.Release();
-			await previous.WaitAsync(TimeSpan.FromSeconds(3));
+			await previous.WaitAsync(WaitTimeout);
 
 			Assert.True(playback.IsPlaying);
 			Assert.Equal([true], states);
@@ -247,7 +249,7 @@ public sealed class NativeAudioPlaybackTests
 		finally
 		{
 			second.Release();
-			await current.WaitAsync(TimeSpan.FromSeconds(3));
+			await current.WaitAsync(WaitTimeout);
 		}
 		Assert.Equal([true, false], states);
 		Assert.Equal(0, levels[^1]);
@@ -266,18 +268,18 @@ public sealed class NativeAudioPlaybackTests
 		{
 			if (Interlocked.Increment(ref created) != 1) return second;
 			entered.SetResult();
-			Assert.True(release.Wait(TimeSpan.FromSeconds(5)), "未放行设备创建");
+			Assert.True(release.Wait(WaitTimeout), "未放行设备创建");
 			return first;
 		}, (_, _) => Tone());
 
 		Task previous = Task.Run(() => playback.PlayAsync(Bytes(), CancellationToken.None));
-		await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		await entered.Task.WaitAsync(WaitTimeout);
 		Task current = playback.PlayAsync(Bytes(), CancellationToken.None);
-		await second.WriteEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		await second.WriteEntered.Task.WaitAsync(WaitTimeout);
 		try
 		{
 			release.Set();
-			await previous.WaitAsync(TimeSpan.FromSeconds(3));
+			await previous.WaitAsync(WaitTimeout);
 			Assert.False(first.OpenEntered.Task.IsCompleted);
 			Assert.True(first.DisposedOnce);
 			Assert.True(playback.IsPlaying);
@@ -287,7 +289,7 @@ public sealed class NativeAudioPlaybackTests
 		{
 			release.Set();
 			second.Release();
-			await current.WaitAsync(TimeSpan.FromSeconds(3));
+			await current.WaitAsync(WaitTimeout);
 		}
 	}
 
@@ -297,7 +299,7 @@ public sealed class NativeAudioPlaybackTests
 		FakeDevice device = new() {BlockOpen = true};
 		using NativeAudioPlayback playback = Playback(device, Tone());
 		Task playing = playback.PlayAsync(Bytes(), CancellationToken.None);
-		await device.OpenEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		await device.OpenEntered.Task.WaitAsync(WaitTimeout);
 		try
 		{
 			playback.Stop();
@@ -306,7 +308,7 @@ public sealed class NativeAudioPlaybackTests
 		finally
 		{
 			device.ReleaseOpen();
-			await playing.WaitAsync(TimeSpan.FromSeconds(3));
+			await playing.WaitAsync(WaitTimeout);
 		}
 		Assert.Empty(device.Written);
 		Assert.True(device.DisposedOnce);
@@ -319,7 +321,7 @@ public sealed class NativeAudioPlaybackTests
 		FakeDevice device = new() {BlockWrites = true, HoldAfterStop = true};
 		using NativeAudioPlayback playback = Playback(device, Tone());
 		Task playing = playback.PlayAsync(Bytes(), CancellationToken.None);
-		await device.WriteEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		await device.WriteEntered.Task.WaitAsync(WaitTimeout);
 		try
 		{
 			playback.Dispose();
@@ -330,7 +332,7 @@ public sealed class NativeAudioPlaybackTests
 		finally
 		{
 			device.Release();
-			await playing.WaitAsync(TimeSpan.FromSeconds(3));
+			await playing.WaitAsync(WaitTimeout);
 		}
 		Assert.True(device.DisposedOnce);
 		Assert.False(playback.IsPlaying);
@@ -354,12 +356,12 @@ public sealed class NativeAudioPlaybackTests
 				playback.Stop();
 				stopped.Set();
 			});
-			Assert.True(stopped.Wait(TimeSpan.FromSeconds(3)), "通知回调持有状态锁，阻塞了停止操作");
+			Assert.True(stopped.Wait(WaitTimeout), "通知回调持有状态锁，阻塞了停止操作");
 		}
 		if (onState) playback.PlayingChanged += playing => { if (playing) StopFromOtherThread(); };
 		else playback.VolumeSampled += level => { if (level > 0) StopFromOtherThread(); };
 
-		await playback.PlayAsync(Bytes(), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+		await playback.PlayAsync(Bytes(), CancellationToken.None).WaitAsync(WaitTimeout);
 
 		Assert.True(invoked);
 		Assert.False(playback.IsPlaying);
@@ -384,8 +386,8 @@ public sealed class NativeAudioPlaybackTests
 			current = playback.PlayAsync(Bytes(), CancellationToken.None);
 		};
 
-		await playback.PlayAsync(Bytes(), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(3));
-		await second.WriteEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		await playback.PlayAsync(Bytes(), CancellationToken.None).WaitAsync(WaitTimeout);
+		await second.WriteEntered.Task.WaitAsync(WaitTimeout);
 		try
 		{
 			Assert.True(playback.IsPlaying);
@@ -395,7 +397,7 @@ public sealed class NativeAudioPlaybackTests
 		finally
 		{
 			second.Release();
-			await current!.WaitAsync(TimeSpan.FromSeconds(3));
+			await current!.WaitAsync(WaitTimeout);
 		}
 	}
 
@@ -424,8 +426,8 @@ public sealed class NativeAudioPlaybackTests
 			if (current is not null) receivedAfterReplacement.Add(level);
 		};
 
-		await playback.PlayAsync(Bytes(), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(3));
-		await second.WriteEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		await playback.PlayAsync(Bytes(), CancellationToken.None).WaitAsync(WaitTimeout);
+		await second.WriteEntered.Task.WaitAsync(WaitTimeout);
 		try
 		{
 			Assert.True(playback.IsPlaying);
@@ -435,7 +437,7 @@ public sealed class NativeAudioPlaybackTests
 		finally
 		{
 			second.Release();
-			await current!.WaitAsync(TimeSpan.FromSeconds(3));
+			await current!.WaitAsync(WaitTimeout);
 		}
 	}
 

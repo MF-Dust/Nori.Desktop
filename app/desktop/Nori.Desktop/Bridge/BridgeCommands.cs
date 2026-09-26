@@ -2826,6 +2826,9 @@ public sealed class BridgeCommands
 		if (!FileLogger.IsLevel(level))
 			throw new InvalidOperationException("日志级别无效");
 		string eventId = OptionalStr(args, "eventId") ?? "";
+		if (source.Label == WindowLabels.AudioHost
+			&& eventId is not ("audio.error" or "logging.suppressed"))
+			throw new InvalidOperationException("音频宿主日志事件无效");
 		string message = eventId switch
 		{
 			"vue.error" => "Vue 组件发生异常", "window.error" => "前端脚本发生异常",

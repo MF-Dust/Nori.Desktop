@@ -18,7 +18,7 @@ Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12
 - **Native Live2D Desk Pet**:
   - `PetWindow` + `PetGlControl`: Native C# pipeline (`AutoBlink`, `EyeFocus`, `BeatSync`, `LipSync`, `ExpressionStore`, `ExpressionBehavior`). Alpha mask sampling (~10Hz) computes a single bounding rectangle for hit-testing (`WM_NCHITTEST` on Windows, `XShape` on Linux X11, `setIgnoresMouseEvents:` on macOS, degraded whole-window hit on Wayland). Model preview is the native `ModelPreviewControl`, not a web view.
 - **IPC Bridge (`NoriBridge` & `BridgeCommands`)**:
-  - Frontend invokes host methods via `src/services/runtime/` typed APIs (built on top of `src/services/host/invoke.ts`).
+  - The hidden audio host uses the narrow command map in `src/services/host/commands.ts`; structured audio errors use `src/services/runtime/logging.ts`.
   - Host dispatches commands through `BridgeCommands.cs`. Envelopes are double-encoded (JSON envelope serialized as string into `InvokeScript`) to eliminate escaping vulnerabilities.
   - Commands throw exceptions with human-readable Chinese messages on failure, which become frontend promise rejections.
 - **Embedded Asset Server (`AssetServer.cs`)**:
@@ -65,11 +65,13 @@ Nori-Desktop-Pet/
 │   ├── public/                 # Static assets for the frontend
 │   ├── scripts/                # CI, coverage, todo-check, and packaging scripts
 │   ├── src/                    # Audio-host page and typed bridge client
-│   │   ├── assets/style/       # tokens.ts (single source of color truth), theme.less
-│   │   ├── services/           # runtime/, host/, i18n/, audio/, telemetry/
+│   │   ├── assets/style/       # tokens.ts is the native theme token source
+│   │   ├── services/audio/     # WebAudio playback, recording, and RMS analysis
+│   │   ├── services/host/      # Typed audio commands and host events
+│   │   ├── services/runtime/   # Structured audio-host logging
 │   │   └── bootstrap.ts        # Audio-host page entry
-│   ├── tests/                  # Frontend Vitest test suites (theme, i18n, runtime, components)
-│   ├── uno.config.ts           # UnoCSS atomic styles, shortcuts, and token integration
+│   ├── tests/                  # Audio, bridge, native token, and contrast tests
+│   ├── scripts/sync-design-tokens.mjs # Native theme token generator
 │   ├── package.json            # Frontend dependencies and npm scripts
 │   └── vite.config.ts          # Vite build config (base: "./", loopback proxy)
 ```
@@ -151,39 +153,27 @@ publish.bat
 ## 4. Coding Style & Naming Conventions
 
 ### General Formatting
-- **Indentation**: **Tabs**, not spaces, across `.ts`, `.vue`, `.cs`, and `.less`.
+- **Indentation**: **Tabs**, not spaces, across `.ts` and `.cs`.
 - **Line Endings**: LF.
-- **Quotes**: Double quotes (`"`) across TypeScript, Vue, and C#.
-- **Language**: Comments, XML doc comments, and logs use **Chinese**. UI text follows the i18n contract and the selected locale; host error messages remain readable Chinese.
+- **Quotes**: Double quotes (`"`) across TypeScript and C#.
+- **Language**: Comments, XML doc comments, and logs use **Chinese**. Host error messages remain readable Chinese.
 
-### Frontend (Vue 3, TypeScript, UnoCSS)
-- **Component Setup**: Always use `<script setup lang="ts">`. Component files must use `PascalCase.vue`.
-- **Casing**:
-  - Local constants: `UPPER_SNAKE` (e.g., `const ROUTER = useRouter()`, `CONFIG_KEY`).
-  - Local variables/props: `camelCase`.
-  - Exported functions, classes, and types: `PascalCase`.
-- **Styles & Layout**:
-  - **UnoCSS Atomic Classes Only**: Do **not** add `<style scoped>` in components.
-  - **Length Units**: All dimensions must use `rem` based on root `62.5%` (`1rem = 10px`, spacing `1 = 0.4rem`). **Never use raw `px`**.
-  - **Color Tokens**: Colors must originate from `src/assets/style/tokens.ts` (e.g., `text-text-muted`, `bg-bg-card`, `border-line-subtle`). Bare hex values outside `tokens.ts` are forbidden.
-  - **Contrast & Minimum Size**: Minimum font size is `text-xs` (1.15rem). High text contrast (≥4.5:1) is strictly verified by tests.
-  - **Static Class Scanning**: Avoid template-string dynamic classes (e.g., `` `bg-${x}` ``). Use literal ternary expressions.
-  - **Atomic UI Components**: Reuse components in `src/components/ui/` (`AppButton`, `AppCard`, `AppField`, `AppSwitchRow`, etc.) and UnoCSS shortcuts (`glass-panel`, `surface-card`, `btn-primary`, `scroll-area`).
-- **Internationalization (i18n)**:
-  - **Zero CJK literals in `<template>`**: Use `computed(() => useLanguages().views.xxx)`.
-  - Adding text requires updating **three locations**: `locales/zh-CN.ts`, `locales/en-US.ts`, and the accessor tree in `useLanguages.ts`.
-- **State & Data Management**:
-  - Interact with host backend exclusively through `src/services/runtime/` typed APIs. Do not access `window.__nori` directly.
-  - Debounce user input saves (~400ms, distinct timer per field) and flush pending writes on unmount.
-  - Synchronize runtime snapshots without clobbering active user edits.
-  - User-facing failures must be routed to `feedback.error(可读中文, error)`.
+### Frontend (TypeScript audio host)
+- `src/bootstrap.ts` installs audio handlers only when the injected window label is `audio-host`; do not add user-facing UI to this page.
+- Playback, recording, media exchange, and RMS reporting live in `src/services/audio/` and use `src/services/host/` typed commands/events.
+- Keep the audio-host command map limited to commands that the hidden host consumes. The native Bridge validates every command and source label.
+- Structured errors go through `src/services/runtime/logging.ts`. Send only fixed event IDs and known error types; never pass exception text, recordings, or request content.
+- Preserve `base: "./"` and the Vite proxies for `/nori-assets`, `/media`, and `/plugins`; plugin pages continue to use their independent WebView and RPC bridge.
+- Native Avalonia colors, spacing, radius, and font measures come from `src/assets/style/tokens.ts`. Run `pnpm theme:check` after changing tokens and keep the native contrast tests passing.
+- Do not reintroduce Vue, web UI, i18n, UnoCSS, Less, or Web Sentry dependencies into the compatibility host.
+- Use `UPPER_SNAKE` for local constants, `camelCase` for local values, and `PascalCase` for exported functions, classes, and types.
 
 ### Backend (.NET 10, C#)
 - **Casing**: Follow standard .NET conventions: `PascalCase` for types, methods, properties, public fields, and constants; `_camelCase` for private fields; `camelCase` for parameters and local variables. Do not use `UPPER_SNAKE` for C# constants.
 - **Bridge Commands**:
   - Commands use `snake_case` with verb-first naming (e.g., `ui_get_snapshot`, `settings_update_ai`, `window_show`).
   - Every command must be registered in `BridgeCommands.InvokeAsync`'s switch.
-  - Implement host commands in `BridgeCommands.cs` and add corresponding typed functions in `src/services/runtime/`.
+  - Implement host commands in `BridgeCommands.cs`; keep the compatibility host's typed contract in `src/services/host/commands.ts` limited to its audio and structured-log calls. Native windows use their authorized services directly.
   - Every command requires an XML `///` doc comment displaying an invocation example:
     ```csharp
     /// <summary>
@@ -204,7 +194,7 @@ publish.bat
 ## 5. Testing Guidelines
 
 ### Test Frameworks & Projects
-- **Frontend**: Vitest (`app/desktop/vitest.config.ts`), running tests under `app/desktop/tests/`.
+- **Frontend**: Vitest (`app/desktop/vitest.config.ts`), running audio, bridge, native-token, and contrast tests under `app/desktop/tests/`.
 - **Backend**: xUnit, partitioned across test projects:
   - `Nori.Core.Tests`: Logic, path safety, zip extraction, configuration parsing/inference, encryption, memory/AI evaluation.
   - `Nori.Desktop.Tests`: Avalonia window metrics, hit mask calculation, bridge routing, diagnostics.
@@ -212,9 +202,8 @@ publish.bat
   - `Nori.AppLauncher.Tests`: Deployment slot selection and manifest parsing.
 
 ### Critical Automated Checks
-- **Design Token Synchronization (`tokens-sync.test.ts`)**: Enforces parity between `tokens.ts`, `uno.config.ts`, `theme.less`, and `naiveOverrides.ts`.
-- **Contrast Ratios (`contrast.test.ts`)**: Validates text/background contrast across all token pairs (≥4.5:1 standard, ≥3:1 for large text).
-- **i18n Completeness (`completeness.test.ts`)**: Enforces key-set parity between `zh-CN.ts` and `en-US.ts`, verifies accessor tree coverage, and ensures zero Chinese literals exist in Vue templates.
+- **Native Design Token Synchronization (`native-tokens-sync.test.ts`)**: Verifies generated Avalonia colors, brushes, and measures match `tokens.ts`.
+- **Native Contrast Ratios (`contrast.test.ts`)**: Validates text/background contrast for the native palette (≥4.5:1 for body text).
 - **Path Security (`ResourcePathSafetyTests.cs`, `AssetPathTests.cs`)**: Prevents path traversal, UNC, symlink breakouts, and directory escaping.
 - **Config Inference (`ConfigValueTests.cs`)**: Pins type inference for SQLite key/value reads.
 
@@ -250,7 +239,7 @@ Common types:
 
 ## 7. Additional Guardrails
 
-The coding rules above are the single source for formatting, i18n, bridge registration, and typed runtime access.
+The coding rules above are the source for formatting, bridge registration, and the audio-host command contract.
 
 - **Vite Base URL**: Preserve `base: "./"` in `vite.config.ts`; an absolute base breaks the AssetServer secret prefix.
 - **NativeControlHost Manifest**: Preserve `<supportedOS>` entries in `Nori.Desktop/app.manifest` for WebView2 hosting.

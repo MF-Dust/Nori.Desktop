@@ -1,5 +1,6 @@
 using Nori.Core.Assets;
 using Nori.Core.Configuration;
+using Nori.Core.Logging;
 using Nori.Desktop.Audio;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Windows;
@@ -67,9 +68,60 @@ public partial class BridgeCommandsTests
 		FakeBridgeSource audio = new(WindowLabels.AudioHost, isVisible: false);
 		await router.InvokeAsync(audio, "audio_host_ready", Args(new { }));
 		await router.InvokeAsync(audio, "audio_level", Args(new {level = 0.25}));
+		await router.InvokeAsync(audio, "write_log", Args(new
+		{
+			level = "error",
+			message = "不应写入的异常正文",
+			eventId = "audio.error",
+			errorType = "TypeError",
+			source = "backend",
+		}));
+		LogEntry LOG = _services.Logger.RecentLogs().Last();
+		Assert.Equal(LogSource.Frontend, LOG.Source);
+		Assert.Equal(WindowLabels.AudioHost, LOG.WindowLabel);
+		Assert.Equal("audio.error", LOG.EventId);
+		Assert.Equal("前端音频操作失败：TypeError", LOG.Message);
+		Assert.DoesNotContain("异常正文", LOG.Message);
 		foreach (string command in new[] {"ui_get_snapshot", "window_show", "plugin_action", "settings_update_voice"})
 			await Assert.ThrowsAsync<UnauthorizedAccessException>(() => router.InvokeAsync(audio, command, Args(new { })));
 		await Assert.ThrowsAsync<InvalidOperationException>(() => router.InvokeAsync(
 			new FakeBridgeSource(WindowLabels.Main), "audio_host_ready", Args(new { })));
+	}
+
+	[Theory]
+	[InlineData("pet.shown")]
+	[InlineData("diagnostics.test")]
+	[InlineData("")]
+	public async Task 音频宿主不能伪造其它日志事件(string eventId)
+	{
+		BridgeCommandRouter router = new(_services);
+		FakeBridgeSource audio = new(WindowLabels.AudioHost, isVisible: false);
+		int before = _services.Logger.RecentLogs().Count;
+		await Assert.ThrowsAsync<InvalidOperationException>(() => router.InvokeAsync(audio, "write_log", Args(new
+		{
+			level = "info",
+			message = "伪造正文",
+			eventId,
+		})));
+		Assert.Equal(before, _services.Logger.RecentLogs().Count);
+	}
+
+	[Fact]
+	public async Task 音频宿主可以记录限流事件()
+	{
+		BridgeCommandRouter router = new(_services);
+		FakeBridgeSource audio = new(WindowLabels.AudioHost, isVisible: false);
+		await router.InvokeAsync(audio, "write_log", Args(new
+		{
+			level = "warn",
+			message = "不应出现",
+			eventId = "logging.suppressed",
+			suppressedCount = 3,
+		}));
+		LogEntry log = _services.Logger.RecentLogs().Last();
+		Assert.Equal("logging.suppressed", log.EventId);
+		Assert.Equal(WindowLabels.AudioHost, log.WindowLabel);
+		Assert.Equal("重复前端事件已被限流：3", log.Message);
+		Assert.DoesNotContain("不应出现", log.Message);
 	}
 }

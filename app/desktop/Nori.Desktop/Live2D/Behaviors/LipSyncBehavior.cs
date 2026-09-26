@@ -25,14 +25,18 @@ public sealed class LipSyncBehavior : IBehaviorPlugin
 
 	public void Execute(BehaviorContext ctx)
 	{
-		if (!ctx.LipSyncEnabled) return;
+		if (!ctx.LipSyncEnabled || !ctx.ModelParameters.IsBound) return;
+		int mouthOpenIndex = ctx.ModelParameters.MouthOpenIndex;
+		if (mouthOpenIndex < 0) return;
+
+		var model = ctx.Model.Model;
 
 		if (_nowSpeaking)
 		{
 			_lastForcedValue = _mouthOpenSize;
 			_releaseRemainingSeconds = ReleaseDurationSeconds;
 			_handoffRemainingSeconds = HandoffHoldSeconds;
-			ctx.Model.Model.SetParameterValue("ParamMouthOpenY", _mouthOpenSize);
+			model.SetParameterValue(mouthOpenIndex, _mouthOpenSize);
 			return;
 		}
 
@@ -41,7 +45,7 @@ public sealed class LipSyncBehavior : IBehaviorPlugin
 			if (_handoffRemainingSeconds > 0)
 			{
 				_handoffRemainingSeconds = Math.Max(0, _handoffRemainingSeconds - ctx.TimeDelta);
-				ctx.Model.Model.SetParameterValue("ParamMouthOpenY", 0);
+				model.SetParameterValue(mouthOpenIndex, 0);
 			}
 			return;
 		}
@@ -49,9 +53,9 @@ public sealed class LipSyncBehavior : IBehaviorPlugin
 		_releaseRemainingSeconds = Math.Max(0, _releaseRemainingSeconds - ctx.TimeDelta);
 		float blend = Smoothstep(Math.Clamp((float)(1.0 - _releaseRemainingSeconds / ReleaseDurationSeconds), 0.0f, 1.0f));
 
-		float motionValue = ctx.Model.Model.GetParameterValue("ParamMouthOpenY");
+		float motionValue = model.GetParameterValue(mouthOpenIndex);
 		float blended = _lastForcedValue * (1.0f - blend) + motionValue * blend;
 
-		ctx.Model.Model.SetParameterValue("ParamMouthOpenY", blended);
+		model.SetParameterValue(mouthOpenIndex, blended);
 	}
 }

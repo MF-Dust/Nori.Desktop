@@ -36,10 +36,9 @@ public sealed class PetGlControl : OpenGlControlBase
 	private int _sceneHeight;
 	private bool _offscreenAvailable;
 
-	// Alpha 命中掩码缓存
+	// Alpha 命中边界缓存
 	private readonly object _maskLock = new();
-	private readonly byte[] _maskBits = new byte[PetHitMask.ByteLength];
-	private readonly byte[] _maskScratch = new byte[PetHitMask.ByteLength];
+	private PetHitMask.Bounds _maskBounds = PetHitMask.Bounds.Empty;
 	private double _lastMaskSampleTime;
 	private int _lastViewportW;
 	private int _lastViewportH;
@@ -295,18 +294,13 @@ public sealed class PetGlControl : OpenGlControlBase
 
 	private void PublishAlphaMask(byte[] pixels, int width, int height, bool reduced)
 	{
-		if (reduced)
-		{
-			PetHitMask.BuildFromReducedPixels(pixels, width, height, _maskScratch);
-		}
-		else
-		{
-			PetHitMask.BuildFromSourcePixels(pixels, width, height, _maskScratch);
-		}
+		PetHitMask.Bounds bounds = reduced
+			? PetHitMask.BuildFromReducedPixels(pixels, width, height)
+			: PetHitMask.BuildFromSourcePixels(pixels, width, height);
 
 		lock (_maskLock)
 		{
-			Buffer.BlockCopy(_maskScratch, 0, _maskBits, 0, _maskBits.Length);
+			_maskBounds = bounds;
 		}
 	}
 
@@ -378,7 +372,7 @@ public sealed class PetGlControl : OpenGlControlBase
 	{
 		lock (_maskLock)
 		{
-			return PetHitMask.IsPointOnModel(_maskBits, clientX, clientY, Bounds.Width, Bounds.Height);
+			return PetHitMask.IsPointOnModel(_maskBounds, clientX, clientY, Bounds.Width, Bounds.Height);
 		}
 	}
 
@@ -392,7 +386,7 @@ public sealed class PetGlControl : OpenGlControlBase
 	{
 		lock (_maskLock)
 		{
-			return PetHitMask.BuildHitRegions(_maskBits, clientWidth, clientHeight);
+			return PetHitMask.BuildHitRegions(_maskBounds, clientWidth, clientHeight);
 		}
 	}
 

@@ -36,7 +36,7 @@ public static class ChatMarkdown
 		$@"```|~~~|^[{JsSpace}]{{0,3}}(?:#{{1,6}}[{JsSpace}]|>[{JsSpace}]|(?:[-*+]|[0-9]+[.)])[{JsSpace}]|\|.*\||(?:-{{3,}}|\*{{3,}}|_{{3,}})[{JsSpace}]*$)|^[{JsSpace}]{{4,}}[^{JsSpace}]",
 		RegexOptions.Multiline | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
-	// 尺寸对应 theme.less 中的 rem × 10，画刷只供 Markdown 使用，不注册共享主题资源。
+	// 尺寸使用 NoriThemeTokens 的 rem × 10 规则，画刷只供 Markdown 使用，不注册共享主题资源。
 	private static readonly FontFamily BodyFont = NoriTypography.Conversation;
 	private static readonly FontFamily CodeFont = new("ui-monospace, SFMono-Regular, Menlo, Consolas, monospace");
 	private static readonly IBrush BodyText = NoriThemeTokens.Brush("chat-ai-text");

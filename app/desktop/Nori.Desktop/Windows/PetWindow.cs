@@ -394,31 +394,51 @@ public sealed class PetWindow : Window
 
 	private void OnCursorTrackingTick(object? sender, EventArgs e)
 	{
-		if (_runtime.EyeTrackingEnabled)
+		bool needsCursorForInput = !_runtime.ClickThroughEnabled
+			&& !_isDragPending
+			&& !_isDragging
+			&& _contextMenu is not {IsOpen: true};
+		bool needsCursor = _runtime.EyeTrackingEnabled || needsCursorForInput;
+		bool cursorSnapshotResolved = !needsCursor;
+		(double X, double Y)? clientCursor = null;
+		if (needsCursor)
 		{
+			cursorSnapshotResolved = true;
 			try
 			{
-				if (PlatformServices.Current.Capabilities.SupportsGlobalCursor)
+				var platform = PlatformServices.Current;
+				if (platform.Capabilities.SupportsGlobalCursor)
 				{
-					var (screenCursorX, screenCursorY) = PlatformServices.Current.GetCursorPosition();
-					double scale = RenderScaling > 0 ? RenderScaling : 1.0;
-					double clientX = (screenCursorX - Position.X) / scale;
-					double clientY = (screenCursorY - Position.Y) / scale;
-
-					_runtime.LookAt((float)clientX, (float)clientY, (float)Bounds.Width, (float)Bounds.Height);
+					var (screenCursorX, screenCursorY) = platform.GetCursorPosition();
+					clientCursor = ConvertScreenCursorToClient(screenCursorX, screenCursorY);
 				}
 			}
-			catch
+			catch (Exception exception)
 			{
-				// 忽略追踪异常
+				if (OperatingSystem.IsWindows() && needsCursorForInput)
+					_services.Logger.Write(LogSource.Backend, "warn", $"读取伴侣窗口穿透状态失败: {exception.GetType().Name}");
+			}
+
+			if (_runtime.EyeTrackingEnabled && clientCursor is { } position)
+			{
+				try
+				{
+					_runtime.LookAt((float)position.X, (float)position.Y, (float)Bounds.Width, (float)Bounds.Height);
+				}
+				catch
+				{
+					// 忽略追踪异常；输入状态刷新仍复用本次光标结果
+				}
 			}
 		}
 
-		RefreshInputState();
+		RefreshInputStateCore(cursorSnapshotResolved, clientCursor);
 	}
 
 	/// <summary>刷新 Windows 伴侣窗口的点击穿透状态 (窗口保持置顶)。</summary>
-	public void RefreshInputState()
+	public void RefreshInputState() => RefreshInputStateCore(cursorSnapshotResolved: false, clientCursor: null);
+
+	private void RefreshInputStateCore(bool cursorSnapshotResolved, (double X, double Y)? clientCursor)
 	{
 		if (!OperatingSystem.IsWindows() || PlatformServices.Current is not WindowsPlatformServices windows) return;
 		nint handle = TryGetPlatformHandle()?.Handle ?? 0;
@@ -427,21 +447,27 @@ public sealed class PetWindow : Window
 		bool through = _runtime.ClickThroughEnabled;
 		if (!through && !_isDragPending && !_isDragging && _contextMenu is not {IsOpen: true})
 		{
-			try
+			if (!cursorSnapshotResolved)
 			{
-				if (!PlatformServices.Current.Capabilities.SupportsGlobalCursor) return;
-				var (cursorX, cursorY) = PlatformServices.Current.GetCursorPosition();
-				double scale = RenderScaling > 0 ? RenderScaling : 1.0;
-				double clientX = (cursorX - Position.X) / scale;
-				double clientY = (cursorY - Position.Y) / scale;
-				bool inside = clientX >= 0 && clientX < Bounds.Width && clientY >= 0 && clientY < Bounds.Height;
-				through = !(inside && _glControl.IsPointOnModel(clientX, clientY));
+				try
+				{
+					if (!PlatformServices.Current.Capabilities.SupportsGlobalCursor) return;
+					var (cursorX, cursorY) = PlatformServices.Current.GetCursorPosition();
+					clientCursor = ConvertScreenCursorToClient(cursorX, cursorY);
+				}
+				catch (Exception exception) when (exception is PlatformNotSupportedException or InvalidOperationException)
+				{
+					_services.Logger.Write(LogSource.Backend, "warn", $"读取伴侣窗口穿透状态失败: {exception.GetType().Name}");
+					return;
+				}
 			}
-			catch (Exception exception) when (exception is PlatformNotSupportedException or InvalidOperationException)
+
+			if (clientCursor is not { } position)
 			{
-				_services.Logger.Write(LogSource.Backend, "warn", $"读取伴侣窗口穿透状态失败: {exception.GetType().Name}");
 				return;
 			}
+			bool inside = position.X >= 0 && position.X < Bounds.Width && position.Y >= 0 && position.Y < Bounds.Height;
+			through = !(inside && _glControl.IsPointOnModel(position.X, position.Y));
 		}
 
 		if (_contextMenu is {IsOpen: true} || _isDragPending || _isDragging) through = false;
@@ -456,6 +482,12 @@ public sealed class PetWindow : Window
 		{
 			_services.Logger.Write(LogSource.Backend, "warn", $"同步伴侣窗口穿透状态失败: {exception.GetType().Name}");
 		}
+	}
+
+	private (double X, double Y) ConvertScreenCursorToClient(double cursorX, double cursorY)
+	{
+		double scale = RenderScaling > 0 ? RenderScaling : 1.0;
+		return ((cursorX - Position.X) / scale, (cursorY - Position.Y) / scale);
 	}
 
 	private IntPtr OnWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, ref bool handled)

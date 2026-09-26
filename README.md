@@ -83,10 +83,10 @@
 - **原生设置与四窗口架构**：用户窗口采用 Avalonia 原生控件，调度四独立窗口生命周期（`first-run` 首次引导、`init` 初始化、`main` 控制台、`pet` 原生伴侣视窗）；内置 Kestrel 回环 `AssetServer` 托管隐藏音频宿主、插件页面、本地资源与一次性音频传输 Token。
 - **多模型智能 Agent 与生态扩展**：支持 OpenAI / Claude / Gemini / DeepSeek / Ollama 等多平台 LLM，具备流式打字机输出与实时情感/动作标签驱动；内置 SQLite 键值存储与长期记忆体系（Memory.md），支持 Model Context Protocol (MCP) 插件工具扩展。
 - **全链路多模态语音交互**：C# `VoiceService` 驱动（支持 Whisper 离线/在线语音识别、GPT-SoVITS / Custom HTTP / OpenAI / Gemini / MiniMax / IndexTTS-2 TTS）；非原生音频后端使用隐藏的 `audio-host` 页面播放、录音并提取 RMS 振幅实时驱动嘴形。
-- **高可靠安全模式与隐私保护**：内置 `--safe-mode` 命令行排障模式，跳过外部联网与重型模型加载，保留 UI 与手动修复入口；脱敏诊断导出（`export_diagnostics`）严格排除数据库、对话记忆、提示词、凭据与敏感路径；敏感配置采用 AES-256-GCM (`nsec2:`) 结合系统安全密钥库加密存储。
+- **高可靠安全模式与隐私保护**：内置 `--safe-mode` 命令行排障模式，跳过外部联网与重型模型加载，保留原生窗口和手动修复入口；脱敏诊断导出（`export_diagnostics`）严格排除数据库、对话记忆、提示词、凭据与敏感路径；敏感配置采用 AES-256-GCM (`nsec2:`) 结合系统安全密钥库加密存储。
 - **插件系统扩展体系 (NPS 2.0)**：所有插件生产代码收敛于 `Nori.PluginRuntime` 单一程序集，基于受信任进程内架构与能力隔离设计，通过 `PluginWindowHost`、`PluginWebViewCapability` (`ui.webview`) 与独立安全总线 `PluginBridge` 提供跨平台透明 Web 视图扩展支持。
 - **本地模型自由管理与原生预览**：支持本地 Live2D ZIP/文件夹安全导入与沙盒解压校验；模型管理窗口使用原生 `ModelPreviewControl` 进行隔离 OpenGL 预览与参数编辑。
-- **原生国际化**：首次运行、主窗口、设置、记忆和模型管理等用户窗口使用宿主侧中英文资源；TypeScript 资源仅服务隐藏音频宿主和桥接兼容层。
+- **原生国际化**：首次运行、主窗口、设置、记忆和模型管理等用户窗口使用宿主侧中英文资源；隐藏音频宿主不承载用户界面或本地化文案。
 
 ---
 
@@ -143,12 +143,12 @@ Nori-Desktop-Pet/
 │   ├── Live2DCSharpSDK.App/         # Live2D 模型与纹理加载管理
 │   ├── Live2D/native/               # 各平台 Cubism Core 原生动态库
 │   ├── src/                         # 音频宿主页面与 TypeScript bridge 客户端
-│   │   ├── assets/style/            # 主题令牌、主题样式与窗口背景适配
+│   │   ├── assets/style/            # 原生主题令牌来源
 │   │   ├── services/audio/          # WebAudio 播放、录音与 RMS 分析
 │   │   ├── services/host/           # IPC 命令与宿主事件
-│   │   └── services/runtime/        # 类型化运行时接口与日志
+│   │   └── services/runtime/        # 音频宿主结构化日志
 │   ├── tests/                       # 前端 Vitest 单元测试
-│   ├── uno.config.ts                # 兼容层主题/令牌配置（不承载用户窗口）
+│   ├── scripts/sync-design-tokens.mjs # 原生主题令牌生成器
 │   ├── Nori.slnx                    # .NET 统一解决方案配置
 │   ├── package.json                 # 前端依赖与脚本配置
 │   ├── publish.bat / publish.sh     # 跨平台发布构建脚本
@@ -242,7 +242,7 @@ publish.bat
   - TypeScript 局部常量采用 `UPPER_SNAKE` 命名规范，C# 遵循标准 .NET 命名风格。
   - 注释、日志提示和面向用户的界面文本保持**中文**。
 - **前端兼容层**：
-  - `src/` 只包含隐藏音频宿主、TypeScript bridge 客户端和运行时服务；不要把用户窗口、设置页或模型预览重新放回 WebView。
+  - `src/` 只包含隐藏音频宿主、TypeScript bridge 客户端和结构化日志；不要把用户窗口、设置页或模型预览重新放回 WebView。
   - 主题令牌仍集中在 `src/assets/style/tokens.ts`，修改后运行 `pnpm theme:check`。
 - **原生窗口**：
   - 用户窗口、设置、记忆和模型管理沿用 `Nori.Desktop` 的 Avalonia 控件及原生双语资源；新增窗口同步更新 `WindowDefinition.cs`、窗口标签和窗口管理器。

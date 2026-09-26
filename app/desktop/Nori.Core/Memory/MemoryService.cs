@@ -21,6 +21,25 @@ public sealed class MemoryService : IAsyncDisposable
 	private const int MaxRecoveryBatchesPerWake = 4;
 	private const string ReembedFingerprintState = "embedding_reembed_fingerprint";
 	private const string ReembedCursorState = "embedding_reembed_cursor";
+	private static readonly string[] MemorySettingsKeys =
+	[
+		"memory_enabled",
+		"memory_reflection_enabled",
+		"memory_reflection_rounds",
+		"memory_reflection_min_chars",
+		"memory_recall_top_k",
+		"memory_keyword_top_k",
+		"memory_vector_top_k",
+		"memory_rrf_k",
+		"memory_min_similarity",
+		"memory_decay_enabled",
+		"memory_archive_enabled",
+		"memory_source_retention_threshold",
+		"memory_archive_threshold",
+		"memory_knowledge_enabled",
+		"memory_knowledge_watch",
+		"memory_debug_retrieval",
+	];
 	private static readonly TimeSpan EmbeddingRecoveryInterval = TimeSpan.FromSeconds(5);
 	private readonly MemoryStore _store;
 	private readonly IEmbeddingAdapter _embedding;
@@ -108,25 +127,37 @@ public sealed class MemoryService : IAsyncDisposable
 	public KnowledgeService? Knowledge { get; set; }
 
 	/// <summary>读取记忆运行设置。</summary>
-	public MemorySettings Settings => new()
+	public MemorySettings Settings
 	{
-		Enabled = _config.GetBoolOr("memory_enabled", true),
-		ReflectionEnabled = _config.GetBoolOr("memory_reflection_enabled", true),
-		ReflectionRounds = _config.GetClampedInt("memory_reflection_rounds", 8, 1, 32),
-		ReflectionMinChars = _config.GetClampedInt("memory_reflection_min_chars", 2500, 100, 20000),
-		RecallTopK = _config.GetClampedInt("memory_recall_top_k", 6, 1, 20),
-		KeywordTopK = _config.GetClampedInt("memory_keyword_top_k", 20, 1, 100),
-		VectorTopK = _config.GetClampedInt("memory_vector_top_k", 20, 1, 100),
-		RrfK = _config.GetClampedInt("memory_rrf_k", 60, 1, 500),
-		MinSimilarity = _config.GetClampedDouble("memory_min_similarity", 0.25, 0, 1),
-		DecayEnabled = _config.GetBoolOr("memory_decay_enabled", true),
-		ArchiveEnabled = _config.GetBoolOr("memory_archive_enabled", true),
-		SourceRetentionThreshold = _config.GetClampedDouble("memory_source_retention_threshold", 0.75, 0, 1),
-		ArchiveThreshold = _config.GetClampedDouble("memory_archive_threshold", 0.15, 0, 1),
-		KnowledgeEnabled = _config.GetBoolOr("memory_knowledge_enabled", true),
-		KnowledgeWatch = _config.GetBoolOr("memory_knowledge_watch", true),
-		DebugRetrieval = _config.GetBoolOr("memory_debug_retrieval", false),
-	};
+		get
+		{
+			IReadOnlyDictionary<string, ConfigValue> values = _config.GetMany(MemorySettingsKeys);
+			ConfigValue? Find(string key) => values.TryGetValue(key, out ConfigValue? value) ? value : null;
+			bool Bool(string key, bool fallback) => ConfigStore.GetBoolOr(Find(key), fallback);
+			int Int(string key, int fallback, int min, int max) => ConfigStore.GetClampedInt(Find(key), fallback, min, max);
+			double Double(string key, double fallback, double min, double max) => ConfigStore.GetClampedDouble(Find(key), fallback, min, max);
+
+			return new MemorySettings
+			{
+				Enabled = Bool("memory_enabled", true),
+				ReflectionEnabled = Bool("memory_reflection_enabled", true),
+				ReflectionRounds = Int("memory_reflection_rounds", 8, 1, 32),
+				ReflectionMinChars = Int("memory_reflection_min_chars", 2500, 100, 20000),
+				RecallTopK = Int("memory_recall_top_k", 6, 1, 20),
+				KeywordTopK = Int("memory_keyword_top_k", 20, 1, 100),
+				VectorTopK = Int("memory_vector_top_k", 20, 1, 100),
+				RrfK = Int("memory_rrf_k", 60, 1, 500),
+				MinSimilarity = Double("memory_min_similarity", 0.25, 0, 1),
+				DecayEnabled = Bool("memory_decay_enabled", true),
+				ArchiveEnabled = Bool("memory_archive_enabled", true),
+				SourceRetentionThreshold = Double("memory_source_retention_threshold", 0.75, 0, 1),
+				ArchiveThreshold = Double("memory_archive_threshold", 0.15, 0, 1),
+				KnowledgeEnabled = Bool("memory_knowledge_enabled", true),
+				KnowledgeWatch = Bool("memory_knowledge_watch", true),
+				DebugRetrieval = Bool("memory_debug_retrieval", false),
+			};
+		}
+	}
 
 	/// <summary>解析独立 Embedding 接入配置, 不从聊天配置回退。</summary>
 	public (string BaseUrl, string ApiKey, string Model, int? Dimensions) ResolveConfig()
@@ -275,19 +306,21 @@ public sealed class MemoryService : IAsyncDisposable
 			: _store.SearchSemantic(vector, settings.VectorTopK, settings.MinSimilarity)
 			.Select((hit, index) => new RetrievalHit(hit.Item.Id, hit.Similarity, index + 1)).ToList();
 		IReadOnlyList<RetrievalHit> atomHits = _store.SearchAtomKeyword(expanded, 10);
+		Dictionary<long, MemoryAtom> atomsById = _store.GetAtomsByIds(atomHits.Select(hit => hit.MemoryId).ToArray());
 		IReadOnlyList<RetrievalHit> atomParentHits = atomHits
-			.Select((hit, index) => (Atom: _store.GetAtom(hit.MemoryId), Rank: index + 1))
-			.Where(pair => pair.Atom is not null)
-			.Select(pair => new RetrievalHit(pair.Atom!.ParentMemoryId, 1.0 / pair.Rank, pair.Rank))
+			.Select((hit, index) => (Hit: hit, Rank: index + 1))
+			.Where(pair => atomsById.ContainsKey(pair.Hit.MemoryId))
+			.Select(pair => new RetrievalHit(atomsById[pair.Hit.MemoryId].ParentMemoryId, 1.0 / pair.Rank, pair.Rank))
 			.ToList();
 		IReadOnlyList<RetrievalHit> fused = RrfFusion.Fuse([keywordHits, vectorHits, atomParentHits], settings.RrfK);
 		Dictionary<long, double> scores = fused.ToDictionary(hit => hit.MemoryId, hit => hit.Score);
+		Dictionary<long, MemoryItem> candidates = _store.GetMany(scores.Keys.ToArray());
 
 		DateTimeOffset now = DateTimeOffset.UtcNow;
 		List<(MemoryItem Item, double Score)> ranked = scores
-			.Select(pair => (Item: _store.Get(pair.Key), Rrf: pair.Value))
-			.Where(pair => pair.Item is not null)
-			.Select(pair => (Item: pair.Item!, Score: DecayCalculator.FinalScore(pair.Rrf, pair.Item!, now, settings.DecayEnabled)))
+			.Where(pair => candidates.ContainsKey(pair.Key))
+			.Select(pair => (Item: candidates[pair.Key], Rrf: pair.Value))
+			.Select(pair => (Item: pair.Item, Score: DecayCalculator.FinalScore(pair.Rrf, pair.Item, now, settings.DecayEnabled)))
 			.Where(pair => (pair.Item.Status is "active" or "dormant") && pair.Score > 0)
 			.OrderByDescending(pair => pair.Score)
 			.ToList();
@@ -295,7 +328,7 @@ public sealed class MemoryService : IAsyncDisposable
 		List<MemoryItem> personal = TakeWithinBudget(ranked, personalLimitOverride ?? settings.RecallTopK, 900);
 		long[] injectedIds = personal.Select(item => item.Id).ToArray();
 		if (markAccess) _store.MarkAccessed(injectedIds);
-		List<MemoryAtom> atoms = personal.SelectMany(item => _store.GetAtoms(item.Id, MemoryStatus.Active, 3)).ToList();
+		List<MemoryAtom> atoms = [.. _store.GetActiveAtomsByParents(injectedIds, 3)];
 		IReadOnlyList<RetrievedKnowledge> knowledge = TakeKnowledgeBudget(Knowledge?.Search(userText, 4) ?? [], 2200);
 		IReadOnlyList<MemoryEcho> echoes = (Knowledge?.SearchEchoes(userText, 2) ?? [])
 			.Select(echo => echo with {Content = echo.Content.Length > 320 ? echo.Content[..320] : echo.Content})

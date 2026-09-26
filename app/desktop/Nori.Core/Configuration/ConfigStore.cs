@@ -17,11 +17,13 @@ namespace Nori.Core.Configuration;
 /// </summary>
 public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore = null) : IDisposable
 {
+	private const int MaxBatchKeys = 500;
 	private readonly ISecretKeyStore _keyStore = keyStore ?? new SecretKeyStore();
 	private readonly NoriDatabase _database = database;
 	private readonly ConcurrentDictionary<string, SecretIssue> _secretIssues = new(StringComparer.Ordinal);
 	private byte[]? _cachedMasterKey;
 	private readonly object _keyLock = new();
+	internal Action? ReadQueryExecuted { get; set; }
 
 	/// <summary>配置键: 配置结构版本。</summary>
 	public const string KeyConfigSchemaVersion = "config_schema_version";
@@ -159,12 +161,43 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// <summary>读取配置, 敏感值无法解密时按未配置处理。</summary>
 	public ConfigValue? Get(string key)
 	{
-		string stored = RawValue(key);
-		if (stored.Length == 0 && !Exists(key)) return null;
+		ArgumentException.ThrowIfNullOrEmpty(key);
+		StoredConfigValue stored = ReadStoredValue(key);
+		return stored.Exists ? MaterializeValue(key, stored.Value!) : null;
+	}
 
-		if (!IsSensitiveKey(key)) return ConfigValue.FromStorage(stored);
-		SecretReadResult result = ReadSecretValue(key, stored, migrate: true);
-		return result.IsConfigured ? ConfigValue.FromStorage(result.Value!) : null;
+	/// <summary>按指定键批量读取配置; 不公开数据库中的其它配置。</summary>
+	internal IReadOnlyDictionary<string, ConfigValue> GetMany(IEnumerable<string> keys)
+	{
+		ArgumentNullException.ThrowIfNull(keys);
+		string[] requested = keys.Distinct(StringComparer.Ordinal).ToArray();
+		if (requested.Length == 0) return new Dictionary<string, ConfigValue>(StringComparer.Ordinal);
+		foreach (string key in requested) ArgumentException.ThrowIfNullOrEmpty(key);
+
+		List<(string Key, string Value)> rows = _database.Locked(connection =>
+		{
+			List<(string Key, string Value)> result = [];
+			foreach (string[] batch in requested.Chunk(MaxBatchKeys))
+			{
+				string parameters = string.Join(", ", batch.Select((_, index) => $"$key{index}"));
+				using SqliteCommand command = connection.CreateCommand();
+				command.CommandText = $"SELECT key, value FROM config WHERE key IN ({parameters})"; // nosemgrep
+				for (int index = 0; index < batch.Length; index++)
+					command.Parameters.AddWithValue($"$key{index}", batch[index]);
+				using SqliteDataReader reader = command.ExecuteReader();
+				ReadQueryExecuted?.Invoke();
+				while (reader.Read()) result.Add((reader.GetString(0), reader.GetString(1)));
+			}
+			return result;
+		});
+
+		Dictionary<string, ConfigValue> values = new(rows.Count, StringComparer.Ordinal);
+		foreach ((string key, string stored) in rows)
+		{
+			ConfigValue? value = MaterializeValue(key, stored);
+			if (value is not null) values[key] = value;
+		}
+		return values;
 	}
 
 	/// <summary>
@@ -282,6 +315,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 			using SqliteCommand command = connection.CreateCommand();
 			command.CommandText = "SELECT key, value FROM config ORDER BY key";
 			using SqliteDataReader reader = command.ExecuteReader();
+			ReadQueryExecuted?.Invoke();
 			List<(string Key, string Stored)> values = [];
 			while (reader.Read()) values.Add((reader.GetString(0), reader.GetString(1)));
 			return values;
@@ -290,16 +324,8 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 		List<KeyValuePair<string, ConfigValue>> result = [];
 		foreach ((string key, string stored) in rows)
 		{
-			if (IsSensitiveKey(key))
-			{
-				SecretReadResult secret = ReadSecretValue(key, stored, migrate: true);
-				if (!secret.IsConfigured) continue;
-				result.Add(new KeyValuePair<string, ConfigValue>(key, ConfigValue.FromStorage(secret.Value!)));
-			}
-			else
-			{
-				result.Add(new KeyValuePair<string, ConfigValue>(key, ConfigValue.FromStorage(stored)));
-			}
+			ConfigValue? value = MaterializeValue(key, stored);
+			if (value is not null) result.Add(new KeyValuePair<string, ConfigValue>(key, value));
 		}
 		return result;
 	}
@@ -308,10 +334,10 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	public SecretReadResult ReadSecret(string key)
 	{
 		if (!IsSensitiveKey(key)) throw new ArgumentException("不是敏感配置键", nameof(key));
-		string stored = RawValue(key);
-		return stored.Length == 0 && !Exists(key)
+		StoredConfigValue stored = ReadStoredValue(key);
+		return !stored.Exists
 			? new SecretReadResult(null, SecretIssueCategory.None)
-			: ReadSecretValue(key, stored, migrate: true);
+			: ReadSecretValue(key, stored.Value!, migrate: true);
 	}
 
 	/// <summary>判断敏感配置当前是否真正可用。</summary>
@@ -365,18 +391,45 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 		return command.ExecuteScalar() as string ?? "";
 	});
 
+	private StoredConfigValue ReadStoredValue(string key) => _database.Locked(connection =>
+	{
+		using SqliteCommand command = connection.CreateCommand();
+		command.CommandText = "SELECT value FROM config WHERE key = $key";
+		command.Parameters.AddWithValue("$key", key);
+		using SqliteDataReader reader = command.ExecuteReader();
+		ReadQueryExecuted?.Invoke();
+		return reader.Read()
+			? new StoredConfigValue(true, reader.GetString(0))
+			: new StoredConfigValue(false, null);
+	});
+
+	private ConfigValue? MaterializeValue(string key, string stored)
+	{
+		if (!IsSensitiveKey(key)) return ConfigValue.FromStorage(stored);
+		SecretReadResult result = ReadSecretValue(key, stored, migrate: true);
+		return result.IsConfigured ? ConfigValue.FromStorage(result.Value!) : null;
+	}
+
+	private readonly record struct StoredConfigValue(bool Exists, string? Value);
+
 	/// <summary>读取字符串配置, 缺失/类型不符时返回 fallback。</summary>
 	public string GetStringOr(string key, string fallback) => ConfigValue.AsStringOr(Get(key), fallback);
 
 	/// <summary>读取整型配置并夹紧到 [min, max]; 无效或缺省时返回 fallback。</summary>
 	public int GetClampedInt(string key, int fallback, int min, int max) =>
-		int.TryParse(GetStringOr(key, ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value)
+		GetClampedInt(Get(key), fallback, min, max);
+
+	internal static int GetClampedInt(ConfigValue? stored, int fallback, int min, int max) =>
+		int.TryParse(ConfigValue.AsStringOr(stored, ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value)
 			? Math.Clamp(value, min, max)
 			: fallback;
 
 	/// <summary>读取浮点配置并夹紧到 [min, max]; 无效或缺省时返回 fallback。</summary>
 	public double GetClampedDouble(string key, double fallback, double min, double max) =>
-		double.TryParse(GetStringOr(key, ""), NumberStyles.Float, CultureInfo.InvariantCulture, out double value)
+		GetClampedDouble(Get(key), fallback, min, max);
+
+	internal static double GetClampedDouble(ConfigValue? stored, double fallback, double min, double max) =>
+		double.TryParse(ConfigValue.AsStringOr(stored, ""), NumberStyles.Float, CultureInfo.InvariantCulture, out double value)
 			? Math.Clamp(value, min, max)
 			: fallback;
 
@@ -387,7 +440,11 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	public bool GetBoolOr(string key, bool fallback)
 	{
 		if (key == KeyTelemetryEnabled) return GetTelemetryConsent() == TelemetryConsent.Granted;
-		ConfigValue? value = Get(key);
+		return GetBoolOr(Get(key), fallback);
+	}
+
+	internal static bool GetBoolOr(ConfigValue? value, bool fallback)
+	{
 		if (value is ConfigValue.Boolean boolean) return boolean.Value;
 		string raw = ConfigValue.AsStringOr(value, "");
 		return raw switch

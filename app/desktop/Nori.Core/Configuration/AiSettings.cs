@@ -75,28 +75,47 @@ public sealed class AiSettingsStore(ConfigStore config)
 	public const string KeyEmbeddingModel = "embedding_model";
 	public const string KeyEmbeddingDimensions = "embedding_dimensions";
 	public const string DefaultEmbeddingModel = "BAAI/bge-m3";
+	private static readonly string[] SettingsKeys =
+	[
+		KeyLlmProvider,
+		KeyLlmBaseUrl,
+		KeyLlmApiKey,
+		KeyLlmModel,
+		KeyUserPersona,
+		KeyEmbeddingBaseUrl,
+		KeyEmbeddingApiKey,
+		KeyEmbeddingModel,
+		KeyEmbeddingDimensions,
+	];
 
 	private readonly ConfigStore _config = config;
 
 	/// <summary>读取完整 AI 配置; Embedding 不读取任何 llm_* 键。</summary>
-	public AiProviderSettings Read() => new()
+	public AiProviderSettings Read()
 	{
-		Chat = new AiChatSettings
+		IReadOnlyDictionary<string, ConfigValue> values = _config.GetMany(SettingsKeys);
+		ConfigValue? Find(string key) => values.TryGetValue(key, out ConfigValue? value) ? value : null;
+		string GetString(string key, string fallback) => ConfigValue.AsStringOr(Find(key), fallback);
+
+		return new AiProviderSettings
 		{
-			Provider = LlmProviderExtensions.ParseProvider(_config.GetStringOr(KeyLlmProvider, "openai")),
-			BaseUrl = _config.GetStringOr(KeyLlmBaseUrl, "").Trim(),
-			ApiKey = _config.GetStringOr(KeyLlmApiKey, ""),
-			Model = _config.GetStringOr(KeyLlmModel, "").Trim(),
-			Persona = _config.GetStringOr(KeyUserPersona, ""),
-		},
-		Embedding = new AiEmbeddingSettings
-		{
-			BaseUrl = _config.GetStringOr(KeyEmbeddingBaseUrl, "").Trim(),
-			ApiKey = _config.GetStringOr(KeyEmbeddingApiKey, ""),
-			Model = _config.GetStringOr(KeyEmbeddingModel, DefaultEmbeddingModel).Trim(),
-			Dimensions = ParseDimensions(_config.GetStringOr(KeyEmbeddingDimensions, "")),
-		},
-	};
+			Chat = new AiChatSettings
+			{
+				Provider = LlmProviderExtensions.ParseProvider(GetString(KeyLlmProvider, "openai")),
+				BaseUrl = GetString(KeyLlmBaseUrl, "").Trim(),
+				ApiKey = GetString(KeyLlmApiKey, ""),
+				Model = GetString(KeyLlmModel, "").Trim(),
+				Persona = GetString(KeyUserPersona, ""),
+			},
+			Embedding = new AiEmbeddingSettings
+			{
+				BaseUrl = GetString(KeyEmbeddingBaseUrl, "").Trim(),
+				ApiKey = GetString(KeyEmbeddingApiKey, ""),
+				Model = GetString(KeyEmbeddingModel, DefaultEmbeddingModel).Trim(),
+				Dimensions = ParseDimensions(GetString(KeyEmbeddingDimensions, "")),
+			},
+		};
+	}
 
 	/// <summary>部分更新聊天配置; 敏感字段仍由 ConfigStore 加密。</summary>
 	public void UpdateChat(AiChatSettingsPatch patch)

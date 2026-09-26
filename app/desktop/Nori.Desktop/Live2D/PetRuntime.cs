@@ -294,11 +294,25 @@ public sealed class PetRuntime
 		lock (_prepareGate) CancelPendingModelLoadLocked();
 		// 同上: 释放交给 manager, PetGlControl 随后的 _lapp.Dispose() 会走到 ReleaseAllModel()
 		_currentModel = null;
+		BindFixedBehaviorParameters(null);
+		_expressionBehavior.UnbindModel();
 		_presentationGeometry = null;
 		lock (_interactionGate) _viewportMapping = null;
 		_app?.Live2dManager.ReleaseAllModel();
 		_app = null;
 		_gl = null;
+	}
+
+	/// <summary>在当前模型绑定时缓存行为和视线动画使用的固定参数索引。</summary>
+	private void BindFixedBehaviorParameters(LAppModel? model)
+	{
+		if (model is null)
+		{
+			_modelParams.UnbindModel();
+			return;
+		}
+
+		_modelParams.BindModel(model.Model);
 	}
 
 	public void LoadConfigs()
@@ -765,6 +779,7 @@ public sealed class PetRuntime
 				try
 				{
 					_currentModel = candidate;
+					BindFixedBehaviorParameters(candidate);
 					_presentationGeometry = null;
 					_currentModelId = prepared.ModelId;
 					_currentModelDir = prepared.ModelDir;
@@ -821,6 +836,9 @@ public sealed class PetRuntime
 						previousExpressionModelId,
 						previousExpressionGroups,
 						previousExpressions);
+					BindFixedBehaviorParameters(previousModel);
+					if (previousModel is null) _expressionBehavior.UnbindModel();
+					else _expressionBehavior.BindModel(previousModel.Model);
 					_appliedMaskBufferSize = 0;
 					if (previousModel is not null)
 					{
@@ -908,16 +926,21 @@ public sealed class PetRuntime
 		_pipeline.RunPre(ctx);
 
 		// 如果未短路且开启了眼部追踪，补回 SDK 拖拽角度
-		if (EyeTrackingEnabled)
+		if (EyeTrackingEnabled && _modelParams.IsBound)
 		{
 			float dragX = model.DragX;
 			float dragY = model.DragY;
-			model.Model.AddParameterValue(model.IdParamAngleX, dragX * 30);
-			model.Model.AddParameterValue(model.IdParamAngleY, dragY * 30);
-			model.Model.AddParameterValue(model.IdParamAngleZ, dragX * dragY * -30);
-			model.Model.AddParameterValue(model.IdParamBodyAngleX, dragX * 10);
-			model.Model.AddParameterValue(model.IdParamEyeBallX, dragX);
-			model.Model.AddParameterValue(model.IdParamEyeBallY, dragY);
+			AddDrag(_modelParams.AngleXIndex, dragX * 30);
+			AddDrag(_modelParams.AngleYIndex, dragY * 30);
+			AddDrag(_modelParams.AngleZIndex, dragX * dragY * -30);
+			AddDrag(_modelParams.BodyAngleXIndex, dragX * 10);
+			AddDrag(_modelParams.EyeBallXIndex, dragX);
+			AddDrag(_modelParams.EyeBallYIndex, dragY);
+		}
+
+		void AddDrag(int index, float value)
+		{
+			if (index >= 0) model.Model.AddParameterValue(index, value);
 		}
 
 		// 运行 post 插件（如 EyeFocus 眼神微动）

@@ -16,9 +16,6 @@ const TEXT_EXTENSIONS = new Set([
 	".props",
 	".targets",
 	".ts",
-	".tsx",
-	".vue",
-	".less",
 	".json",
 	".md",
 ])
@@ -30,14 +27,12 @@ const EXCLUDED_PARTS = new Set([
 	"coverage",
 	".git",
 ])
-const GENERATED_FILE_NAMES = new Set(["components.d.ts"])
 const MARKER_PATTERN = /\b(?:TODO|FIXME)\b/gi
 
 const SHOULD_SKIP = (filePath) => {
 	const relative = path.relative(ROOT, filePath)
 	const parts = relative.split(path.sep)
 	if (parts.some((part) => EXCLUDED_PARTS.has(part))) return true
-	if (GENERATED_FILE_NAMES.has(path.basename(filePath))) return true
 	if (/\.generated\.|\.g\./i.test(path.basename(filePath))) return true
 	return !TEXT_EXTENSIONS.has(path.extname(filePath).toLowerCase())
 }

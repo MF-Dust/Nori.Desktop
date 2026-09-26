@@ -47,9 +47,9 @@ public sealed class ReflectionService
 	{
 		if (!_memory.Settings.ReflectionEnabled) return false;
 		long cursor = ReadCursor();
-		IReadOnlyList<ChatMessage> all = _chat.GetHistory();
-		List<ChatMessage> allPending = all.Where(message => message.Id > cursor).ToList();
-		List<ChatMessage> pending = allPending.Take(64).ToList();
+		bool paused = HasPausedFailure(cursor);
+		var history = _chat.GetReflectionHistory(cursor, paused);
+		IReadOnlyList<ChatMessage> pending = history.Pending;
 		if (pending.Count == 0) return false;
 		int rounds = pending.Count(message => message.Role == "assistant");
 		int chars = pending.Sum(message => message.Content.Length);
@@ -59,18 +59,14 @@ public sealed class ReflectionService
 		if (lastAssistantId <= cursor) return false;
 		List<ChatMessage> window = pending.TakeWhile(message => message.Id <= lastAssistantId).ToList();
 		long attemptAssistantId = lastAssistantId;
-		if (HasPausedFailure(cursor))
+		if (paused)
 		{
 			long failedWindow = ReadLong(FailureWindowKey);
-			long newestAssistantId = allPending.LastOrDefault(message => message.Role == "assistant")?.Id ?? cursor;
+			long newestAssistantId = history.NewestAssistantId;
 			if (newestAssistantId <= failedWindow) return false;
 			attemptAssistantId = newestAssistantId;
 			// 首批达到 64 条时游标仍只推进到首批末尾；附带少量新对话仅用于打破坏输出模式，避免静默跳过中间聊天。
-			IReadOnlyList<ChatMessage> recoveryTail = allPending
-				.Where(message => message.Id > lastAssistantId && message.Id <= newestAssistantId)
-				.TakeLast(8)
-				.ToList();
-			window.AddRange(recoveryTail);
+			window.AddRange(history.RecoveryTail);
 		}
 		try
 		{

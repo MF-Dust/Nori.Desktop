@@ -1,21 +1,18 @@
-# Sentry 遥测与发布配置
+# Native Sentry 遥测与发布配置
 
-Nori 有两个 Sentry 项目：
+Nori 仅在原生 .NET/Avalonia 宿主中集成 Sentry。隐藏音频 WebView 不加载 Sentry SDK，也不上传 source map；音频宿主的错误通过受限 Bridge 写入本地结构化日志。
 
-- Native：.NET/Avalonia 宿主异常与固定操作名事务；
-- Web：Vue/WebView 异常、路由性能和主窗口回放。
-
-默认配置的 `telemetry_enabled` 为 `true`，用户可在首次运行或设置中关闭。关闭后 Native SDK 和 Web transport 停止发送，本地日志仍保留。没有注入 DSN 的开发构建不会初始化可联网的 SDK。
+原生 Sentry 由用户遥测设置控制。没有配置 DSN 时，SDK 不会初始化远程传输；关闭遥测后停止发送事件，本地诊断日志仍保留。
 
 ## 数据边界
 
-遥测脱敏边界不上传聊天正文、提示词、记忆正文、语音转写、MCP 参数/结果、API Key、Cookie、请求正文或用户身份。事件只保留异常类型、清理后的堆栈和固定操作名；Web 回放只在 `main` 开启，并遮罩文字/输入框、禁止媒体与用户端点数据。
+原生遥测只记录经过清理的异常、固定操作名、release/environment 标签和性能指标。严禁发送聊天正文、提示词、记忆、语音转写或录音、MCP 参数与结果、API Key、Cookie、请求正文及用户身份。Native Sentry 与本地日志不承担模型下载、更新服务或用户数据备份。
 
-采样策略由 `src/services/telemetry/policy.ts` 管理：错误全量、性能抽样、普通回放低比例、错误回放全量。Web 不向用户配置的 LLM/MCP/资源 URL 传播 Sentry trace header。
+音频 WebView 的日志使用 `write_log` Bridge 命令。宿主忽略传入正文和伪造来源字段，只接受稳定事件名与已知错误类型；调用侧对同类错误每分钟限流。
 
-## 构建变量
+## 原生构建变量
 
-Native 配置在 MSBuild 生成的中间文件中注入，不写入仓库：
+MSBuild 从环境变量或 `Nori.Desktop.csproj` 属性读取以下原生配置。值通过构建中间文件进入程序，不写入仓库：
 
 ```text
 NORI_SENTRY_DSN_NATIVE
@@ -23,71 +20,24 @@ NORI_SENTRY_RELEASE
 NORI_SENTRY_ENVIRONMENT
 ```
 
-Web 构建变量为：
-
-```text
-VITE_SENTRY_DSN_WEB
-NORI_SENTRY_RELEASE
-NORI_SENTRY_ENVIRONMENT
-```
-
-`SENTRY_AUTH_TOKEN` 只用于构建期 source map/发布管理，不能进入 ZIP。DSN 是公开项目标识，不是鉴权令牌。普通构建的产品版本精确为 `Dev`；Release 由 GitHub Actions 通过 `NORI_PRODUCT_VERSION` 注入稳定版本、通过 `NORI_PRODUCT_INFORMATIONAL_VERSION` 注入带短提交 hash 的 informational version，Native 与 Web 使用不带 hash、仅数字的 `<version>` Sentry release；codename 只用于产品版本、标签和产物命名。
+Release workflow 将 Sentry release 固定为 `nori@<数字版本>`，不包含 codename 或提交 hash。程序版本、Sentry release 和发布 tag 的职责不同：codename 用于产品版本、tag 和产物命名，informational version 可包含当前短提交 hash。
 
 ## GitHub Actions Secrets
 
-当前 `.github/workflows/release.yml` 的正式发布前端门要求：
+Native Sentry 集成使用：
 
-- `SENTRY_AUTH_TOKEN`
-- `SENTRY_ORG`
-- `SENTRY_PROJECT_WEB`
-- `SENTRY_PROJECT_NATIVE`
-- `SENTRY_DSN_WEB`
-- `SENTRY_DSN_NATIVE`
-- `SENTRY_URL`（SaaS 可省略，默认为 `https://sentry.io`）
+- `SENTRY_AUTH_TOKEN`：构建期符号上传和 release 管理凭据，不得进入用户包。
+- `SENTRY_ORG`：Sentry 组织名。
+- `SENTRY_PROJECT_NATIVE`：Native Sentry 项目名。
+- `SENTRY_DSN_NATIVE`：注入 Native 程序的公开项目标识，不是鉴权令牌。
+- `SENTRY_URL`：自托管 Sentry 地址；SaaS 默认使用 `https://sentry.io`，可省略。
 
-Web source map 在四道门的前端构建中上传并从 `dist` 删除；没有成功处理的 `.map` 会阻断发布。Native release 在标签创建后由独立 job 创建/复用并 finalize。当前 Windows 发布使用无 PDB 的正式 ZIP，因此 release workflow 不把符号文件放进用户包。
+Web Sentry 的 DSN、项目名和 source-map 上传配置已移除。
 
-## 发布顺序与固定口径
+## Native 符号与 release
 
-release 是手动 workflow，顺序不可颠倒：
+Release workflow 在发布归档前保留 PDB，使用 Sentry CLI 上传 Native 符号，然后从 Windows、Linux 和 macOS 发布目录移除 PDB。用户 ZIP/tar.gz 不包含符号文件。Native release 在正式 tag 创建后由独立 job 创建或复用并 finalize；缺少 Sentry 凭据时跳过相关上传与 finalize，不阻断普通应用发布。
 
-```text
-许可确认
-→ 版本预检
-→ 一方 TODO/FIXME 扫描
-→ pnpm build / pnpm test
-→ dotnet build / dotnet test
-→ Windows、Linux、macOS 编译与单测
-→ Windows framework-dependent 发布与双分支冒烟
-→ 创建/复用指向本次提交的标签
-→ finalize Native Sentry
-→ 创建 GitHub Release
-```
+Release 顺序保持为：版本与分发许可校验、前端音频宿主构建及相关检查、Native 三平台构建/测试和发布冒烟、Native 符号上传、创建 tag、完成 Native Sentry release、创建 GitHub Release。
 
-Release workflow 当前为 `win-x64`、`linux-x64`、`osx-arm64` 生成槽式 framework-dependent 归档：Windows ZIP、Linux tar.gz、macOS ZIP，完整归档 root（包括隐藏 `.current`）。目标机必须安装 ASP.NET Core Runtime 10，Windows 另需 WebView2；不提供 self-contained、安装器、签名或自动更新。工作流不会再有 `include_runtime` 开关。
-
-发布输入还必须显式为 true：
-
-```text
-confirm_avalonia_webview_distribution_license
-confirm_cubism_core_distribution_license
-```
-
-它们分别映射为 `NORI_AVALONIA_WEBVIEW_DISTRIBUTION_LICENSE_CONFIRMED` 和 `NORI_CUBISM_CORE_DISTRIBUTION_LICENSE_CONFIRMED`，用于阻止维护者在未确认 Avalonia WebView/Cubism Core 分发许可时创建标签或 Release。
-
-## 本地诊断
-
-发布二进制支持：
-
-```powershell
-Nori.exe --smoke-test first-run --profile "$env:TEMP\nori-smoke-first-run"
-Nori.exe --smoke-test initialized --profile "$env:TEMP\nori-smoke-initialized"
-```
-
-根 `Nori` launcher 会选择 `.current` 指向的槽并转发参数；`<PackageRoot>` 必须可写且整包可移动。`--profile` 是强制的隔离目录。宿主在数据库、AssetServer、窗口和托盘装配完成后原子写出 schema v2 `readiness.json`（包含版本、数据库/配置 schema 和 `safe_mode`），随后自动退出；`scripts/smoke-published.ps1` 还会校验这些字段、数据目录没有越界并设置等待/退出超时。CI 同时覆盖普通 initialized 与 `--safe-mode` initialized。该模式不会接触真实用户目录，也不改变普通启动路径。
-
-普通维护可在主窗口导出脱敏诊断 ZIP。它只包含有界日志和 Agent 性能元数据，不包含数据库、用户内容、请求正文、录音、资源、凭据或真实路径；`--safe-mode` 保留该入口用于手动修复。
-
-## 当前产品边界
-
-Sentry 只观察宿主和 Web UI 的诊断事件；它不负责模型下载、CDN、更新服务或用户数据备份。模型范围仍是本地 `arg-nori`/`nori`，语音实现是 C# `VoiceService` + WebAudio/MediaRecorder，不是 NAudio。
+本机可按需设置 `NORI_SENTRY_DSN_NATIVE`、`NORI_SENTRY_RELEASE` 和 `NORI_SENTRY_ENVIRONMENT`。不要把 `SENTRY_AUTH_TOKEN` 保存进项目文件或发布包。

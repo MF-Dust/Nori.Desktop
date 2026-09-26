@@ -1,9 +1,9 @@
 import {mkdirSync, readFileSync, writeFileSync} from "node:fs"
 import {resolve, dirname} from "node:path"
 import {fileURLToPath} from "node:url"
-import {COLORS, CSS_VARIABLES, FONT_SIZES, RADIUS, SPACING} from "../src/assets/style/tokens.ts"
+import {COLORS, FONT_SIZES, RADIUS, SPACING} from "../src/assets/style/tokens.ts"
 
-// 两端共用令牌，生成产物提交到仓库，独立 .NET 构建无需执行 Node。
+// 原生 Avalonia 令牌生成产物提交到仓库，独立 .NET 构建无需执行 Node。
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const CHECK = process.argv.includes("--check")
 const PASCAL = name => name.split(/[-.]/).map(part => part[0].toUpperCase() + part.slice(1)).join("")
@@ -43,7 +43,7 @@ using Avalonia.Media.Immutable;
 
 namespace Nori.Desktop.Appearance;
 
-/// <summary>Web 与原生共享的深色设计令牌；静态画刷没有 UI 线程所有权。</summary>
+/// <summary>原生深色主题令牌；静态画刷没有 UI 线程所有权。</summary>
 internal static class NoriThemeTokens
 {
 \tprivate static readonly IReadOnlyDictionary<string, string> Values = new Dictionary<string, string>
@@ -70,9 +70,3 @@ ${ENTRIES.map(([key, value]) => `\t<Color x:Key="Nori${PASCAL(key)}Color">${NATI
 \t<StaticResource x:Key="NoriWindowSurfaceBrush" ResourceKey="NoriBgBaseBrush"/>
 </ResourceDictionary>
 `)
-
-const THEME_PATH = "src/assets/style/theme.less"
-const THEME = readFileSync(resolve(ROOT, THEME_PATH), "utf8").replaceAll("\r\n", "\n")
-if (!/:root\s*\{[\s\S]*?\n\}/.test(THEME)) throw new Error("theme.less 缺少 :root 令牌块")
-write(THEME_PATH, THEME.replace(/:root\s*\{[\s\S]*?\n\}/,
-	`:root {\n${Object.entries(CSS_VARIABLES).map(([key, value]) => `\t${key}: ${value};`).join("\n")}\n}`))

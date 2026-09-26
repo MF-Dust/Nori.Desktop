@@ -274,14 +274,20 @@ public sealed class BeatSyncBehavior : IBehaviorPlugin
 
 	public void Execute(BehaviorContext ctx)
 	{
-		if (!ctx.BeatSyncEnabled || !ctx.IdleAnimationEnabled) return;
+		if (!ctx.BeatSyncEnabled || !ctx.IdleAnimationEnabled || !ctx.ModelParameters.IsBound) return;
+		int angleXIndex = ctx.ModelParameters.AngleXIndex;
+		int angleYIndex = ctx.ModelParameters.AngleYIndex;
+		int angleZIndex = ctx.ModelParameters.AngleZIndex;
+		if (angleXIndex < 0 || angleYIndex < 0 || angleZIndex < 0) return;
+
+		var model = ctx.Model.Model;
 
 		UpdateTargets(ctx.Now);
 		float dt = (float)(ctx.TimeDelta > 0 ? ctx.TimeDelta : 0.016);
 
-		float angleX = ctx.Model.Model.GetParameterValue("ParamAngleX");
-		float angleY = ctx.Model.Model.GetParameterValue("ParamAngleY");
-		float angleZ = ctx.Model.Model.GetParameterValue("ParamAngleZ");
+		float angleX = model.GetParameterValue(angleXIndex);
+		float angleY = model.GetParameterValue(angleYIndex);
+		float angleZ = model.GetParameterValue(angleZIndex);
 
 		// X
 		{
@@ -328,8 +334,8 @@ public sealed class BeatSyncBehavior : IBehaviorPlugin
 			}
 		}
 
-		ctx.Model.Model.SetParameterValue("ParamAngleX", angleX);
-		ctx.Model.Model.SetParameterValue("ParamAngleY", angleY);
-		ctx.Model.Model.SetParameterValue("ParamAngleZ", angleZ);
+		model.SetParameterValue(angleXIndex, angleX);
+		model.SetParameterValue(angleYIndex, angleY);
+		model.SetParameterValue(angleZIndex, angleZ);
 	}
 }

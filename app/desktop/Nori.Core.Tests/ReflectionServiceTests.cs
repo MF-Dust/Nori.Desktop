@@ -33,6 +33,29 @@ public sealed class ReflectionServiceTests : IDisposable
 	}
 
 	[Fact]
+	public void 反思历史读取只返回首批和有界恢复尾部()
+	{
+		for (int round = 0; round < 80; round++)
+		{
+			_chat.SaveMessage("user", $"user-{round}");
+			_chat.SaveMessage("assistant", $"assistant-{round}");
+		}
+
+		var ordinary = _chat.GetReflectionHistory(0, includeRecovery: false);
+		Assert.Equal(64, ordinary.Pending.Count);
+		Assert.Empty(ordinary.RecoveryTail);
+		Assert.Equal("user-0", ordinary.Pending[0].Content);
+		Assert.Equal("assistant-31", ordinary.Pending[^1].Content);
+
+		var recovery = _chat.GetReflectionHistory(0, includeRecovery: true);
+		Assert.Equal(64, recovery.Pending.Count);
+		Assert.Equal(8, recovery.RecoveryTail.Count);
+		Assert.Equal("user-76", recovery.RecoveryTail[0].Content);
+		Assert.Equal("assistant-79", recovery.RecoveryTail[^1].Content);
+		Assert.Equal(recovery.RecoveryTail[^1].Id, recovery.NewestAssistantId);
+	}
+
+	[Fact]
 	public async Task 相同失败窗口达到阈值后暂停且新消息只重新尝试一次()
 	{
 		SequenceAdapter adapter = new(call => call <= 4

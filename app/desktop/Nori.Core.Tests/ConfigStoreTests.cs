@@ -163,6 +163,59 @@ public class ConfigStoreTests : IDisposable
 	}
 
 	[Fact]
+	public void 单键读取区分缺失键与空字符串()
+	{
+		_config.Set("empty_value", new ConfigValue.Text(""));
+
+		Assert.Null(_config.Get("missing_value"));
+		Assert.Equal("", Assert.IsType<ConfigValue.Text>(_config.Get("empty_value")).Value);
+	}
+
+	[Fact]
+	public void 指定键批量读取保持类型推断并按五百键分批()
+	{
+		Dictionary<string, ConfigValue> updates = Enumerable.Range(0, 1001)
+			.ToDictionary(index => $"bulk_key_{index}", index => (ConfigValue)new ConfigValue.Text(index.ToString()), StringComparer.Ordinal);
+		updates["batch_empty"] = new ConfigValue.Text("");
+		updates["batch_bool"] = new ConfigValue.Text("true");
+		updates["batch_json"] = new ConfigValue.Text("[1,2]");
+		updates["batch_secret_api_key"] = new ConfigValue.Text("batch-secret-value");
+		_config.SetBatch(updates);
+
+		int queryCount = 0;
+		_config.ReadQueryExecuted = () => queryCount++;
+		string[] requested = [.. updates.Keys, "missing_batch_key"];
+		IReadOnlyDictionary<string, ConfigValue> values = _config.GetMany(requested);
+
+		Assert.Equal(3, queryCount);
+		Assert.Equal(updates.Count, values.Count);
+		Assert.False(values.ContainsKey("missing_batch_key"));
+		Assert.Equal("", Assert.IsType<ConfigValue.Text>(values["batch_empty"]).Value);
+		Assert.True(Assert.IsType<ConfigValue.Boolean>(values["batch_bool"]).Value);
+		Assert.IsType<ConfigValue.Json>(values["batch_json"]);
+		Assert.Equal("batch-secret-value", values["batch_secret_api_key"].ToStorage());
+		Assert.StartsWith(SecretProtector.Prefix, _config.RawValue("batch_secret_api_key"), StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void 指定键批量读取会迁移旧密钥并分类损坏密文()
+	{
+		_database.Locked(connection =>
+		{
+			using Microsoft.Data.Sqlite.SqliteCommand command = connection.CreateCommand();
+			command.CommandText = "INSERT INTO config (key, value) VALUES ('legacy_batch_api_key', 'legacy-batch-secret'), ('broken_batch_api_key', 'nsec2:not-valid')";
+			command.ExecuteNonQuery();
+		});
+
+		IReadOnlyDictionary<string, ConfigValue> values = _config.GetMany(["legacy_batch_api_key", "broken_batch_api_key"]);
+
+		Assert.Equal("legacy-batch-secret", values["legacy_batch_api_key"].ToStorage());
+		Assert.StartsWith(SecretProtector.Prefix, _config.RawValue("legacy_batch_api_key"), StringComparison.Ordinal);
+		Assert.False(values.ContainsKey("broken_batch_api_key"));
+		Assert.Equal(SecretIssueCategory.CorruptCiphertext, _config.GetSecretIssue("broken_batch_api_key")?.Category);
+	}
+
+	[Fact]
 	public void 覆盖写入不会插入重复行()
 	{
 		_config.Set("k", new ConfigValue.Text("a"));

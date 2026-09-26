@@ -7,19 +7,6 @@
 import {host} from "./index"
 import type {BridgeCommandArgs, BridgeCommandName, BridgeCommandResult} from "./commands"
 
-/** 模型列表探测允许省略 API Key，由宿主读取已安全保存的密钥。 */
-const normalizeArgs = <K extends BridgeCommandName>(
-	cmd: K,
-	args?: BridgeCommandArgs<K>,
-): BridgeCommandArgs<K> | undefined => {
-	if (cmd !== "llm_fetch_models" || !args || typeof args !== "object") return args
-	const NORMALIZED = {...(args as Record<string, unknown>)}
-	if (typeof NORMALIZED.apiKey === "string" && NORMALIZED.apiKey.trim() === "") {
-		delete NORMALIZED.apiKey
-	}
-	return NORMALIZED as BridgeCommandArgs<K>
-}
-
 /**
  * 调用宿主命令。
  * 未显式指定返回泛型时, 命令名会同时推导精确参数和返回值；旧调用可显式保留返回类型。
@@ -32,5 +19,5 @@ export const invoke = async <K extends BridgeCommandName>(
 ): Promise<BridgeCommandResult<K>> => {
 	const HOST = host()
 	if (!HOST) throw new Error(`宿主不可用, 无法调用命令: ${cmd}`)
-	return HOST.invoke(cmd, normalizeArgs(cmd, args))
+	return HOST.invoke(cmd, args)
 }

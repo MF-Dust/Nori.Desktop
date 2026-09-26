@@ -111,12 +111,14 @@ public sealed class ExpressionStore
 	public Dictionary<string, ExpressionEntry> Expressions { get; } = new(StringComparer.OrdinalIgnoreCase);
 	public Dictionary<string, ExpressionGroupDefinition> ExpressionGroups { get; } = new(StringComparer.OrdinalIgnoreCase);
 	public string ModelId { get; private set; } = "";
+	public long Revision { get; private set; }
 
 	public void RegisterExpressions(
 		string modelId,
 		IEnumerable<ExpressionGroupDefinition> groups,
 		IEnumerable<ExpressionEntry> entries)
 	{
+		Revision++;
 		Expressions.Clear();
 		ExpressionGroups.Clear();
 		ModelId = modelId;
@@ -213,6 +215,7 @@ public sealed class ExpressionStore
 
 	public void Dispose()
 	{
+		Revision++;
 		Expressions.Clear();
 		ExpressionGroups.Clear();
 		ModelId = "";

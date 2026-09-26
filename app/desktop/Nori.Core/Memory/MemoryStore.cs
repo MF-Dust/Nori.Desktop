@@ -1,7 +1,6 @@
 using System.Buffers;
 using System.Globalization;
 using System.Numerics.Tensors;
-using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Nori.Core.Data;
 using Nori.Core.Embedding;
@@ -60,10 +59,12 @@ public sealed record MemorySearchResult
 public sealed class MemoryStore
 {
 	public const int DefaultSemanticCandidateLimit = 100000;
+	private const int MaxBatchIds = 500;
 
 	private readonly NoriDatabase _database;
 	private readonly int _semanticCandidateLimit;
 	private bool _ftsAvailable;
+	internal Action? ReadQueryExecuted { get; set; }
 
 	public MemoryStore(
 		NoriDatabase database,
@@ -333,6 +334,7 @@ public sealed class MemoryStore
 		command.CommandText = SelectByIdSql; // nosemgrep
 		AddParameter(command, "$id", id);
 		using SqliteDataReader reader = command.ExecuteReader();
+		ReadQueryExecuted?.Invoke();
 		return reader.Read() ? ReadRow(reader) : null;
 	});
 
@@ -442,6 +444,7 @@ public sealed class MemoryStore
 		command.CommandText = "SELECT id, parent_memory_id, atom_type, content, importance, confidence, status, created_at, last_accessed_at, last_reinforced_at, ttl_days, expires_at, reinforcement_count, decay_type, entities, superseded_by FROM memory_atoms WHERE id = $id";
 		AddParameter(command, "$id", id);
 		using SqliteDataReader reader = command.ExecuteReader();
+		ReadQueryExecuted?.Invoke();
 		return reader.Read() ? ReadAtom(reader) : null;
 	});
 
@@ -462,10 +465,87 @@ public sealed class MemoryStore
 		AddParameter(command, "$limit", Math.Max(0, limit));
 		AddParameter(command, "$offset", Math.Max(0, offset));
 		using SqliteDataReader reader = command.ExecuteReader();
+		ReadQueryExecuted?.Invoke();
 		List<MemoryAtom> result = [];
 		while (reader.Read()) result.Add(ReadAtom(reader));
 		return (IReadOnlyList<MemoryAtom>)result;
 	});
+
+	/// <summary>按 Atom ID 批量读取; 每条 SQL 最多绑定 500 个 ID。</summary>
+	internal Dictionary<long, MemoryAtom> GetAtomsByIds(IReadOnlyList<long> ids)
+	{
+		long[] uniqueIds = ids.Distinct().ToArray();
+		if (uniqueIds.Length == 0) return [];
+
+		return _database.Locked(connection =>
+		{
+			Dictionary<long, MemoryAtom> result = [];
+			foreach (long[] batch in uniqueIds.Chunk(MaxBatchIds))
+			{
+				string parameters = string.Join(", ", batch.Select((_, index) => $"$id{index}"));
+				using SqliteCommand command = connection.CreateCommand();
+				command.CommandText = $"{AtomSelect} WHERE id IN ({parameters})"; // nosemgrep
+				for (int index = 0; index < batch.Length; index++)
+					AddParameter(command, $"$id{index}", batch[index]);
+				using SqliteDataReader reader = command.ExecuteReader();
+				ReadQueryExecuted?.Invoke();
+				while (reader.Read())
+				{
+					MemoryAtom atom = ReadAtom(reader);
+					result[atom.Id] = atom;
+				}
+			}
+			return result;
+		});
+	}
+
+	/// <summary>按父记忆批量读取 active Atom, 每个父项只取排序最高的指定数量。</summary>
+	internal IReadOnlyList<MemoryAtom> GetActiveAtomsByParents(IReadOnlyList<long> parentMemoryIds, int perParentLimit)
+	{
+		long[] uniqueParentIds = parentMemoryIds.Distinct().ToArray();
+		if (uniqueParentIds.Length == 0 || perParentLimit <= 0) return [];
+
+		Dictionary<long, List<MemoryAtom>> grouped = [];
+		_database.Locked(connection =>
+		{
+			foreach (long[] batch in uniqueParentIds.Chunk(MaxBatchIds))
+			{
+				string parameters = string.Join(", ", batch.Select((_, index) => $"$parent{index}"));
+				using SqliteCommand command = connection.CreateCommand();
+				command.CommandText = $"""
+					WITH ranked_atoms AS (
+						SELECT {AtomColumns},
+							ROW_NUMBER() OVER (PARTITION BY parent_memory_id ORDER BY importance DESC, id DESC) AS parent_rank
+						FROM memory_atoms
+						WHERE parent_memory_id IN ({parameters}) AND status = $status
+					)
+					SELECT {AtomColumns} FROM ranked_atoms
+					WHERE parent_rank <= $limit
+					ORDER BY parent_memory_id, importance DESC, id DESC
+					"""; // nosemgrep
+				for (int index = 0; index < batch.Length; index++)
+					AddParameter(command, $"$parent{index}", batch[index]);
+				AddParameter(command, "$status", MemoryStatus.Active.ToStorage());
+				AddParameter(command, "$limit", perParentLimit);
+				using SqliteDataReader reader = command.ExecuteReader();
+				ReadQueryExecuted?.Invoke();
+				while (reader.Read())
+				{
+					MemoryAtom atom = ReadAtom(reader);
+					if (!grouped.TryGetValue(atom.ParentMemoryId, out List<MemoryAtom>? parentAtoms))
+						grouped[atom.ParentMemoryId] = parentAtoms = [];
+					parentAtoms.Add(atom);
+				}
+			}
+		});
+
+		List<MemoryAtom> result = [];
+		foreach (long parentMemoryId in uniqueParentIds)
+		{
+			if (grouped.TryGetValue(parentMemoryId, out List<MemoryAtom>? parentAtoms)) result.AddRange(parentAtoms);
+		}
+		return result;
+	}
 
 	/// <summary>批量保存来源消息。</summary>
 	public void AddSources(long memoryId, IReadOnlyList<MemorySource> sources)
@@ -600,6 +680,16 @@ public sealed class MemoryStore
 			int count = command.ExecuteNonQuery();
 			if (count > 0)
 			{
+				List<long> atomIds = [];
+				using (SqliteCommand atomIdsCommand = connection.CreateCommand())
+				{
+					atomIdsCommand.Transaction = transaction;
+					atomIdsCommand.CommandText = "SELECT id FROM memory_atoms WHERE parent_memory_id = $id AND status <> 'superseded' ORDER BY id";
+					AddParameter(atomIdsCommand, "$id", id);
+					using SqliteDataReader reader = atomIdsCommand.ExecuteReader();
+					while (reader.Read()) atomIds.Add(reader.GetInt64(0));
+				}
+
 				using SqliteCommand atoms = connection.CreateCommand();
 				atoms.Transaction = transaction;
 				atoms.CommandText = "UPDATE memory_atoms SET status = $status WHERE parent_memory_id = $id AND status <> 'superseded'";
@@ -607,7 +697,7 @@ public sealed class MemoryStore
 				AddParameter(atoms, "$status", status.ToStorage());
 				atoms.ExecuteNonQuery();
 				RefreshMemoryIndex(connection, transaction, id);
-				RebuildAtomIndex(connection, transaction);
+				foreach (long atomId in atomIds) RefreshAtomIndex(connection, transaction, atomId);
 			}
 			transaction.Commit();
 			return count > 0;
@@ -1059,7 +1149,6 @@ public sealed class MemoryStore
 	private const string BaseSelect = "SELECT id, type, content, importance, source, tags, embedding, embedding_blob, created_at, updated_at, kind, canonical_summary, persona_summary, confidence, status, access_count, reinforcement_count, last_accessed_at, last_reinforced_at, ttl_days, expires_at, superseded_by, embedding_fingerprint FROM memories";
 	private const string SelectAllSql = BaseSelect + " ORDER BY importance DESC, id DESC LIMIT $limit";
 	private const string SelectByIdSql = BaseSelect + " WHERE id = $id";
-	private const string SelectManySql = BaseSelect + " WHERE id IN (SELECT CAST(value AS INTEGER) FROM json_each($ids))";
 	private const string SelectReconsolidationCandidatesSql = BaseSelect + " WHERE status IN ('active', 'dormant', 'archived') AND superseded_by IS NULL ORDER BY updated_at DESC, id DESC";
 	private const string SelectUnembeddedSql = BaseSelect + """
 		 WHERE id > $afterId
@@ -1070,7 +1159,8 @@ public sealed class MemoryStore
 			 )
 		 ORDER BY id ASC LIMIT $limit
 		""";
-	private const string AtomSelect = "SELECT id, parent_memory_id, atom_type, content, importance, confidence, status, created_at, last_accessed_at, last_reinforced_at, ttl_days, expires_at, reinforcement_count, decay_type, entities, superseded_by FROM memory_atoms";
+	private const string AtomColumns = "id, parent_memory_id, atom_type, content, importance, confidence, status, created_at, last_accessed_at, last_reinforced_at, ttl_days, expires_at, reinforcement_count, decay_type, entities, superseded_by";
+	private const string AtomSelect = "SELECT " + AtomColumns + " FROM memory_atoms";
 	private const string SelectAtomsSql = AtomSelect + " ORDER BY importance DESC, id DESC LIMIT $limit OFFSET $offset";
 	private const string SelectAtomsByParentSql = AtomSelect + " WHERE parent_memory_id = $parent ORDER BY importance DESC, id DESC LIMIT $limit OFFSET $offset";
 	private const string SelectAtomsByStatusSql = AtomSelect + " WHERE status = $status ORDER BY importance DESC, id DESC LIMIT $limit OFFSET $offset";
@@ -1149,20 +1239,27 @@ public sealed class MemoryStore
 		});
 	}
 
-	private Dictionary<long, MemoryItem> GetMany(IReadOnlyList<long> ids)
+	internal Dictionary<long, MemoryItem> GetMany(IReadOnlyList<long> ids)
 	{
-		if (ids.Count == 0) return [];
+		long[] uniqueIds = ids.Distinct().ToArray();
+		if (uniqueIds.Length == 0) return [];
 		return _database.Locked(connection =>
 		{
-			using SqliteCommand command = connection.CreateCommand();
-			command.CommandText = SelectManySql; // nosemgrep
-			AddParameter(command, "$ids", JsonSerializer.Serialize(ids));
-			using SqliteDataReader reader = command.ExecuteReader();
 			Dictionary<long, MemoryItem> result = [];
-			while (reader.Read())
+			foreach (long[] batch in uniqueIds.Chunk(MaxBatchIds))
 			{
-				MemoryItem item = ReadRow(reader);
-				result[item.Id] = item;
+				string parameters = string.Join(", ", batch.Select((_, index) => $"$id{index}"));
+				using SqliteCommand command = connection.CreateCommand();
+				command.CommandText = $"{BaseSelect} WHERE id IN ({parameters})"; // nosemgrep
+				for (int index = 0; index < batch.Length; index++)
+					AddParameter(command, $"$id{index}", batch[index]);
+				using SqliteDataReader reader = command.ExecuteReader();
+				ReadQueryExecuted?.Invoke();
+				while (reader.Read())
+				{
+					MemoryItem item = ReadRow(reader);
+					result[item.Id] = item;
+				}
 			}
 			return result;
 		});

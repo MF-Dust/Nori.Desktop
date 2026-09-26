@@ -3,7 +3,7 @@
 <head>
 	<meta charset="UTF-8"/>
 	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-	<title>Nori Desktop</title>
+	<title>Nori Audio Host</title>
 	<script>
 		// ---- 宿主桥引导 ----
 		// 必须在应用代码之前同步执行: NativeWebView 只给了 invokeCSharpAction(string)
@@ -88,7 +88,7 @@
 </head>
 
 <body>
-<div id="app"></div>
+<!-- 此页仅承载隐藏音频宿主；用户界面由原生 Avalonia 窗口实现。 -->
 <script type="module" src="/src/bootstrap.ts"></script>
 </body>
 </html>

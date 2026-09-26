@@ -2,7 +2,7 @@ import {describe, expect, it} from "vitest"
 import {contrastRatio, parseColor, relativeLuminance} from "../../src/services/theme/contrast"
 import {COLORS} from "../../src/assets/style/tokens"
 
-/** 会出现文字的背景: 窗口渐变最深处与最浅处 + 玻璃卡面 */
+/** 原生窗口、面板和玻璃背景 */
 const BACKGROUNDS = {
 	abyss: COLORS["bg-abyss"],
 	deep: COLORS["bg-deep"],
@@ -25,7 +25,7 @@ const BODY_FOREGROUNDS = [
 	"danger-text",
 ] as const
 
-describe("对比度计算", () => {
+describe("原生主题对比度计算", () => {
 	it("解析 hex 与 rgba 并计算亮度", () => {
 		expect(parseColor("#fff")).toEqual({r: 255, g: 255, b: 255, a: 1})
 		expect(parseColor("rgba(10, 28, 44, 0.55)")).toEqual({r: 10, g: 28, b: 44, a: 0.55})
@@ -35,7 +35,7 @@ describe("对比度计算", () => {
 	})
 })
 
-describe("设计令牌可读性门禁", () => {
+describe("原生设计令牌可读性门禁", () => {
 	it.each(["#ffffff", "#000000"])("系统桌面为 %s 时玻璃背景上的文字 ≥ 4.5:1", (desktop) => {
 		for (const token of BODY_FOREGROUNDS) {
 			const RATIO = contrastRatio(COLORS[token], COLORS["bg-glass"], desktop)
@@ -50,22 +50,8 @@ describe("设计令牌可读性门禁", () => {
 		}
 	})
 
-	it("青绿按钮上的深色文字 ≥ 4.5:1", () => {
+	it("青绿强调色上的深色文字 ≥ 4.5:1", () => {
 		expect(contrastRatio("#03101c", COLORS["nori-teal"])).toBeGreaterThanOrEqual(4.5)
 		expect(contrastRatio("#03101c", COLORS["nori-teal-bright"])).toBeGreaterThanOrEqual(4.5)
-	})
-
-	it("naive 的占位与禁用色分别达到 4.5:1 / 3:1", () => {
-		expect(contrastRatio("rgba(157, 178, 192, 0.75)", COLORS["bg-abyss"])).toBeGreaterThanOrEqual(4.5)
-		expect(contrastRatio("#6a8496", COLORS["bg-panel"])).toBeGreaterThanOrEqual(3)
-	})
-
-	it("回归保护: 被替换掉的旧色值确实不达标", () => {
-		// --text-muted 旧值 #7e94a3、--text-faint 旧值 #596f7e、naive 禁用旧值 #4a677d
-		expect(contrastRatio("#7e94a3", COLORS["bg-panel"])).toBeLessThan(4.5)
-		expect(contrastRatio("#596f7e", COLORS["bg-panel"])).toBeLessThan(4.5)
-		expect(contrastRatio("#4a677d", COLORS["bg-panel"])).toBeLessThan(3)
-		// 纯 danger 当文字在浅面板上不达标, 所以文字必须用 danger-text
-		expect(contrastRatio(COLORS.danger, COLORS["bg-panel"])).toBeLessThan(4.5)
 	})
 })

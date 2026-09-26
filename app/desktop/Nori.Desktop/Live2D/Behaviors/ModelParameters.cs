@@ -1,3 +1,5 @@
+using Live2DCSharpSDK.Framework.Model;
+
 namespace Nori.Desktop.Live2D.Behaviors;
 
 /// <summary>
@@ -7,6 +9,19 @@ namespace Nori.Desktop.Live2D.Behaviors;
 /// </summary>
 public sealed class ModelParameters
 {
+	public int AngleXIndex { get; private set; } = -1;
+	public int AngleYIndex { get; private set; } = -1;
+	public int AngleZIndex { get; private set; } = -1;
+	public int BodyAngleXIndex { get; private set; } = -1;
+	public int EyeBallXIndex { get; private set; } = -1;
+	public int EyeBallYIndex { get; private set; } = -1;
+	public int LeftEyeOpenIndex { get; private set; } = -1;
+	public int RightEyeOpenIndex { get; private set; } = -1;
+	public int MouthOpenIndex { get; private set; } = -1;
+
+	/// <summary>当前索引是否属于已绑定且尚未解绑的模型。</summary>
+	public bool IsBound { get; private set; }
+
 	public float AngleX { get; set; }
 	public float AngleY { get; set; }
 	public float AngleZ { get; set; }
@@ -29,6 +44,36 @@ public sealed class ModelParameters
 	public float BodyAngleY { get; set; }
 	public float BodyAngleZ { get; set; }
 	public float Breath { get; set; }
+
+	/// <summary>按当前 Cubism 模型解析固定行为和视线动画使用的索引。</summary>
+	public void BindModel(CubismModel model)
+	{
+		AngleXIndex = model.GetParameterIndex("ParamAngleX");
+		AngleYIndex = model.GetParameterIndex("ParamAngleY");
+		AngleZIndex = model.GetParameterIndex("ParamAngleZ");
+		BodyAngleXIndex = model.GetParameterIndex("ParamBodyAngleX");
+		EyeBallXIndex = model.GetParameterIndex("ParamEyeBallX");
+		EyeBallYIndex = model.GetParameterIndex("ParamEyeBallY");
+		LeftEyeOpenIndex = model.GetParameterIndex("ParamEyeLOpen");
+		RightEyeOpenIndex = model.GetParameterIndex("ParamEyeROpen");
+		MouthOpenIndex = model.GetParameterIndex("ParamMouthOpenY");
+		IsBound = true;
+	}
+
+	/// <summary>清除模型解绑后不再有效的固定参数索引。</summary>
+	public void UnbindModel()
+	{
+		IsBound = false;
+		AngleXIndex = -1;
+		AngleYIndex = -1;
+		AngleZIndex = -1;
+		BodyAngleXIndex = -1;
+		EyeBallXIndex = -1;
+		EyeBallYIndex = -1;
+		LeftEyeOpenIndex = -1;
+		RightEyeOpenIndex = -1;
+		MouthOpenIndex = -1;
+	}
 
 	public void Reset()
 	{

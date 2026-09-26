@@ -7,41 +7,39 @@ public sealed class PetHitMaskTests
 	[Fact]
 	public void SourcePixelsKeepTopAndBottomOrientation()
 	{
-		byte[] bits = new byte[PetHitMask.ByteLength];
 		byte[] topPixels = CreatePixels(PetHitMask.Width, PetHitMask.Height);
 		SetAlphaAtTop(topPixels, PetHitMask.Width, PetHitMask.Height, 48, 0);
 
-		PetHitMask.BuildFromSourcePixels(topPixels, PetHitMask.Width, PetHitMask.Height, bits);
+		PetHitMask.Bounds topBounds = PetHitMask.BuildFromSourcePixels(topPixels, PetHitMask.Width, PetHitMask.Height);
 
-		Assert.True(PetHitMask.IsPointOnModel(bits, 48.5, 0.5, PetHitMask.Width, PetHitMask.Height));
-		Assert.False(PetHitMask.IsPointOnModel(bits, 48.5, PetHitMask.Height - 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.True(PetHitMask.IsPointOnModel(topBounds, 48.5, 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.False(PetHitMask.IsPointOnModel(topBounds, 48.5, PetHitMask.Height - 0.5, PetHitMask.Width, PetHitMask.Height));
 
 		byte[] bottomPixels = CreatePixels(PetHitMask.Width, PetHitMask.Height);
 		SetAlphaAtTop(bottomPixels, PetHitMask.Width, PetHitMask.Height, 48, PetHitMask.Height - 1);
-		PetHitMask.BuildFromSourcePixels(bottomPixels, PetHitMask.Width, PetHitMask.Height, bits);
+		PetHitMask.Bounds bottomBounds = PetHitMask.BuildFromSourcePixels(bottomPixels, PetHitMask.Width, PetHitMask.Height);
 
-		Assert.False(PetHitMask.IsPointOnModel(bits, 48.5, 0.5, PetHitMask.Width, PetHitMask.Height));
-		Assert.True(PetHitMask.IsPointOnModel(bits, 48.5, PetHitMask.Height - 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.False(PetHitMask.IsPointOnModel(bottomBounds, 48.5, 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.True(PetHitMask.IsPointOnModel(bottomBounds, 48.5, PetHitMask.Height - 0.5, PetHitMask.Width, PetHitMask.Height));
 	}
 
 	[Fact]
 	public void ReducedPixelsKeepTopAndBottomOrientation()
 	{
-		byte[] bits = new byte[PetHitMask.ByteLength];
 		byte[] topPixels = CreatePixels(PetHitMask.Width, PetHitMask.Height);
 		SetAlphaAtTop(topPixels, PetHitMask.Width, PetHitMask.Height, 48, 0);
 
-		PetHitMask.BuildFromReducedPixels(topPixels, PetHitMask.Width, PetHitMask.Height, bits);
+		PetHitMask.Bounds topBounds = PetHitMask.BuildFromReducedPixels(topPixels, PetHitMask.Width, PetHitMask.Height);
 
-		Assert.True(PetHitMask.IsPointOnModel(bits, 48.5, 0.5, PetHitMask.Width, PetHitMask.Height));
-		Assert.False(PetHitMask.IsPointOnModel(bits, 48.5, PetHitMask.Height - 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.True(PetHitMask.IsPointOnModel(topBounds, 48.5, 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.False(PetHitMask.IsPointOnModel(topBounds, 48.5, PetHitMask.Height - 0.5, PetHitMask.Width, PetHitMask.Height));
 
 		byte[] bottomPixels = CreatePixels(PetHitMask.Width, PetHitMask.Height);
 		SetAlphaAtTop(bottomPixels, PetHitMask.Width, PetHitMask.Height, 48, PetHitMask.Height - 1);
-		PetHitMask.BuildFromReducedPixels(bottomPixels, PetHitMask.Width, PetHitMask.Height, bits);
+		PetHitMask.Bounds bottomBounds = PetHitMask.BuildFromReducedPixels(bottomPixels, PetHitMask.Width, PetHitMask.Height);
 
-		Assert.False(PetHitMask.IsPointOnModel(bits, 48.5, 0.5, PetHitMask.Width, PetHitMask.Height));
-		Assert.True(PetHitMask.IsPointOnModel(bits, 48.5, PetHitMask.Height - 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.False(PetHitMask.IsPointOnModel(bottomBounds, 48.5, 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.True(PetHitMask.IsPointOnModel(bottomBounds, 48.5, PetHitMask.Height - 0.5, PetHitMask.Width, PetHitMask.Height));
 	}
 
 	[Fact]
@@ -62,11 +60,9 @@ public sealed class PetHitMaskTests
 			const int row = 29;
 			byte[] pixels = CreatePixels(sourceWidth, sourceHeight);
 			SetAlphaAtCellSample(pixels, sourceWidth, sourceHeight, column, row, xFraction, yFraction);
-			byte[] bits = new byte[PetHitMask.ByteLength];
+			PetHitMask.Bounds bounds = PetHitMask.BuildFromSourcePixels(pixels, sourceWidth, sourceHeight);
 
-			PetHitMask.BuildFromSourcePixels(pixels, sourceWidth, sourceHeight, bits);
-
-			Assert.True(PetHitMask.IsPointOnModel(bits, column + 0.5, row + 0.5, PetHitMask.Width, PetHitMask.Height));
+			Assert.True(PetHitMask.IsPointOnModel(bounds, column + 0.5, row + 0.5, PetHitMask.Width, PetHitMask.Height));
 		}
 	}
 
@@ -79,15 +75,13 @@ public sealed class PetHitMaskTests
 		const int row = 20;
 		byte[] pixels = CreatePixels(sourceWidth, sourceHeight);
 		SetAlphaAtCellSample(pixels, sourceWidth, sourceHeight, column, row, 0.5, 0.5);
-		byte[] bits = new byte[PetHitMask.ByteLength];
+		PetHitMask.Bounds bounds = PetHitMask.BuildFromSourcePixels(pixels, sourceWidth, sourceHeight);
 
-		PetHitMask.BuildFromSourcePixels(pixels, sourceWidth, sourceHeight, bits);
-
-		Assert.True(PetHitMask.IsPointOnModel(bits, column + 0.5, row + 0.5, PetHitMask.Width, PetHitMask.Height));
-		Assert.False(PetHitMask.IsPointOnModel(bits, column - 0.5, row + 0.5, PetHitMask.Width, PetHitMask.Height));
-		Assert.False(PetHitMask.IsPointOnModel(bits, column + 1.5, row + 0.5, PetHitMask.Width, PetHitMask.Height));
-		Assert.False(PetHitMask.IsPointOnModel(bits, column + 0.5, row - 0.5, PetHitMask.Width, PetHitMask.Height));
-		Assert.False(PetHitMask.IsPointOnModel(bits, column + 0.5, row + 1.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.True(PetHitMask.IsPointOnModel(bounds, column + 0.5, row + 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.False(PetHitMask.IsPointOnModel(bounds, column - 0.5, row + 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.False(PetHitMask.IsPointOnModel(bounds, column + 1.5, row + 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.False(PetHitMask.IsPointOnModel(bounds, column + 0.5, row - 0.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.False(PetHitMask.IsPointOnModel(bounds, column + 0.5, row + 1.5, PetHitMask.Width, PetHitMask.Height));
 	}
 
 	[Fact]
@@ -96,29 +90,72 @@ public sealed class PetHitMaskTests
 		byte[] pixels = CreatePixels(PetHitMask.Width, PetHitMask.Height);
 		SetAlphaAtCellSample(pixels, PetHitMask.Width, PetHitMask.Height, 3, 2, 0.5, 0.5);
 		SetAlphaAtCellSample(pixels, PetHitMask.Width, PetHitMask.Height, 7, 5, 0.5, 0.5);
-		byte[] bits = new byte[PetHitMask.ByteLength];
-		PetHitMask.BuildFromSourcePixels(pixels, PetHitMask.Width, PetHitMask.Height, bits);
+		PetHitMask.Bounds bounds = PetHitMask.BuildFromSourcePixels(pixels, PetHitMask.Width, PetHitMask.Height);
 
-		Assert.True(PetHitMask.IsPointOnModel(bits, 5.5, 3.5, PetHitMask.Width, PetHitMask.Height));
-		Assert.False(PetHitMask.IsPointOnModel(bits, 2.5, 3.5, PetHitMask.Width, PetHitMask.Height));
-		Assert.False(PetHitMask.IsPointOnModel(bits, 8.5, 3.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.True(PetHitMask.IsPointOnModel(bounds, 5.5, 3.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.False(PetHitMask.IsPointOnModel(bounds, 2.5, 3.5, PetHitMask.Width, PetHitMask.Height));
+		Assert.False(PetHitMask.IsPointOnModel(bounds, 8.5, 3.5, PetHitMask.Width, PetHitMask.Height));
 
-		List<(int X, int Y, int Width, int Height)> regions = PetHitMask.BuildHitRegions(bits, 192, 256);
+		List<(int X, int Y, int Width, int Height)> regions = PetHitMask.BuildHitRegions(bounds, 192, 256);
 
 		Assert.Single(regions);
 		Assert.Equal((6, 4, 10, 8), regions[0]);
 	}
 
 	[Fact]
+	public void HitRegionUsesFloorAndCeilingForFractionalClientSize()
+	{
+		PetHitMask.Bounds bounds = new(3, 2, 7, 5, HasBounds: true);
+
+		List<(int X, int Y, int Width, int Height)> regions = PetHitMask.BuildHitRegions(bounds, 101.5, 203.25);
+
+		Assert.Equal((3, 3, 6, 7), Assert.Single(regions));
+	}
+
+	[Fact]
+	public void AlphaMustBeGreaterThanSixteen()
+	{
+		byte[] pixels = CreatePixels(PetHitMask.Width, PetHitMask.Height);
+		SetAlphaAtTop(pixels, PetHitMask.Width, PetHitMask.Height, 12, 34, alpha: 16);
+		PetHitMask.Bounds belowThreshold = PetHitMask.BuildFromSourcePixels(pixels, PetHitMask.Width, PetHitMask.Height);
+		Assert.True(belowThreshold.IsEmpty);
+
+		SetAlphaAtTop(pixels, PetHitMask.Width, PetHitMask.Height, 12, 34, alpha: 17);
+		PetHitMask.Bounds aboveThreshold = PetHitMask.BuildFromSourcePixels(pixels, PetHitMask.Width, PetHitMask.Height);
+		Assert.True(PetHitMask.IsPointOnModel(aboveThreshold, 12.5, 34.5, PetHitMask.Width, PetHitMask.Height));
+	}
+
+	[Fact]
 	public void InvalidOrEmptyBuffersProduceNoHits()
 	{
-		byte[] bits = Enumerable.Repeat(byte.MaxValue, PetHitMask.ByteLength).ToArray();
+		byte[] validSizePixels = CreatePixels(PetHitMask.Width, PetHitMask.Height);
+		PetHitMask.Bounds noVisiblePixels = PetHitMask.BuildFromSourcePixels(validSizePixels, PetHitMask.Width, PetHitMask.Height);
 
-		PetHitMask.BuildFromSourcePixels([], 0, 0, bits);
+		Assert.True(noVisiblePixels.IsEmpty);
+		Assert.False(PetHitMask.IsPointOnModel(noVisiblePixels, 1, 1, 100, 100));
+		Assert.False(PetHitMask.IsPointOnModel(default, 1, 1, 100, 100));
+		Assert.Empty(PetHitMask.BuildHitRegions(noVisiblePixels, 100, 100));
+		Assert.Empty(PetHitMask.BuildHitRegions(noVisiblePixels, 0, 100));
+		Assert.True(PetHitMask.BuildFromSourcePixels([], 0, 0).IsEmpty);
+		Assert.True(PetHitMask.BuildFromSourcePixels(new byte[3], 1, 1).IsEmpty);
+		Assert.True(PetHitMask.BuildFromReducedPixels(new byte[3], 1, 1).IsEmpty);
+	}
 
-		Assert.False(PetHitMask.IsPointOnModel(bits, 1, 1, 100, 100));
-		Assert.Empty(PetHitMask.BuildHitRegions(bits, 100, 100));
-		Assert.Empty(PetHitMask.BuildHitRegions(bits, 0, 100));
+	[Fact]
+	public void SourceSamplingDoesNotAllocatePerFrameMaskCopies()
+	{
+		byte[] pixels = CreatePixels(PetHitMask.Width, PetHitMask.Height);
+		SetAlphaAtTop(pixels, PetHitMask.Width, PetHitMask.Height, 48, 64);
+		_ = PetHitMask.BuildFromSourcePixels(pixels, PetHitMask.Width, PetHitMask.Height);
+
+		long before = GC.GetAllocatedBytesForCurrentThread();
+		for (int index = 0; index < 8; index++)
+		{
+			_ = PetHitMask.BuildFromSourcePixels(pixels, PetHitMask.Width, PetHitMask.Height);
+		}
+		long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+		Assert.Equal(0L, allocated);
 	}
 
 	private static byte[] CreatePixels(int width, int height) => new byte[checked(width * height * 4)];

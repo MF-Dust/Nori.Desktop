@@ -1,14 +1,11 @@
 /**
- * Nori 设计令牌 (单一色源)
+ * Nori 原生设计令牌 (单一色源)
  *
- * uno.config.ts 与 theme.less 的 :root 变量全部派生自这里。
- * 三处一致性由 tests/theme/tokens-sync.test.ts 看守, 任何一处漂移都会红。
- *
- * 参考 Nori.Web 的深灰蓝、低饱和青色与薄荷色对话。
- * Web 与原生资源由 scripts/sync-design-tokens.mjs 同步，文字优先满足可读性。
+ * Avalonia 主题资源和测量值由 scripts/sync-design-tokens.mjs 从这里生成。
+ * 调整颜色前先检查原生窗口的文字对比度。
  */
 
-/** 颜色令牌 (键即 CSS 变量名去掉 -- 前缀) */
+/** 颜色令牌 */
 export const COLORS = {
 	// 品牌与交互强调
 	"nori-teal": "#77c6d4",
@@ -114,21 +111,6 @@ export const RADIUS = {
 } as const
 
 /**
- * 阴影令牌
- *
- * elev-1/2/3 是层级刻度: 页面 → 卡片 → 卡片内卡片 → 浮层, 每升一级换一档。
- * 之前只有 soft/glow/window 三档, 嵌套卡片没有可用的层次差, 观感扁平。
- */
-export const SHADOWS = {
-	soft: "0 0.8rem 2.4rem rgba(0, 0, 0, 0.35)",
-	glow: "0 0 1.2rem rgba(158, 210, 210, 0.08)",
-	window: "0 0.8rem 3.2rem rgba(0, 0, 0, 0.35)",
-	"elev-1": "0 0.2rem 0.8rem rgba(0, 0, 0, 0.16)",
-	"elev-2": "0 0.4rem 1.6rem rgba(0, 0, 0, 0.24)",
-	"elev-3": "0 0.8rem 3.2rem rgba(0, 0, 0, 0.35)",
-} as const
-
-/**
  * 字号刻度 (1rem = 10px)
  *
  * 最小档位 1.15rem: 旧代码里 1rem / 1.05rem 的说明文字在深色玻璃上几乎不可读。
@@ -170,16 +152,3 @@ export const SPACING = {
 	"16": "6.4rem",
 	"20": "8rem",
 } as const
-
-/** 供运行时使用的 CSS 变量表 (theme.less 的 :root 必须与之逐条一致) */
-export const CSS_VARIABLES: Record<string, string> = {
-	...Object.fromEntries(Object.entries(COLORS).map(([key, value]) => [`--${key}`, value])),
-	...Object.fromEntries(Object.entries(RADIUS).map(([key, value]) => [`--radius-${key}`, value])),
-	...Object.fromEntries(Object.entries(SHADOWS).map(([key, value]) => [`--shadow-${key}`, value])),
-}
-
-/** 颜色令牌名 */
-export type ColorToken = keyof typeof COLORS
-
-/** 取 CSS 变量引用, 组件与 Uno 主题共用同一份间接层 */
-export const cssVar = (token: ColorToken): string => `var(--${token})`

@@ -89,8 +89,77 @@ public sealed class Live2DBehaviorLogicTests
 	}
 
 	[Fact]
+	public void 表情重新注册会推进参数索引缓存版本()
+	{
+		ExpressionStore store = new();
+		ExpressionGroupDefinition[] groups =
+		[
+			new ExpressionGroupDefinition
+			{
+				Name = "Group",
+				Parameters = [new ExpressionParameter
+				{
+					ParameterId = "ParamA",
+					Blend = ExpressionBlendMode.Add,
+					Value = 0.25f,
+				}],
+			},
+		];
+		ExpressionEntry[] entries =
+		[
+			new ExpressionEntry
+			{
+				Name = "ParamA",
+				ParameterId = "ParamA",
+				Blend = ExpressionBlendMode.Add,
+				CurrentValue = 0.0f,
+				ModelDefault = 0.0f,
+			},
+		];
+
+		store.RegisterExpressions("model-a", groups, entries);
+		long firstRevision = store.Revision;
+		store.RegisterExpressions("model-b", groups, entries);
+
+		Assert.True(store.Revision > firstRevision);
+		Assert.Equal("model-b", store.ModelId);
+	}
+
+	[Fact]
 	public void 眨眼只将动画系数乘到捕获基线()
 	{
 		Assert.Equal(0.2f, AutoBlinkBehavior.ApplyBlinkFactor(0.4f, 0.5f), 5);
+	}
+
+	[Fact]
+	public void 解绑后行为不再按参数名重新写入()
+	{
+		ModelParameters parameters = new();
+		parameters.UnbindModel();
+		Assert.False(parameters.IsBound);
+		Assert.Equal(-1, parameters.MouthOpenIndex);
+
+		BehaviorContext ctx = new()
+		{
+			ModelParameters = parameters,
+			IsIdleMotion = true,
+			AutoBlinkEnabled = true,
+			ForceIdleEyeAnimation = true,
+			BeatSyncEnabled = true,
+			IdleAnimationEnabled = true,
+			LipSyncEnabled = true,
+			ExpressionEnabled = true,
+		};
+		new AutoBlinkBehavior().Execute(ctx);
+		new EyeFocusBehavior().Execute(ctx);
+		new BeatSyncBehavior().Execute(ctx);
+		LipSyncBehavior lipSync = new();
+		lipSync.SetNowSpeaking(true);
+		lipSync.SetMouthOpen(1);
+		lipSync.Execute(ctx);
+		ExpressionBehavior expressions = new(new ExpressionStore());
+		expressions.UnbindModel();
+		expressions.Execute(ctx);
+		Assert.False(ctx.Handled);
 	}
 }

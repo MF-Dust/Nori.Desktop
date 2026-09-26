@@ -5,7 +5,7 @@ using Avalonia.Media.Immutable;
 
 namespace Nori.Desktop.Appearance;
 
-/// <summary>Web 与原生共享的深色设计令牌；静态画刷没有 UI 线程所有权。</summary>
+/// <summary>原生深色主题令牌；静态画刷没有 UI 线程所有权。</summary>
 internal static class NoriThemeTokens
 {
 	private static readonly IReadOnlyDictionary<string, string> Values = new Dictionary<string, string>

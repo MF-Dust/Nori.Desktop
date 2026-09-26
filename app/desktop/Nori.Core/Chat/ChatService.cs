@@ -161,6 +161,7 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 	private readonly NoriDatabase _database = database;
 	private readonly ConfigStore _config = config;
 	private readonly AiSettingsStore _aiSettings = new(config);
+	private readonly record struct PreparedRequest(string BaseUrl, ILlmAdapter Adapter, string SystemContent);
 
 	/// <summary>
 	/// 获取完整聊天历史 (按时间正序, 永不清除)
@@ -221,6 +222,61 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 		return (IReadOnlyList<ChatMessage>)messages;
 	});
 
+	/// <summary>按游标读取 Reflection 首批聊天；暂停恢复所需的尾部在同一数据库锁内读取。</summary>
+	internal (IReadOnlyList<ChatMessage> Pending, long NewestAssistantId, IReadOnlyList<ChatMessage> RecoveryTail)
+		GetReflectionHistory(long cursor, bool includeRecovery) => _database.Locked(connection =>
+	{
+		List<ChatMessage> pending;
+		using (SqliteCommand command = connection.CreateCommand())
+		{
+			command.CommandText = "SELECT id, role, content, created_at FROM chat_messages WHERE id > $cursor ORDER BY id ASC LIMIT 64";
+			command.Parameters.AddWithValue("$cursor", cursor);
+			using SqliteDataReader reader = command.ExecuteReader();
+			pending = ReadMessages(reader);
+		}
+
+		long newestAssistantId = cursor;
+		List<ChatMessage> recoveryTail = [];
+		if (includeRecovery && pending.Count > 0)
+		{
+			using (SqliteCommand command = connection.CreateCommand())
+			{
+				command.CommandText = "SELECT MAX(id) FROM chat_messages WHERE id > $cursor AND role = 'assistant'";
+				command.Parameters.AddWithValue("$cursor", cursor);
+				if (command.ExecuteScalar() is long id) newestAssistantId = id;
+			}
+
+			long firstBatchAssistantId = pending.LastOrDefault(message => message.Role == "assistant")?.Id ?? cursor;
+			if (newestAssistantId > firstBatchAssistantId)
+			{
+				using SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT id, role, content, created_at FROM chat_messages WHERE id > $first AND id <= $newest ORDER BY id DESC LIMIT 8";
+				command.Parameters.AddWithValue("$first", firstBatchAssistantId);
+				command.Parameters.AddWithValue("$newest", newestAssistantId);
+				using SqliteDataReader reader = command.ExecuteReader();
+				recoveryTail = ReadMessages(reader);
+				recoveryTail.Reverse();
+			}
+		}
+		return (pending, newestAssistantId, recoveryTail);
+	});
+
+	private static List<ChatMessage> ReadMessages(SqliteDataReader reader)
+	{
+		List<ChatMessage> messages = [];
+		while (reader.Read())
+		{
+			messages.Add(new ChatMessage
+			{
+				Id = reader.GetInt64(0),
+				Role = reader.GetString(1),
+				Content = reader.GetString(2),
+				CreatedAt = reader.GetString(3),
+			});
+		}
+		return messages;
+	}
+
 	/// <summary>
 	/// 发起一次对话
 	///
@@ -236,45 +292,11 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 		bool persist = true,
 		CancellationToken cancellationToken = default)
 	{
-		baseUrl = baseUrl.TrimEnd('/');
-		if (baseUrl.Length == 0) throw new ChatException("Base URL 不能为空");
-		if (apiKey.Length == 0) throw new ChatException("API Key 不能为空");
-		if (model.Length == 0) throw new ChatException("模型不能为空");
-		if (messages.Count == 0) throw new ChatException("消息不能为空");
-		ChatMessageInput.ValidateImageLimits(messages);
+		PreparedRequest request = PrepareRequest(providerStr, baseUrl, apiKey, model, messages);
 
-		// 若未指定 providerStr，优先读配置
-		if (string.IsNullOrWhiteSpace(providerStr))
-		{
-			providerStr = _aiSettings.Read().Chat.Provider.AsString();
-		}
-
-		LlmProvider provider = LlmProviderExtensions.ParseProvider(providerStr);
-		ILlmAdapter adapter = LlmClient.CreateAdapter(provider, _httpClient);
-
-		// 系统提示词 = 人格 + 当前模型动作列表附录
-		string modelId = _config.GetStringOr(ConfigStore.KeySelectedModel, "");
-		string systemContent = SystemPrompt.Value + MotionMarkers.BuildHint(_config, modelId);
-
-		using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-		timeout.CancelAfter(TimeSpan.FromSeconds(TimeoutSeconds));
-
-		string raw = await adapter.CompleteAsync(baseUrl, apiKey, model, systemContent, messages, timeout.Token);
-
-		// 解析动作标记: 剥离标记并广播给伴侣窗口播放
-		(string content, IReadOnlyList<string> motions) = MotionMarkers.Extract(raw);
-		foreach (string motion in motions) onMotion(motion);
-
-		// 写入历史: 仅保存最后一条输入与回复, 避免重复落库
-		if (persist)
-		{
-			if (messages.Count > 0)
-			{
-				SaveMessage(messages[^1].Role, messages[^1].Content);
-			}
-			SaveMessage("assistant", content);
-		}
-		return content;
+		using CancellationTokenSource timeout = CreateTimeout(cancellationToken);
+		string raw = await request.Adapter.CompleteAsync(request.BaseUrl, apiKey, model, request.SystemContent, messages, timeout.Token);
+		return CompleteSuccessfulRequest(raw, messages, onMotion, persist);
 	}
 
 	/// <summary>
@@ -294,6 +316,20 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 		bool persist = true,
 		CancellationToken cancellationToken = default)
 	{
+		PreparedRequest request = PrepareRequest(providerStr, baseUrl, apiKey, model, messages);
+
+		using CancellationTokenSource timeout = CreateTimeout(cancellationToken);
+		string raw = await request.Adapter.StreamAsync(request.BaseUrl, apiKey, model, request.SystemContent, messages, onChunk, onUsage, timeout.Token);
+		return CompleteSuccessfulRequest(raw, messages, onMotion, persist);
+	}
+
+	private PreparedRequest PrepareRequest(
+		string? providerStr,
+		string baseUrl,
+		string apiKey,
+		string model,
+		IReadOnlyList<ChatMessageInput> messages)
+	{
 		baseUrl = baseUrl.TrimEnd('/');
 		if (baseUrl.Length == 0) throw new ChatException("Base URL 不能为空");
 		if (apiKey.Length == 0) throw new ChatException("API Key 不能为空");
@@ -301,31 +337,32 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 		if (messages.Count == 0) throw new ChatException("消息不能为空");
 		ChatMessageInput.ValidateImageLimits(messages);
 
-		if (string.IsNullOrWhiteSpace(providerStr))
-		{
-			providerStr = _aiSettings.Read().Chat.Provider.AsString();
-		}
-
+		if (string.IsNullOrWhiteSpace(providerStr)) providerStr = _aiSettings.Read().Chat.Provider.AsString();
 		LlmProvider provider = LlmProviderExtensions.ParseProvider(providerStr);
 		ILlmAdapter adapter = LlmClient.CreateAdapter(provider, _httpClient);
-
 		string modelId = _config.GetStringOr(ConfigStore.KeySelectedModel, "");
 		string systemContent = SystemPrompt.Value + MotionMarkers.BuildHint(_config, modelId);
+		return new PreparedRequest(baseUrl, adapter, systemContent);
+	}
 
-		using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+	private static CancellationTokenSource CreateTimeout(CancellationToken cancellationToken)
+	{
+		CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		timeout.CancelAfter(TimeSpan.FromSeconds(TimeoutSeconds));
+		return timeout;
+	}
 
-		string raw = await adapter.StreamAsync(baseUrl, apiKey, model, systemContent, messages, onChunk, onUsage, timeout.Token);
-
+	private string CompleteSuccessfulRequest(
+		string raw,
+		IReadOnlyList<ChatMessageInput> messages,
+		Action<string> onMotion,
+		bool persist)
+	{
 		(string content, IReadOnlyList<string> motions) = MotionMarkers.Extract(raw);
 		foreach (string motion in motions) onMotion(motion);
-
 		if (persist)
 		{
-			if (messages.Count > 0)
-			{
-				SaveMessage(messages[^1].Role, messages[^1].Content);
-			}
+			SaveMessage(messages[^1].Role, messages[^1].Content);
 			SaveMessage("assistant", content);
 		}
 		return content;

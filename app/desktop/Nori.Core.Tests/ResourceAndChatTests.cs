@@ -713,6 +713,40 @@ public class ChatServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ChatService_普通调用不持久化仍返回动作结果()
+	{
+		using MockHttpMessageHandler handler = new(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+		{
+			Content = new StringContent("{\"choices\":[{\"message\":{\"content\":\"reply[nori_motion:smile]\"}}]}",
+				System.Text.Encoding.UTF8, "application/json")
+		});
+		using HttpClient client = new(handler);
+		ChatService chat = new(client, _database, _config);
+		List<string> motions = [];
+
+		string reply = await chat.CompleteAsync("openai", "https://api.openai.com/v1", "key", "gpt-4o",
+			[new ChatMessageInput("user", "hello")], motions.Add, persist: false);
+
+		Assert.Equal("reply", reply);
+		Assert.Equal(["smile"], motions);
+		Assert.Empty(chat.GetHistory());
+	}
+
+	[Fact]
+	public async Task ChatService_普通和流式调用使用相同输入校验()
+	{
+		using HttpClient client = new();
+		ChatService chat = new(client, _database, _config);
+		ChatMessageInput[] messages = [new("user", "hello")];
+		ChatException complete = await Assert.ThrowsAsync<ChatException>(() =>
+			chat.CompleteAsync("openai", "", "key", "gpt-4o", messages, _ => { }));
+		ChatException stream = await Assert.ThrowsAsync<ChatException>(() =>
+			chat.StreamAsync("openai", "", "key", "gpt-4o", messages, _ => { }, _ => { }));
+		Assert.Equal(complete.Message, stream.Message);
+		Assert.Empty(chat.GetHistory());
+	}
+
+	[Fact]
 	public void ChatService_SaveAndClearHistory()
 	{
 		using HttpClient client = new();

@@ -13,6 +13,11 @@ namespace Nori.Desktop.Live2D.Behaviors;
 public sealed class ExpressionBehavior(ExpressionStore store) : IBehaviorPlugin
 {
 	private readonly ExpressionStore _store = store;
+	private readonly record struct CachedParameter(ExpressionEntry Entry, int Index);
+	private bool _bound;
+	private CubismModel? _cachedModel;
+	private long _cachedStoreRevision = -1;
+	private CachedParameter[] _cachedParameters = [];
 
 	/// <summary>
 	/// 将后台准备好的表情定义同步应用到当前模型 (GL/渲染线程调用, 无 I/O)
@@ -50,19 +55,59 @@ public sealed class ExpressionBehavior(ExpressionStore store) : IBehaviorPlugin
 		}
 
 		_store.RegisterExpressions(prepared.ModelId, prepared.ExpressionGroups, entryMap.Values);
+		BindModel(model);
+	}
+
+	/// <summary>在当前模型绑定或表情集合注册后缓存动态参数索引。</summary>
+	internal void BindModel(CubismModel model)
+	{
+		_bound = true;
+		_cachedModel = model;
+		RefreshParameterCache(model);
+	}
+
+	internal void UnbindModel()
+	{
+		_bound = false;
+		_cachedModel = null;
+		_cachedStoreRevision = -1;
+		_cachedParameters = [];
+	}
+
+	private void EnsureParameterCache(CubismModel model)
+	{
+		if (ReferenceEquals(_cachedModel, model) && _cachedStoreRevision == _store.Revision) return;
+		RefreshParameterCache(model);
+	}
+
+	private void RefreshParameterCache(CubismModel model)
+	{
+		CachedParameter[] parameters = new CachedParameter[_store.Expressions.Count];
+		int index = 0;
+		foreach (ExpressionEntry entry in _store.Expressions.Values)
+		{
+			parameters[index++] = new CachedParameter(entry, model.GetParameterIndex(entry.ParameterId));
+		}
+
+		_cachedModel = model;
+		_cachedStoreRevision = _store.Revision;
+		_cachedParameters = parameters;
 	}
 
 	public void Execute(BehaviorContext ctx)
 	{
-		if (!ctx.ExpressionEnabled) return;
+		if (!_bound || !ctx.ExpressionEnabled) return;
 
-		var model = ctx.Model.Model;
-		foreach (ExpressionEntry entry in _store.Expressions.Values)
+		CubismModel model = ctx.Model.Model;
+		EnsureParameterCache(model);
+		foreach (CachedParameter parameter in _cachedParameters)
 		{
+			if (parameter.Index < 0) continue;
+			ExpressionEntry entry = parameter.Entry;
 			if (entry.IsNeutral()) continue;
 
-			float currentFrameValue = model.GetParameterValue(entry.ParameterId);
-			model.SetParameterValue(entry.ParameterId, entry.Apply(currentFrameValue));
+			float currentFrameValue = model.GetParameterValue(parameter.Index);
+			model.SetParameterValue(parameter.Index, entry.Apply(currentFrameValue));
 		}
 	}
 }

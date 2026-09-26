@@ -220,27 +220,26 @@ const HOST_COMMANDS = extractSwitchCommands(BRIDGE_COMMANDS_SOURCE, "object? res
 const PLUGIN_MANAGEMENT_COMMANDS = extractSwitchCommands(PLUGIN_MANAGEMENT_SOURCE, "return command switch")
 const PLUGIN_PAGE_COMMANDS = extractSwitchCommands(PLUGIN_BRIDGE_SOURCE, "return command switch")
 const TYPED_COMMANDS = extractTypedCommands(TYPED_COMMANDS_SOURCE)
-const TYPED_HOST_COMMANDS = TYPED_COMMANDS.filter(command => !command.startsWith("plugin_"))
-// plugin_action (动作调用) 与 plugin_widgets (聊天卡片槽) 走独立路由, 不属于管理命令
-const TYPED_PLUGIN_COMMANDS = TYPED_COMMANDS.filter(
-	command => command.startsWith("plugin_") && command !== "plugin_action" && command !== "plugin_widgets")
+const AUDIO_HOST_COMMANDS = [
+	"audio_host_ready",
+	"audio_level",
+	"audio_playback_finished",
+	"audio_record_failed",
+	"audio_record_ready",
+	"audio_upload_failed",
+	"write_log",
+]
 
 describe("Bridge 跨语言命令契约", () => {
-	it("宿主真实分支与 typed map 完全一致", () => {
-		expect(sorted(HOST_COMMANDS)).toEqual(sorted(TYPED_HOST_COMMANDS))
-		expect(HOST_COMMANDS).not.toContain("overwrite")
-		expect(HOST_COMMANDS).not.toContain("create_copy")
+	it("音频宿主 typed map 只公开实际调用并已注册的命令", () => {
+		expect(sorted(TYPED_COMMANDS)).toEqual(sorted(AUDIO_HOST_COMMANDS))
+		for (const command of TYPED_COMMANDS) expect(HOST_COMMANDS).toContain(command)
+		expect(BRIDGE_ROUTER_SOURCE).toContain('"audio_host_ready"')
+		expect(BRIDGE_ROUTER_SOURCE).toContain('"audio_upload_failed"')
+		expect(BRIDGE_ROUTER_SOURCE).toContain('"write_log"')
 	})
 
-	it("plugin_action 与 plugin_widgets 已类型化且不进管理命令表", () => {
-		expect(TYPED_COMMANDS).toContain("plugin_action")
-		expect(TYPED_COMMANDS).toContain("plugin_widgets")
-		expect(PLUGIN_MANAGEMENT_COMMANDS).not.toContain("plugin_action")
-		expect(PLUGIN_MANAGEMENT_COMMANDS).not.toContain("plugin_widgets")
-	})
-
-	it("插件管理命令走独立路由且与 typed map 完全一致", () => {
-		expect(sorted(PLUGIN_MANAGEMENT_COMMANDS)).toEqual(sorted(TYPED_PLUGIN_COMMANDS))
+	it("插件管理命令继续走独立路由", () => {
 		expect(sorted(PLUGIN_MANAGEMENT_COMMANDS)).toEqual(sorted([
 			"plugin_list",
 			"plugin_install_local",
@@ -253,7 +252,7 @@ describe("Bridge 跨语言命令契约", () => {
 		expect(BRIDGE_ROUTER_SOURCE).toContain("runtime.InvokeManagementAsync")
 	})
 
-	it("插件页面白名单不混入宿主命令 map", () => {
+	it("插件 WebView RPC 仍保留独立页面白名单", () => {
 		expect(sorted(PLUGIN_PAGE_COMMANDS)).toEqual([
 			"ping",
 			"plugin_get_capabilities",
@@ -261,7 +260,8 @@ describe("Bridge 跨语言命令契约", () => {
 			"window_close",
 			"window_get_info",
 		])
-		expect(TYPED_COMMANDS).not.toContain("plugin_get_info")
-		expect(TYPED_COMMANDS).not.toContain("plugin_get_capabilities")
+		expect(PLUGIN_BRIDGE_SOURCE).toContain("plugin_get_capabilities")
+		expect(PLUGIN_BRIDGE_SOURCE).toContain("plugin_get_info")
+		expect(PLUGIN_BRIDGE_SOURCE).toContain("window_get_info")
 	})
 })

@@ -1,36 +1,11 @@
 import {invoke} from "../host/invoke"
 
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal"
-export type LogEventId = "vue.error" | "window.error" | "promise.rejection" | "resource.error" | "feedback.error" | "audio.error" | "app.initialization_failed" | "logging.suppressed" | "app.mounted" | "app.initialized" | "pet.shown" | "pet.hidden" | "clipboard.copied" | "diagnostics.test" | "client.event"
-export interface RuntimeLogEntry {
-	time: string
-	level: LogLevel
-	source: "backend" | "frontend"
-	message: string
-	timestamp: string
-	sessionId: string
-	sequence: number
-	category: string | null
-	eventId: string | null
-	windowLabel: string | null
-	operationId: string | null
-	exceptionType: string | null
-	exceptionSite: string | null
-}
-export interface LoggingStatus {
-	minimumLevel: LogLevel
-	droppedCount: number
-	writeFailureCount: number
-	lastError: string | null
-	stopped: boolean
-}
+export type LogEventId = "audio.error" | "logging.suppressed"
 
 /** 日志只传递稳定事件与已知错误类型，不接受异常正文或任意对象。 */
 export const WriteLogEvent = (level: LogLevel, eventId: LogEventId, errorType?: string, suppressedCount?: number): Promise<void> =>
 	invoke("write_log", {level, eventId, message: "", errorType, ...(suppressedCount === undefined ? {} : {suppressedCount})})
-
-export const GetLoggingStatus = (): Promise<LoggingStatus> => invoke("get_logging_status")
-export const SetLoggingLevel = (level: LogLevel): Promise<void> => invoke("set_logging_level", {level})
 
 const COUNTS = new Map<string, {start: number; count: number}>()
 const ERROR_NAMES = new Set(["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "AggregateError"])

@@ -106,6 +106,15 @@ public class VoiceTextSanitizerTests
 		Assert.Equal("全家福", VoiceTextSanitizer.StripKaomoji("全家福👨‍👩‍👧"));
 	}
 
+	[Theory]
+	[InlineData("𠮷野家", "𠮷野家")]
+	[InlineData("数学字符𝕏仍保留", "数学字符𝕏仍保留")]
+	[InlineData("𠮷野家😊", "𠮷野家")]
+	public void 非Emoji补充平面字符会保留(string input, string expected)
+	{
+		Assert.Equal(expected, VoiceTextSanitizer.StripKaomoji(input));
+	}
+
 	[Fact]
 	public void 版权与商标符号被移除()
 	{

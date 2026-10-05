@@ -97,11 +97,18 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 			VerticalAlignment = VerticalAlignment.Center,
 			Children =
 			{
-				Logo(84),
-				Heading(english ? "Nori is here" : "Nori 来了", 22),
+				/*
+				 * 使用 NoriHalo 而非静态标志位图。
+				 *
+				 * 本页紧接初始化窗口，后者刚完成 Dormant → Connected 的档位序列；
+				 * 此处换成静态图会中断视觉连续性。取 Waking 档：已就绪但无进行中的任务，
+				 * 与本步骤的语义一致。
+				 */
+				new Ui.NoriHalo(104) {Mood = Ui.HaloMood.Waking, HorizontalAlignment = HorizontalAlignment.Center},
+				Heading(english ? "Nori Desktop Companion" : "Nori 桌面伴侣", 22),
 				Muted(english
-					? "A desktop companion that talks, remembers, and can use your tools."
-					: "一个会说话、会记事、也能动手用工具的桌面伴侣。", 340),
+					? "A desktop companion with conversation, long-term memory and tool use."
+					: "支持对话、长期记忆与工具调用的桌面伴侣。", 340),
 				new TextBlock
 				{
 					Text = version, Foreground = ChatPalette.Faint, FontSize = 11,
@@ -136,7 +143,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 
 		return Stage(
 			Heading(english ? "Choose a language" : "选择语言", 19),
-			Muted(english ? "You can change this later in Settings." : "之后可以在设置里改。", 320),
+			Muted(english ? "Can be changed in Settings." : "可在设置中修改。", 320),
 			list);
 	}
 
@@ -324,7 +331,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 			fetch.IsEnabled = false;
 			result.IsVisible = true;
 			result.Foreground = ChatPalette.Muted;
-			result.Text = english ? "Fetching..." : "正在获取...";
+			result.Text = english ? "Fetching…" : "正在获取…";
 			try
 			{
 				IReadOnlyList<string> names = await _services.Llm.FetchModelsAsync(
@@ -332,7 +339,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 				result.Foreground = ChatPalette.Teal;
 				result.Text = english
 					? $"{names.Count} models available"
-					: $"拉到 {names.Count} 个模型";
+					: $"已获取 {names.Count} 个模型";
 				if (model.Text is null or "" && names.Count > 0) model.Text = names[0];
 			}
 			catch (Exception failure)
@@ -348,7 +355,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 
 		Button skip = new()
 		{
-			Content = english ? "Skip for now" : "暂时跳过",
+			Content = english ? "Skip" : "跳过",
 			Background = Brushes.Transparent, Foreground = ChatPalette.Faint,
 			BorderThickness = default, FontSize = 11,
 			HorizontalAlignment = HorizontalAlignment.Center,
@@ -363,10 +370,10 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		};
 
 		return Stage(
-			Heading(english ? "Connect a model provider" : "接入模型服务", 19),
+			Heading(english ? "Configure a model provider" : "配置模型服务", 19),
 			Muted(english
-				? "This step is optional — you can fill it in later in Settings."
-				: "这一步可以跳过，之后在设置里补也行。", 340),
+				? "Optional. Can be configured in Settings."
+				: "此步骤可跳过，可在设置中配置。", 340),
 			Field(english ? "Protocol" : "协议", provider),
 			Field(english ? "API base URL" : "接口地址", baseUrl),
 			Field(english ? "API key" : "密钥", apiKey),
@@ -427,22 +434,22 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		telemetry.IsCheckedChanged += (_, _) => TelemetryEnabled = telemetry.IsChecked == true;
 
 		string aiLine = AiSaved
-			? english ? "Model provider: configured" : "模型服务：已接入"
-			: english ? "Model provider: can be added later in Settings" : "模型服务：之后可在设置里补";
+			? english ? "Model provider: configured" : "模型服务：已配置"
+			: english ? "Model provider: not configured" : "模型服务：未配置";
 		string modelLine = SelectedModel.Length > 0
 			? (english ? "Appearance: " : "形象：") + SelectedModel
-			: english ? "Appearance: none" : "形象：未选";
+			: english ? "Appearance: not selected" : "形象：未选择";
 
 		return Stage(
 			Logo(64),
-			Heading(english ? "All set" : "准备好了", 20),
+			Heading(english ? "Configuration summary" : "配置摘要", 20),
 			Muted(modelLine, 340),
 			Muted(aiLine, 340),
 			telemetry,
 			new TextBlock
 			{
 				Text = available
-					? english ? "You can change this any time in Settings." : "随时可以在设置里改。"
+					? english ? "Can be changed in Settings." : "可在设置中修改。"
 					: english ? "Diagnostics are unavailable in this build." : "此版本不提供诊断上报。",
 				Foreground = ChatPalette.Faint, FontSize = 11,
 				HorizontalAlignment = HorizontalAlignment.Center,

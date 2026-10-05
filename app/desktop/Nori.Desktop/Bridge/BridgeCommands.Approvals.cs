@@ -23,6 +23,8 @@ public sealed partial class BridgeCommands
 			or "mcp_test_server"
 			or "mcp_call_tool"
 			or "mcp_import_url"
+			or "cloud_backup"
+			or "cloud_restore"
 			or "updater_check"
 			or "updater_install"
 			or "tts_test"

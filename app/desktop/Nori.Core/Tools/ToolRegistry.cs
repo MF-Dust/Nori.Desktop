@@ -22,6 +22,9 @@ public sealed class RegisteredTool
 	/// <summary>权限级别: safe / confirm / dangerous</summary>
 	public required string PermissionLevel { get; init; }
 
+	/// <summary>明确只读且支持并发；默认顺序执行，权限级别不代表无副作用。</summary>
+	public bool IsReadOnly { get; init; }
+
 	/// <summary>分类: builtin / mcp / custom</summary>
 	public string Category { get; init; } = "builtin";
 
@@ -274,6 +277,7 @@ public sealed class ToolRegistry
 			Description = description,
 			Parameters = source.Parameters,
 			PermissionLevel = source.PermissionLevel,
+			IsReadOnly = source.IsReadOnly,
 			Category = source.Category,
 			Enabled = source.Enabled,
 			Execute = source.Execute,

@@ -113,6 +113,21 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	/// <summary>运行时快照失效时通知原生设置窗口。</summary>
 	public event Action? StateChanged;
 
+	private string _lastCloudSyncMessage = "";
+
+	/// <summary>
+	/// 最近一次云端同步动作的结果，给设置页显示。
+	///
+	/// 放在这里而不是页面里：页面的只读字段只从快照取值，页面自己存一份就要绕开那条
+	/// 通路去改控件，而那会把字段标成「有未保存的编辑」，之后的快照刷新全部被跳过。
+	/// 走快照还有一个好处 —— 切走再切回来，那句话还在。
+	/// </summary>
+	internal string LastCloudSyncMessage
+	{
+		get => Volatile.Read(ref _lastCloudSyncMessage);
+		set => Volatile.Write(ref _lastCloudSyncMessage, value ?? "");
+	}
+
 	private int _snapshotVersion = 1;
 	private readonly Lock _snapshotCacheGate = new();
 	private object? _cachedSnapshot;

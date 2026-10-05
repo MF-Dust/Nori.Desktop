@@ -536,6 +536,20 @@ public sealed partial class BridgeCommands
 		// invoke("tools_execute_manual", {name, arguments}) — 设置页手动测试, 仅放行 safe 工具
 		"tools_execute_manual" => await ToolsExecuteManualAsync(source, args),
 
+		// ---- 账户与云端同步 ----
+		// 调用方：设置页「账户」分区（AccountSettingsPage）。打开账户窗口（登录）。
+		"account_open" => await RequireMainAsync(source, () => OnUi(() => Run(_services.Windows.ShowAccount))),
+		// 调用方：设置页「账户」分区。打开云端同步窗口，删除与冲突处置都在那扇窗上。
+		"cloud_open" => await RequireMainAsync(source, () => OnUi(() => Run(_services.Windows.ShowCloudSync))),
+		// 调用方：设置页「账户」分区。先告知服务端，再清本机。
+		"account_sign_out" => await RequireMainAsync(source, () => SignOutAsync(cancellationToken)),
+		// 调用方：设置页「账户」分区。冲突不是错误，原样回给调用方，由人来选留哪一份。
+		"cloud_backup" => await RequireMainAsync(source, () => CloudSyncAsync(
+			token => _services.CloudSync.BackupAsync(overwrite: false, token), cancellationToken)),
+		// 调用方：设置页「账户」分区。合并语义：本机有、存档里没有的记忆与提醒会留下。
+		"cloud_restore" => await RequireMainAsync(source, () => CloudSyncAsync(
+			token => _services.CloudSync.RestoreAsync(token), cancellationToken)),
+
 		// ---- 定时提醒 ----
 		/// invoke("reminder_add", {content, delayMinutes}) 添加倒计时提醒
 		"reminder_add" => RequireMain(source, () =>

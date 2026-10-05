@@ -13,8 +13,10 @@ using Avalonia.Threading;
 using Nori.Core.Configuration;
 using Nori.Core.Logging;
 using Nori.Core.Platform;
+using Nori.Desktop.Account;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
+using Nori.Desktop.Ui;
 
 namespace Nori.Desktop.Windows;
 
@@ -95,6 +97,8 @@ public sealed class InitWindow : Window
 		if (_started || !IsVisible) return;
 		_view.SetLanguage(IsEnglish());
 		_view.StartAnimation();
+		// 入场序列与初始化并行，不 await：await 会使动效计入启动耗时。
+		_ = _view.PlayIntroAsync();
 
 		if (_services.Runtime is not { } runtime)
 		{
@@ -133,6 +137,8 @@ public sealed class InitWindow : Window
 		try
 		{
 			if (_services.Runtime is not { } runtime) throw new InvalidOperationException("运行时尚未就绪");
+			// 收尾必须排在打开主界面**之前**：主界面显示后本窗口即被隐藏，排在其后不会被渲染。
+			await _view.PlayHandoffAsync();
 			await runtime.EnterMainFromInitAsync();
 		}
 		catch (Exception failure)
@@ -167,11 +173,8 @@ internal sealed class InitView : Panel
 	/// <summary>光环直径。窗口只有 320 高，留给状态文字和超时卡片的余量得够。</summary>
 	private const double RingOuterSize = 150;
 
-	private readonly Panel _halo;
-	private readonly Image _logo;
-	private readonly Ellipse _outerRing;
-	private readonly Ellipse _innerRing;
-	private readonly Ellipse _glow;
+	private readonly NoriHalo _halo;
+	private readonly ScaleTransform _wake = new(1, 1);
 	private readonly TextBlock _status;
 	private readonly StackPanel _statusCapsule;
 	private readonly Border _timeoutCard;
@@ -180,59 +183,15 @@ internal sealed class InitView : Panel
 	private readonly Button _retry;
 	private readonly TextBlock _retryError;
 
-	private readonly RotateTransform _outerRotation = new();
-	private readonly RotateTransform _innerRotation = new();
-	private readonly ScaleTransform _breathe = new(1, 1);
-
-	private DispatcherTimer? _ticker;
-	private double _phase;
 	private bool _english;
 
 	internal InitView(bool english, Action onRetry)
 	{
 		_english = english;
 
-		_outerRing = new Ellipse
-		{
-			Width = RingOuterSize, Height = RingOuterSize,
-			Stroke = ChatPalette.Accent, StrokeThickness = 1, StrokeDashArray = [4, 6],
-			Opacity = 0.40, RenderTransform = _outerRotation,
-			RenderTransformOrigin = RelativePoint.Center,
-		};
-		_innerRing = new Ellipse
-		{
-			Width = RingOuterSize - 26, Height = RingOuterSize - 26,
-			Stroke = ChatPalette.Teal, StrokeThickness = 1, StrokeDashArray = [1, 5],
-			Opacity = 0.30, RenderTransform = _innerRotation,
-			RenderTransformOrigin = RelativePoint.Center,
-		};
-		_glow = new Ellipse
-		{
-			Width = RingOuterSize - 52, Height = RingOuterSize - 52,
-			Fill = new RadialGradientBrush
-			{
-				GradientStops =
-				[
-					new GradientStop(NoriThemeTokens.Color("glow-teal-soft"), 0),
-					new GradientStop(NoriThemeTokens.Color("line-subtle"), 0.45),
-					new GradientStop(Colors.Transparent, 0.75),
-				],
-			},
-		};
-		_logo = new Image
-		{
-			Width = 84, Height = 84,
-			Stretch = Stretch.Uniform,
-			RenderTransform = _breathe,
-			RenderTransformOrigin = RelativePoint.Center,
-			Source = LoadLogo(),
-		};
-
-		_halo = new Panel
-		{
-			Width = RingOuterSize, Height = RingOuterSize,
-			Children = {_outerRing, _innerRing, _glow, _logo},
-		};
+		// 品牌标记走共用控件。启动画面要的是「在忙」那一档 —— 双环反向转、呼吸、
+		// 光晕脉动，跟原来逐帧一致。
+		_halo = new NoriHalo(RingOuterSize) {Mood = HaloMood.Working};
 
 		_status = new TextBlock
 		{
@@ -289,6 +248,10 @@ internal sealed class InitView : Panel
 			Spacing = 18,
 			HorizontalAlignment = HorizontalAlignment.Center,
 			VerticalAlignment = VerticalAlignment.Center,
+			// 开场时整组一起放大到位。放在这一层而不是各控件各缩各的 —— 那样
+			// 它们会各自从不同的地方长出来，读起来是三样东西而不是一屏。
+			RenderTransform = _wake,
+			RenderTransformOrigin = RelativePoint.Center,
 			Children = {_halo, _statusCapsule, _timeoutCard},
 		});
 
@@ -346,43 +309,116 @@ internal sealed class InitView : Panel
 	}
 
 	/// <summary>起转。窗口可见时才应该转 —— 隐藏着空转一个定时器没有意义。</summary>
-	internal bool AnimationRunning => _ticker?.IsEnabled == true;
+	internal bool AnimationRunning => _halo.IsRunning;
 
 	internal void StartAnimation()
 	{
-		if (_ticker is not null || _timeoutCard.IsVisible) return;
-		_ticker = new DispatcherTimer {Interval = TimeSpan.FromMilliseconds(33)};
-		_ticker.Tick += (_, _) =>
-		{
-			_phase += 0.033;
-			// 两圈反向转，周期取原来 CSS 上的 14s 与 22s。
-			_outerRotation.Angle = _phase / 14 * 360 % 360;
-			_innerRotation.Angle = 360 - _phase / 22 * 360 % 360;
-			// 呼吸：4 秒一个来回，幅度 3%。
-			double scale = 1 + 0.03 * Math.Sin(_phase / 4 * 2 * Math.PI);
-			_breathe.ScaleX = scale;
-			_breathe.ScaleY = scale;
-			_glow.Opacity = 0.65 + 0.25 * Math.Sin(_phase / 3 * 2 * Math.PI);
-		};
-		_ticker.Start();
+		if (_timeoutCard.IsVisible) return;
+		_halo.Start();
 	}
 
-	internal void StopAnimation()
+	internal void StopAnimation() => _halo.Stop();
+
+	/*
+	 * ── 启动序列 ──────────────────────────────────────────────────────────
+	 *
+	 * HaloMood 已定义 Dormant / Waking / Working / Connected 四档，此前这一页
+	 * 固定使用 Working，不区分初始化的开始与结束。本段按四档依次切换：
+	 *
+	 *   Dormant ─► Waking ─► Working（初始化在此期间执行）─► Connected ─► 打开主界面
+	 *
+	 * 三条约束：
+	 *
+	 *   ① **不得增加启动耗时。**入场序列不被 await，与初始化并行执行；初始化先完成
+	 *      时直接进入收尾，入场序列中止于当前档位。
+	 *   ② 收尾固定 280ms。此前主界面打开是无过渡切换，这是本序列唯一主动占用的时间。
+	 *   ③ 系统「减少动画」偏好开启时整段跳过，直接呈现终态。
+	 */
+
+	/// <summary>入场序列每一档的停留时长。</summary>
+	private static readonly TimeSpan Beat = TimeSpan.FromMilliseconds(260);
+
+	private bool _introDone;
+
+	/// <summary>
+	/// 将入场序列直接置为终态。
+	///
+	/// 初始化早于入场序列完成时调用。此时序列无需继续，但它设置的中间值（不透明度、
+	/// 缩放）必须复位，否则界面停留在过渡中的数值上。
+	/// </summary>
+	internal void SettleIntro()
 	{
-		_ticker?.Stop();
-		_ticker = null;
+		_introDone = true;
+		Opacity = 1;
+		_wake.ScaleX = _wake.ScaleY = 1;
+		_statusCapsule.Opacity = 1;
+		if (_halo.Mood != HaloMood.Connected) _halo.Mood = HaloMood.Working;
 	}
 
-	/// <summary>标志图。取不到就不画 —— 一个缺图的启动画面仍然能用。</summary>
-	private static Bitmap? LoadLogo()
+	/// <summary>入场序列。调用方**不得** await —— 它不应阻塞初始化。</summary>
+	internal async Task PlayIntroAsync()
 	{
-		try
+		if (!MotionPreference.AllowAnimation)
 		{
-			return new Bitmap(AssetLoader.Open(new Uri("avares://Nori.Desktop/Assets/logo.png")));
+			_halo.Mood = HaloMood.Working;
+			_statusCapsule.Opacity = 1;
+			_introDone = true;
+			return;
 		}
-		catch
+
+		// 整体淡入并轻微放大，作为单次入场，不对各元素分别做进入动效。
+		_halo.Mood = HaloMood.Dormant;
+		_statusCapsule.Opacity = 0;
+		_wake.ScaleX = _wake.ScaleY = 0.94;
+		Opacity = 0;
+
+		await FadeAsync(Beat,
+			value => Opacity = value,
+			value => _wake.ScaleX = _wake.ScaleY = 0.94 + 0.06 * value);
+		if (_introDone) return;
+
+		// 唯一一次提亮：外环由中性灰转强调色，标志不透明度到 1。
+		_halo.Mood = HaloMood.Waking;
+		await Task.Delay(Beat);
+		if (_introDone) return;
+
+		// 进入 Working 后才显示状态文字：Dormant 档尚未开始初始化，提前显示与实际状态不符。
+		_halo.Mood = HaloMood.Working;
+		await FadeAsync(Beat, value => _statusCapsule.Opacity = value);
+		_introDone = true;
+	}
+
+	/// <summary>
+	/// 收尾：切到 Connected 档，停留 280ms 后打开主界面。
+	///
+	/// Connected 在账户窗口表示会话已建立，在此表示初始化完成，两处语义一致。
+	/// </summary>
+	internal async Task PlayHandoffAsync()
+	{
+		// 初始化可能早于入场序列完成。先复位序列设置的中间值，否则收尾会叠加在
+		// 未完成的淡入与缩放上。
+		SettleIntro();
+		if (!MotionPreference.AllowAnimation) return;
+
+		_halo.Mood = HaloMood.Connected;
+		await Task.Delay(TimeSpan.FromMilliseconds(280));
+	}
+
+	/// <summary>
+	/// 逐帧推进一个 0→1 的插值量。
+	///
+	/// 使用循环而非 Avalonia Transition：本序列可能被初始化完成中断，而交给属性系统的
+	/// 过渡无法在中途接管。
+	/// </summary>
+	private static async Task FadeAsync(TimeSpan span, params Action<double>[] apply)
+	{
+		int frames = Math.Max(1, (int)(span.TotalMilliseconds / 16));
+		for (int frame = 1; frame <= frames; frame++)
 		{
-			return null;
+			// ease-out：末段速度递减，终止时无突变。
+			double eased = 1 - Math.Pow(1 - (double)frame / frames, 3);
+			foreach (Action<double> set in apply) set(eased);
+			await Task.Delay(16);
 		}
 	}
 }

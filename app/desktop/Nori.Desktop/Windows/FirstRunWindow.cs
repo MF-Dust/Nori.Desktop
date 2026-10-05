@@ -50,11 +50,6 @@ public sealed class FirstRunWindow : Window
 		Foreground = ChatPalette.Accent, FontSize = 12, FontWeight = FontWeight.SemiBold,
 		VerticalAlignment = VerticalAlignment.Center,
 	};
-	private readonly TextBlock _counter = new()
-	{
-		Foreground = ChatPalette.Faint, FontSize = 12,
-		VerticalAlignment = VerticalAlignment.Center,
-	};
 	private readonly ContentControl _stage = new() {Margin = new Thickness(28, 18)};
 	private readonly Button _back = new();
 	private readonly Button _forward = new();
@@ -141,9 +136,10 @@ public sealed class FirstRunWindow : Window
 
 	private Control BuildChrome()
 	{
-		Grid heading = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+		Grid heading = new() { ColumnDefinitions = new ColumnDefinitions("*") };
 		heading.Children.Add(Place(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _pips, _stepLabel } }, 0, HorizontalAlignment.Left));
-		heading.Children.Add(Place(_counter, 1, HorizontalAlignment.Right));
+		// 「3 / 5」那一条去掉了：左边已经有圆点（看得出位置）和步骤名
+		// （看得出是哪一步），再写一遍数字是同一件事的第三种说法。
 		NativeWindowChrome header = new(this, IsEnglish, heading) { Height = 44 };
 
 		_back.Click += (_, _) => Back();
@@ -265,8 +261,8 @@ public sealed class FirstRunWindow : Window
 		if (_steps.SelectedModel.Length == 0
 			|| !await Task.Run(() => _services.Resources.IsInstalled(ResourceType.Live2D, _steps.SelectedModel), cancellationToken))
 			throw new InvalidOperationException(IsEnglish()
-				? "Choose an appearance before starting"
-				: "开始之前要先选一个形象");
+				? "No appearance selected"
+				: "未选择形象，无法完成初始化");
 
 		if (_closed) throw new OperationCanceledException("首次运行向导已关闭");
 		cancellationToken.ThrowIfCancellationRequested();
@@ -316,7 +312,6 @@ public sealed class FirstRunWindow : Window
 			});
 		}
 		_stepLabel.Text = FirstRunSteps.Title(state.Step, english);
-		_counter.Text = $"{state.Index + 1} / {FirstRunWizard.Order.Count}";
 
 		RenderFooter();
 	}
@@ -334,7 +329,7 @@ public sealed class FirstRunWindow : Window
 		bool submitting = state.FinishState == WizardFinishState.Submitting;
 		_forward.Content = state.IsLast
 			? submitting
-				? english ? "Starting..." : "正在启动..."
+				? english ? "Starting…" : "正在启动…"
 				: state.FinishError.Length > 0
 					? english ? "Retry" : "重试"
 					: english ? "Start" : "开始使用"

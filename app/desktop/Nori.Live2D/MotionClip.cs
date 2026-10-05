@@ -114,12 +114,17 @@ public sealed class MotionCurve
 			cursor += length;
 		}
 		_segments = segments.ToArray();
+		// 含贝塞尔控制点：段里既有时间也有取值，这里只取值（Y）。
+		MaxValue = _segments.Aggregate(_first.Y, (max, segment) =>
+			Math.Max(max, Math.Max(Math.Max(segment.A.Y, segment.B.Y), segment.End.Y)));
 	}
 
 	public string Target { get; }
 	public string Id { get; }
 	public float FadeIn { get; }
 	public float FadeOut { get; }
+	/// <summary>曲线上所有点（含贝塞尔控制点）取值的最大值，解析时算好。</summary>
+	public float MaxValue { get; }
 
 	public float Evaluate(float time)
 	{

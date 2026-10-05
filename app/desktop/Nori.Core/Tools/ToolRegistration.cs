@@ -96,6 +96,10 @@ public static class ToolRegistration
 			Description = description,
 			Parameters = parameters,
 			PermissionLevel = permissionLevel,
+			// 仅宿主明确只读的内置工具并发；插件不走这个注册入口。
+			IsReadOnly = name is "getTime" or "getDate" or "getSystemInfo" or "searchMemory"
+				or "listReminders" or "getBatteryStatus" or "getWeather" or "calculate"
+				or "anySearch" or "searchWeb" or "listFiles" or "readFile" or "searchFiles" or "findFiles",
 			Execute = execute,
 		});
 	}

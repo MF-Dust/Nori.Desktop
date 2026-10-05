@@ -29,6 +29,18 @@ public sealed class WindowManager : IWindowManager
 	private Task? _modelsCloseTask;
 	private Task? _chatCloseTask;
 
+	/// <summary>
+	/// 账户窗口。
+	///
+	/// 不放进 <c>_windows</c>：那张表里的窗口关掉只是隐藏，而账户窗口是一次性的 ——
+	/// 登录完就该消失，下次打开应当是一份干净的表单，不是上次那份还留着邮箱与错误提示
+	/// 的。留这个引用只为不让它开出第二扇。
+	/// </summary>
+	private AccountWindow? _accountWindow;
+
+	/// <summary>云端同步窗口。和账户窗口一样是按需建、关掉即销毁的一次性窗口。</summary>
+	private Account.CloudSyncWindow? _cloudSyncWindow;
+
 	/// <summary>生产入口仍由 Avalonia 生命周期执行最终退出。</summary>
 	public WindowManager(IClassicDesktopStyleApplicationLifetime lifetime)
 		: this(lifetime.Shutdown)
@@ -214,7 +226,7 @@ public sealed class WindowManager : IWindowManager
 	{
 		Dispatcher.UIThread.VerifyAccess();
 		if (Volatile.Read(ref _shutdownRequested) != 0) return;
-		if (page is not null && page is not ("ai" or "voice" or "proactive" or "skills" or "mcp" or "automation" or "plugins" or "general" or "updates" or "debug" or "about"))
+		if (page is not null && page is not ("ai" or "voice" or "proactive" or "skills" or "mcp" or "automation" or "plugins" or "general" or "account" or "updates" or "debug" or "about"))
 			throw new ArgumentException("未知的设置页面", nameof(page));
 		if (Get(WindowLabels.Settings) is not SettingsWindow settings)
 		{
@@ -227,6 +239,62 @@ public sealed class WindowManager : IWindowManager
 		if (settings.WindowState == WindowState.Minimized) settings.WindowState = WindowState.Normal;
 		settings.Show();
 		settings.Activate();
+	}
+
+	/// <inheritdoc />
+	public void ShowAccount()
+	{
+		Dispatcher.UIThread.VerifyAccess();
+		if (Volatile.Read(ref _shutdownRequested) != 0) return;
+
+		if (_accountWindow is {} existing)
+		{
+			// 已经开着就把它带到前面。再开一扇会有两份表单各自持有一个验证码状态，
+			// 而服务端那边只有一个。
+			if (existing.WindowState == WindowState.Minimized) existing.WindowState = WindowState.Normal;
+			existing.Show();
+			existing.Activate();
+			return;
+		}
+
+		AppServices services = _services ?? throw new InvalidOperationException("应用窗口尚未就绪");
+		Account.SignInCoordinator coordinator = services.SignIn;
+
+		AccountWindow window = new(
+			state => coordinator.SubmitAsync(state, services.ShutdownToken),
+			_ =>
+			{
+				// 只负责把引用放掉。登录成功后的界面刷新（快照失效 + 托盘标题）挂在
+				// SignInCoordinator.SignedIn 上 —— 见 AppServices.CreateSignIn，
+				// 那里覆盖全部登录入口，不只这一扇窗。
+				_accountWindow = null;
+			},
+			coordinator.Session.LastMethod);
+		_accountWindow = window;
+		window.Show();
+		window.Activate();
+	}
+
+	/// <inheritdoc />
+	public void ShowCloudSync()
+	{
+		Dispatcher.UIThread.VerifyAccess();
+		if (Volatile.Read(ref _shutdownRequested) != 0) return;
+
+		if (_cloudSyncWindow is {} existing)
+		{
+			if (existing.WindowState == WindowState.Minimized) existing.WindowState = WindowState.Normal;
+			existing.Show();
+			existing.Activate();
+			return;
+		}
+
+		AppServices services = _services ?? throw new InvalidOperationException("应用窗口尚未就绪");
+		Account.CloudSyncWindow window = new(services.CloudSync, services.ShutdownToken);
+		window.Closed += (_, _) => _cloudSyncWindow = null;
+		_cloudSyncWindow = window;
+		window.Show();
+		window.Activate();
 	}
 
 	/// <summary>检查原生记忆页面键，供窗口调度和桥接入口共同使用。</summary>

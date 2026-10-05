@@ -100,6 +100,35 @@ public sealed partial class AppRuntime
 		(int activeMemories, int atomCount, int archivedMemories, int totalMemories) = Memory.GetOverview();
 		Nori.Core.Memory.MemoryIndexStatus memoryIndex = Knowledge.Status;
 
+		/*
+		 * 登录态。读不出来（平台密钥库不可用）时按未登录呈现 —— 快照构建失败会让整个
+		 * 设置窗口打不开，而这一条只是一行状态文字，不值得让它有这个权力。
+		 */
+		object accountSnapshot;
+		try
+		{
+			Nori.Core.Cloud.AccountSession session = new(config);
+			Nori.Core.Cloud.CloudAccount? signedInAs = session.Current;
+			accountSnapshot = new
+			{
+				signedIn = signedInAs is not null,
+				email = signedInAs?.Email ?? "",
+				// 本机最后一次见到的云端版本号。0 表示这台机器还没同步过。
+				cloudRevision = Nori.Core.Cloud.CloudSyncService.KnownRevisionOf(config),
+				available = true,
+				lastSyncMessage = LastCloudSyncMessage,
+			};
+		}
+		catch (Exception exception) when (exception is not OutOfMemoryException)
+		{
+			Services.Logger.Write(LogSource.Backend, "warn", $"读取登录态失败: {exception.GetType().Name}");
+			accountSnapshot = new
+			{
+				signedIn = false, email = "", cloudRevision = 0, available = false,
+				lastSyncMessage = LastCloudSyncMessage,
+			};
+		}
+
 		return new
 		{
 			version = snapshotVersion,
@@ -110,6 +139,14 @@ public sealed partial class AppRuntime
 				platform = PlatformOsName(),
 				safeMode = Services.SafeMode,
 			},
+			/*
+			 * 账户与云端同步。
+			 *
+			 * **只放本机状态，不放云端状态。** 云端有没有存档、是什么时候的，都要发一次
+			 * 网络请求才知道，而快照是同步构建并且带缓存的 —— 在这里发请求会让每一次界面
+			 * 刷新都挂在网络上，断网时整个设置窗口转圈。云端那一侧由同步窗口按需去取。
+			 */
+			account = accountSnapshot,
 			general = new
 			{
 				language = config.GetStringOr("language", "zh-CN"),

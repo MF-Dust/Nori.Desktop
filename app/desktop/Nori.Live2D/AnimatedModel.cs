@@ -5,6 +5,8 @@ namespace Nori.Live2D;
 /// <summary>模型与动画的独占运行实例；仅接收已准备的数据，不访问文件或图形上下文。</summary>
 public sealed class AnimatedModel : IDisposable
 {
+	private const string IdleGroup = "Idle";
+
 	private readonly Dictionary<string, BoundMotion[]> _groups = new(StringComparer.Ordinal);
 	private readonly MotionPlayer _motions;
 	private readonly BreathPlayer _breath;
@@ -35,7 +37,8 @@ public sealed class AnimatedModel : IDisposable
 			{
 				if (!motions.TryGetValue($"{group.Key}_{i}", out MotionClip? clip) || clip is null)
 					throw new InvalidOperationException($"缺少预加载动作: {group.Key}_{i}");
-				entries[i] = new(clip, group.Value[i]);
+				// 加载时判一次就够：曲线不会变，而待机每隔几秒就要挑一次。
+				entries[i] = new(clip, group.Value[i], MotionEyeState.KeepsEyesClosed(clip));
 			}
 			_groups.Add(group.Key, entries);
 		}
@@ -67,7 +70,7 @@ public sealed class AnimatedModel : IDisposable
 			throw new ArgumentOutOfRangeException(nameof(deltaSeconds), "模型时间增量必须是有限非负数");
 		// 快照只保存动作结果，宿主行为、呼吸及物理不累积进下一帧的基准。
 		Model.LoadParameters();
-		if (RandomMotion && _motions.IsFinished) StartRandomMotion("Idle", MotionPriority.Idle);
+		if (RandomMotion && _motions.IsFinished) StartRandomMotion(IdleGroup, MotionPriority.Idle);
 		else _motions.Update(deltaSeconds);
 		Model.SaveParameters();
 		BeforeEffects?.Invoke();
@@ -95,8 +98,13 @@ public sealed class AnimatedModel : IDisposable
 	{
 		ObjectDisposedException.ThrowIf(_disposed, this);
 		string? key = ResolveGroup(group);
-		return key is null || _groups[key].Length == 0 ? null
-			: StartMotion(key, Random.Shared.Next(_groups[key].Length), priority, finished);
+		if (key is null || _groups[key].Length == 0) return null;
+		BoundMotion[] entries = _groups[key];
+		// 待机组避开全程闭眼的睡觉动作，见 MotionEyeState。
+		int index = key.Equals(IdleGroup, StringComparison.OrdinalIgnoreCase)
+			? MotionEyeState.PickIndex([.. entries.Select(entry => entry.EyesClosed)], Random.Shared)
+			: Random.Shared.Next(entries.Length);
+		return StartMotion(key, index, priority, finished);
 	}
 
 	public void StopAllMotions()
@@ -141,5 +149,5 @@ public sealed class AnimatedModel : IDisposable
 		: _groups.ContainsKey(group) ? group
 		: _groups.Keys.FirstOrDefault(key => key.Equals(group, StringComparison.OrdinalIgnoreCase));
 
-	private sealed record BoundMotion(MotionClip Clip, ModelMotion Reference);
+	private sealed record BoundMotion(MotionClip Clip, ModelMotion Reference, bool EyesClosed);
 }

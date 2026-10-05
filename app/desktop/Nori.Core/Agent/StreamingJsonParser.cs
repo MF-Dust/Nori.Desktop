@@ -243,7 +243,8 @@ public sealed class StreamingJsonParser
 				}
 
 				return new ProtocolToolCall(
-					GetStringOrNull(root, "id") ?? $"call_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+					// 缺少编号时保留空值，让执行跟踪按名称与参数去重；时间戳会碰撞也会破坏重复查询复用。
+					GetStringOrNull(root, "id") ?? "",
 					nameElem.GetString()!,
 					args);
 			}

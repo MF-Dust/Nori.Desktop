@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Live2D;
 
@@ -20,10 +21,11 @@ public sealed class PetSpeechOverlay : Border
 		MaxWidth = 280;
 		Margin = new Avalonia.Thickness(8, 10);
 		Padding = new Avalonia.Thickness(12, 8);
-		Background = new SolidColorBrush(Color.FromArgb(235, 10, 26, 40));
-		BorderBrush = new SolidColorBrush(Color.FromArgb(180, 125, 227, 255));
+		// 与其他窗口同一套玻璃面与青色描边，不再使用调色板之外的天蓝。
+		Background = NoriThemeTokens.Brush("bg-glass-modal");
+		BorderBrush = NoriThemeTokens.Brush("line-glow");
 		BorderThickness = new Avalonia.Thickness(1);
-		CornerRadius = new Avalonia.CornerRadius(10);
+		CornerRadius = new Avalonia.CornerRadius(NoriMetrics.RadiusMd);
 		BoxShadow = new BoxShadows(new BoxShadow
 		{
 			Blur = 18,
@@ -35,8 +37,8 @@ public sealed class PetSpeechOverlay : Border
 
 		_text = new TextBlock
 		{
-			Foreground = new SolidColorBrush(Color.FromRgb(220, 240, 255)),
-			FontSize = 13,
+			Foreground = NoriThemeTokens.Brush("text-primary"),
+			FontSize = NoriMetrics.FontBase,
 			TextWrapping = TextWrapping.Wrap,
 			TextAlignment = TextAlignment.Center,
 		};

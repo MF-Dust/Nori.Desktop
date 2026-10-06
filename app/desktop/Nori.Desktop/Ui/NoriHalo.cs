@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Nori.Desktop.Appearance;
 using Nori.Desktop.Chat;
 
 namespace Nori.Desktop.Ui;
@@ -103,8 +104,8 @@ internal sealed class NoriHalo : Panel
 			{
 				GradientStops =
 				[
-					new GradientStop(Color.Parse("#3a7de3ff"), 0),
-					new GradientStop(Color.Parse("#1a7de3ff"), 0.45),
+					new GradientStop(WithAlpha(NoriThemeTokens.Color("nori-teal-bright"), 0x3a), 0),
+					new GradientStop(WithAlpha(NoriThemeTokens.Color("nori-teal-bright"), 0x1a), 0.45),
 					new GradientStop(Colors.Transparent, 0.75),
 				],
 			},
@@ -239,6 +240,8 @@ internal sealed class NoriHalo : Panel
 		_glow.Opacity = _current.Glow;
 		_logo.Opacity = _current.Logo;
 	}
+
+	private static Color WithAlpha(Color color, byte alpha) => Color.FromArgb(alpha, color.R, color.G, color.B);
 
 	private static Color Blend(Color from, Color to, double k) => Color.FromArgb(
 		(byte)(from.A + (to.A - from.A) * k),

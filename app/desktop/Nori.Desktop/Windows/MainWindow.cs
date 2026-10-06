@@ -27,14 +27,14 @@ public sealed class MainWindow : Window
 	private readonly AppServices _services;
 	private readonly HomeView _home;
 	private readonly Border _sidebar = new();
-	private readonly TextBlock _homeLabel = Label(14, ChatPalette.Teal);
-	private readonly TextBlock _groupLabel = Label(12, ChatPalette.Faint);
-	private readonly TextBlock _pageTitle = Label(24, ChatPalette.Primary);
-	private readonly TextBlock _pageSubtitle = Label(12);
-	private readonly TextBlock _brandCaption = Label(12);
-	private readonly TextBlock _hints = Label(12);
-	private readonly TextBlock _error = Label(12, ChatPalette.Danger);
-	private readonly TextBlock _petStatus = Label(12);
+	private readonly TextBlock _homeLabel = Label(NoriMetrics.FontMd, ChatPalette.Teal);
+	private readonly TextBlock _groupLabel = Label(NoriMetrics.FontXs, ChatPalette.Faint);
+	private readonly TextBlock _pageTitle = Label(NoriMetrics.Font3xl, ChatPalette.Primary);
+	private readonly TextBlock _pageSubtitle = Label(NoriMetrics.FontXs);
+	private readonly TextBlock _brandCaption = Label(NoriMetrics.FontXs);
+	private readonly TextBlock _hints = Label(NoriMetrics.FontXs);
+	private readonly TextBlock _error = Label(NoriMetrics.FontXs, ChatPalette.Danger);
+	private readonly TextBlock _petStatus = Label(NoriMetrics.FontXs);
 	private readonly Ellipse _petDot = new() {Width = 6, Height = 6};
 	private readonly Button _collapse = new() {Name = "CollapseSidebar", BorderThickness = default};
 	private readonly Button _petToggle = new() {Name = "TogglePet"};
@@ -146,7 +146,7 @@ public sealed class MainWindow : Window
 			Children =
 			{
 				MainVisual.Icon("sparkles", 23, ChatPalette.Teal),
-				new TextBlock {Text = "Nori", FontSize = 18, FontWeight = FontWeight.SemiBold, Foreground = ChatPalette.Primary},
+				new TextBlock {Text = "Nori", FontSize = NoriMetrics.FontXl, FontWeight = FontWeight.SemiBold, Foreground = ChatPalette.Primary},
 				new Border {Width = 1, Height = 14, Background = ChatPalette.Line, Margin = new Thickness(4, 0)},
 				_brandCaption,
 			},
@@ -160,7 +160,7 @@ public sealed class MainWindow : Window
 		_homeLabel.FontWeight = FontWeight.SemiBold;
 		Border home = new()
 		{
-			Background = ChatPalette.Panel, CornerRadius = new CornerRadius(8), Padding = new Thickness(13, 12),
+			Background = ChatPalette.Panel, CornerRadius = new CornerRadius(NoriMetrics.RadiusSm), Padding = new Thickness(13, 12),
 			BorderBrush = ChatPalette.Teal, BorderThickness = new Thickness(2, 0, 0, 0),
 			Child = new StackPanel {Orientation = Orientation.Horizontal, Spacing = 12, Children = {MainVisual.Icon("home", 20, ChatPalette.Teal), _homeLabel}},
 		};
@@ -168,7 +168,7 @@ public sealed class MainWindow : Window
 		StackPanel navigation = new() {Spacing = 5, Children = {home, _groupLabel}};
 		foreach (string window in new[] {WindowLabels.Chat, WindowLabels.Models, WindowLabels.Memory, WindowLabels.Settings})
 		{
-			TextBlock label = Label(13, ChatPalette.Body);
+			TextBlock label = Label(NoriMetrics.FontBase, ChatPalette.Body);
 			Ellipse dot = new() {Width = 6, Height = 6, Fill = ChatPalette.Teal, IsVisible = false};
 			Ellipse badge = new() {Width = 6, Height = 6, Fill = ChatPalette.Accent, IsVisible = false};
 			Grid row = new() {ColumnDefinitions = new ColumnDefinitions("20,*,Auto"), ColumnSpacing = 8};
@@ -263,7 +263,7 @@ public sealed class MainWindow : Window
 	{
 		_error.Text = IsEnglish() ? "Unable to complete this action. Please try again." : "操作未完成，请重试。";
 		_error.IsVisible = true;
-		_services.Logger.Write(LogSource.Backend, "warn", $"主界面操作失败：{failure.GetType().Name}");
+		_services.Logger.Write(LogSource.Backend, "warn", "主界面操作失败", exception: failure);
 	}
 
 	private void RefreshChrome(bool english)
@@ -283,7 +283,7 @@ public sealed class MainWindow : Window
 		_collapse.Content = new StackPanel
 		{
 			Orientation = Orientation.Horizontal, Spacing = 10,
-			Children = {MainVisual.Icon(_collapsed ? "right" : "left", 16), new TextBlock {Text = collapseText, FontSize = 12, IsVisible = !_collapsed}},
+			Children = {MainVisual.Icon(_collapsed ? "right" : "left", 16), new TextBlock {Text = collapseText, FontSize = NoriMetrics.FontXs, IsVisible = !_collapsed}},
 		};
 		NameControl(_collapse, collapseText);
 		foreach (LauncherEntry launcher in _launchers)
@@ -428,7 +428,7 @@ public sealed class MainWindow : Window
 				}
 				catch (Exception exception) when (exception is not OperationCanceledException)
 				{
-					_services.Logger.Write(LogSource.Backend, "warn", $"刷新主界面失败：{exception.GetType().Name}");
+					_services.Logger.Write(LogSource.Backend, "warn", "刷新主界面失败", exception: exception);
 					break;
 				}
 				if (!_updatesEnabled || _closed || !IsVisible) break;

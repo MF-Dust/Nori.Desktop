@@ -121,7 +121,7 @@ public sealed partial class AppRuntime
 		}
 		catch (Exception exception) when (exception is not OutOfMemoryException)
 		{
-			Services.Logger.Write(LogSource.Backend, "warn", $"读取登录态失败: {exception.GetType().Name}");
+			Services.Logger.Write(LogSource.Backend, "warn", "读取登录态失败", exception: exception);
 			accountSnapshot = new
 			{
 				signedIn = false, email = "", cloudRevision = 0, available = false,

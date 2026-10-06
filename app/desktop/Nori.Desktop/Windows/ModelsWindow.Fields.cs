@@ -6,6 +6,7 @@ using Avalonia.Layout;
 using Nori.Core.Live2D;
 using Nori.Desktop.Memory;
 using static Nori.Desktop.SnapshotJson;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Windows;
 
@@ -155,7 +156,7 @@ public sealed partial class ModelsWindow
 		MemorySettingDraft draft = DisplayDraft(id, field, initial);
 		var slider = new Slider { Minimum = min, Maximum = max, SmallChange = step, LargeChange = step * 5, TickFrequency = step, IsSnapToTickEnabled = true, Name = "ModelsDisplay_" + id + "_" + field };
 		Localize(() => Avalonia.Automation.AutomationProperties.SetName(slider, label()));
-		var value = Text("", 13, true); value.MinWidth = 54; value.VerticalAlignment = VerticalAlignment.Center;
+		var value = Text("", NoriMetrics.FontBase, true); value.MinWidth = 54; value.VerticalAlignment = VerticalAlignment.Center;
 		Brush(value, TextBlock.ForegroundProperty, "SettingsAccentBrush");
 		slider.PropertyChanged += (_, args) => { if (args.Property == RangeBase.ValueProperty && !_applying) { _revision++; draft.Set(slider.Value); } };
 		Bind(() => { slider.Value = Convert.ToDouble(draft.Value); value.Text = format(Convert.ToDouble(draft.Value)); });
@@ -180,7 +181,7 @@ public sealed partial class ModelsWindow
 			Bind(() => button.IsChecked = expression.Length == 0 ? ((string[])draft.Value).Length == 0 : ((string[])draft.Value).Contains(expression));
 			choices.Children.Add(button);
 		}
-		var body = Stack(Local(() => T("表情", "Expression"), 13, true), new ScrollViewer { Content = choices, MaxHeight = 160, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+		var body = Stack(Local(() => T("表情", "Expression"), NoriMetrics.FontBase, true), new ScrollViewer { Content = choices, MaxHeight = 160, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
 		if (Strings(P(meta, "expressions")).Length == 0) body.Children.Add(Secondary(() => T("该模型没有可用表情。", "This model has no expressions.")));
 		body.Children.Add(Secondary(() => T("表情为单选，再次点击可取消。", "Select one expression; click it again to clear it.")));
 		return body;

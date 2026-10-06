@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Nori.Desktop.Chat;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Account;
 
@@ -54,7 +55,7 @@ internal static class PoweredByNcn
 		TextBlock name = new()
 		{
 			Text = Brand,
-			FontSize = 11,
+			FontSize = NoriMetrics.FontXs,
 			FontWeight = FontWeight.Medium,
 			// 低于正文的对比度：归属标识不参与主要信息层级。
 			Foreground = ChatPalette.Muted,

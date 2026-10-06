@@ -8,6 +8,7 @@ using Nori.Desktop.Memory;
 using Nori.Desktop.Models;
 using Nori.Desktop.Settings;
 using static Nori.Desktop.SnapshotJson;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Windows;
 
@@ -16,7 +17,7 @@ public sealed partial class ModelsWindow
 	private readonly Border _previewHost = new()
 	{
 		Name = "ModelsPreviewHost",
-		CornerRadius = new CornerRadius(12),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
 		BorderThickness = new Thickness(1),
 		ClipToBounds = true,
 		HorizontalAlignment = HorizontalAlignment.Stretch,

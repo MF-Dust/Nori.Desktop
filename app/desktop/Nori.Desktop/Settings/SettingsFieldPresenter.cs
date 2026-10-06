@@ -6,6 +6,7 @@ using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Settings;
 
@@ -77,7 +78,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 		_label = new TextBlock
 		{
 			Text = _field.Label,
-			FontSize = 13,
+			FontSize = NoriMetrics.FontBase,
 			FontWeight = FontWeight.Medium,
 			Foreground = Brush("SettingsPrimaryBrush"),
 			VerticalAlignment = VerticalAlignment.Top,
@@ -86,7 +87,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 		_description = new TextBlock
 		{
 			Text = _field.Description,
-			FontSize = 12,
+			FontSize = NoriMetrics.FontXs,
 			TextWrapping = TextWrapping.Wrap,
 			Foreground = Brush("SettingsSecondaryBrush"),
 			Margin = new Thickness(0, 4, 0, 0),
@@ -104,7 +105,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 		_error = new TextBlock
 		{
 			Text = _field.ErrorText,
-			FontSize = 12,
+			FontSize = NoriMetrics.FontXs,
 			Foreground = Brush("SettingsErrorBrush"),
 			TextWrapping = TextWrapping.Wrap,
 			IsVisible = !string.IsNullOrWhiteSpace(_field.ErrorText),
@@ -178,7 +179,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 			_readOnlyText = new SelectableTextBlock
 			{
 				Text = _field.Text, TextWrapping = TextWrapping.Wrap,
-				Foreground = Brush("SettingsPrimaryBrush"), FontSize = 13,
+				Foreground = Brush("SettingsPrimaryBrush"), FontSize = NoriMetrics.FontBase,
 			};
 			return _readOnlyText;
 		}

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia.Media;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Expression;
 
@@ -14,7 +15,7 @@ public static class ExpressionColors
 	/// </summary>
 	public static Color Parse(string hex, byte alpha = 255)
 	{
-		if (string.IsNullOrWhiteSpace(hex)) return Color.FromArgb(alpha, 0x8F, 0xA3, 0xB0);
+		if (string.IsNullOrWhiteSpace(hex)) return Fallback(alpha);
 
 		string value = hex.TrimStart('#');
 		return value.Length == 6
@@ -22,7 +23,14 @@ public static class ExpressionColors
 			&& byte.TryParse(value[2..4], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out byte g)
 			&& byte.TryParse(value[4..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out byte b)
 			? Color.FromArgb(alpha, r, g, b)
-			: Color.FromArgb(alpha, 0x8F, 0xA3, 0xB0);
+			: Fallback(alpha);
+	}
+
+	// 中性兜底色取次级文字令牌，与界面其余灰阶一致。
+	private static Color Fallback(byte alpha)
+	{
+		Color color = NoriThemeTokens.Color("text-faint");
+		return Color.FromArgb(alpha, color.R, color.G, color.B);
 	}
 
 	/// <summary>转成 Windows 那边用的 `0x00BBGGRR`。注册表与 DWM 都按这个字节序存颜色。</summary>

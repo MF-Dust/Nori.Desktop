@@ -9,19 +9,20 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using static Nori.Desktop.SnapshotJson;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Chat;
 
 public sealed partial class ChatView
 {
 	private readonly Border _modal = new() { Name = "ChatModal", Background = ChatPalette.Scrim, IsVisible = false };
-	private readonly TextBlock _dialogTitle = Text("", 18, true);
-	private readonly TextBlock _approvalName = Text("", 14, true);
-	private readonly TextBlock _approvalDescription = Text("", 12);
-	private readonly TextBlock _approvalQueue = Text("", 12);
-	private readonly TextBlock _approvalCountdown = Text("", 12);
-	private readonly TextBlock _dialogError = Text("", 12);
-	private readonly SelectableTextBlock _approvalArgs = new() { FontSize = 12, FontFamily = new FontFamily("Consolas, Menlo, monospace"), TextWrapping = TextWrapping.Wrap, Foreground = ChatPalette.Body };
+	private readonly TextBlock _dialogTitle = Text("", NoriMetrics.FontXl, true);
+	private readonly TextBlock _approvalName = Text("", NoriMetrics.FontMd, true);
+	private readonly TextBlock _approvalDescription = Text("", NoriMetrics.FontXs);
+	private readonly TextBlock _approvalQueue = Text("", NoriMetrics.FontXs);
+	private readonly TextBlock _approvalCountdown = Text("", NoriMetrics.FontXs);
+	private readonly TextBlock _dialogError = Text("", NoriMetrics.FontXs);
+	private readonly SelectableTextBlock _approvalArgs = new() { FontSize = NoriMetrics.FontXs, FontFamily = new FontFamily("Consolas, Menlo, monospace"), TextWrapping = TextWrapping.Wrap, Foreground = ChatPalette.Body };
 	private readonly ScrollViewer _argsScroll = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 70 };
 	private Border _dialogPanel = null!;
 	private Control _approvalBody = null!;
@@ -54,7 +55,7 @@ public sealed partial class ChatView
 		foreach (var kind in new[] { "minimize", "zoom" })
 		{
 			var disabled = NativeWindowChrome.TrafficButton(kind, kind == "zoom" ? "+" : "−");
-			disabled.IsEnabled = false; disabled.Opacity = .35; lights.Children.Add(disabled);
+			disabled.IsEnabled = false; disabled.Opacity = NoriMetrics.OpacityDisabled; lights.Children.Add(disabled);
 		}
 		heading.Children.Add(lights); Grid.SetColumn(_dialogTitle, 1); heading.Children.Add(_dialogTitle); dialog.Children.Add(heading);
 		var contents = new Grid();
@@ -63,11 +64,11 @@ public sealed partial class ChatView
 		_approvalQueue.Foreground = ChatPalette.Muted; approval.Children.Add(_approvalQueue);
 		_approvalDescription.Foreground = ChatPalette.Muted; approval.Children.Add(_approvalDescription);
 		var argsHeading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12 };
-		TextBlock argsLabel = Local(() => T("调用参数", "Call arguments"), 11.5); argsLabel.Foreground = ChatPalette.Muted; argsLabel.VerticalAlignment = VerticalAlignment.Center; argsHeading.Children.Add(argsLabel);
+		TextBlock argsLabel = Local(() => T("调用参数", "Call arguments"), NoriMetrics.FontXs); argsLabel.Foreground = ChatPalette.Muted; argsLabel.VerticalAlignment = VerticalAlignment.Center; argsHeading.Children.Add(argsLabel);
 		_expandArgs = Button(() => T("展开", "Expand"), () => { _argsExpanded = !_argsExpanded; RenderDialog(); return Task.CompletedTask; }, "ChatApprovalExpand");
 		Grid.SetColumn(_expandArgs, 1); argsHeading.Children.Add(_expandArgs); approval.Children.Add(argsHeading);
 		_argsScroll.Content = _approvalArgs;
-		approval.Children.Add(new Border { Background = ChatPalette.Deep, CornerRadius = new CornerRadius(8), Padding = new Thickness(10), Child = _argsScroll });
+		approval.Children.Add(new Border { Background = ChatPalette.Deep, CornerRadius = new CornerRadius(NoriMetrics.RadiusSm), Padding = new Thickness(10), Child = _argsScroll });
 		_approvalCountdown.Foreground = ChatPalette.Muted; approval.Children.Add(_approvalCountdown);
 		_approvalBody = approval; contents.Children.Add(approval);
 		_clearDescription = Local(() => T("确定清空当前所有对话历史吗？清空后无法撤销。", "Clear the whole conversation history? This cannot be undone.")); contents.Children.Add(_clearDescription);
@@ -86,7 +87,7 @@ public sealed partial class ChatView
 		AutomationProperties.SetLiveSetting(_dialogError, AutomationLiveSetting.Assertive);
 		Grid.SetRow(_dialogError, 2); dialog.Children.Add(_dialogError);
 		Grid.SetRow(footer, 3); dialog.Children.Add(footer);
-		_dialogPanel = new Border { Name = "ChatDialogPanel", MaxWidth = 560, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20), Padding = new Thickness(24), Background = ChatPalette.Background, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16), Child = dialog };
+		_dialogPanel = new Border { Name = "ChatDialogPanel", MaxWidth = 560, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20), Padding = new Thickness(24), Background = ChatPalette.Background, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(NoriMetrics.RadiusLg), Child = dialog };
 		_modal.Child = _dialogPanel; _root.Children.Add(_modal);
 		SizeChanged += (_, _) => _dialogPanel.MaxHeight = Math.Max(160, Bounds.Height - 40);
 	}

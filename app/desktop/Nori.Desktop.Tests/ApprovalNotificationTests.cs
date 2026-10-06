@@ -121,9 +121,9 @@ public partial class BridgeCommandsTests
 		Assert.False(_runtime.RespondApprovalFromNotification("approval-one", true));
 		Assert.False(_runtime.Permissions.Remembered("session", "writeFile"));
 		if (failOnShow)
-			Assert.Contains(_services.Logger.RecentLogs(), entry => entry.Message == "显示系统通知失败：InvalidOperationException");
+			Assert.Contains(_services.Logger.RecentLogs(), entry => entry.Message == "显示系统通知失败" && entry.ExceptionType == "System.InvalidOperationException");
 		if (failOnHide)
-			Assert.Contains(_services.Logger.RecentLogs(), entry => entry.Message == "撤销系统通知失败：InvalidOperationException");
+			Assert.Contains(_services.Logger.RecentLogs(), entry => entry.Message == "撤销系统通知失败" && entry.ExceptionType == "System.InvalidOperationException");
 	});
 
 	[Theory]
@@ -179,7 +179,7 @@ public partial class BridgeCommandsTests
 		Assert.False(decision.IsCompleted);
 		Assert.Empty(notifier.Hidden);
 		if (failOnOpen)
-			Assert.Contains(_services.Logger.RecentLogs(), entry => entry.Message == "处理系统通知失败：InvalidOperationException");
+			Assert.Contains(_services.Logger.RecentLogs(), entry => entry.Message == "处理系统通知失败" && entry.ExceptionType == "System.InvalidOperationException");
 		await ActivateToastFromBackgroundAsync(ToastActivation.Encode(ToastAction.Deny, "approval-one"));
 		Assert.False(await decision.WaitAsync(TimeSpan.FromSeconds(2)));
 	});

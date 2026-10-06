@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using Nori.Core.Memory;
 using static Nori.Desktop.SnapshotJson;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Windows;
 
@@ -144,14 +145,14 @@ public sealed partial class MemoryWindow
 		JsonElement data = await _service.ExecuteAsync("memory_export", null, _lifetime.Token);
 		if (S(data, "content").Length == 0) throw new InvalidOperationException(L("transfer.exportFailed"));
 		_exportData = data;
-		_exportDetails.Children.Add(Text(L("transfer.exportStatsTitle"), 15, true));
+		_exportDetails.Children.Add(Text(L("transfer.exportStatsTitle"), NoriMetrics.FontLg, true));
 		_exportDetails.Children.Add(Text(L("transfer.privacyBadge")));
 		_exportDetails.Children.Add(Row(
 			Text($"{L("transfer.totalExported")}: {N(data, "totalCount")}"),
 			Text($"{L("transfer.activeExported")}: {N(data, "activeCount")}"),
 			Text($"{L("transfer.archivedExported")}: {N(data, "archivedCount")}")));
-		_exportDetails.Children.Add(Text($"{T("格式版本", "Format version")}: {S(data, "version")} · {T("导出时间", "Exported at")}: {Date(S(data, "exportedAt"))}", 12));
-		_exportDetails.Children.Add(Stack(Text(L("transfer.sanitizedFieldsTitle"), 12, true), Text(string.Join(" · ", Items(P(data, "sanitizedFields")).Select(field => field.ToString())))));
+		_exportDetails.Children.Add(Text($"{T("格式版本", "Format version")}: {S(data, "version")} · {T("导出时间", "Exported at")}: {Date(S(data, "exportedAt"))}", NoriMetrics.FontXs));
+		_exportDetails.Children.Add(Stack(Text(L("transfer.sanitizedFieldsTitle"), NoriMetrics.FontXs, true), Text(string.Join(" · ", Items(P(data, "sanitizedFields")).Select(field => field.ToString())))));
 		_exportDetails.Children.Add(Text(L("transfer.sanitizedNotice")));
 		UpdateTransferActions();
 		Success(L("transfer.exportSuccess"));
@@ -270,18 +271,18 @@ public sealed partial class MemoryWindow
 		catch (Exception) when (version != _transferVersion) { return; }
 		if (version != _transferVersion) return;
 		_importPreview = data;
-		_importDetails.Children.Add(Text(L("transfer.previewSummaryTitle"), 15, true));
+		_importDetails.Children.Add(Text(L("transfer.previewSummaryTitle"), NoriMetrics.FontLg, true));
 		foreach (var (key, label) in new[] { ("totalCount", "totalToImport"), ("newCount", "newItems"), ("duplicateCount", "duplicateItems"), ("conflictCount", "conflictItems"), ("errorCount", "errorItems") })
 			_importDetails.Children.Add(Text($"{L("transfer." + label)}: {N(data, key)}"));
 		_importDetails.Children.Add(Text(L("transfer.previewNotice")));
 		JsonElement[] items = Items(P(data, "items")).ToArray();
-		_importDetails.Children.Add(Text($"{L("transfer.previewListTitle")} ({items.Length})", 14, true));
+		_importDetails.Children.Add(Text($"{L("transfer.previewListTitle")} ({items.Length})", NoriMetrics.FontMd, true));
 		foreach (JsonElement item in items)
 		{
 			string conflictKey = S(item, "conflictType") switch { "duplicate" => "duplicateLabel", "conflict" => "conflictLabel", _ => "newLabel" };
-			_importDetails.Children.Add(Card("", Text($"#{N(item, "id")} · {L("transfer." + conflictKey)} · {Kind(S(item, "kind"))}", 12, true),
-				Text(S(item, "contentSummary")), Text($"{L("detail.importance")}: {N(item, "importance"):P0} · {L("detail.confidence")}: {N(item, "confidence"):P0}", 12),
-				Text($"{L("detail.tags")}: {S(item, "tags", L("detail.empty"))}", 12), Text(S(item, "conflictReason"), 12)));
+			_importDetails.Children.Add(Card("", Text($"#{N(item, "id")} · {L("transfer." + conflictKey)} · {Kind(S(item, "kind"))}", NoriMetrics.FontXs, true),
+				Text(S(item, "contentSummary")), Text($"{L("detail.importance")}: {N(item, "importance"):P0} · {L("detail.confidence")}: {N(item, "confidence"):P0}", NoriMetrics.FontXs),
+				Text($"{L("detail.tags")}: {S(item, "tags", L("detail.empty"))}", NoriMetrics.FontXs), Text(S(item, "conflictReason"), NoriMetrics.FontXs)));
 		}
 		if (items.Length == 0) _importDetails.Children.Add(Text(L("transfer.previewNoItems")));
 		if (!B(data, "valid"))

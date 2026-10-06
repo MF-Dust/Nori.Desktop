@@ -13,6 +13,7 @@ using Nori.Core.Logging;
 using Nori.Core.Resources;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.FirstRun;
 
@@ -105,13 +106,13 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 				 * 与本步骤的语义一致。
 				 */
 				new Ui.NoriHalo(104) {Mood = Ui.HaloMood.Waking, HorizontalAlignment = HorizontalAlignment.Center},
-				Heading(english ? "Nori Desktop Companion" : "Nori 桌面伴侣", 22),
+				Heading(english ? "Nori Desktop Companion" : "Nori 桌面伴侣", NoriMetrics.Font2xl),
 				Muted(english
 					? "A desktop companion with conversation, long-term memory and tool use."
 					: "支持对话、长期记忆与工具调用的桌面伴侣。", 340),
 				new TextBlock
 				{
-					Text = version, Foreground = ChatPalette.Faint, FontSize = 11,
+					Text = version, Foreground = ChatPalette.Faint, FontSize = NoriMetrics.FontXs,
 					HorizontalAlignment = HorizontalAlignment.Center,
 				},
 			},
@@ -142,7 +143,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		}
 
 		return Stage(
-			Heading(english ? "Choose a language" : "选择语言", 19),
+			Heading(english ? "Choose a language" : "选择语言", NoriMetrics.FontXl),
 			Muted(english ? "Can be changed in Settings." : "可在设置中修改。", 320),
 			list);
 	}
@@ -198,7 +199,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 				Content = kind == "zip"
 					? english ? "Import ZIP" : "导入 ZIP"
 					: english ? "Import folder" : "导入文件夹",
-				Padding = new Thickness(16, 6), CornerRadius = new CornerRadius(8),
+				Padding = new Thickness(16, 6), CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
 				Background = ChatPalette.Panel, Foreground = ChatPalette.Body,
 				BorderThickness = default, IsEnabled = !IsImporting,
 			};
@@ -207,7 +208,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		}
 
 		return Stage(
-			Heading(english ? "Choose an appearance" : "选择形象", 19),
+			Heading(english ? "Choose an appearance" : "选择形象", NoriMetrics.FontXl),
 			Muted(english
 				? "Import a local ZIP or folder, then choose an installed appearance."
 				: "导入本地 ZIP 或文件夹，再选择已安装的形象。", 340),
@@ -237,7 +238,9 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		catch (Exception failure)
 		{
 			_importError = (english ? "Import failed, please retry: " : "导入失败，请重试：") + failure.Message;
-			_services.Logger.Write(LogSource.Backend, "warn", $"首次运行导入模型失败：{failure.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", failure.InnerException is { } inner
+				? $"首次运行导入模型失败（根因 {inner.GetType().Name} 0x{inner.HResult:X8}）"
+				: "首次运行导入模型失败", exception: failure);
 		}
 		finally
 		{
@@ -254,7 +257,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		}
 		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ResourceException)
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"检查模型资源失败 [{modelId}]: {exception.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", $"检查模型资源失败 [{modelId}]", exception: exception);
 			return false;
 		}
 	}
@@ -288,7 +291,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		};
 		TextBlock result = new()
 		{
-			Foreground = ChatPalette.Muted, FontSize = 11,
+			Foreground = ChatPalette.Muted, FontSize = NoriMetrics.FontXs,
 			HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false,
 			TextWrapping = TextWrapping.Wrap, MaxWidth = 340,
 		};
@@ -319,7 +322,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		Button fetch = new()
 		{
 			Content = english ? "Fetch models" : "获取模型",
-			Padding = new Thickness(16, 6), CornerRadius = new CornerRadius(8),
+			Padding = new Thickness(16, 6), CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
 			Background = ChatPalette.Panel, Foreground = ChatPalette.Body,
 			BorderThickness = default,
 			HorizontalAlignment = HorizontalAlignment.Center,
@@ -357,7 +360,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		{
 			Content = english ? "Skip" : "跳过",
 			Background = Brushes.Transparent, Foreground = ChatPalette.Faint,
-			BorderThickness = default, FontSize = 11,
+			BorderThickness = default, FontSize = NoriMetrics.FontXs,
 			HorizontalAlignment = HorizontalAlignment.Center,
 		};
 		skip.Click += (_, _) =>
@@ -370,7 +373,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		};
 
 		return Stage(
-			Heading(english ? "Configure a model provider" : "配置模型服务", 19),
+			Heading(english ? "Configure a model provider" : "配置模型服务", NoriMetrics.FontXl),
 			Muted(english
 				? "Optional. Can be configured in Settings."
 				: "此步骤可跳过，可在设置中配置。", 340),
@@ -411,7 +414,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		}
 		catch (Exception failure)
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"首次运行保存模型服务失败：{failure.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", "首次运行保存模型服务失败", exception: failure);
 			return false;
 		}
 	}
@@ -442,7 +445,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 
 		return Stage(
 			Logo(64),
-			Heading(english ? "Configuration summary" : "配置摘要", 20),
+			Heading(english ? "Configuration summary" : "配置摘要", NoriMetrics.FontXl),
 			Muted(modelLine, 340),
 			Muted(aiLine, 340),
 			telemetry,
@@ -451,7 +454,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 				Text = available
 					? english ? "Can be changed in Settings." : "可在设置中修改。"
 					: english ? "Diagnostics are unavailable in this build." : "此版本不提供诊断上报。",
-				Foreground = ChatPalette.Faint, FontSize = 11,
+				Foreground = ChatPalette.Faint, FontSize = NoriMetrics.FontXs,
 				HorizontalAlignment = HorizontalAlignment.Center,
 			});
 	}
@@ -484,7 +487,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 
 	private static TextBlock Muted(string text, double maxWidth) => new()
 	{
-		Text = text, FontSize = 12, Foreground = ChatPalette.Muted,
+		Text = text, FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Muted,
 		TextWrapping = TextWrapping.Wrap, MaxWidth = maxWidth,
 		TextAlignment = TextAlignment.Center,
 		HorizontalAlignment = HorizontalAlignment.Center,
@@ -498,7 +501,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 			Spacing = 4, HorizontalAlignment = HorizontalAlignment.Center,
 			Children =
 			{
-				new TextBlock {Text = label, FontSize = 11, Foreground = ChatPalette.Faint},
+				new TextBlock {Text = label, FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Faint},
 				editor,
 			},
 		};
@@ -511,7 +514,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		{
 			Width = 320,
 			Padding = new Thickness(14, 10),
-			CornerRadius = new CornerRadius(10),
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
 			Background = selected ? ChatPalette.Panel : ChatPalette.Deep,
 			BorderBrush = selected ? ChatPalette.Teal : ChatPalette.Faint,
 			BorderThickness = new Thickness(selected ? 2 : 1),
@@ -523,8 +526,8 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 				Spacing = 2,
 				Children =
 				{
-					new TextBlock {Text = title, FontSize = 13, FontWeight = FontWeight.SemiBold, Foreground = ChatPalette.Primary},
-					new TextBlock {Text = subtitle, FontSize = 11, Foreground = ChatPalette.Faint},
+					new TextBlock {Text = title, FontSize = NoriMetrics.FontBase, FontWeight = FontWeight.SemiBold, Foreground = ChatPalette.Primary},
+					new TextBlock {Text = subtitle, FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Faint},
 				},
 			},
 		};

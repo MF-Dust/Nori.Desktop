@@ -6,27 +6,39 @@
 		<Setter Property="Foreground" Value="{DynamicResource ChatBodyBrush}"/>
 		<Setter Property="BorderBrush" Value="{DynamicResource ChatLineBrush}"/>
 		<Setter Property="BorderThickness" Value="1"/>
-		<Setter Property="CornerRadius" Value="8"/>
-		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontXs}"/>
 	</Style>
 	<Style Selector="Button.chat-button:pointerover, Button.chat-button:pressed">
 		<Setter Property="Background" Value="{DynamicResource ChatPanelBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource ChatPrimaryBrush}"/>
 		<Setter Property="BorderBrush" Value="{DynamicResource ChatAccentBrush}"/>
 	</Style>
-	<Style Selector="Button.chat-button.primary, Button.chat-button.primary:pointerover, Button.chat-button.primary:pressed">
+	<!-- 主按钮与其他窗口一致使用品牌青填充；悬停提亮、按下加深。 -->
+	<Style Selector="Button.chat-button.primary">
+		<Setter Property="Background" Value="{DynamicResource ChatTealBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource ChatTealBrush}"/>
+	</Style>
+	<Style Selector="Button.chat-button.primary:pointerover">
 		<Setter Property="Background" Value="{DynamicResource ChatAccentBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
 		<Setter Property="BorderBrush" Value="{DynamicResource ChatAccentBrush}"/>
 	</Style>
-	<Style Selector="Button.chat-button.stop, Button.chat-button.stop:pointerover, Button.chat-button.stop:pressed">
-		<Setter Property="Background" Value="{DynamicResource ChatDangerBrush}"/>
+	<Style Selector="Button.chat-button.primary:pressed">
+		<Setter Property="Background" Value="{DynamicResource ChatTealPressedBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
-		<Setter Property="BorderBrush" Value="{DynamicResource ChatDangerBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource ChatTealPressedBrush}"/>
+	</Style>
+	<!-- danger 是填充色，danger-text 只用于文字。 -->
+	<Style Selector="Button.chat-button.stop, Button.chat-button.stop:pointerover, Button.chat-button.stop:pressed">
+		<Setter Property="Background" Value="{DynamicResource ChatDangerFillBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource ChatDangerFillBrush}"/>
 	</Style>
 	<Style Selector="Button.chat-button:disabled">
 		<Setter Property="Background" Value="{DynamicResource ChatDeepBrush}"/>
-		<Setter Property="Foreground" Value="{DynamicResource ChatMutedBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource ChatDisabledBrush}"/>
 		<Setter Property="BorderBrush" Value="{DynamicResource ChatLineBrush}"/>
 	</Style>
 	<Style Selector="Button.chat-button /template/ Border#BackgroundElement">
@@ -36,7 +48,7 @@
 		<Setter Property="Background" Value="{DynamicResource ChatDeepBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource ChatPrimaryBrush}"/>
 		<Setter Property="BorderBrush" Value="{DynamicResource ChatLineBrush}"/>
-		<Setter Property="CornerRadius" Value="8"/>
-		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontBase}"/>
 	</Style>
 </Styles>

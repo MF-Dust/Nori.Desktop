@@ -158,7 +158,7 @@ internal sealed class DesktopBootstrapper
 				BridgeFailure failure = BridgeFailureClassifier.Classify(exception);
 				if (failure.Telemetry)
 					telemetry.CaptureException(exception, "plugin.failure", tags: PluginFailureTags(exception, failure.Tags));
-				logger.Write(LogSource.Backend, failure.LogLevel, $"插件 {exception.Code}: {exception.GetType().Name}");
+				logger.Write(LogSource.Backend, failure.LogLevel, $"插件 {exception.Code}", exception: exception);
 			},
 			OnLog = (descriptor, message, exception) => logger.Write(LogSource.Backend, exception is null ? "info" : "warn",
 				$"插件运行事件 [{LogEntry.SafeIdentifier(descriptor.Id)}@{LogEntry.SafeIdentifier(descriptor.Version.ToString())}]", "Plugin", "plugin.runtime", exception),

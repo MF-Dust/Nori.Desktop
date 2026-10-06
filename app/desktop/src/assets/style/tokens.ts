@@ -69,6 +69,13 @@ export const COLORS = {
 	"overlay-12": "rgba(255, 255, 255, 0.12)",
 	"overlay-20": "rgba(255, 255, 255, 0.2)",
 
+	// 深色叠加层: 浅色对话气泡 (chat-ai-bg) 上的行内代码、分隔线、引用与表头底色
+	"ink-6": "rgba(0, 0, 0, 0.06)",
+	"ink-8": "rgba(0, 0, 0, 0.08)",
+	"ink-12": "rgba(0, 0, 0, 0.12)",
+	"ink-15": "rgba(0, 0, 0, 0.15)",
+	"shadow-inset": "rgba(0, 0, 0, 0.4)",
+
 	// 浮层背景 (下拉菜单 / 气泡 / 提示条)
 	"bg-popover": "rgba(30, 35, 45, 0.98)",
 	"bg-menu": "rgba(22, 26, 34, 0.98)",
@@ -113,11 +120,11 @@ export const RADIUS = {
 /**
  * 字号刻度 (1rem = 10px)
  *
- * 最小档位 1.15rem: 旧代码里 1rem / 1.05rem 的说明文字在深色玻璃上几乎不可读。
+ * 最小档位 1.2rem: 更小的说明文字在深色玻璃上几乎不可读, 原生代码不得低于 xs。
+ * base 是正文与控件默认字号; 不在刻度上的字号 (11.5 / 15 / 17 等) 一律取最近档位。
  */
 export const FONT_SIZES = {
 	xs: ["1.2rem", "1.5"],
-	sm: ["1.2rem", "1.55"],
 	base: ["1.3rem", "1.6"],
 	md: ["1.4rem", "1.55"],
 	lg: ["1.6rem", "1.5"],
@@ -151,4 +158,15 @@ export const SPACING = {
 	"14": "5.6rem",
 	"16": "6.4rem",
 	"20": "8rem",
+} as const
+
+/**
+ * 不透明度令牌
+ *
+ * disabled: 所有通过降低不透明度表现的禁用控件 (按钮、交通灯、发送箭头) 共用一档。
+ * pressed: 无独立按下色的幽灵按钮在按下时的内容不透明度。
+ */
+export const OPACITY = {
+	disabled: "0.45",
+	pressed: "0.65",
 } as const

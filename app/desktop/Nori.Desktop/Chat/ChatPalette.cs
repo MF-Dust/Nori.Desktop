@@ -15,8 +15,12 @@ internal static class ChatPalette
 	internal static readonly IBrush Faint = NoriThemeTokens.Brush("text-faint");
 	internal static readonly IBrush Accent = NoriThemeTokens.Brush("nori-teal-bright");
 	internal static readonly IBrush Teal = NoriThemeTokens.Brush("nori-teal");
+	internal static readonly IBrush TealPressed = NoriThemeTokens.Brush("nori-teal-pressed");
 	internal static readonly IBrush OnTeal = NoriThemeTokens.Brush("on-teal");
+	/// <summary>危险文字色；填充与描边用 <see cref="DangerFill"/>。</summary>
 	internal static readonly IBrush Danger = NoriThemeTokens.Brush("danger-text");
+	internal static readonly IBrush DangerFill = NoriThemeTokens.Brush("danger");
+	internal static readonly IBrush Disabled = NoriThemeTokens.Brush("text-disabled");
 	internal static readonly IBrush UserBackground = NoriThemeTokens.Brush("chat-user-bg");
 	internal static readonly IBrush UserText = NoriThemeTokens.Brush("chat-user-text");
 	internal static readonly IBrush AssistantBackground = NoriThemeTokens.Brush("chat-ai-bg");

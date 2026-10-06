@@ -598,7 +598,7 @@ public sealed class PetRuntime
 
 		try
 		{
-			_services.Logger.Write(LogSource.Backend, "error", $"加载 Live2D 模型失败 [{operation.ModelId}]: {error.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "error", $"加载 Live2D 模型失败 [{operation.ModelId}]", exception: error);
 		}
 		catch
 		{

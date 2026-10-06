@@ -15,6 +15,7 @@ using Nori.Core.Resources;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
 using Nori.Desktop.FirstRun;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Windows;
 
@@ -47,7 +48,7 @@ public sealed class FirstRunWindow : Window
 	};
 	private readonly TextBlock _stepLabel = new()
 	{
-		Foreground = ChatPalette.Accent, FontSize = 12, FontWeight = FontWeight.SemiBold,
+		Foreground = ChatPalette.Accent, FontSize = NoriMetrics.FontXs, FontWeight = FontWeight.SemiBold,
 		VerticalAlignment = VerticalAlignment.Center,
 	};
 	private readonly ContentControl _stage = new() {Margin = new Thickness(28, 18)};
@@ -55,7 +56,7 @@ public sealed class FirstRunWindow : Window
 	private readonly Button _forward = new();
 	private readonly TextBlock _error = new()
 	{
-		Foreground = ChatPalette.Danger, FontSize = 12,
+		Foreground = ChatPalette.Danger, FontSize = NoriMetrics.FontXs,
 		HorizontalAlignment = HorizontalAlignment.Center,
 		VerticalAlignment = VerticalAlignment.Center,
 		TextWrapping = TextWrapping.NoWrap,
@@ -190,7 +191,7 @@ public sealed class FirstRunWindow : Window
 	private static void StyleNav(Button button, bool primary)
 	{
 		button.Padding = new Thickness(primary ? 22 : 16, 7);
-		button.CornerRadius = new CornerRadius(8);
+		button.CornerRadius = new CornerRadius(NoriMetrics.RadiusSm);
 		button.Background = primary ? ChatPalette.Teal : ChatPalette.Panel;
 		button.Foreground = primary ? ChatPalette.OnTeal : ChatPalette.Body;
 		button.BorderThickness = default;

@@ -9,6 +9,7 @@ using Nori.Core.Cloud;
 using Nori.Core.Platform;
 using Nori.Desktop.Chat;
 using Nori.Desktop.Runtime;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Account;
 
@@ -99,7 +100,7 @@ internal sealed class ConsentDialog : Window
 			Child = new TextBlock
 			{
 				Text = "条款确认",
-				FontSize = 12,
+				FontSize = NoriMetrics.FontXs,
 				FontWeight = FontWeight.SemiBold,
 				Foreground = ChatPalette.Accent,
 				VerticalAlignment = VerticalAlignment.Center,
@@ -119,7 +120,7 @@ internal sealed class ConsentDialog : Window
 		body.Children.Add(new TextBlock
 		{
 			Text = request.IsRenewal ? "条款有更新" : "使用云端服务前请先确认条款",
-			FontSize = 16, FontWeight = FontWeight.SemiBold,
+			FontSize = NoriMetrics.FontLg, FontWeight = FontWeight.SemiBold,
 			Foreground = ChatPalette.Primary,
 		});
 
@@ -130,7 +131,7 @@ internal sealed class ConsentDialog : Window
 				? "以下文档已更新。继续登录即表示您确认其当前版本。"
 				: "以下文档构成您与我们之间的协议。继续登录即表示您确认其内容。",
 			TextWrapping = TextWrapping.Wrap,
-			FontSize = 13, LineHeight = 21,
+			FontSize = NoriMetrics.FontBase, LineHeight = 21,
 			Foreground = ChatPalette.Body,
 		});
 
@@ -144,7 +145,7 @@ internal sealed class ConsentDialog : Window
 			Background = ChatPalette.Deep,
 			BorderBrush = ChatPalette.Panel,
 			BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(6),
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
 			Padding = new Thickness(1),
 			Child = list,
 		});
@@ -152,7 +153,7 @@ internal sealed class ConsentDialog : Window
 		body.Children.Add(new TextBlock
 		{
 			Text = "文档将在系统浏览器中打开。",
-			FontSize = 12,
+			FontSize = NoriMetrics.FontXs,
 			Foreground = ChatPalette.Faint,
 		});
 
@@ -164,8 +165,8 @@ internal sealed class ConsentDialog : Window
 			Background = ChatPalette.Teal,
 			Foreground = ChatPalette.OnTeal,
 			BorderThickness = default,
-			CornerRadius = new CornerRadius(6),
-			FontSize = 13, FontWeight = FontWeight.SemiBold,
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
+			FontSize = NoriMetrics.FontBase, FontWeight = FontWeight.SemiBold,
 			Cursor = new Cursor(StandardCursorType.Hand),
 		};
 		agree.Click += (_, _) => Answer(true);
@@ -178,8 +179,8 @@ internal sealed class ConsentDialog : Window
 			Foreground = ChatPalette.Muted,
 			BorderBrush = ChatPalette.Panel,
 			BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(6),
-			FontSize = 13,
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
+			FontSize = NoriMetrics.FontBase,
 			Cursor = new Cursor(StandardCursorType.Hand),
 		};
 		cancel.Click += (_, _) => Answer(false);
@@ -206,7 +207,7 @@ internal sealed class ConsentDialog : Window
 		TextBlock title = new()
 		{
 			Text = document.Title.Length > 0 ? document.Title : document.Key,
-			FontSize = 13,
+			FontSize = NoriMetrics.FontBase,
 			Foreground = ChatPalette.Body,
 			VerticalAlignment = VerticalAlignment.Center,
 			TextWrapping = TextWrapping.NoWrap,
@@ -217,7 +218,7 @@ internal sealed class ConsentDialog : Window
 		{
 			// 版本要显示：同意的是哪一版，事后只有这个能对得上。
 			Text = document.Version.Length > 0 ? "v" + document.Version : "",
-			FontSize = 12,
+			FontSize = NoriMetrics.FontXs,
 			Foreground = ChatPalette.Faint,
 			VerticalAlignment = VerticalAlignment.Center,
 			Margin = new Thickness(10, 0, 0, 0),
@@ -230,7 +231,7 @@ internal sealed class ConsentDialog : Window
 			Background = Brushes.Transparent,
 			Foreground = ChatPalette.Accent,
 			BorderThickness = default,
-			FontSize = 12,
+			FontSize = NoriMetrics.FontXs,
 			Cursor = new Cursor(StandardCursorType.Hand),
 			VerticalAlignment = VerticalAlignment.Center,
 		};

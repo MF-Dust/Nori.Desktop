@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Settings.Pages;
 
@@ -158,7 +159,7 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 		Background = Brush("SettingsCardBrush"),
 		BorderBrush = Brush("SettingsBorderBrush"),
 		BorderThickness = new Thickness(1),
-		CornerRadius = new CornerRadius(12),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
 		Padding = compact ? new Thickness(14, 12) : new Thickness(20, 16),
 		Child = body,
 	};

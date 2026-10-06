@@ -8,6 +8,7 @@ using Avalonia.Markup.Xaml.Styling;
 using Nori.Core.Configuration;
 using Nori.Desktop.Settings.Pages;
 using static Nori.Desktop.SnapshotJson;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Windows;
 
@@ -31,7 +32,7 @@ public sealed partial class MemoryWindow
 		List<Action> translations = [];
 		_editorLocalize = () => { foreach (Action translate in translations) translate(); };
 		translations.Add(() => dialog.Title = id.HasValue ? L("detail.title") + " #" + id : L("add.title"));
-		TextBlock Translated(Func<string> value, double size = 13)
+		TextBlock Translated(Func<string> value, double size = NoriMetrics.FontBase)
 		{
 			TextBlock text = Text(value(), size);
 			translations.Add(() => text.Text = value());
@@ -40,7 +41,7 @@ public sealed partial class MemoryWindow
 		dialog.Name = "MemoryEditor";
 		_editor = dialog;
 		var content = Input(S(item, "content"), true); content.Name = "MemoryEditorContent";
-		content.MinHeight = 108; content.FontSize = 14;
+		content.MinHeight = 108; content.FontSize = NoriMetrics.FontMd;
 		var canonical = Input(S(item, "canonicalSummary", S(item, "content")), true); canonical.Name = "MemoryEditorCanonical";
 		var persona = Input(S(item, "personaSummary", S(item, "content")), true); persona.Name = "MemoryEditorPersona";
 		var tags = Input(S(item, "tags")); tags.Name = "MemoryEditorTags";
@@ -76,8 +77,8 @@ public sealed partial class MemoryWindow
 		var properties = new StackPanel { Spacing = 0 };
 		properties.Children.Add(SettingLine("detail.kind", kind));
 		properties.Children.Add(SettingLine("detail.tags", tags));
-		var importancePercent = Text($"{importance.Value:P0}", 12);
-		var confidencePercent = Text($"{confidence.Value:P0}", 12);
+		var importancePercent = Text($"{importance.Value:P0}", NoriMetrics.FontXs);
+		var confidencePercent = Text($"{confidence.Value:P0}", NoriMetrics.FontXs);
 		importance.ValueChanged += (_, _) => importancePercent.Text = $"{importance.Value:P0}";
 		confidence.ValueChanged += (_, _) => confidencePercent.Text = $"{confidence.Value:P0}";
 		SetBrush(importancePercent, TextBlock.ForegroundProperty, "SettingsSecondaryBrush");
@@ -89,15 +90,15 @@ public sealed partial class MemoryWindow
 		{
 			var sources = Stack();
 			JsonElement[] sourceItems = Items(P(detail, "sources")).ToArray();
-			sources.Children.Add(Text(sourceItems.Length.ToString(), 12));
+			sources.Children.Add(Text(sourceItems.Length.ToString(), NoriMetrics.FontXs));
 			foreach (JsonElement source in sourceItems)
-				sources.Children.Add(Card("", Text($"{S(source, "role")} · #{N(source, "sequence")} · {Date(S(source, "messageTime"))}", 12, true), Text(S(source, "content"))));
+				sources.Children.Add(Card("", Text($"{S(source, "role")} · #{N(source, "sequence")} · {Date(S(source, "messageTime"))}", NoriMetrics.FontXs, true), Text(S(source, "content"))));
 			if (sourceItems.Length == 0) sources.Children.Add(Translated(() => L("detail.noSources")));
 			form.Children.Add(Card("detail.sourceMessages", sources));
 			var timestamps = Stack();
 			foreach (string key in new[] { "createdAt", "updatedAt", "lastAccessedAt", "lastReinforcedAt", "expiresAt" })
-				timestamps.Children.Add(Translated(() => L("detail." + key) + ": " + Date(S(item, key, key == "lastAccessedAt" ? L("detail.neverAccessed") : key == "lastReinforcedAt" ? L("detail.neverReinforced") : "—")), 12));
-			foreach (string key in new[] { "accessCount", "reinforcementCount", "ttlDays" }) timestamps.Children.Add(Translated(() => L("detail." + key) + ": " + S(item, key, key == "ttlDays" ? "—" : "0"), 12));
+				timestamps.Children.Add(Translated(() => L("detail." + key) + ": " + Date(S(item, key, key == "lastAccessedAt" ? L("detail.neverAccessed") : key == "lastReinforcedAt" ? L("detail.neverReinforced") : "—")), NoriMetrics.FontXs));
+			foreach (string key in new[] { "accessCount", "reinforcementCount", "ttlDays" }) timestamps.Children.Add(Translated(() => L("detail." + key) + ": " + S(item, key, key == "ttlDays" ? "—" : "0"), NoriMetrics.FontXs));
 			form.Children.Add(Card("detail.timestamps", timestamps));
 			var atoms = Stack();
 			JsonElement[] atomItems = Items(P(detail, "atoms")).ToArray();

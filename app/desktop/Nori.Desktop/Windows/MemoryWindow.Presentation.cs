@@ -1,19 +1,20 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Windows;
 
 public sealed partial class MemoryWindow
 {
-	private TextBlock Secondary(string text, double size = 12)
+	private TextBlock Secondary(string text, double size = NoriMetrics.FontXs)
 	{
 		TextBlock block = Text(text, size);
 		SetBrush(block, TextBlock.ForegroundProperty, "SettingsSecondaryBrush");
 		return block;
 	}
 
-	private TextBlock LocalText(Func<string> value, double size = 12, bool bold = false)
+	private TextBlock LocalText(Func<string> value, double size = NoriMetrics.FontXs, bool bold = false)
 	{
 		TextBlock block = Text(value(), size, bold);
 		var reference = new WeakReference<TextBlock>(block);
@@ -23,9 +24,9 @@ public sealed partial class MemoryWindow
 
 	private Border Badge(string text, bool accent = false)
 	{
-		TextBlock label = Text(text, 12, accent);
+		TextBlock label = Text(text, NoriMetrics.FontXs, accent);
 		SetBrush(label, TextBlock.ForegroundProperty, accent ? "SettingsAccentBrush" : "SettingsSecondaryBrush");
-		var badge = new Border { Child = label, Padding = new Thickness(8, 3), CornerRadius = new CornerRadius(5) };
+		var badge = new Border { Child = label, Padding = new Thickness(8, 3), CornerRadius = new CornerRadius(NoriMetrics.RadiusXs) };
 		SetBrush(badge, Border.BackgroundProperty, accent ? "SettingsSelectionBrush" : "SettingsInputBrush");
 		return badge;
 	}
@@ -33,9 +34,9 @@ public sealed partial class MemoryWindow
 	private Control InfoLine(string key, string value)
 	{
 		var row = new Grid { ColumnDefinitions = new ColumnDefinitions("120,*"), ColumnSpacing = 16, Margin = new Thickness(0, 4) };
-		TextBlock label = Label(key, 12);
+		TextBlock label = Label(key, NoriMetrics.FontXs);
 		SetBrush(label, TextBlock.ForegroundProperty, "SettingsSecondaryBrush");
-		TextBlock content = Text(value, 13);
+		TextBlock content = Text(value, NoriMetrics.FontBase);
 		row.Children.Add(label); Grid.SetColumn(content, 1); row.Children.Add(content);
 		return row;
 	}
@@ -43,7 +44,7 @@ public sealed partial class MemoryWindow
 	private Control SettingLine(string key, Control editor, Control? description = null, Control? state = null, Control? retry = null)
 	{
 		var labels = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
-		labels.Children.Add(Label(key, 13, true));
+		labels.Children.Add(Label(key, NoriMetrics.FontBase, true));
 		if (description is not null) labels.Children.Add(description);
 		if (state is not null) labels.Children.Add(state);
 		var editors = new StackPanel { Spacing = 5, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };

@@ -21,13 +21,13 @@ public sealed partial class ChatView
 		Name = "ChatComposer", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 40, MaxHeight = 120,
 		Padding = new Thickness(12, 9), VerticalContentAlignment = VerticalAlignment.Center,
 	};
-	private readonly TextBlock _modelLabel = Text("", 12);
-	private readonly TextBlock _usageLabel = Text("", 12);
-	private readonly TextBlock _cacheLabel = Text("", 12);
-	private readonly TextBlock _toolsLabel = Text("", 12);
-	private readonly TextBlock _statusText = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, MaxHeight = 72 };
-	private readonly TextBlock _toolStatus = Text("", 12);
-	private readonly TextBlock _voiceTime = Text("", 12);
+	private readonly TextBlock _modelLabel = Text("", NoriMetrics.FontXs);
+	private readonly TextBlock _usageLabel = Text("", NoriMetrics.FontXs);
+	private readonly TextBlock _cacheLabel = Text("", NoriMetrics.FontXs);
+	private readonly TextBlock _toolsLabel = Text("", NoriMetrics.FontXs);
+	private readonly TextBlock _statusText = new() { FontSize = NoriMetrics.FontXs, TextWrapping = TextWrapping.Wrap, MaxHeight = 72 };
+	private readonly TextBlock _toolStatus = Text("", NoriMetrics.FontXs);
+	private readonly TextBlock _voiceTime = Text("", NoriMetrics.FontXs);
 	private Border _statusBar = null!;
 	private Control _empty = null!;
 	private TextBlock _emptyTitle = null!;
@@ -48,18 +48,19 @@ public sealed partial class ChatView
 		Resources["ChatPrimaryBrush"] = ChatPalette.Primary; Resources["ChatBodyBrush"] = ChatPalette.Body;
 		Resources["ChatMutedBrush"] = ChatPalette.Muted; Resources["ChatLineBrush"] = ChatPalette.Line;
 		Resources["ChatAccentBrush"] = ChatPalette.Accent; Resources["ChatOnTealBrush"] = ChatPalette.OnTeal;
-		Resources["ChatDangerBrush"] = ChatPalette.Danger;
+		Resources["ChatTealBrush"] = ChatPalette.Teal; Resources["ChatTealPressedBrush"] = ChatPalette.TealPressed;
+		Resources["ChatDangerFillBrush"] = ChatPalette.DangerFill; Resources["ChatDisabledBrush"] = ChatPalette.Disabled;
 		Background = Brushes.Transparent; Foreground = ChatPalette.Primary;
-		FontFamily = NoriTypography.System; FontSize = 13;
+		FontFamily = NoriTypography.System; FontSize = NoriMetrics.FontBase;
 	}
 
 	private void BuildShell()
 	{
 		var header = new WrapPanel { Name = "ChatHeader", Orientation = Orientation.Horizontal };
 		var identity = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(0, 2, 16, 4), VerticalAlignment = VerticalAlignment.Center };
-		identity.Children.Add(Local(() => T("和 Nori 对话", "AI Companion Chat"), 14, true));
+		identity.Children.Add(Local(() => T("和 Nori 对话", "AI Companion Chat"), NoriMetrics.FontMd, true));
 		_modelLabel.Foreground = ChatPalette.Accent; _modelLabel.MaxWidth = 190; _modelLabel.TextWrapping = TextWrapping.NoWrap; _modelLabel.TextTrimming = TextTrimming.CharacterEllipsis;
-		identity.Children.Add(new Border { Background = ChatPalette.Overlay, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(999), Padding = new Thickness(9, 4), Child = _modelLabel });
+		identity.Children.Add(new Border { Background = ChatPalette.Overlay, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(NoriMetrics.RadiusPill), Padding = new Thickness(9, 4), Child = _modelLabel });
 		header.Children.Add(identity);
 		foreach (TextBlock label in new[] { _usageLabel, _cacheLabel, _toolsLabel })
 		{
@@ -110,7 +111,7 @@ public sealed partial class ChatView
 		var footer = new Border { Name = "ChatComposeBar", Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(18, 14), Child = composer };
 		Grid.SetRow(footer, 3); _main.Children.Add(footer);
 		_root.Children.Add(_main);
-		Content = new Border { Background = Brushes.Transparent, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16), ClipToBounds = true, Child = _root };
+		Content = new Border { Background = Brushes.Transparent, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(NoriMetrics.RadiusLg), ClipToBounds = true, Child = _root };
 		Localize(() =>
 		{
 			_composer.PlaceholderText = T("输入消息, 回车发送", "Type a message, press Enter to send…");
@@ -124,8 +125,8 @@ public sealed partial class ChatView
 		var body = new StackPanel { Spacing = 18, MaxWidth = 480, Margin = new Thickness(24, 16), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
 		var symbol = new Border { Width = 48, Height = 48, CornerRadius = new CornerRadius(24), Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), Child = Icon("sparkles", ChatPalette.Accent, 24), HorizontalAlignment = HorizontalAlignment.Center };
 		body.Children.Add(symbol);
-		_emptyTitle = Text("", 18, true); _emptyTitle.TextAlignment = TextAlignment.Center; body.Children.Add(_emptyTitle);
-		_emptyDescription = Text("", 13); _emptyDescription.Foreground = ChatPalette.Muted; _emptyDescription.TextAlignment = TextAlignment.Center; body.Children.Add(_emptyDescription);
+		_emptyTitle = Text("", NoriMetrics.FontXl, true); _emptyTitle.TextAlignment = TextAlignment.Center; body.Children.Add(_emptyTitle);
+		_emptyDescription = Text("", NoriMetrics.FontBase); _emptyDescription.Foreground = ChatPalette.Muted; _emptyDescription.TextAlignment = TextAlignment.Center; body.Children.Add(_emptyDescription);
 		var prompts = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), RowDefinitions = new RowDefinitions("Auto,Auto"), ColumnSpacing = 12, RowSpacing = 12 };
 		Func<string>[] suggestions =
 		[
@@ -227,8 +228,8 @@ public sealed partial class ChatView
 		foreach (MessageVisual visual in _messageViews.Values) visual.Localize();
 		QueueRender();
 	}
-	private static TextBlock Text(string text, double size = 13, bool bold = false) => new() { Text = text, FontSize = size, FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal, TextWrapping = TextWrapping.Wrap, Foreground = ChatPalette.Primary };
-	private TextBlock Local(Func<string> text, double size = 13, bool bold = false)
+	private static TextBlock Text(string text, double size = NoriMetrics.FontBase, bool bold = false) => new() { Text = text, FontSize = size, FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal, TextWrapping = TextWrapping.Wrap, Foreground = ChatPalette.Primary };
+	private TextBlock Local(Func<string> text, double size = NoriMetrics.FontBase, bool bold = false)
 	{
 		TextBlock block = Text(text(), size, bold); Localize(() => block.Text = text()); return block;
 	}
@@ -236,7 +237,7 @@ public sealed partial class ChatView
 	{
 		var button = new Button { Name = name, MinHeight = 30, Padding = new Thickness(iconOnly ? 8 : 12, 6), VerticalAlignment = VerticalAlignment.Center };
 		button.Classes.Add("chat-button"); if (primary) button.Classes.Add("primary");
-		TextBlock? text = iconOnly ? null : Text(label(), 12); if (text is not null) text.ClearValue(TextBlock.ForegroundProperty);
+		TextBlock? text = iconOnly ? null : Text(label(), NoriMetrics.FontXs); if (text is not null) text.ClearValue(TextBlock.ForegroundProperty);
 		if (icon is not null)
 		{
 			var row = new Grid { ColumnDefinitions = new ColumnDefinitions(iconOnly ? "16" : "16,*"), ColumnSpacing = 8 };

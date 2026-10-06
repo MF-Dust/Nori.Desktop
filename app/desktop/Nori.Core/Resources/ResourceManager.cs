@@ -320,12 +320,12 @@ public sealed class ResourceManager
 				if (Directory.Exists(targetDir))
 				{
 					string backupDir = Path.Combine(backupRoot, modelId);
-					Directory.Move(targetDir, backupDir);
+					MoveDirectory(targetDir, backupDir, cancellationToken);
 					backups.Add((targetDir, backupDir));
 				}
 
 				cancellationToken.ThrowIfCancellationRequested();
-				Directory.Move(preparedDir, targetDir);
+				MoveDirectory(preparedDir, targetDir, cancellationToken);
 				installedTargets.Add(targetDir);
 			}
 
@@ -378,11 +378,37 @@ public sealed class ResourceManager
 			if (Directory.Exists(target)) Directory.Delete(target, true);
 			if (!Directory.Exists(backup))
 				throw new IOException($"资源回滚备份不存在: {backup}");
-			Directory.Move(backup, target);
+			MoveDirectory(backup, target, CancellationToken.None);
 			if (!Directory.Exists(target))
 				throw new IOException($"资源回滚后目标目录不存在: {target}");
 		}
 	}
+
+	/// <summary>
+	/// 目录改名在 Windows 上会被杀毒软件、索引服务对刚写入文件的短暂占用打断,
+	/// 共享冲突与拒绝访问时退避重试, 其余错误立即抛出.
+	/// </summary>
+	private static void MoveDirectory(string source, string destination, CancellationToken cancellationToken)
+	{
+		for (int attempt = 1; ; attempt++)
+		{
+			try
+			{
+				Directory.Move(source, destination);
+				return;
+			}
+			catch (Exception exception) when (attempt < MoveAttempts && IsTransientLock(exception))
+			{
+				cancellationToken.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(50 * attempt));
+				cancellationToken.ThrowIfCancellationRequested();
+			}
+		}
+	}
+
+	private const int MoveAttempts = 10;
+
+	private static bool IsTransientLock(Exception exception) => exception is UnauthorizedAccessException
+		|| exception is IOException { HResult: unchecked((int)0x80070020) or unchecked((int)0x80070021) or unchecked((int)0x80070005) };
 
 	private static void CopyDirectory(string sourceDir, string targetDir, CancellationToken cancellationToken)
 	{

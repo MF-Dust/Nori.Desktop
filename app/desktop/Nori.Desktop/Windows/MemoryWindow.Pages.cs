@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Nori.Desktop.Memory;
 using static Nori.Desktop.SnapshotJson;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Windows;
 
@@ -29,7 +30,7 @@ public sealed partial class MemoryWindow
 			{
 				var value = Text(N(memory, key).ToString("0"), 30, true);
 				SetBrush(value, TextBlock.ForegroundProperty, "SettingsAccentBrush");
-				var tile = new Border { Child = Stack(Secondary(L(label)), value), Padding = new Thickness(14), CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 0, 8, 8) };
+				var tile = new Border { Child = Stack(Secondary(L(label)), value), Padding = new Thickness(14), CornerRadius = new CornerRadius(NoriMetrics.RadiusSm), Margin = new Thickness(0, 0, 8, 8) };
 				SetBrush(tile, Border.BackgroundProperty, "SettingsInputBrush"); stats.Children.Add(tile);
 			}
 			overview.Children.Add(stats);
@@ -113,7 +114,7 @@ public sealed partial class MemoryWindow
 
 	private Control SettingToggle(string key, string label, bool initial)
 	{
-		var status = Text("", 12);
+		var status = Text("", NoriMetrics.FontXs);
 		var toggle = new ToggleSwitch { IsChecked = initial, Name = "MemorySetting_" + key, HorizontalAlignment = HorizontalAlignment.Right };
 		_localize.Add(() => { toggle.OnContent = L("overview.enabled"); toggle.OffContent = L("overview.disabled"); });
 		MemorySettingDraft draft = Draft(key, initial, status);
@@ -133,7 +134,7 @@ public sealed partial class MemoryWindow
 
 	private Control SettingNumber(string key, decimal min, decimal max, decimal step, decimal initial)
 	{
-		var status = Text("", 12);
+		var status = Text("", NoriMetrics.FontXs);
 		var input = new NumericUpDown { Minimum = min, Maximum = max, Increment = step, Value = initial, Name = "MemorySetting_" + key, Width = 128, HorizontalAlignment = HorizontalAlignment.Right, FormatString = step < 1 ? "0.00" : "0.################" };
 		MemorySettingDraft draft = Draft(key, initial, status);
 		var retry = Button("detail.retry", () => RetryDraftAsync(draft)); retry.IsVisible = false;
@@ -199,7 +200,7 @@ public sealed partial class MemoryWindow
 		var status = Choice(["", "active", "dormant", "expired"], value => value.Length == 0 ? L("list.allStatuses") : Status(value));
 		kind.Name = "MemoryKindFilter_" + section; status.Name = "MemoryStatusFilter_" + section;
 		var results = Stack();
-		var count = Text("", 16, true);
+		var count = Text("", NoriMetrics.FontLg, true);
 		var pageLabel = Text("1 / 1");
 		var previous = Button("list.previous", async () => { _lists[section].Page--; await RefreshPageAsync(); }, enabled: () => _lists[section].Page > 0);
 		var next = Button("list.next", async () => { _lists[section].Page++; await RefreshPageAsync(); }, enabled: () => (_lists[section].Page + 1) * 20 < _lists[section].Total);
@@ -292,7 +293,7 @@ public sealed partial class MemoryWindow
 		string status = S(item, "status", "active");
 		var metadata = Row(Badge(Kind(S(item, "kind", "general")), true), Badge(Status(status)), Badge(Source(S(item, "source"))), Badge($"{L("detail.importance")} {N(item, "importance"):P0}"));
 		if (Expired(item) && status != "expired") metadata.Children.Add(Badge(L("detail.isExpired")));
-		var body = Stack(metadata, Text(S(item, "content"), 14));
+		var body = Stack(metadata, Text(S(item, "content"), NoriMetrics.FontMd));
 		if (S(item, "tags").Length > 0) body.Children.Add(Secondary(S(item, "tags")));
 		return Card("", body,
 			Secondary($"#{id} · {L("detail.createdAt")}: {Date(S(item, "createdAt"))}\n{L("detail.lastAccessedAt")}: {Date(S(item, "lastAccessedAt", L("detail.neverAccessed")))}"),
@@ -302,7 +303,7 @@ public sealed partial class MemoryWindow
 	}
 
 	private Control AtomCard(JsonElement atom) => Card("", Row(Badge(S(atom, "atomType"), true), Badge(Status(S(atom, "status"))), Badge($"#{N(atom, "id")}")),
-		Text(S(atom, "content"), 14), Secondary($"{L("detail.importance")}: {N(atom, "importance"):P0} · {L("detail.confidence")}: {N(atom, "confidence"):P0}"),
+		Text(S(atom, "content"), NoriMetrics.FontMd), Secondary($"{L("detail.importance")}: {N(atom, "importance"):P0} · {L("detail.confidence")}: {N(atom, "confidence"):P0}"),
 		Secondary($"{L("atoms.parent")}: #{N(atom, "parentMemoryId")} · {Date(S(atom, "createdAt"))}"),
 		Secondary($"{L("detail.decayType")}: {S(atom, "decayType")} · {S(atom, "entities")}"));
 
@@ -346,18 +347,18 @@ public sealed partial class MemoryWindow
 		body.Children.Add(channels);
 		body.Children.Add(Card("debugger.filtered", Text(string.Join(", ", Items(P(trace, "filteredIds")).Select(value => value.ToString())))));
 		var injected = Stack();
-		injected.Children.Add(Text(T("注入编号", "Injected IDs") + ": " + string.Join(", ", Items(P(trace, "injectedIds")).Select(value => value.ToString())), 12));
+		injected.Children.Add(Text(T("注入编号", "Injected IDs") + ": " + string.Join(", ", Items(P(trace, "injectedIds")).Select(value => value.ToString())), NoriMetrics.FontXs));
 		foreach (JsonElement item in Items(P(result, "personal")))
 		{
 			long id = (long)N(item, "id");
-			injected.Children.Add(Card("", Text($"#{id} · {S(item, "personaSummary", S(item, "content"))}"), Text(S(item, "canonicalSummary"), 12), Button("detail.title", () => OpenEditorAsync(id))));
+			injected.Children.Add(Card("", Text($"#{id} · {S(item, "personaSummary", S(item, "content"))}"), Text(S(item, "canonicalSummary"), NoriMetrics.FontXs), Button("detail.title", () => OpenEditorAsync(id))));
 		}
 		if (!Items(P(result, "personal")).Any()) injected.Children.Add(Text(L("detail.empty")));
 		body.Children.Add(Card("debugger.injected", injected));
 		var atoms = Stack(); foreach (JsonElement atom in Items(P(result, "atoms"))) atoms.Children.Add(AtomCard(atom));
 		body.Children.Add(Card("detail.atoms", atoms));
 		var knowledge = Stack();
-		foreach (JsonElement item in Items(P(result, "knowledge"))) knowledge.Children.Add(Stack(Text($"#{N(item, "id")} · {S(item, "heading")} · {S(item, "subheading")} · {S(item, "awareness")} · {S(item, "knowledgeType")} · {N(item, "score"):F4}", 12, true), Text(S(item, "content"))));
+		foreach (JsonElement item in Items(P(result, "knowledge"))) knowledge.Children.Add(Stack(Text($"#{N(item, "id")} · {S(item, "heading")} · {S(item, "subheading")} · {S(item, "awareness")} · {S(item, "knowledgeType")} · {N(item, "score"):F4}", NoriMetrics.FontXs, true), Text(S(item, "content"))));
 		body.Children.Add(Card("debugger.knowledge", knowledge));
 		var echoes = Stack(); foreach (JsonElement item in Items(P(result, "echoes"))) echoes.Children.Add(Text($"{S(item, "content")} · {N(item, "score"):F4}"));
 		body.Children.Add(Card("debugger.echoes", echoes)); Success();

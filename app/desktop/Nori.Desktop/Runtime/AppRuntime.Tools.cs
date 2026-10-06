@@ -316,7 +316,7 @@ public sealed partial class AppRuntime
 			catch (Exception exception) when (exception is InvalidOperationException or IOException
 				or UnauthorizedAccessException)
 			{
-				Services.Logger.Write(LogSource.Backend, "warn", $"还原桌面设置失败: {exception.GetType().Name}");
+				Services.Logger.Write(LogSource.Backend, "warn", "还原桌面设置失败", exception: exception);
 			}
 		}
 	}
@@ -326,7 +326,7 @@ public sealed partial class AppRuntime
 		ExpressionChannels,
 		IsExpressionChannelEnabled,
 		(key, exception) =>
-			Services.Logger.Write(LogSource.Backend, "warn", $"情绪表达通道失败 [{key}]: {exception.GetType().Name}"));
+			Services.Logger.Write(LogSource.Backend, "warn", $"情绪表达通道失败 [{key}]", exception: exception));
 
 	/// <summary>
 	/// 某条表达通道开没开。
@@ -399,7 +399,7 @@ public sealed partial class AppRuntime
 			catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
 			{
 				// 目录已被删除或权限不足；残留一条 ACE 不影响功能，记录即可。
-				Services.Logger.Write(LogSource.Backend, "warn", $"释放沙箱授权失败 [{path}]: {exception.GetType().Name}");
+				Services.Logger.Write(LogSource.Backend, "warn", $"释放沙箱授权失败 [{path}]", exception: exception);
 			}
 		}
 	}

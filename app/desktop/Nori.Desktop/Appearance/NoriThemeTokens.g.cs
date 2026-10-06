@@ -51,6 +51,11 @@ internal static class NoriThemeTokens
 		["overlay-8"] = "#14FFFFFF",
 		["overlay-12"] = "#1FFFFFFF",
 		["overlay-20"] = "#33FFFFFF",
+		["ink-6"] = "#0F000000",
+		["ink-8"] = "#14000000",
+		["ink-12"] = "#1F000000",
+		["ink-15"] = "#26000000",
+		["shadow-inset"] = "#66000000",
 		["bg-popover"] = "#FA1E232D",
 		["bg-menu"] = "#FA161A22",
 		["bg-tooltip"] = "#FA1E232D",
@@ -108,17 +113,56 @@ internal static class NoriThemeTokens
 		["spacing-2.5"] = 10,
 		["spacing-3.5"] = 14,
 		["font-xs"] = 12,
-		["font-sm"] = 12,
 		["font-base"] = 13,
 		["font-md"] = 14,
 		["font-lg"] = 16,
 		["font-xl"] = 18,
 		["font-2xl"] = 22,
 		["font-3xl"] = 26,
+		["opacity-disabled"] = 0.45,
+		["opacity-pressed"] = 0.65,
 	};
 
 	internal static string Value(string name) => Values[name];
 	internal static Color Color(string name) => Avalonia.Media.Color.Parse(Value(name));
 	internal static IBrush Brush(string name) => Brushes[name];
 	internal static double Measure(string name) => Measures[name];
+}
+
+/// <summary>圆角、间距、字号与不透明度常量；原生代码使用这些档位，不直接写字面量。</summary>
+internal static class NoriMetrics
+{
+	internal const double RadiusXs = 4;
+	internal const double RadiusSm = 8;
+	internal const double RadiusMd = 12;
+	internal const double RadiusLg = 16;
+	internal const double RadiusPill = 999;
+	internal const double Spacing0 = 0;
+	internal const double Spacing1 = 4;
+	internal const double Spacing2 = 8;
+	internal const double Spacing3 = 12;
+	internal const double Spacing4 = 16;
+	internal const double Spacing5 = 20;
+	internal const double Spacing6 = 24;
+	internal const double Spacing7 = 28;
+	internal const double Spacing8 = 32;
+	internal const double Spacing9 = 36;
+	internal const double Spacing10 = 40;
+	internal const double Spacing12 = 48;
+	internal const double Spacing14 = 56;
+	internal const double Spacing16 = 64;
+	internal const double Spacing20 = 80;
+	internal const double Spacing0_5 = 2;
+	internal const double Spacing1_5 = 6;
+	internal const double Spacing2_5 = 10;
+	internal const double Spacing3_5 = 14;
+	internal const double FontXs = 12;
+	internal const double FontBase = 13;
+	internal const double FontMd = 14;
+	internal const double FontLg = 16;
+	internal const double FontXl = 18;
+	internal const double Font2xl = 22;
+	internal const double Font3xl = 26;
+	internal const double OpacityDisabled = 0.45;
+	internal const double OpacityPressed = 0.65;
 }

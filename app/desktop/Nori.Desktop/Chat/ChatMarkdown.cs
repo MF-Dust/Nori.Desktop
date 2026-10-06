@@ -43,13 +43,13 @@ public static class ChatMarkdown
 	private static readonly IBrush CodeBackground = NoriThemeTokens.Brush("bg-base");
 	private static readonly IBrush CodeText = NoriThemeTokens.Brush("text-primary");
 	private static readonly IBrush InlineCodeText = NoriThemeTokens.Brush("chat-ai-text");
-	private static readonly IBrush InlineCodeBackground = Brush("#1F000000");
-	private static readonly IBrush RuleBrush = Brush("#26000000");
-	private static readonly IBrush QuoteBackground = Brush("#0F000000");
+	private static readonly IBrush InlineCodeBackground = NoriThemeTokens.Brush("ink-12");
+	private static readonly IBrush RuleBrush = NoriThemeTokens.Brush("ink-15");
+	private static readonly IBrush QuoteBackground = NoriThemeTokens.Brush("ink-6");
 	private static readonly IBrush QuoteBorder = NoriThemeTokens.Brush("chat-markdown-quote");
 	private static readonly IBrush TableText = NoriThemeTokens.Brush("chat-ai-text");
 	private static readonly IBrush TableHeaderText = NoriThemeTokens.Brush("chat-ai-text");
-	private static readonly IBrush TableHeaderBackground = Brush("#14000000");
+	private static readonly IBrush TableHeaderBackground = NoriThemeTokens.Brush("ink-8");
 	private static readonly IBrush LinkText = NoriThemeTokens.Brush("chat-markdown-link");
 
 	/// <summary>仅生成原生文本、排版和按钮控件；外链交由宿主处理，不执行 HTML 或加载图片。</summary>
@@ -84,9 +84,8 @@ public static class ChatMarkdown
 
 	private static string Trim(string text) => TrimWhitespace.Replace(text, "");
 	private static string[] Parts(string text, string pattern) => Regex.Split(text, pattern).Select(Trim).Where(part => part.Length > 0).ToArray();
-	private static IBrush Brush(string color) => new ImmutableSolidColorBrush(Color.Parse(color));
 
-	private static TextBlock Text(string? text = null, double size = 13, IBrush? foreground = null) => new()
+	private static TextBlock Text(string? text = null, double size = NoriMetrics.FontBase, IBrush? foreground = null) => new()
 	{
 		Text = text,
 		FontFamily = BodyFont,
@@ -145,7 +144,7 @@ public static class ChatMarkdown
 			switch (block)
 			{
 				case HeadingBlock heading:
-					TextBlock title = Paragraph(heading, 14);
+					TextBlock title = Paragraph(heading, NoriMetrics.FontMd);
 					title.Name = "ChatMarkdownHeading";
 					title.FontWeight = FontWeight.Bold;
 					title.LineHeight = 19.6;
@@ -164,7 +163,7 @@ public static class ChatMarkdown
 						BorderThickness = new Thickness(3, 0, 0, 0),
 						BorderBrush = QuoteBorder,
 						Background = QuoteBackground,
-						CornerRadius = new CornerRadius(0, 4, 4, 0),
+						CornerRadius = new CornerRadius(0, NoriMetrics.RadiusXs, NoriMetrics.RadiusXs, 0),
 						Child = Blocks(quote),
 					};
 				case ListBlock list:
@@ -182,7 +181,7 @@ public static class ChatMarkdown
 			}
 		}
 
-		private TextBlock Paragraph(LeafBlock block, double size = 13, IBrush? foreground = null)
+		private TextBlock Paragraph(LeafBlock block, double size = NoriMetrics.FontBase, IBrush? foreground = null)
 		{
 			TextBlock text = Text(size: size, foreground: foreground);
 			text.Margin = new Thickness(0, 4);
@@ -196,17 +195,17 @@ public static class ChatMarkdown
 			Name = "ChatMarkdownCode",
 			Margin = new Thickness(0, 8),
 			Padding = new Thickness(14, 10),
-			CornerRadius = new CornerRadius(8),
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
 			BorderThickness = new Thickness(1),
 			BorderBrush = RuleBrush,
 			Background = CodeBackground,
-			BoxShadow = new BoxShadows(new BoxShadow { Blur = 12, Color = Color.FromArgb(102, 0, 0, 0), IsInset = true }),
+			BoxShadow = new BoxShadows(new BoxShadow { Blur = 12, Color = NoriThemeTokens.Color("shadow-inset"), IsInset = true }),
 			Child = HorizontalScroll(new SelectableTextBlock
 			{
 				// 不 Trim：空行、缩进、制表符和行尾空格都属于代码内容。
 				Text = code.Lines.ToString(),
 				FontFamily = CodeFont,
-				FontSize = 12,
+				FontSize = NoriMetrics.FontXs,
 				LineHeight = 19.2,
 				FontWeight = FontWeight.Normal,
 				Foreground = CodeText,
@@ -254,8 +253,8 @@ public static class ChatMarkdown
 					foreach (Block block in cell)
 					{
 						TextBlock text = block is LeafBlock leaf
-							? Paragraph(leaf, 12, row.IsHeader ? TableHeaderText : TableText)
-							: Text(Source(block), 12, row.IsHeader ? TableHeaderText : TableText);
+							? Paragraph(leaf, NoriMetrics.FontXs, row.IsHeader ? TableHeaderText : TableText)
+							: Text(Source(block), NoriMetrics.FontXs, row.IsHeader ? TableHeaderText : TableText);
 						text.Margin = default;
 						text.FontWeight = row.IsHeader ? FontWeight.SemiBold : FontWeight.Normal;
 						contents.Children.Add(text);
@@ -305,11 +304,11 @@ public static class ChatMarkdown
 						target.Add(span);
 						break;
 					case CodeInline code:
-						TextBlock codeText = Text(code.Content, 12, InlineCodeText);
+						TextBlock codeText = Text(code.Content, NoriMetrics.FontXs, InlineCodeText);
 						codeText.FontFamily = CodeFont;
 						codeText.FontWeight = FontWeight.SemiBold;
 						codeText.FontStyle = style;
-						target.Add(new InlineUIContainer(new Border { Child = codeText, Padding = new Thickness(4, 1), CornerRadius = new CornerRadius(4), Background = InlineCodeBackground }));
+						target.Add(new InlineUIContainer(new Border { Child = codeText, Padding = new Thickness(4, 1), CornerRadius = new CornerRadius(NoriMetrics.RadiusXs), Background = InlineCodeBackground }));
 						break;
 					case LinkInline { IsImage: true }:
 						// 与 Vue 的图片消毒策略一致，不创建图片控件，也不下载图片地址。

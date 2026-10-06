@@ -82,7 +82,7 @@ public sealed partial class BridgeCommands
 		}
 		catch (Exception exception)
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"读取模型互动配置失败 [{modelId}]: {exception.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", $"读取模型互动配置失败 [{modelId}]", exception: exception);
 			return PetInteractionConfig.Empty;
 		}
 	}

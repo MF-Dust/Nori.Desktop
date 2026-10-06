@@ -13,6 +13,7 @@ using Nori.Core.Data;
 using Nori.Core.Logging;
 using Nori.Core.Security;
 using Nori.Core.Telemetry;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Diagnostics;
 
@@ -324,13 +325,13 @@ public static class CrashReporter
 			TextWrapping = TextWrapping.Wrap,
 			AcceptsReturn = true,
 			FontFamily = new FontFamily("Consolas, Courier New, monospace"),
-			FontSize = 12,
+			FontSize = NoriMetrics.FontXs,
 		};
 
 		TextBlock headline = new()
 		{
 			Text = "Nori 遇到了问题",
-			FontSize = 18,
+			FontSize = NoriMetrics.FontXl,
 			FontWeight = FontWeight.Bold,
 		};
 

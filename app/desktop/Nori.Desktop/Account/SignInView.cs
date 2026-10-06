@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using Nori.Core.Cloud;
 using Nori.Desktop.Chat;
 using Nori.Desktop.Ui;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Account;
 
@@ -16,8 +17,8 @@ namespace Nori.Desktop.Account;
 ///
 /// ── 视觉规范 ──────────────────────────────────────────────────────────────
 /// 与首次运行向导保持一致：居中单列、圆角、标签置于输入上方、主按钮为青绿填充并
-/// 右对齐。配色全部取自 <see cref="ChatPalette"/>，不引入新色值 —— 青 (#7de3ff)
-/// 用于标题与次级入口，青绿 (#5eead4) 用于主操作，红 (#ff6b72) 用于错误。
+/// 右对齐。配色全部取自 <see cref="ChatPalette"/>，不引入新色值 —— 亮青 (Accent / nori-teal-bright)
+/// 用于次级入口，品牌青 (Teal / nori-teal) 用于主操作与完成状态，danger-text 用于错误。
 ///
 /// ── 状态指示：复用品牌标记 ────────────────────────────────────────────────
 /// <see cref="NoriHalo"/> 是启动画面使用的品牌标记（四瓣标志 + 两圈虚线 + 光晕）。
@@ -71,7 +72,7 @@ internal sealed class SignInView : Panel
 		_password.PasswordChar = '•';
 		_code = Field("6 位数字", machineText: true);
 		_code.MaxLength = SignInForm.CodeLength;
-		_code.FontSize = 17;
+		_code.FontSize = NoriMetrics.FontXl;
 		_code.LetterSpacing = 5;
 
 		_email.TextChanged += (_, _) => { _form.SetEmail(_email.Text ?? ""); Paint(); };
@@ -86,7 +87,7 @@ internal sealed class SignInView : Panel
 
 		_lede = new TextBlock
 		{
-			FontSize = 12.5, Foreground = ChatPalette.Muted,
+			FontSize = NoriMetrics.FontBase, Foreground = ChatPalette.Muted,
 			TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap,
 			MaxWidth = Column, LineHeight = 21,
 			HorizontalAlignment = HorizontalAlignment.Center,
@@ -107,7 +108,7 @@ internal sealed class SignInView : Panel
 
 		_line = new TextBlock
 		{
-			FontSize = 11.5, Foreground = ChatPalette.Faint,
+			FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Faint,
 			TextWrapping = TextWrapping.Wrap, LineHeight = 18,
 			MaxWidth = Column, Margin = new Thickness(0, 12, 0, 0),
 		};
@@ -173,7 +174,7 @@ internal sealed class SignInView : Panel
 				new TextBlock
 				{
 					Text = "登录账户",
-					FontSize = 19, FontWeight = FontWeight.SemiBold,
+					FontSize = NoriMetrics.FontXl, FontWeight = FontWeight.SemiBold,
 					Foreground = ChatPalette.Primary,
 					HorizontalAlignment = HorizontalAlignment.Center,
 				},
@@ -214,7 +215,7 @@ internal sealed class SignInView : Panel
 		{
 			new TextBlock
 			{
-				Text = label, FontSize = 11, Foreground = ChatPalette.Faint,
+				Text = label, FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Faint,
 				Margin = new Thickness(2, 0, 0, 5),
 			},
 			input,
@@ -270,7 +271,7 @@ internal sealed class SignInView : Panel
 		TextBlock words = new()
 		{
 			Text = "不登录时，云存档与跨设备同步不可用。本地功能不受影响。",
-			FontSize = 11, Foreground = ChatPalette.Faint,
+			FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Faint,
 			TextWrapping = TextWrapping.Wrap, MaxWidth = 230, LineHeight = 17,
 			VerticalAlignment = VerticalAlignment.Center,
 		};
@@ -303,7 +304,7 @@ internal sealed class SignInView : Panel
 		{
 			PlaceholderText = placeholder,
 			Width = Column,
-			FontSize = 13.5,
+			FontSize = NoriMetrics.FontMd,
 		};
 		if (machineText) box.FontFamily = new FontFamily("Consolas, Menlo, ui-monospace, monospace");
 		box.KeyDown += OnFieldKey;
@@ -315,11 +316,11 @@ internal sealed class SignInView : Panel
 	{
 		Content = text,
 		Padding = new Thickness(primary ? 24 : 16, 8),
-		CornerRadius = new CornerRadius(8),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
 		Background = primary ? ChatPalette.Teal : ChatPalette.Panel,
 		Foreground = primary ? ChatPalette.OnTeal : ChatPalette.Body,
 		BorderThickness = default,
-		FontSize = 12.5,
+		FontSize = NoriMetrics.FontBase,
 		FontWeight = primary ? FontWeight.SemiBold : FontWeight.Normal,
 		VerticalAlignment = VerticalAlignment.Center,
 		Cursor = new Cursor(StandardCursorType.Hand),
@@ -332,7 +333,7 @@ internal sealed class SignInView : Panel
 		BorderThickness = default,
 		Foreground = ChatPalette.Accent,
 		Padding = default,
-		FontSize = 12,
+		FontSize = NoriMetrics.FontXs,
 		VerticalAlignment = VerticalAlignment.Center,
 		Cursor = new Cursor(StandardCursorType.Hand),
 	};

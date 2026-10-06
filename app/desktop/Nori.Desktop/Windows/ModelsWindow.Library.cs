@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Windows;
 
@@ -21,8 +22,8 @@ public sealed partial class ModelsWindow
 			using Stream stream = AssetLoader.Open(new Uri("avares://Nori.Desktop/Assets/Models/" + model.Image));
 			var bitmap = new Bitmap(stream); _thumbnails.Add(bitmap);
 			var image = new Image { Source = bitmap, Stretch = Stretch.UniformToFill, Width = 88, Height = 124 };
-			var portrait = new Border { Child = image, CornerRadius = new CornerRadius(8), ClipToBounds = true };
-			var status = Text("", 12);
+			var portrait = new Border { Child = image, CornerRadius = new CornerRadius(NoriMetrics.RadiusSm), ClipToBounds = true };
+			var status = Text("", NoriMetrics.FontXs);
 			Brush(status, TextBlock.ForegroundProperty, "SettingsAccentBrush");
 			Button enable = ActionButton(() => T("启用模型", "Use model"), async () =>
 			{
@@ -31,7 +32,7 @@ public sealed partial class ModelsWindow
 			}, "ModelsEnable_" + model.Id);
 			Button adjust = ActionButton(() => T("调整", "Adjust"), () => OpenAdjustAsync(model.Id), "ModelsAdjust_" + model.Id);
 			Button import = ActionButton(() => T("导入 ZIP", "Import ZIP"), () => ImportAsync("zip"), "ModelsImport_" + model.Id);
-			var labels = Stack(Text(model.Name, 17, true), status, Row(enable, adjust, import)); labels.Spacing = 8; labels.VerticalAlignment = VerticalAlignment.Center;
+			var labels = Stack(Text(model.Name, NoriMetrics.FontXl, true), status, Row(enable, adjust, import)); labels.Spacing = 8; labels.VerticalAlignment = VerticalAlignment.Center;
 			var row = new Grid { ColumnDefinitions = new ColumnDefinitions("88,*"), ColumnSpacing = 16 }; row.Children.Add(portrait); Grid.SetColumn(labels, 1); row.Children.Add(labels);
 			Border card = Card(null, row); card.Margin = new Thickness(0, 0, 8, 10); card.Name = "ModelsCard_" + model.Id; models.Children.Add(card);
 			Bind(() =>

@@ -1,6 +1,7 @@
 using Avalonia.Media;
 using Nori.Core.Emotion;
 using Nori.Core.Expression;
+using Nori.Desktop.Appearance;
 using Nori.Desktop.Expression;
 
 namespace Nori.Desktop.Tests;
@@ -47,9 +48,11 @@ public sealed class ExpressionChannelTests
 	{
 		Color color = ExpressionColors.Parse(input);
 
-		Assert.Equal(0x8F, color.R);
-		Assert.Equal(0xA3, color.G);
-		Assert.Equal(0xB0, color.B);
+		// 中性灰取自 text-faint 令牌。
+		Color neutral = NoriThemeTokens.Color("text-faint");
+		Assert.Equal(neutral.R, color.R);
+		Assert.Equal(neutral.G, color.G);
+		Assert.Equal(neutral.B, color.B);
 	}
 
 	// ---- 语音气泡 ----

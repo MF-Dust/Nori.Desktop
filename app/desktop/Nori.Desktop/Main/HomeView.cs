@@ -12,6 +12,7 @@ using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
 using Nori.Desktop.Runtime;
 using Nori.Desktop.Windows;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Main;
 
@@ -27,14 +28,14 @@ public sealed class HomeView : Panel
 {
 	private readonly AppServices _services;
 	private readonly Action _onChanged;
-	private readonly TextBlock _communityTitle = Text(12, ChatPalette.Muted, true);
-	private readonly TextBlock _communityError = Text(12, ChatPalette.Danger);
-	private readonly TextBlock _overviewTitle = Text(12, ChatPalette.Muted, true);
-	private readonly TextBlock _shortcutsTitle = Text(12, ChatPalette.Muted, true);
-	private readonly TextBlock _modelName = Text(22, ChatPalette.Primary, true);
-	private readonly TextBlock _petStatus = Text(12, ChatPalette.Teal);
-	private readonly TextBlock _petDescription = Text(13, ChatPalette.Muted);
-	private readonly TextBlock _heroEyebrow = Text(12, ChatPalette.Muted, true);
+	private readonly TextBlock _communityTitle = Text(NoriMetrics.FontXs, ChatPalette.Muted, true);
+	private readonly TextBlock _communityError = Text(NoriMetrics.FontXs, ChatPalette.Danger);
+	private readonly TextBlock _overviewTitle = Text(NoriMetrics.FontXs, ChatPalette.Muted, true);
+	private readonly TextBlock _shortcutsTitle = Text(NoriMetrics.FontXs, ChatPalette.Muted, true);
+	private readonly TextBlock _modelName = Text(NoriMetrics.Font2xl, ChatPalette.Primary, true);
+	private readonly TextBlock _petStatus = Text(NoriMetrics.FontXs, ChatPalette.Teal);
+	private readonly TextBlock _petDescription = Text(NoriMetrics.FontBase, ChatPalette.Muted);
+	private readonly TextBlock _heroEyebrow = Text(NoriMetrics.FontXs, ChatPalette.Muted, true);
 	private readonly Image _avatar = new() {Stretch = Stretch.UniformToFill};
 	private readonly Border _statusDot = new() {Width = 6, Height = 6, CornerRadius = new CornerRadius(3), Background = ChatPalette.Teal};
 	private readonly Button _togglePet;
@@ -43,10 +44,10 @@ public sealed class HomeView : Panel
 	private readonly Button _bilibili;
 	private readonly Border _missingBanner;
 	private readonly Border _safeBanner;
-	private readonly TextBlock _missingTitle = Text(13, ChatPalette.Primary, true);
-	private readonly TextBlock _missingDescription = Text(12, ChatPalette.Muted);
-	private readonly TextBlock _safeTitle = Text(13, ChatPalette.Primary, true);
-	private readonly TextBlock _safeDescription = Text(12, ChatPalette.Muted);
+	private readonly TextBlock _missingTitle = Text(NoriMetrics.FontBase, ChatPalette.Primary, true);
+	private readonly TextBlock _missingDescription = Text(NoriMetrics.FontXs, ChatPalette.Muted);
+	private readonly TextBlock _safeTitle = Text(NoriMetrics.FontBase, ChatPalette.Primary, true);
+	private readonly TextBlock _safeDescription = Text(NoriMetrics.FontXs, ChatPalette.Muted);
 	private readonly Button _import;
 	private readonly StatTile[] _stats = [new("cpu"), new("sparkles"), new("tool"), new("server")];
 	private readonly ShortcutCard[] _shortcuts;
@@ -189,7 +190,7 @@ public sealed class HomeView : Panel
 						{
 							Margin = new Thickness(12, 4, 0, 4), VerticalAlignment = VerticalAlignment.Center,
 							Background = ChatPalette.Overlay, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1),
-							CornerRadius = new CornerRadius(12), Padding = new Thickness(9, 4),
+							CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Padding = new Thickness(9, 4),
 							Child = new StackPanel {Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = {_statusDot, _petStatus}},
 						},
 					},
@@ -202,7 +203,7 @@ public sealed class HomeView : Panel
 		_togglePet.Margin = new Thickness(0, 0, 10, 0);
 		return new Border
 		{
-			CornerRadius = new CornerRadius(16), BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), Padding = new Thickness(16), ClipToBounds = true,
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusLg), BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), Padding = new Thickness(16), ClipToBounds = true,
 			Background = new LinearGradientBrush
 			{
 				StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
@@ -224,7 +225,7 @@ public sealed class HomeView : Panel
 		catch (Exception failure)
 		{
 			_petDescription.Text = _english ? "Unable to open Nori. Please try again." : "暂时无法打开伴侣，请重试。";
-			_services.Logger.Write(LogSource.Backend, "warn", $"首页伴侣操作失败：{failure.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", "首页伴侣操作失败", exception: failure);
 		}
 	}
 
@@ -235,7 +236,7 @@ public sealed class HomeView : Panel
 		{
 			_communityError.Text = _english ? "Could not play the greeting. Please try again." : "暂时无法播放招呼动作，请稍后重试。";
 			_communityError.IsVisible = true;
-			_services.Logger.Write(LogSource.Backend, "warn", $"播放动作失败：{failure.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", "播放动作失败", exception: failure);
 		}
 	}
 
@@ -254,12 +255,12 @@ public sealed class HomeView : Panel
 			action.VerticalAlignment = VerticalAlignment.Center;
 			content.Children.Add(action);
 		}
-		return new Border {Background = ChatPalette.Overlay, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(14, 10), Child = content};
+		return new Border {Background = ChatPalette.Overlay, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Padding = new Thickness(14, 10), Child = content};
 	}
 
 	private static Button ActionButton(string text, Action onClick, bool primary = false)
 	{
-		Button button = new() {Content = text, Padding = new Thickness(15, 9), CornerRadius = new CornerRadius(8), HorizontalAlignment = HorizontalAlignment.Left, FontSize = 13};
+		Button button = new() {Content = text, Padding = new Thickness(15, 9), CornerRadius = new CornerRadius(NoriMetrics.RadiusSm), HorizontalAlignment = HorizontalAlignment.Left, FontSize = NoriMetrics.FontBase};
 		if (primary) button.Classes.Add("primary");
 		button.Click += (_, _) => onClick();
 		return button;
@@ -280,7 +281,7 @@ public sealed class HomeView : Panel
 		{
 			_communityError.Text = _english ? "Could not open the link. Please try again." : "打开链接失败，请稍后重试。";
 			_communityError.IsVisible = true;
-			_services.Logger.Write(LogSource.Backend, "warn", $"打开社区链接失败：{failure.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", "打开社区链接失败", exception: failure);
 		}
 	}
 
@@ -300,7 +301,7 @@ public sealed class HomeView : Panel
 		{
 			_communityError.Text = _english ? "Could not copy the QQ group number." : "复制 QQ 群号失败，请重试。";
 			_communityError.IsVisible = true;
-			_services.Logger.Write(LogSource.Backend, "warn", $"复制 QQ 群号失败：{failure.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", "复制 QQ 群号失败", exception: failure);
 		}
 	}
 
@@ -334,7 +335,7 @@ public sealed class HomeView : Panel
 		catch (Exception failure)
 		{
 			_stats[3].Value.Text = "—";
-			_services.Logger.Write(LogSource.Backend, "warn", $"读取首页 MCP 统计失败：{failure.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", "读取首页 MCP 统计失败", exception: failure);
 		}
 		finally { _readingMcp = false; }
 	}
@@ -384,16 +385,16 @@ public sealed class HomeView : Panel
 
 	private sealed class StatTile
 	{
-		private readonly TextBlock _label = Text(12, ChatPalette.Muted);
-		private readonly TextBlock _note = new() {FontSize = 12, Foreground = ChatPalette.Muted, TextTrimming = TextTrimming.CharacterEllipsis};
-		internal TextBlock Value { get; } = Text(22, ChatPalette.Primary, true);
+		private readonly TextBlock _label = Text(NoriMetrics.FontXs, ChatPalette.Muted);
+		private readonly TextBlock _note = new() {FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Muted, TextTrimming = TextTrimming.CharacterEllipsis};
+		internal TextBlock Value { get; } = Text(NoriMetrics.Font2xl, ChatPalette.Primary, true);
 		internal Border Root { get; }
 		internal StatTile(string icon)
 		{
 			Value.Text = "—";
 			Root = new Border
 			{
-				Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(12),
+				Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Padding = new Thickness(12),
 				Child = new StackPanel {Spacing = 8, Children = {new StackPanel {Orientation = Orientation.Horizontal, Spacing = 8, Children = {MainVisual.Icon(icon, 15, ChatPalette.Muted), _label}}, Value, _note}},
 			};
 		}
@@ -409,9 +410,9 @@ public sealed class HomeView : Panel
 
 	private sealed class ShortcutCard
 	{
-		private readonly TextBlock _title = Text(15, ChatPalette.Primary, true);
-		private readonly TextBlock _description = Text(12, ChatPalette.Muted);
-		private readonly TextBlock _action = Text(12, ChatPalette.Teal);
+		private readonly TextBlock _title = Text(NoriMetrics.FontLg, ChatPalette.Primary, true);
+		private readonly TextBlock _description = Text(NoriMetrics.FontXs, ChatPalette.Muted);
+		private readonly TextBlock _action = Text(NoriMetrics.FontXs, ChatPalette.Teal);
 		internal Button Root { get; }
 		internal ShortcutCard(string icon, Action open)
 		{
@@ -423,7 +424,7 @@ public sealed class HomeView : Panel
 			bottom.Children.Add(arrow);
 			Root = new Button
 			{
-				Name = "HomeShortcut", HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(14), CornerRadius = new CornerRadius(12),
+				Name = "HomeShortcut", HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(14), CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
 				Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1),
 				Content = new StackPanel
 				{
@@ -432,7 +433,7 @@ public sealed class HomeView : Panel
 					{
 						new Border
 						{
-							Width = 36, Height = 36, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(12), Background = ChatPalette.Overlay,
+							Width = 36, Height = 36, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Background = ChatPalette.Overlay,
 							BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), Child = MainVisual.Icon(icon, 19, ChatPalette.Teal),
 						},
 						_title, _description,

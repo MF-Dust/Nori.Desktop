@@ -46,7 +46,7 @@ internal sealed class NativeWindowChrome : Border
 		StackPanel lights = new() { Orientation = Orientation.Horizontal, Spacing = 0, VerticalAlignment = VerticalAlignment.Center, Children = { _close, _minimize, _zoom } };
 		if (heading is null)
 		{
-			_title = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, Foreground = NoriThemeTokens.Brush("text-primary"), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+			_title = new TextBlock { FontSize = NoriMetrics.FontBase, FontWeight = FontWeight.SemiBold, Foreground = NoriThemeTokens.Brush("text-primary"), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
 			heading = _title;
 		}
 		Grid layout = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 14 };
@@ -80,9 +80,9 @@ internal sealed class NativeWindowChrome : Border
 		SetLabel(_zoom, _window.WindowState == WindowState.Maximized ? (english ? "Restore" : "还原") : (english ? "Maximize" : "最大化"));
 		_zoom.IsVisible = _minimize.IsVisible = !_closeOnly;
 		_zoom.IsEnabled = _window.CanResize;
-		_zoom.Opacity = _window.CanResize ? 1 : .35;
+		_zoom.Opacity = _window.CanResize ? 1 : NoriMetrics.OpacityDisabled;
 		_minimize.IsEnabled = _window.CanMinimize;
-		_minimize.Opacity = _window.CanMinimize ? 1 : .35;
+		_minimize.Opacity = _window.CanMinimize ? 1 : NoriMetrics.OpacityDisabled;
 	}
 
 	private static void SetLabel(Button button, string label)
@@ -94,6 +94,7 @@ internal sealed class NativeWindowChrome : Border
 	internal static Button TrafficButton(string kind, string glyph)
 	{
 		var dot = new Border { Width = 12, Height = 12, CornerRadius = new CornerRadius(6), Background = NoriThemeTokens.Brush("traffic-" + kind) };
+		// 悬停才出现的装饰符号，须容纳在 12px 圆点内，不属于正文字号刻度。
 		var symbol = new TextBlock { Text = glyph, FontSize = 11, FontWeight = FontWeight.Bold, Foreground = NoriThemeTokens.Brush("bg-base"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Opacity = 0 };
 		dot.Child = symbol;
 		Button button = new()

@@ -170,5 +170,5 @@ internal sealed class QuickChatController
 		finally { _transition.Release(); }
 	}
 
-	private void LogFailure(Exception exception) => _services.Logger.Write(LogSource.Backend, "warn", $"快捷聊天生命周期更新失败: {exception.GetType().Name}");
+	private void LogFailure(Exception exception) => _services.Logger.Write(LogSource.Backend, "warn", "快捷聊天生命周期更新失败", exception: exception);
 }

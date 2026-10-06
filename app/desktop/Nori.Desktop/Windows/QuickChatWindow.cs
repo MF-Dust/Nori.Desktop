@@ -116,7 +116,7 @@ public sealed class QuickChatWindow : Window
 		catch (Exception exception) when (exception is InvalidOperationException or PlatformNotSupportedException or DllNotFoundException or EntryPointNotFoundException)
 		{
 			_inputTimer.Stop();
-			_services.Logger.Write(LogSource.Backend, "warn", $"快捷聊天区域穿透不可用，使用紧凑窗口: {exception.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", "快捷聊天区域穿透不可用，使用紧凑窗口", exception: exception);
 		}
 	}
 

@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Nori.Core.Configuration;
 using Nori.Desktop.Settings;
 using static Nori.Desktop.SnapshotJson;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Windows;
 
@@ -16,14 +17,14 @@ public sealed partial class ModelsWindow
 {
 	private string T(string chinese, string english) => UiLanguage.IsEnglish(_language) ? english : chinese;
 	private void Localize(Action action) { (_buildingAdjust ? _adjustLocalize : _localize).Add(action); action(); }
-	private static TextBlock Text(string value, double size = 13, bool bold = false) => new() { Text = value, FontSize = size, FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal, TextWrapping = TextWrapping.Wrap };
-	private TextBlock Local(Func<string> value, double size = 13, bool bold = false)
+	private static TextBlock Text(string value, double size = NoriMetrics.FontBase, bool bold = false) => new() { Text = value, FontSize = size, FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal, TextWrapping = TextWrapping.Wrap };
+	private TextBlock Local(Func<string> value, double size = NoriMetrics.FontBase, bool bold = false)
 	{
 		var text = Text(value(), size, bold); Localize(() => text.Text = value()); return text;
 	}
 	private TextBlock Secondary(Func<string> value)
 	{
-		TextBlock text = Local(value, 12); Brush(text, TextBlock.ForegroundProperty, "SettingsSecondaryBrush"); return text;
+		TextBlock text = Local(value, NoriMetrics.FontXs); Brush(text, TextBlock.ForegroundProperty, "SettingsSecondaryBrush"); return text;
 	}
 	private static StackPanel Stack(params Control[] children)
 	{
@@ -45,9 +46,9 @@ public sealed partial class ModelsWindow
 	private Border Card(Func<string>? title, params Control[] children)
 	{
 		var body = Stack();
-		if (title is not null) body.Children.Add(Local(title, 15, true));
+		if (title is not null) body.Children.Add(Local(title, NoriMetrics.FontLg, true));
 		foreach (Control child in children) body.Children.Add(child);
-		var border = new Border { Child = body, Padding = new Thickness(20, 16), CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1) };
+		var border = new Border { Child = body, Padding = new Thickness(20, 16), CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), BorderThickness = new Thickness(1) };
 		Brush(border, Border.BackgroundProperty, "SettingsCardBrush"); Brush(border, Border.BorderBrushProperty, "SettingsBorderBrush"); return border;
 	}
 	private Button ActionButton(Func<string> label, Func<Task> action, string? name = null, bool danger = false)
@@ -68,7 +69,7 @@ public sealed partial class ModelsWindow
 	private Control Field(Func<string> label, Control editor)
 	{
 		Localize(() => AutomationProperties.SetName(editor, label()));
-		StackPanel field = Stack(Local(label, 13, true), editor);
+		StackPanel field = Stack(Local(label, NoriMetrics.FontBase, true), editor);
 		field.Spacing = 6;
 		return field;
 	}
@@ -77,7 +78,7 @@ public sealed partial class ModelsWindow
 		Localize(() => AutomationProperties.SetName(editor, label()));
 		TextBlock description = Secondary(hint);
 		Bind(() => description.Text = hint());
-		var labels = Stack(Local(label, 13, true), description); labels.Spacing = 4;
+		var labels = Stack(Local(label, NoriMetrics.FontBase, true), description); labels.Spacing = 4;
 		var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 16, Margin = new Thickness(0, 10) };
 		editor.VerticalAlignment = VerticalAlignment.Center;
 		row.Children.Add(labels); Grid.SetColumn(editor, 1); row.Children.Add(editor);

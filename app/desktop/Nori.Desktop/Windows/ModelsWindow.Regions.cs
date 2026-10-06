@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Nori.Core.Live2D;
 using Nori.Desktop.Memory;
 using static Nori.Desktop.SnapshotJson;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Windows;
 
@@ -130,7 +131,7 @@ public sealed partial class ModelsWindow
 		var mode = new ComboBox { Name = motion ? "ModelsMotionMode" : "ModelsExpressionMode", HorizontalAlignment = HorizontalAlignment.Stretch };
 		var group = new ComboBox { Name = "ModelsMotionGroup", HorizontalAlignment = HorizontalAlignment.Stretch };
 		var names = new ComboBox { Name = motion ? "ModelsMotionName" : "ModelsExpressionName", HorizontalAlignment = HorizontalAlignment.Stretch };
-		var warning = Text("", 12); Brush(warning, TextBlock.ForegroundProperty, "SettingsErrorBrush");
+		var warning = Text("", NoriMetrics.FontXs); Brush(warning, TextBlock.ForegroundProperty, "SettingsErrorBrush");
 		JsonElement meta = _metadata.GetValueOrDefault(modelId);
 		MotionGroupInfo[] motions = Items(P(meta, "motions")).Select(item => new MotionGroupInfo { Group = S(item, "group"), Names = Strings(P(item, "names")).ToList() }).ToArray();
 		string[] expressions = Strings(P(meta, "expressions"));

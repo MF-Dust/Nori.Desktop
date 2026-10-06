@@ -130,7 +130,7 @@ public sealed partial class BridgeCommands
 		}
 		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ResourceException)
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"检查模型资源失败 [{modelId}]: {exception.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", $"检查模型资源失败 [{modelId}]", exception: exception);
 			return false;
 		}
 	}

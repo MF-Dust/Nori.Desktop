@@ -49,7 +49,7 @@
 			<StaticResource x:Key="ComboBoxChevronBrush" ResourceKey="SettingsAccentForegroundBrush"/>
 			<StaticResource x:Key="ComboBoxChevronInactiveBrush" ResourceKey="SettingsSecondaryBrush"/>
 			<SolidColorBrush x:Key="TextBoxSelectionHighlightBrush" Color="{StaticResource NoriNoriTealColor}" Opacity="0.3"/>
-			<CornerRadius x:Key="TextBoxFocusCornerRadius">8</CornerRadius>
+			<StaticResource x:Key="TextBoxFocusCornerRadius" ResourceKey="NoriRadiusSm"/>
 			<StaticResource x:Key="ForegroundHighBrush" ResourceKey="SettingsPrimaryBrush"/>
 			<StaticResource x:Key="ForegroundLowBrush" ResourceKey="SettingsSecondaryBrush"/>
 			<StaticResource x:Key="ButtonBackgroundBrush" ResourceKey="SettingsInputBrush"/>
@@ -79,7 +79,7 @@
 				<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
 				<Setter Property="BorderBrush" Value="{DynamicResource SettingsBorderBrush}"/>
 				<Setter Property="BorderThickness" Value="1"/>
-				<Setter Property="CornerRadius" Value="8"/>
+				<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
 				<Style Selector="^:pointerover, ^:pressed">
 					<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
 				</Style>
@@ -99,7 +99,7 @@
 	</Styles.Resources>
 	<Style Selector="Window">
 		<Setter Property="FontFamily" Value="{DynamicResource DefaultFontFamily}"/>
-		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontBase}"/>
 		<Setter Property="Background" Value="{DynamicResource NoriWindowSurfaceBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
 	</Style>
@@ -107,11 +107,11 @@
 		<Setter Property="Theme" Value="{StaticResource SettingsChoiceTheme}"/>
 	</Style>
 	<Style Selector="TextBox:not(.chat-composer):not(.quick-composer), ComboBox">
-		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
 	</Style>
 	<Style Selector="Window.models-window ComboBox, Window.models-window TextBox">
 		<Setter Property="MinHeight" Value="34"/>
-		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontBase}"/>
 	</Style>
 	<Style Selector="Button.danger:not(:disabled)">
 		<Setter Property="Foreground" Value="{DynamicResource SettingsErrorBrush}"/>
@@ -121,7 +121,7 @@
 		<Setter Property="BorderBrush" Value="Transparent"/>
 		<Setter Property="BorderThickness" Value="0"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsSecondaryBrush}"/>
-		<Setter Property="FontSize" Value="13"/>
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontBase}"/>
 		<Setter Property="HorizontalContentAlignment" Value="Stretch"/>
 	</Style>
 	<!-- 导航是列表行而非浮起的按钮，仅在此处去除库的按钮阴影。 -->
@@ -142,7 +142,7 @@
 		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
 	</Style>
 	<Style Selector="TextBox.settings-search">
-		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
 	</Style>
 	<!-- 导航统一使用无底片的线性图标。 -->
 	<Style Selector="Border.settings-nav-symbol">

@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Nori.Desktop.Settings.Pages;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Settings;
 
@@ -70,7 +71,7 @@ public sealed class ProactiveReminderList : ContentControl
 		body.Children.Add(new TextBlock
 		{
 			Text = Text($"现有提醒 · {_page.Reminders.Count}", $"Reminders · {_page.Reminders.Count}"),
-			FontSize = 16, FontWeight = FontWeight.SemiBold, Foreground = Brush("SettingsPrimaryBrush"),
+			FontSize = NoriMetrics.FontLg, FontWeight = FontWeight.SemiBold, Foreground = Brush("SettingsPrimaryBrush"),
 		});
 		if (_page.Reminders.Count == 0)
 			body.Children.Add(new TextBlock {Text = Text("暂无提醒，可在上方添加。", "No reminders yet. Add one above."), TextWrapping = TextWrapping.Wrap, Foreground = Brush("SettingsSecondaryBrush")});
@@ -81,8 +82,8 @@ public sealed class ProactiveReminderList : ContentControl
 			details.Children.Add(new TextBlock {Text = item.Content, FontWeight = FontWeight.Medium, TextWrapping = TextWrapping.Wrap, Foreground = Brush("SettingsPrimaryBrush")});
 			string status = item.RepeatDaily ? Text("每日重复", "Daily") : Text("单次提醒", "One-time");
 			if (item.Status == "claimed") status += Text(" · 正在处理", " · Processing");
-			details.Children.Add(new TextBlock {Text = status, FontSize = 12, Foreground = Brush("SettingsSecondaryBrush")});
-			TextBlock time = new() {FontSize = 12, Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap};
+			details.Children.Add(new TextBlock {Text = status, FontSize = NoriMetrics.FontXs, Foreground = Brush("SettingsSecondaryBrush")});
+			TextBlock time = new() {FontSize = NoriMetrics.FontXs, Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap};
 			details.Children.Add(time);
 			_times.Add((time, item.TriggerAt));
 			row.Children.Add(details);
@@ -101,7 +102,7 @@ public sealed class ProactiveReminderList : ContentControl
 		Content = new Border
 		{
 			Background = Brush("SettingsCardBrush"), BorderBrush = Brush("SettingsBorderBrush"), BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(12), Padding = new Thickness(20, 16), Child = body,
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Padding = new Thickness(20, 16), Child = body,
 		};
 	}
 

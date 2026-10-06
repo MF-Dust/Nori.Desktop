@@ -13,6 +13,7 @@ using Nori.Core.Configuration;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Memory;
 using static Nori.Desktop.SnapshotJson;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Windows;
 
@@ -30,9 +31,9 @@ public sealed partial class MemoryWindow : Window
 	private readonly List<Action<JsonElement>> _snapshotBindings = [];
 	private readonly HashSet<Task> _operations = [];
 	private readonly ContentControl _presenter = new() { MaxWidth = 960, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
-	private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
-	private readonly TextBlock _heading = new() { FontSize = 26, FontWeight = FontWeight.SemiBold };
-	private readonly TextBlock _description = new() { FontSize = 13, TextWrapping = TextWrapping.Wrap };
+	private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, FontSize = NoriMetrics.FontXs };
+	private readonly TextBlock _heading = new() { FontSize = NoriMetrics.Font3xl, FontWeight = FontWeight.SemiBold };
+	private readonly TextBlock _description = new() { FontSize = NoriMetrics.FontBase, TextWrapping = TextWrapping.Wrap };
 	private readonly ScrollViewer _scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
 	private JsonElement _snapshot;
 	private string _language = "zh-CN";
@@ -213,15 +214,15 @@ public sealed partial class MemoryWindow : Window
 		var root = new Grid { ColumnDefinitions = new ColumnDefinitions("200,*") };
 		var nav = new StackPanel { Spacing = 0, Margin = new Thickness(10, 20, 10, 12) };
 		var brand = new Grid { ColumnDefinitions = new ColumnDefinitions("36,*"), ColumnSpacing = 10, Margin = new Thickness(6, 0, 6, 14) };
-		var monogram = new Border { CornerRadius = new CornerRadius(12), Width = 36, Height = 36, Child = Text("N", 22, true) };
+		var monogram = new Border { CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Width = 36, Height = 36, Child = Text("N", NoriMetrics.Font2xl, true) };
 		((TextBlock)monogram.Child).HorizontalAlignment = HorizontalAlignment.Center;
 		((TextBlock)monogram.Child).VerticalAlignment = VerticalAlignment.Center;
 		SetBrush(monogram, Border.BackgroundProperty, "SettingsSelectionBrush");
 		SetBrush(monogram.Child, TextBlock.ForegroundProperty, "SettingsAccentBrush");
 		brand.Children.Add(monogram);
-		var wordmark = Text("NORI", 12, true); wordmark.LetterSpacing = 2;
+		var wordmark = Text("NORI", NoriMetrics.FontXs, true); wordmark.LetterSpacing = 2;
 		SetBrush(wordmark, TextBlock.ForegroundProperty, "SettingsSecondaryBrush");
-		var brandTitle = Text(T("记忆", "Memory"), 16, true);
+		var brandTitle = Text(T("记忆", "Memory"), NoriMetrics.FontLg, true);
 		_localize.Add(() => brandTitle.Text = T("记忆", "Memory"));
 		var brandLabels = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
 		brandLabels.Children.Add(wordmark); brandLabels.Children.Add(brandTitle);
@@ -230,11 +231,11 @@ public sealed partial class MemoryWindow : Window
 		{
 			if (section is "overview" or "transfer")
 			{
-				var group = Text("", 12, true); group.Margin = new Thickness(10, section == "overview" ? 0 : 10, 0, 6);
+				var group = Text("", NoriMetrics.FontXs, true); group.Margin = new Thickness(10, section == "overview" ? 0 : 10, 0, 6);
 				_localize.Add(() => group.Text = section == "overview" ? T("记忆资料库", "LIBRARY") : T("管理与工具", "MANAGEMENT"));
 				SetBrush(group, TextBlock.ForegroundProperty, "SettingsSecondaryBrush"); nav.Children.Add(group);
 			}
-			var button = new Button { Tag = section, CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 4), Margin = new Thickness(0, 1) };
+			var button = new Button { Tag = section, CornerRadius = new CornerRadius(NoriMetrics.RadiusSm), Padding = new Thickness(8, 4), Margin = new Thickness(0, 1) };
 			button.Click += (_, _) => Navigate(section);
 			button.Classes.Add("settings-nav");
 			button.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -293,7 +294,7 @@ public sealed partial class MemoryWindow : Window
 		};
 		var icon = new Avalonia.Controls.Shapes.Path { Data = Geometry.Parse(data) };
 		icon.Classes.Add("settings-nav-icon");
-		var symbol = new Border { Width = 26, Height = 26, CornerRadius = new CornerRadius(8), Child = new Viewbox { Width = 18, Height = 18, Child = icon } };
+		var symbol = new Border { Width = 26, Height = 26, CornerRadius = new CornerRadius(NoriMetrics.RadiusSm), Child = new Viewbox { Width = 18, Height = 18, Child = icon } };
 		symbol.Classes.Add("settings-nav-symbol");
 		symbol.Background = Brushes.Transparent;
 		return symbol;
@@ -321,14 +322,14 @@ public sealed partial class MemoryWindow : Window
 		foreach (Action action in _localize) action();
 		_editorLocalize?.Invoke();
 	}
-	private TextBlock Label(string key, double size = 13, bool bold = false)
+	private TextBlock Label(string key, double size = NoriMetrics.FontBase, bool bold = false)
 	{
 		TextBlock text = Text(L(key), size, bold);
 		var reference = new WeakReference<TextBlock>(text);
 		_localize.Add(() => { if (reference.TryGetTarget(out TextBlock? target)) target.Text = L(key); });
 		return text;
 	}
-	private static TextBlock Text(string value, double size = 13, bool bold = false) => new()
+	private static TextBlock Text(string value, double size = NoriMetrics.FontBase, bool bold = false) => new()
 	{
 		Text = value, FontSize = size, FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
 		TextWrapping = TextWrapping.Wrap,
@@ -380,14 +381,14 @@ public sealed partial class MemoryWindow : Window
 	private Border Card(string key, params Control[] children)
 	{
 		var body = Stack();
-		if (key.Length > 0) body.Children.Add(Label(key, 16, true));
+		if (key.Length > 0) body.Children.Add(Label(key, NoriMetrics.FontLg, true));
 		foreach (Control child in children) body.Children.Add(child);
-		var border = new Border { Child = body, Padding = new Thickness(16), CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1) };
+		var border = new Border { Child = body, Padding = new Thickness(16), CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), BorderThickness = new Thickness(1) };
 		SetBrush(border, Border.BackgroundProperty, "SettingsCardBrush");
 		SetBrush(border, Border.BorderBrushProperty, "SettingsBorderBrush");
 		return border;
 	}
-	private Control Field(string key, Control control) => Stack(Label(key, 12, true), control);
+	private Control Field(string key, Control control) => Stack(Label(key, NoriMetrics.FontXs, true), control);
 	private TextBox Input(string text = "", bool multiline = false) => new()
 	{
 		Text = text, AcceptsReturn = multiline, TextWrapping = TextWrapping.Wrap,

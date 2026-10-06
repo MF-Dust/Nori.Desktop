@@ -214,7 +214,7 @@ public sealed class PetWindow : Window
 			}
 			catch (Exception exception) when (exception is PlatformNotSupportedException or InvalidOperationException or EntryPointNotFoundException)
 			{
-				_services.Logger.Write(LogSource.Backend, "warn", $"设置伴侣窗口置顶层级失败: {exception.GetType().Name}");
+				_services.Logger.Write(LogSource.Backend, "warn", "设置伴侣窗口置顶层级失败", exception: exception);
 			}
 		}
 	}
@@ -271,7 +271,7 @@ public sealed class PetWindow : Window
 		{
 			// 穿透是增强项: 失败就停掉同步并保持整窗可点, 绝不打断渲染
 			_hitShapeTimer?.Stop();
-			_services.Logger.Write(LogSource.Backend, "warn", $"伴侣窗口穿透同步失败, 已降级为整窗可点: {exception.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", "伴侣窗口穿透同步失败, 已降级为整窗可点", exception: exception);
 		}
 	}
 
@@ -436,7 +436,7 @@ public sealed class PetWindow : Window
 			catch (Exception exception)
 			{
 				if (OperatingSystem.IsWindows() && needsCursorForInput)
-					_services.Logger.Write(LogSource.Backend, "warn", $"读取伴侣窗口穿透状态失败: {exception.GetType().Name}");
+					_services.Logger.Write(LogSource.Backend, "warn", "读取伴侣窗口穿透状态失败", exception: exception);
 			}
 
 			if (_runtime.EyeTrackingEnabled && clientCursor is { } position)
@@ -477,7 +477,7 @@ public sealed class PetWindow : Window
 				}
 				catch (Exception exception) when (exception is PlatformNotSupportedException or InvalidOperationException)
 				{
-					_services.Logger.Write(LogSource.Backend, "warn", $"读取伴侣窗口穿透状态失败: {exception.GetType().Name}");
+					_services.Logger.Write(LogSource.Backend, "warn", "读取伴侣窗口穿透状态失败", exception: exception);
 					return;
 				}
 			}
@@ -500,7 +500,7 @@ public sealed class PetWindow : Window
 		}
 		catch (Exception exception) when (exception is InvalidOperationException or EntryPointNotFoundException or DllNotFoundException)
 		{
-			_services.Logger.Write(LogSource.Backend, "warn", $"同步伴侣窗口穿透状态失败: {exception.GetType().Name}");
+			_services.Logger.Write(LogSource.Backend, "warn", "同步伴侣窗口穿透状态失败", exception: exception);
 		}
 	}
 
@@ -571,7 +571,7 @@ public sealed class PetWindow : Window
 				catch (InvalidOperationException exception)
 				{
 					_isNativeDragPending = false;
-					_services.Logger.Write(LogSource.Backend, "warn", $"原生伴侣视窗拖动不可用, 改用手动拖动: {exception.GetType().Name}");
+					_services.Logger.Write(LogSource.Backend, "warn", "原生伴侣视窗拖动不可用, 改用手动拖动", exception: exception);
 				}
 			}
 
@@ -684,7 +684,7 @@ public sealed class PetWindow : Window
 			Background = NoriThemeTokens.Brush("bg-menu"),
 			BorderBrush = NoriThemeTokens.Brush("line-strong"),
 			BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(8),
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
 			Padding = new Thickness(4),
 		};
 		// 保留浅色文字与危险色，悬停和键盘选中使用深色表面而非亮强调色。
@@ -720,9 +720,9 @@ public sealed class PetWindow : Window
 			Foreground = isDanger
 				? NoriThemeTokens.Brush("danger-text")
 				: NoriThemeTokens.Brush("text-body"),
-			FontSize = 13,
+			FontSize = NoriMetrics.FontBase,
 			Padding = new Thickness(12, 6),
-			CornerRadius = new CornerRadius(8),
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
 		};
 		item.Click += (_, _) => onClick();
 		return item;

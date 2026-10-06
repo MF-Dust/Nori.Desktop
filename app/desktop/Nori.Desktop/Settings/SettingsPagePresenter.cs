@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Nori.Desktop.Settings.Pages;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Settings;
 
@@ -67,7 +68,7 @@ public sealed class SettingsPagePresenter : ContentControl
 				Background = Brush("SettingsCardBrush"),
 				BorderBrush = Brush("SettingsBorderBrush"),
 				BorderThickness = new Thickness(1),
-				CornerRadius = new CornerRadius(12),
+				CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
 				Padding = new Thickness(20, 16),
 			};
 			card.Bind(IsVisibleProperty, new Binding(nameof(SettingsSectionViewModel.IsVisible)) {Source = section});
@@ -75,7 +76,7 @@ public sealed class SettingsPagePresenter : ContentControl
 			content.Children.Add(new TextBlock
 			{
 				Text = section.Title,
-				FontSize = 15,
+				FontSize = NoriMetrics.FontLg,
 				FontWeight = FontWeight.SemiBold,
 				Foreground = Brush("SettingsPrimaryBrush"),
 				Margin = new Thickness(0, 0, 0, 14),

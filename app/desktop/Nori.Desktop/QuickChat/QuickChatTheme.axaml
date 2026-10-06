@@ -25,7 +25,7 @@
 		<Setter Property="BorderThickness" Value="0"/>
 		<Setter Property="CornerRadius" Value="0"/>
 		<Setter Property="Padding" Value="0"/>
-		<Setter Property="FontSize" Value="14"/>
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontMd}"/>
 		<Setter Property="FontWeight" Value="Medium"/>
 		<Setter Property="MinHeight" Value="20"/>
 		<Setter Property="VerticalContentAlignment" Value="Center"/>
@@ -64,7 +64,7 @@
 		<Setter Property="MinWidth" Value="28"/>
 		<Setter Property="MinHeight" Value="28"/>
 		<Setter Property="Padding" Value="0"/>
-		<Setter Property="CornerRadius" Value="8"/>
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
 		<Setter Property="BorderThickness" Value="0"/>
 		<Setter Property="Background" Value="Transparent"/>
 		<Setter Property="Foreground" Value="{DynamicResource QuickComposerHintBrush}"/>
@@ -100,13 +100,13 @@
 		<Setter Property="BorderThickness" Value="2"/>
 	</Style>
 	<Style Selector="Button.quick-send:disabled">
-		<Setter Property="Opacity" Value="0.3"/>
+		<Setter Property="Opacity" Value="{DynamicResource NoriOpacityDisabled}"/>
 	</Style>
 	<Style Selector="Button.quick-approval">
 		<Setter Property="MinHeight" Value="26"/>
 		<Setter Property="Padding" Value="9,4"/>
-		<Setter Property="CornerRadius" Value="8"/>
-		<Setter Property="FontSize" Value="12"/>
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontXs}"/>
 		<Setter Property="FontWeight" Value="SemiBold"/>
 		<Setter Property="Background" Value="{DynamicResource QuickApprovalSurfaceBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource QuickPlayerTextBrush}"/>

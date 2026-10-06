@@ -74,6 +74,34 @@ public class ResourceImportTests
 	}
 
 	[Fact]
+	public void Import_旧模型文件被短暂占用时重试交换成功()
+	{
+		string tempDir = Path.Combine(Path.GetTempPath(), $"nori-locked-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(tempDir);
+		try
+		{
+			ResourceManager manager = new(tempDir);
+			string v1Zip = Path.Combine(tempDir, "v1.zip");
+			WriteModelZip(v1Zip, "ARGNori_web", "ARGNori.model3.json", "{}", "old-texture");
+			manager.Import(ResourceType.Live2D, v1Zip);
+			string texture = Path.Combine(tempDir, "resources", "live2d", "arg-nori", "tex", "0.png");
+
+			// 模拟杀毒/索引服务短暂持有文件句柄 (不含 FILE_SHARE_DELETE, Windows 上目录改名会被拒绝)。
+			FileStream holder = new(texture, FileMode.Open, FileAccess.Read, FileShare.Read);
+			using Timer release = new(_ => holder.Dispose(), null, 150, Timeout.Infinite);
+			string v2Zip = Path.Combine(tempDir, "v2.zip");
+			WriteModelZip(v2Zip, "ARGNori_web", "ARGNori.model3.json", "{}", "new-texture");
+
+			Assert.Contains("arg-nori", manager.Import(ResourceType.Live2D, v2Zip));
+			Assert.Equal("new-texture", File.ReadAllText(texture));
+		}
+		finally
+		{
+			Directory.Delete(tempDir, true);
+		}
+	}
+
+	[Fact]
 	public void Import_目录导入覆盖旧资源()
 	{
 		string tempDir = Path.Combine(Path.GetTempPath(), $"nori-dir-import-{Guid.NewGuid():N}");

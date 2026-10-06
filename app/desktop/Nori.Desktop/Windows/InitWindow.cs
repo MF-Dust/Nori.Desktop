@@ -195,7 +195,7 @@ internal sealed class InitView : Panel
 
 		_status = new TextBlock
 		{
-			Foreground = ChatPalette.Primary, FontSize = 14, FontWeight = FontWeight.SemiBold,
+			Foreground = ChatPalette.Primary, FontSize = NoriMetrics.FontMd, FontWeight = FontWeight.SemiBold,
 			VerticalAlignment = VerticalAlignment.Center,
 		};
 		_statusCapsule = new StackPanel
@@ -207,12 +207,12 @@ internal sealed class InitView : Panel
 
 		_timeoutTitle = new TextBlock
 		{
-			Foreground = ChatPalette.Primary, FontSize = 15, FontWeight = FontWeight.SemiBold,
+			Foreground = ChatPalette.Primary, FontSize = NoriMetrics.FontLg, FontWeight = FontWeight.SemiBold,
 			HorizontalAlignment = HorizontalAlignment.Center,
 		};
 		_timeoutBody = new TextBlock
 		{
-			Foreground = ChatPalette.Muted, FontSize = 12, TextWrapping = TextWrapping.Wrap,
+			Foreground = ChatPalette.Muted, FontSize = NoriMetrics.FontXs, TextWrapping = TextWrapping.Wrap,
 			MaxWidth = 360, TextAlignment = TextAlignment.Center,
 		};
 		_retry = new Button
@@ -220,12 +220,12 @@ internal sealed class InitView : Panel
 			HorizontalAlignment = HorizontalAlignment.Center,
 			Padding = new Thickness(18, 7),
 			Background = ChatPalette.Teal, Foreground = ChatPalette.OnTeal,
-			CornerRadius = new CornerRadius(8),
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
 		};
 		_retry.Click += (_, _) => onRetry();
 		_retryError = new TextBlock
 		{
-			Foreground = ChatPalette.Danger, FontSize = 12,
+			Foreground = ChatPalette.Danger, FontSize = NoriMetrics.FontXs,
 			HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false,
 		};
 		_timeoutCard = new Border
@@ -233,7 +233,7 @@ internal sealed class InitView : Panel
 			IsVisible = false,
 			Background = ChatPalette.Panel,
 			BorderBrush = ChatPalette.Faint, BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(12),
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
 			Padding = new Thickness(22, 18),
 			HorizontalAlignment = HorizontalAlignment.Center,
 			Child = new StackPanel

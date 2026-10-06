@@ -106,7 +106,7 @@ public sealed class SignInCoordinator(
 			 * 不能报成功：窗口会关掉，而重启之后登录态是空的，用户不知道发生了什么。
 			 * 也不能沉默 —— 这是本机环境问题，只有说出来他才可能去处理。
 			 */
-			logger?.Write(LogSource.Backend, "warn", "登录成功但会话无法落盘: " + error.GetType().Name);
+			logger?.Write(LogSource.Backend, "warn", "登录成功但会话无法落盘", exception: error);
 			return new Windows.SignInOutcome
 			{
 				Ok = false,

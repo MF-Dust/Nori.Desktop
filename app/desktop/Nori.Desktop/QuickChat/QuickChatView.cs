@@ -48,7 +48,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 	private readonly TextBlock _placeholder = new()
 	{
 		Name = "QuickChatPlaceholder",
-		FontSize = 14,
+		FontSize = NoriMetrics.FontMd,
 		FontWeight = FontWeight.Medium,
 		FontFamily = ConversationFont,
 		VerticalAlignment = VerticalAlignment.Center,
@@ -57,7 +57,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 	};
 	private readonly TextBlock _shortcutText = new()
 	{
-		FontSize = 12,
+		FontSize = NoriMetrics.FontXs,
 		FontWeight = FontWeight.Medium,
 		FontFamily = ConversationFont,
 		LineHeight = 16,
@@ -77,7 +77,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		VerticalAlignment = VerticalAlignment.Center,
 		IsHitTestVisible = false,
 	};
-	private readonly TextBlock _activity = Text("", 12, FontWeight.Medium, QuickChatPalette.MintLight);
+	private readonly TextBlock _activity = Text("", NoriMetrics.FontXs, FontWeight.Medium, QuickChatPalette.MintLight);
 	private readonly Button _send = new()
 	{
 		Name = "QuickChatSend",
@@ -90,7 +90,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		Name = "QuickChatSendGlow",
 		Width = 28,
 		Height = 28,
-		CornerRadius = new CornerRadius(8),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
 		HorizontalAlignment = HorizontalAlignment.Right,
 		VerticalAlignment = VerticalAlignment.Center,
 	};
@@ -101,7 +101,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		MaxWidth = 280,
 		Height = 46,
 		Padding = new Thickness(0),
-		CornerRadius = new CornerRadius(12),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
 		BorderThickness = new Thickness(1),
 		HorizontalAlignment = HorizontalAlignment.Stretch,
 		RenderTransformOrigin = RelativePoint.Center,
@@ -117,21 +117,23 @@ public sealed class QuickChatView : UserControl, IDisposable
 	private readonly ExperimentalAcrylicBorder _composerFrost = new()
 	{
 		Name = "QuickChatComposerFrost",
-		CornerRadius = new CornerRadius(11),
+		// 外壳圆角减去 1px 描边，内层材质贴合外轮廓。
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd - 1),
 		Padding = new Thickness(0),
 		ClipToBounds = true,
 	};
 	private readonly Border _composerTint = new()
 	{
 		Name = "QuickChatComposerTint",
-		CornerRadius = new CornerRadius(11),
+		// 外壳圆角减去 1px 描边，内层材质贴合外轮廓。
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd - 1),
 		IsHitTestVisible = false,
 	};
 	private readonly Border _error = new()
 	{
 		Name = "QuickChatError",
 		Padding = new Thickness(12, 8),
-		CornerRadius = new CornerRadius(12),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
 		Background = QuickChatPalette.Error,
 		Margin = new Thickness(0, 0, 0, 8),
 		IsVisible = false,
@@ -140,17 +142,17 @@ public sealed class QuickChatView : UserControl, IDisposable
 	{
 		Name = "QuickChatApproval",
 		Padding = new Thickness(12, 10),
-		CornerRadius = new CornerRadius(12),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
 		Background = QuickChatPalette.Error,
 		BorderBrush = QuickChatPalette.PlayerBorder,
 		BorderThickness = new Thickness(1),
 		Margin = new Thickness(0, 0, 0, 8),
 		IsVisible = false,
 	};
-	private readonly TextBlock _approvalTitle = Text("", 12, FontWeight.SemiBold, QuickChatPalette.PlayerText);
-	private readonly TextBlock _approvalDescription = Text("", 12, FontWeight.Normal, QuickChatPalette.PlayerText);
-	private readonly TextBlock _approvalCountdown = Text("", 12, FontWeight.Normal, QuickChatPalette.Placeholder);
-	private readonly TextBlock _approvalArguments = Text("", 12, FontWeight.Normal, QuickChatPalette.PlayerText);
+	private readonly TextBlock _approvalTitle = Text("", NoriMetrics.FontXs, FontWeight.SemiBold, QuickChatPalette.PlayerText);
+	private readonly TextBlock _approvalDescription = Text("", NoriMetrics.FontXs, FontWeight.Normal, QuickChatPalette.PlayerText);
+	private readonly TextBlock _approvalCountdown = Text("", NoriMetrics.FontXs, FontWeight.Normal, QuickChatPalette.Placeholder);
+	private readonly TextBlock _approvalArguments = Text("", NoriMetrics.FontXs, FontWeight.Normal, QuickChatPalette.PlayerText);
 	private readonly Button _deny = ApprovalButton("QuickChatApprovalDeny", "deny");
 	private readonly Button _allow = ApprovalButton("QuickChatApprovalAllow", "allow");
 	private readonly Button _details = ApprovalButton("QuickChatApprovalDetails");
@@ -209,7 +211,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		// 聚焦缩放和多层阴影需要越过内容边界，窗口外层已预留安全边距。
 		ClipToBounds = false;
 		FontFamily = ConversationFont;
-		FontSize = 14;
+		FontSize = NoriMetrics.FontMd;
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/QuickChat/QuickChatTheme.axaml") });
 		BuildContent();
 		_state.Changed += QueueRender;
@@ -369,7 +371,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 
 	private void BuildContent()
 	{
-		var errorText = Text("", 12, FontWeight.Medium, QuickChatPalette.PlayerText);
+		var errorText = Text("", NoriMetrics.FontXs, FontWeight.Medium, QuickChatPalette.PlayerText);
 		errorText.Name = "QuickChatErrorText";
 		_error.Child = errorText;
 
@@ -401,8 +403,8 @@ public sealed class QuickChatView : UserControl, IDisposable
 		_placeholderRow.Children.Add(_placeholder);
 		var shortcutKeys = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
 		shortcutKeys.Children.Add(KeyCap(_shortcutText));
-		shortcutKeys.Children.Add(Text("+", 12, FontWeight.Medium, QuickChatPalette.Mint));
-		TextBlock k = Text("K", 12, FontWeight.Medium, QuickChatPalette.Mint);
+		shortcutKeys.Children.Add(Text("+", NoriMetrics.FontXs, FontWeight.Medium, QuickChatPalette.Mint));
+		TextBlock k = Text("K", NoriMetrics.FontXs, FontWeight.Medium, QuickChatPalette.Mint);
 		k.LineHeight = 16;
 		shortcutKeys.Children.Add(KeyCap(k));
 		_shortcut.Child = shortcutKeys;
@@ -708,7 +710,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 	private static Border KeyCap(TextBlock label) => new()
 	{
 		Padding = new Thickness(3, 0),
-		CornerRadius = new CornerRadius(3),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusXs),
 		BorderThickness = new Thickness(1),
 		BorderBrush = new SolidColorBrush(QuickChatPalette.Tint("chat-ai-bg", 64)),
 		Background = new SolidColorBrush(QuickChatPalette.Tint("chat-ai-bg", 48)),
@@ -833,7 +835,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 			_bubble = bubble;
 			_enteredAt = owner._now();
 			bool player = bubble.Message.Role == "user";
-			_text = Text(bubble.Message.Content, 14, FontWeight.Medium, player ? QuickChatPalette.PlayerText : QuickChatPalette.Dark);
+			_text = Text(bubble.Message.Content, NoriMetrics.FontMd, FontWeight.Medium, player ? QuickChatPalette.PlayerText : QuickChatPalette.Dark);
 			_text.TextWrapping = TextWrapping.WrapWithOverflow;
 			_text.LineHeight = 22.75;
 			_text.Opacity = player ? 0.95 : 0.85;
@@ -843,7 +845,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 			{
 				Name = player ? "QuickChatPlayerBubble" : "QuickChatAgentBubble",
 				Padding = new Thickness(16, 10),
-				CornerRadius = player ? new CornerRadius(16, 16, 4, 16) : new CornerRadius(16, 16, 16, 4),
+				CornerRadius = player ? new CornerRadius(NoriMetrics.RadiusLg, NoriMetrics.RadiusLg, NoriMetrics.RadiusXs, NoriMetrics.RadiusLg) : new CornerRadius(NoriMetrics.RadiusLg, NoriMetrics.RadiusLg, NoriMetrics.RadiusLg, NoriMetrics.RadiusXs),
 				Background = player ? PlayerGradient() : AgentGradient(),
 				BorderBrush = player ? QuickChatPalette.PlayerBorder : QuickChatPalette.BubbleBorder,
 				BorderThickness = new Thickness(1),

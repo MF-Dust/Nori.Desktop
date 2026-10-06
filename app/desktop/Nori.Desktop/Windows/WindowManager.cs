@@ -24,6 +24,7 @@ public sealed class WindowManager : IWindowManager
 	private QuickChatController? _quickChat;
 	private AppServices? _services;
 	private WindowBackdropController? _backdrops;
+	private WindowCorners? _corners;
 	private int _shutdownRequested;
 	private Task? _memoryCloseTask;
 	private Task? _modelsCloseTask;
@@ -63,6 +64,7 @@ public sealed class WindowManager : IWindowManager
 	{
 		_services = services;
 		_backdrops = new WindowBackdropController();
+		_corners = new WindowCorners();
 		_ = LoadBackdropPreferenceAsync(services);
 		foreach (WindowDefinition definition in WindowDefinition.All)
 		{
@@ -159,7 +161,7 @@ public sealed class WindowManager : IWindowManager
 		}
 		catch (Exception exception)
 		{
-			services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"读取窗口外观设置失败: {exception.GetType().Name}");
+			services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "读取窗口外观设置失败", exception: exception);
 		}
 	}
 
@@ -328,7 +330,7 @@ public sealed class WindowManager : IWindowManager
 		catch (OperationCanceledException) { }
 		catch (Exception exception)
 		{
-			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"记忆窗口刷新失败: {exception.GetType().Name}");
+			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "记忆窗口刷新失败", exception: exception);
 		}
 	}
 
@@ -374,7 +376,7 @@ public sealed class WindowManager : IWindowManager
 		catch (OperationCanceledException) { }
 		catch (Exception exception)
 		{
-			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"模型窗口刷新失败: {exception.GetType().Name}");
+			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "模型窗口刷新失败", exception: exception);
 		}
 	}
 
@@ -426,7 +428,7 @@ public sealed class WindowManager : IWindowManager
 		try { await chat.PrepareShutdownAsync(); }
 		catch (Exception exception)
 		{
-			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"对话窗口关闭失败: {exception.GetType().Name}");
+			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "对话窗口关闭失败", exception: exception);
 			chat.ReportHostFailure(exception);
 			return;
 		}
@@ -442,7 +444,7 @@ public sealed class WindowManager : IWindowManager
 		try { await memory.PrepareShutdownAsync(); }
 		catch (Exception exception)
 		{
-			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"记忆窗口关闭前保存失败: {exception.GetType().Name}");
+			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "记忆窗口关闭前保存失败", exception: exception);
 			ShowMemoryFailure(memory, exception);
 			return;
 		}
@@ -466,7 +468,7 @@ public sealed class WindowManager : IWindowManager
 		try { await models.PrepareShutdownAsync(); }
 		catch (Exception exception)
 		{
-			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"模型窗口关闭前保存失败: {exception.GetType().Name}");
+			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "模型窗口关闭前保存失败", exception: exception);
 			ShowModelsFailure(models, exception);
 			return;
 		}
@@ -550,7 +552,7 @@ public sealed class WindowManager : IWindowManager
 			catch (Exception exception)
 			{
 				Interlocked.Exchange(ref _shutdownRequested, 0);
-				_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"窗口关闭前保存失败，已取消退出: {exception.GetType().Name}");
+				_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "窗口关闭前保存失败，已取消退出", exception: exception);
 				if (failureOwner is ChatWindow chat) chat.ReportHostFailure(exception);
 				else if (failureOwner is ModelsWindow models) ShowModelsFailure(models, exception);
 				else if (Get(WindowLabels.Memory) is MemoryWindow memory) ShowMemoryFailure(memory, exception);
@@ -570,6 +572,8 @@ public sealed class WindowManager : IWindowManager
 
 			_backdrops?.Dispose();
 			_backdrops = null;
+			_corners?.Dispose();
+			_corners = null;
 
 			try
 			{

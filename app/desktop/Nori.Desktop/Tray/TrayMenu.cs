@@ -162,7 +162,7 @@ public static class TrayMenu
 			}
 			catch (Exception exception)
 			{
-				services.Logger.Write(LogSource.Backend, "warn", $"托盘快捷聊天设置保存失败：{exception.GetType().Name}");
+				services.Logger.Write(LogSource.Backend, "warn", "托盘快捷聊天设置保存失败", exception: exception);
 			}
 		};
 
@@ -218,7 +218,7 @@ public static class TrayMenu
 		catch (Exception exception)
 		{
 			// 托盘不是必需品: 失败只记日志, 由前端补一个内建入口
-			services.Logger.Write(LogSource.Backend, "warn", $"托盘不可用, 将由主界面提供入口: {exception.GetType().Name}");
+			services.Logger.Write(LogSource.Backend, "warn", "托盘不可用, 将由主界面提供入口", exception: exception);
 			Current = null;
 			_icon = null;
 			return false;
@@ -254,7 +254,7 @@ public static class TrayMenu
 		{
 			// 读不出登录态（密钥库不可用等）不该让托盘装不上。按未登录画，点进去会得到
 			// 一句真正的错误说明。
-			services.Logger.Write(LogSource.Backend, "warn", $"读取登录态失败: {exception.GetType().Name}");
+			services.Logger.Write(LogSource.Backend, "warn", "读取登录态失败", exception: exception);
 			return AccountLabel(false, "", english);
 		}
 	}
@@ -281,7 +281,7 @@ public static class TrayMenu
 		{
 			// SignOutAsync 自己已经吞掉了网络失败并且无论如何都会清本机记录，所以走到
 			// 这里说明是别的问题。记下来，但标题仍然要刷 —— 本机那份已经清了。
-			services.Logger.Write(LogSource.Backend, "warn", $"退出登录异常: {exception.GetType().Name}");
+			services.Logger.Write(LogSource.Backend, "warn", "退出登录异常", exception: exception);
 		}
 		Avalonia.Threading.Dispatcher.UIThread.Post(Refresh);
 	}

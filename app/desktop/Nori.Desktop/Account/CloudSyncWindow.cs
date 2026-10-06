@@ -12,6 +12,7 @@ using Nori.Core.Platform;
 using Nori.Desktop.Chat;
 using Nori.Desktop.Settings;
 using Nori.Desktop.Windows;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Account;
 
@@ -107,7 +108,7 @@ internal sealed class CloudSyncWindow : Window
 		inner.Children.Add(new TextBlock
 		{
 			Text = "同步偏好、记忆与提醒。不含对话原文。",
-			FontSize = 13, LineHeight = 21,
+			FontSize = NoriMetrics.FontBase, LineHeight = 21,
 			TextWrapping = TextWrapping.Wrap,
 			Foreground = ChatPalette.Body,
 		});
@@ -122,7 +123,7 @@ internal sealed class CloudSyncWindow : Window
 			Children = {_backup, _restore, _overwrite},
 		});
 
-		_result.FontSize = 12;
+		_result.FontSize = NoriMetrics.FontXs;
 		_result.LineHeight = 20;
 		_result.TextWrapping = TextWrapping.Wrap;
 		_result.Foreground = ChatPalette.Faint;
@@ -143,7 +144,7 @@ internal sealed class CloudSyncWindow : Window
 					new TextBlock
 					{
 						Text = "删除只影响云端那一份，本机数据不受影响。",
-						FontSize = 12,
+						FontSize = NoriMetrics.FontXs,
 						Foreground = ChatPalette.Faint,
 						TextWrapping = TextWrapping.Wrap,
 					},
@@ -206,7 +207,7 @@ internal sealed class CloudSyncWindow : Window
 	private static TextBlock Cap(string text, IBrush color, HorizontalAlignment align) => new()
 	{
 		Text = text,
-		FontSize = 12,
+		FontSize = NoriMetrics.FontXs,
 		FontWeight = FontWeight.Medium,
 		Foreground = color,
 		HorizontalAlignment = align,
@@ -215,7 +216,7 @@ internal sealed class CloudSyncWindow : Window
 
 	private static void Detail(TextBlock block, HorizontalAlignment align)
 	{
-		block.FontSize = 11.5;
+		block.FontSize = NoriMetrics.FontXs;
 		block.LineHeight = 18;
 		block.Foreground = ChatPalette.Faint;
 		block.HorizontalAlignment = align;
@@ -237,8 +238,8 @@ internal sealed class CloudSyncWindow : Window
 			Foreground = foreground,
 			BorderBrush = ReferenceEquals(background, Brushes.Transparent) ? ChatPalette.Panel : background,
 			BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(6),
-			FontSize = 13,
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
+			FontSize = NoriMetrics.FontBase,
 			Cursor = new Cursor(StandardCursorType.Hand),
 		};
 		button.Click += (_, _) => onClick();
@@ -253,7 +254,7 @@ internal sealed class CloudSyncWindow : Window
 			_forgetArmed = true;
 			// 确认态文案需说明按下后执行的操作，不使用「确定」。
 			_forget.Content = "确认删除云端存档";
-			_forget.BorderBrush = ChatPalette.Danger;
+			_forget.BorderBrush = ChatPalette.DangerFill;
 			return;
 		}
 		Run(Forget);

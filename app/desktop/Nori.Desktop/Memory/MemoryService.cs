@@ -170,7 +170,7 @@ public sealed class MemoryService : IDisposable
 			try { handler(); }
 			catch (Exception exception)
 			{
-				try { _services.Logger.Write(LogSource.Backend, "warn", $"记忆窗口状态通知失败: {exception.GetType().Name}"); }
+				try { _services.Logger.Write(LogSource.Backend, "warn", "记忆窗口状态通知失败", exception: exception); }
 				catch { }
 			}
 		}

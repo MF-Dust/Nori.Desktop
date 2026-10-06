@@ -51,12 +51,15 @@ public partial class BridgeCommandsTests
 	{
 		AvaloniaLogSink sink = new(_services.Logger);
 		Assert.False(sink.IsEnabled(LogEventLevel.Debug, "Binding"));
+		Assert.False(sink.IsEnabled(LogEventLevel.Information, "Layout"));
+		Assert.True(sink.IsEnabled(LogEventLevel.Warning, "Layout"));
 		_services.Logger.SetMinimumLevel("debug");
 		Assert.True(sink.IsEnabled(LogEventLevel.Debug, "Binding"));
 		sink.Log(LogEventLevel.Error, "Binding", null, "聊天正文 {Value}", new object?[] { "凭据原文", new InvalidOperationException("敏感错误正文") });
 		LogEntry entry = _services.Logger.RecentLogs().Last();
 		Assert.Equal("Avalonia.Binding", entry.Category);
 		Assert.Equal("System.InvalidOperationException", entry.ExceptionType);
+		Assert.Equal("Avalonia Binding 诊断事件", entry.Message);
 		Assert.DoesNotContain("正文", JsonSerializer.Serialize(entry));
 	}
 

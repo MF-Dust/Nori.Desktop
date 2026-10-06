@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Nori.Core.Configuration;
+using Nori.Desktop.Appearance;
 using Nori.Desktop.Settings.Pages;
 
 namespace Nori.Desktop.Windows;
@@ -44,7 +45,7 @@ public sealed partial class ModelsWindow
 			_displayTab.Classes.Add("settings-nav"); _interactionTab.Classes.Add("settings-nav");
 			var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 12 };
 			heading.Children.Add(back);
-			var title = Local(() => T("调整模型 · ", "Adjust model · ") + ModelName(modelId), 18, true); title.VerticalAlignment = VerticalAlignment.Center;
+			var title = Local(() => T("调整模型 · ", "Adjust model · ") + ModelName(modelId), NoriMetrics.FontXl, true); title.VerticalAlignment = VerticalAlignment.Center;
 			Grid.SetColumn(title, 1); heading.Children.Add(title); Grid.SetColumn(done, 2); heading.Children.Add(done);
 			_header.MaxWidth = double.PositiveInfinity; _header.Margin = default;
 			_header.Children.Clear(); _header.Children.Add(heading); _header.Children.Add(Row(_displayTab, _interactionTab));

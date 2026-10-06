@@ -178,7 +178,7 @@ public sealed class ModelService : IDisposable
 			try { handler(); }
 			catch (Exception exception)
 			{
-				try { _services.Logger.Write(LogSource.Backend, "warn", $"模型窗口状态通知失败: {exception.GetType().Name}"); }
+				try { _services.Logger.Write(LogSource.Backend, "warn", "模型窗口状态通知失败", exception: exception); }
 				catch { }
 			}
 		}

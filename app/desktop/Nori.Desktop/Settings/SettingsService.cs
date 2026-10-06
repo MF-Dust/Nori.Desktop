@@ -282,7 +282,7 @@ public sealed class SettingsService : IDisposable
 			try { handler(); }
 			catch (Exception exception)
 			{
-				try { _services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", $"设置窗口状态通知失败: {exception.GetType().Name}"); }
+				try { _services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "设置窗口状态通知失败", exception: exception); }
 				catch { }
 			}
 		}

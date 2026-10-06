@@ -158,12 +158,17 @@ public sealed class UniDesktopIntegration : IDesktopIntegration
 			throw new InvalidOperationException("Windows 同一线程不能重复获取常亮锁，请先释放已有锁。");
 		Check(_wakeLockAcquire!((int)type, reason, out ulong handle));
 		if (handle == 0) throw new InvalidOperationException("UniDesktop 返回了无效的常亮锁句柄。");
-		if (OperatingSystem.IsWindows()) _windowsWakeLockHeld = true;
+		SetWindowsWakeLockHeld(true);
 		return new UniDesktopWakeLock(() =>
 		{
 			try { Check(_wakeLockRelease!(handle)); }
-			finally { if (OperatingSystem.IsWindows()) _windowsWakeLockHeld = false; }
+			finally { SetWindowsWakeLockHeld(false); }
 		}, OperatingSystem.IsWindows());
+	}
+
+	private static void SetWindowsWakeLockHeld(bool held)
+	{
+		if (OperatingSystem.IsWindows()) _windowsWakeLockHeld = held;
 	}
 
 	public MediaPlaybackStatus GetMediaStatus()

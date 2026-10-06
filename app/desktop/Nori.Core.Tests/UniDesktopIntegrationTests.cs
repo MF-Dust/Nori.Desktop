@@ -21,6 +21,7 @@ public sealed class UniDesktopIntegrationTests
 				case "wallpaper": integration.GetWallpaper(); break;
 				case "mediaStatus": Assert.True(Enum.IsDefined(integration.GetMediaStatus())); break;
 				case "mediaInfo": integration.GetMediaInfo(); break;
+				default: throw new ArgumentOutOfRangeException(nameof(operation));
 			}
 		}));
 		if (error is null) return;

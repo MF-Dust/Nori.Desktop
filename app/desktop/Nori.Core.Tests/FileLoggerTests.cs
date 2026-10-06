@@ -81,7 +81,7 @@ public class FileLoggerTests : IDisposable
 	{
 		_logger.Initialize();
 		_logger.Write(LogSource.Backend, "warn", "清空前的一条");
-		Assert.True(await _logger.FlushAsync());
+		Assert.True(await _logger.FlushAsync(TimeSpan.FromSeconds(10)));
 		string file = Assert.Single(Directory.GetFiles(_directory, "*.jsonl"));
 
 		_logger.ClearRecentLogs();
@@ -262,7 +262,7 @@ public class FileLoggerTests : IDisposable
 	{
 		await using FileLogger logger = new(_directory);
 		logger.Write(LogSource.Backend, "error", "固定事件", category: "user content / secret", exception: new InvalidOperationException("聊天正文和请求正文"), operationId: "chat-id");
-		Assert.True(await logger.FlushAsync());
+		Assert.True(await logger.FlushAsync(TimeSpan.FromSeconds(10)));
 		string line = Assert.Single(ReadLines(_directory));
 		Assert.DoesNotContain("聊天正文", line); Assert.DoesNotContain("user content", line); Assert.DoesNotContain("chat-id", line);
 		Assert.Contains("InvalidOperationException", line);

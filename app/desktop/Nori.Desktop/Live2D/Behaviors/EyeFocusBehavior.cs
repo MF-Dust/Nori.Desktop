@@ -61,6 +61,8 @@ public sealed class EyeFocusBehavior : IBehaviorPlugin
 	public void Execute(BehaviorContext ctx)
 	{
 		if (!ctx.IsIdleMotion || ctx.Handled || !ctx.ForceIdleEyeAnimation || !ctx.ModelParameters.IsBound) return;
+		// 已有有效指针输入时，让视线跟随独占眼球参数，避免随机扫视削弱跟随。
+		if (ctx.EyeTrackingEnabled && ctx.EyeFocusSourceActive) return;
 		int eyeBallXIndex = ctx.ModelParameters.EyeBallXIndex;
 		int eyeBallYIndex = ctx.ModelParameters.EyeBallYIndex;
 		if (eyeBallXIndex < 0 || eyeBallYIndex < 0) return;

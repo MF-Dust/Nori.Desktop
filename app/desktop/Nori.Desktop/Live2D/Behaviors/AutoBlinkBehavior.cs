@@ -27,13 +27,16 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 
 	private Phase _phase = Phase.Idle;
 	private double _progress;
-	private float _startLeft = 1.0f;
-	private float _startRight = 1.0f;
 	private double _delaySeconds;
 	private double _openDurationSeconds;
 
-	public AutoBlinkBehavior()
+	public AutoBlinkBehavior() => Reset();
+
+	/// <summary>取消当前眨眼并重新安排完整随机间隔；模型更换时由宿主调用。</summary>
+	public void Reset()
 	{
+		_phase = Phase.Idle;
+		_progress = 0;
 		_delaySeconds = RandomRange(MinDelay, MaxDelay);
 		_openDurationSeconds = RandomRange(MinBlinkOpenDuration, MaxBlinkOpenDuration);
 	}
@@ -44,9 +47,9 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 	private static double EaseOutQuad(double t) => 1.0 - (1.0 - t) * (1.0 - t);
 	private static double EaseInQuad(double t) => t * t;
 
-	internal static float ApplyBlinkFactor(float baseline, float factor) => Clamp01(baseline * factor);
+	internal static float ApplyBlinkFactor(float baseline, float factor) => baseline * Clamp01(factor);
 
-	private (float leftFactor, float rightFactor) UpdateBlink(double dt, float currentLeft, float currentRight)
+	internal float UpdateBlink(double dt)
 	{
 		if (_phase == Phase.Idle)
 		{
@@ -55,10 +58,8 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 			{
 				_phase = Phase.Closing;
 				_progress = 0;
-				_startLeft = Clamp01(currentLeft);
-				_startRight = Clamp01(currentRight);
 			}
-			return (1.0f, 1.0f);
+			return 1.0f;
 		}
 
 		if (_phase == Phase.Closing)
@@ -73,10 +74,10 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 				_progress = 0;
 				_openDurationSeconds = RandomRange(MinBlinkOpenDuration, MaxBlinkOpenDuration);
 			}
-			return (factor, factor);
+			return factor;
 		}
 
-		// Opening
+		// 睁眼阶段
 		_progress = Math.Min(1.0, _progress + dt / _openDurationSeconds);
 		float openEased = Clamp01((float)EaseInQuad(_progress));
 
@@ -86,22 +87,30 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 			_progress = 0;
 			_delaySeconds = RandomRange(MinDelay, MaxDelay);
 		}
-		return (openEased, openEased);
+		return openEased;
 	}
 
 	public void Execute(BehaviorContext ctx)
 	{
-		if (!ctx.IsIdleMotion || ctx.Handled || !ctx.AutoBlinkEnabled || !ctx.ModelParameters.IsBound) return;
+		if (!ctx.IsIdleMotion || ctx.Handled || !ctx.AutoBlinkEnabled || !ctx.ModelParameters.IsBound)
+		{
+			Reset();
+			return;
+		}
 
 		int leftEyeOpenIndex = ctx.ModelParameters.LeftEyeOpenIndex;
 		int rightEyeOpenIndex = ctx.ModelParameters.RightEyeOpenIndex;
-		if (leftEyeOpenIndex < 0 || rightEyeOpenIndex < 0) return;
+		if (leftEyeOpenIndex < 0 || rightEyeOpenIndex < 0)
+		{
+			Reset();
+			return;
+		}
 
 		var model = ctx.Model.Model;
 
 		double safeDt = ctx.TimeDelta > 0 ? ctx.TimeDelta : 0.016;
-		float currentLeft = Clamp01(model.GetParameterValue(leftEyeOpenIndex));
-		float currentRight = Clamp01(model.GetParameterValue(rightEyeOpenIndex));
+		float currentLeft = model.GetParameterValue(leftEyeOpenIndex);
+		float currentRight = model.GetParameterValue(rightEyeOpenIndex);
 
 		if (_phase == Phase.Idle && currentLeft <= 0.15f && currentRight <= 0.15f)
 		{
@@ -110,22 +119,12 @@ public sealed class AutoBlinkBehavior : IBehaviorPlugin
 			return;
 		}
 
-		bool wasActive = _phase != Phase.Idle;
-		var (blinkL, blinkR) = UpdateBlink(safeDt, currentLeft, currentRight);
+		float blinkFactor = UpdateBlink(safeDt);
+		// 结束当帧不再写眼值，保留当前动作与表情的结果。
+		if (_phase == Phase.Idle) return;
 
-		if (_phase == Phase.Idle)
-		{
-			if (wasActive)
-			{
-				model.SetParameterValue(leftEyeOpenIndex, ApplyBlinkFactor(_startLeft, 1.0f));
-				model.SetParameterValue(rightEyeOpenIndex, ApplyBlinkFactor(_startRight, 1.0f));
-				ctx.MarkHandled();
-			}
-			return;
-		}
-
-		model.SetParameterValue(leftEyeOpenIndex, ApplyBlinkFactor(_startLeft, blinkL));
-		model.SetParameterValue(rightEyeOpenIndex, ApplyBlinkFactor(_startRight, blinkR));
+		model.SetParameterValue(leftEyeOpenIndex, ApplyBlinkFactor(currentLeft, blinkFactor));
+		model.SetParameterValue(rightEyeOpenIndex, ApplyBlinkFactor(currentRight, blinkFactor));
 		ctx.MarkHandled();
 	}
 }

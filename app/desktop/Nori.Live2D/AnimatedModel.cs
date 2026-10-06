@@ -8,6 +8,7 @@ public sealed class AnimatedModel : IDisposable
 	private const string IdleGroup = "Idle";
 
 	private readonly Dictionary<string, BoundMotion[]> _groups = new(StringComparer.Ordinal);
+	private readonly HashSet<int> _idleEyeParameters = [];
 	private readonly MotionPlayer _motions;
 	private readonly BreathPlayer _breath;
 	private readonly PhysicsPlayer? _physics;
@@ -90,7 +91,24 @@ public sealed class AnimatedModel : IDisposable
 		MotionPlayback? playback = _motions.Start(motion.Clip, priority, finished,
 			motion.Reference.FadeInTime >= 0 ? motion.Reference.FadeInTime : null,
 			motion.Reference.FadeOutTime >= 0 ? motion.Reference.FadeOutTime : null);
-		if (playback is not null) CurrentMotionGroup = key;
+		if (playback is not null)
+		{
+			CurrentMotionGroup = key;
+			if (key.Equals(IdleGroup, StringComparison.OrdinalIgnoreCase))
+			{
+				// 连续待机的交叉淡化可能写到不同眼参数，取消时一并清理。
+				foreach (MotionCurve curve in motion.Clip.Curves)
+				{
+					if (curve.Target == "Parameter" && (curve.Id is "ParamEyeLOpen" or "ParamEyeROpen"
+						|| Definition.EyeBlinkIds.Contains(curve.Id)))
+						_idleEyeParameters.Add(Model.GetParameterIndex(curve.Id));
+					else if (curve.Target == "Model" && curve.Id == "EyeBlink")
+						foreach (string id in Definition.EyeBlinkIds)
+							_idleEyeParameters.Add(Model.GetParameterIndex(id));
+				}
+			}
+			else _idleEyeParameters.Clear();
+		}
 		return playback;
 	}
 
@@ -107,11 +125,31 @@ public sealed class AnimatedModel : IDisposable
 		return StartMotion(key, index, priority, finished);
 	}
 
+	/// <summary>
+	/// 关闭待机时取消 Idle 并恢复其眼开合基线；在动作更新及宿主表情等效果之前调用。
+	/// 其他参数保留动作快照，非 Idle 动作不受影响。
+	/// </summary>
+	public void StopIdleMotion()
+	{
+		ObjectDisposedException.ThrowIf(_disposed, this);
+		if (!string.Equals(CurrentMotionGroup, IdleGroup, StringComparison.OrdinalIgnoreCase)) return;
+		if (_idleEyeParameters.Count > 0)
+		{
+			// 先载入动作基线，避免把上一帧的表情、呼吸或物理结果保存进去。
+			Model.LoadParameters();
+			foreach (int index in _idleEyeParameters)
+				Model.SetParameterValue(index, Model.GetParameterDefaultValue(index));
+			Model.SaveParameters();
+		}
+		StopAllMotions();
+	}
+
 	public void StopAllMotions()
 	{
 		ObjectDisposedException.ThrowIf(_disposed, this);
 		_motions.Stop();
 		CurrentMotionGroup = null;
+		_idleEyeParameters.Clear();
 	}
 
 	/// <summary>模型坐标下的命名绘制区域矩形命中；空网格与不存在的区域不命中。</summary>

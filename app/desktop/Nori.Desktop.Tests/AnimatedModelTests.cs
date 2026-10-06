@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
+using Nori.Desktop.Live2D.Behaviors;
 using Nori.Live2D;
 
 namespace Nori.Desktop.Tests;
@@ -47,6 +48,131 @@ public sealed class AnimatedModelTests
 		animation.Update(0);
 		Assert.Equal(15, model.GetParameterValue(angle));
 		Assert.Equal(new[] { "行为", "最终", "行为", "最终" }, order);
+	}
+
+	[Live2DAssetsFact]
+	public void 关闭待机在动作更新前恢复闭眼与快照且不保存上一帧最终效果()
+	{
+		MotionClip clip = EyeClip("""
+			{"Target":"Model","Id":"EyeBlink","Segments":[0,0]},
+			{"Target":"Parameter","Id":"ParamEyeLOpen","Segments":[0,1]}
+			""");
+		ModelDefinition definition = ModelDefinition.Parse("""
+			{"FileReferences":{"Moc":"内存","Motions":{"Idle":[{"File":"内存"}]}},
+			"Groups":[{"Target":"Parameter","Name":"EyeBlink","Ids":["ParamEyeLOpen","ParamEyeROpen"]}]}
+			"""u8.ToArray());
+		using var animation = new AnimatedModel(Moc(), definition,
+			new Dictionary<string, MotionClip> { ["Idle_0"] = clip }) { RandomMotion = false };
+		NativeModel model = animation.Model;
+		int left = model.GetParameterIndex("ParamEyeLOpen"), right = model.GetParameterIndex("ParamEyeROpen");
+		int angle = model.GetParameterIndex("ParamAngleX"), mouth = model.GetParameterIndex("ParamMouthOpenY");
+		int events = 0;
+		animation.MotionEvent += _ => events++;
+		animation.AfterEffects = () =>
+		{
+			model.SetParameterValue(angle, 24);
+			model.SetParameterValue(mouth, 0.8f);
+		};
+		MotionPlayback playback = Assert.IsType<MotionPlayback>(animation.StartMotion("Idle", 0, MotionPriority.Force));
+		animation.Update(0);
+		Assert.Equal(0, model.GetParameterValue(left));
+		Assert.Equal(0, model.GetParameterValue(right));
+		Assert.Equal(24, model.GetParameterValue(angle));
+
+		animation.StopIdleMotion();
+		Assert.True(playback.IsFinished);
+		Assert.True(animation.IsMotionFinished);
+		Assert.Null(animation.CurrentMotionGroup);
+		animation.AfterEffects = null;
+		animation.Update(0);
+		Assert.Equal(model.GetParameterDefaultValue(left), model.GetParameterValue(left));
+		Assert.Equal(model.GetParameterDefaultValue(right), model.GetParameterValue(right));
+		Assert.Equal(10, model.GetParameterValue(angle));
+		Assert.Equal(model.GetParameterDefaultValue(mouth), model.GetParameterValue(mouth));
+		animation.BeforeEffects = () =>
+		{
+			Assert.Equal(10, model.GetParameterValue(angle));
+			Assert.Equal(model.GetParameterDefaultValue(left), model.GetParameterValue(left));
+			Assert.Equal(model.GetParameterDefaultValue(right), model.GetParameterValue(right));
+		};
+		animation.Update(0.5f);
+		Assert.Equal(0, playback.Elapsed);
+		Assert.Equal(0, events);
+	}
+
+	[Live2DAssetsFact]
+	public void 禁用待机只恢复写过的眼开合且不破坏故意闭眼表情()
+	{
+		using var animation = new AnimatedModel(Moc(), Definition("""{"Idle":[{"File":"内存"}]}"""),
+			new Dictionary<string, MotionClip> { ["Idle_0"] = EyeClip("""{"Target":"Parameter","Id":"ParamEyeLOpen","Segments":[0,0]}""") })
+			{ RandomMotion = false };
+		NativeModel model = animation.Model;
+		int left = model.GetParameterIndex("ParamEyeLOpen"), right = model.GetParameterIndex("ParamEyeROpen");
+		int angle = model.GetParameterIndex("ParamAngleX");
+		model.SetParameterValue(right, 0.6f);
+		model.SaveParameters();
+		ExpressionStore store = new();
+		store.RegisterExpressions("test", [],
+		[
+			new ExpressionEntry
+			{
+				Name = "ParamEyeLOpen", ParameterId = "ParamEyeLOpen", Blend = ExpressionBlendMode.Overwrite,
+				CurrentValue = 0, ModelDefault = model.GetParameterDefaultValue(left),
+			},
+		]);
+		ExpressionBehavior expressions = new(store);
+		expressions.BindModel(model);
+		BehaviorContext ctx = new() { Model = animation, IsIdleMotion = true, IdleAnimationEnabled = false };
+		animation.AfterEffects = () => expressions.Execute(ctx);
+		Assert.NotNull(animation.StartMotion("Idle", 0, MotionPriority.Force));
+		animation.Update(0);
+		Assert.Equal(0, model.GetParameterValue(left));
+
+		new IdleDisableBehavior().Execute(ctx);
+		animation.BeforeEffects = () =>
+		{
+			Assert.Equal(model.GetParameterDefaultValue(left), model.GetParameterValue(left));
+			Assert.Equal(0.6f, model.GetParameterValue(right), 5);
+			Assert.Equal(10, model.GetParameterValue(angle));
+		};
+		animation.Update(0);
+		Assert.True(animation.IsMotionFinished);
+		Assert.Equal(0, model.GetParameterValue(left));
+		Assert.Equal(0.6f, model.GetParameterValue(right), 5);
+		ctx.ExpressionEnabled = false;
+		animation.Update(0);
+		Assert.Equal(model.GetParameterDefaultValue(left), model.GetParameterValue(left));
+	}
+
+	[Live2DAssetsFact]
+	public void 关闭待机不打断显式非Idle动作且通用停止仍保留当前眼值()
+	{
+		MotionClip clip = EyeClip("""
+			{"Target":"Parameter","Id":"ParamEyeLOpen","Segments":[0,0]},
+			{"Target":"Parameter","Id":"ParamEyeROpen","Segments":[0,0]}
+			""");
+		using var animation = new AnimatedModel(Moc(), Definition("""{"Idle":[{"File":"内存"}],"TapBody":[{"File":"内存"}]}"""),
+			new Dictionary<string, MotionClip> { ["Idle_0"] = clip, ["TapBody_0"] = clip }) { RandomMotion = false };
+		NativeModel model = animation.Model;
+		int left = model.GetParameterIndex("ParamEyeLOpen"), right = model.GetParameterIndex("ParamEyeROpen");
+		Assert.NotNull(animation.StartMotion("Idle", 0, MotionPriority.Force));
+		animation.Update(0);
+		MotionPlayback playback = Assert.IsType<MotionPlayback>(animation.StartMotion("TapBody", 0, MotionPriority.Force));
+		animation.Update(0);
+		animation.StopIdleMotion();
+		new IdleDisableBehavior().Execute(new BehaviorContext { Model = animation, IsIdleMotion = false, IdleAnimationEnabled = false });
+		Assert.False(animation.IsMotionFinished);
+		Assert.False(playback.IsFinished);
+		Assert.Equal("TapBody", animation.CurrentMotionGroup);
+		Assert.Equal(0, model.GetParameterValue(left));
+		Assert.Equal(0, model.GetParameterValue(right));
+		animation.Update(0.5f);
+		Assert.Equal(0.5, playback.Elapsed);
+		Assert.False(playback.IsFinished);
+		animation.StopAllMotions();
+		model.LoadParameters();
+		Assert.Equal(0, model.GetParameterValue(left));
+		Assert.Equal(0, model.GetParameterValue(right));
 	}
 
 	[Live2DAssetsFact]
@@ -110,6 +236,12 @@ public sealed class AnimatedModelTests
 		foreach (float value in new[] { -1, float.NaN, float.PositiveInfinity })
 			Assert.Throws<ArgumentOutOfRangeException>(() => second.Update(value));
 	}
+
+	private static MotionClip EyeClip(string eyes) => MotionClip.Parse(Encoding.UTF8.GetBytes($$"""
+		{"Version":3,"Meta":{"Duration":1,"FadeInTime":0,"FadeOutTime":0},"Curves":[
+		{{eyes}}, {"Target":"Parameter","Id":"ParamAngleX","Segments":[0,10]}],
+		"UserData":[{"Time":0.5,"Value":"事件"}]}
+		"""));
 
 	[Fact]
 	public void 缺失动作在创建原生模型之前拒绝而不回退读取文件()

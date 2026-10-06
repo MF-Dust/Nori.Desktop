@@ -45,6 +45,7 @@ public sealed class NativeModelHost : IDisposable
 	/// <summary>窗口布局只读取快照，不在 UI 线程借用可能被替换的原生模型。</summary>
 	public Vector2 CanvasSize { get; }
 	public Vector2 Pointer => _pointer.Position;
+	internal bool HasPointerInput { get; private set; }
 
 	public NativeModelHost(OpenGLApi gl, PreparedModelData data)
 	{
@@ -62,7 +63,11 @@ public sealed class NativeModelHost : IDisposable
 		}
 	}
 
-	public void SetDragging(float x, float y) => _pointer.SetTarget(new(x, y));
+	public void SetDragging(float x, float y)
+	{
+		_pointer.SetTarget(new(x, y));
+		HasPointerInput = true;
+	}
 
 	public void Update(float deltaSeconds)
 	{

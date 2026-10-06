@@ -1,4 +1,5 @@
 using Nori.Desktop.Live2D.Behaviors;
+using Nori.Live2D;
 
 namespace Nori.Desktop.Tests;
 
@@ -125,10 +126,157 @@ public sealed class Live2DBehaviorLogicTests
 		Assert.Equal("model-b", store.ModelId);
 	}
 
-	[Fact]
-	public void 眨眼只将动画系数乘到捕获基线()
+	[Theory]
+	[InlineData(0.4f, 0.5f, 0.2f)]
+	[InlineData(2.0f, 0.75f, 1.5f)]
+	[InlineData(1.5f, 1.0f, 1.5f)]
+	[InlineData(1.5f, 2.0f, 1.5f)]
+	[InlineData(1.5f, -1.0f, 0.0f)]
+	public void 眨眼仅限制系数而不截断当前帧基线(float baseline, float factor, float expected)
 	{
-		Assert.Equal(0.2f, AutoBlinkBehavior.ApplyBlinkFactor(0.4f, 0.5f), 5);
+		Assert.Equal(expected, AutoBlinkBehavior.ApplyBlinkFactor(baseline, factor), 5);
+	}
+
+	[Fact]
+	public void 眨眼状态按随机间隔推进且完成后重新等待()
+	{
+		AutoBlinkBehavior blink = new();
+		Assert.Equal(1, blink.UpdateBlink(2.9));
+		Assert.Equal(1, blink.UpdateBlink(8));
+		Assert.Equal(0.25f, blink.UpdateBlink(0.0375), 5);
+		Assert.Equal(0, blink.UpdateBlink(0.0375));
+		Assert.InRange(blink.UpdateBlink(0.075), 0.0625f, 0.25f);
+		Assert.Equal(1, blink.UpdateBlink(0.3));
+		Assert.Equal(1, blink.UpdateBlink(2.9));
+		Assert.Equal(1, blink.UpdateBlink(8));
+		Assert.Equal(0, blink.UpdateBlink(0.075));
+	}
+
+	[Theory]
+	[InlineData(false, false)]
+	[InlineData(false, true)]
+	[InlineData(true, false)]
+	[InlineData(true, true)]
+	public void 重置或解绑会取消活动眨眼并重新等待完整间隔(bool opening, bool unbound)
+	{
+		AutoBlinkBehavior blink = new();
+		blink.UpdateBlink(8);
+		blink.UpdateBlink(opening ? 0.075 : 0.0375);
+		if (unbound)
+		{
+			BehaviorContext ctx = new() { IsIdleMotion = true, AutoBlinkEnabled = true };
+			blink.Execute(ctx);
+			Assert.False(ctx.Handled);
+		}
+		else blink.Reset();
+
+		Assert.Equal(1, blink.UpdateBlink(0.016));
+		Assert.Equal(1, blink.UpdateBlink(2.9));
+		Assert.Equal(1, blink.UpdateBlink(8));
+		Assert.Equal(0, blink.UpdateBlink(0.075));
+	}
+
+	[Live2DAssetsFact]
+	public void 眨眼逐帧合成动作与表情且结束不恢复旧基线()
+	{
+		MotionClip clip = MotionClip.Parse("""
+			{"Version":3,"Meta":{"Duration":1,"FadeInTime":0,"FadeOutTime":0},"Curves":[
+			{"Target":"Parameter","Id":"ParamEyeLOpen","Segments":[0,1,0,1,0.2]},
+			{"Target":"Parameter","Id":"ParamEyeROpen","Segments":[0,0.8,0,1,0.6]}]}
+			"""u8.ToArray());
+		using var animation = new AnimatedModel(Moc(), ModelDefinition.Parse("""
+			{"FileReferences":{"Moc":"内存","Motions":{"Idle":[{"File":"内存"}]}}}
+			"""u8.ToArray()), new Dictionary<string, MotionClip> { ["Idle_0"] = clip }) { RandomMotion = false };
+		NativeModel model = animation.Model;
+		ModelParameters parameters = new();
+		parameters.BindModel(model);
+		BehaviorContext ctx = new() { Model = animation, ModelParameters = parameters, IsIdleMotion = true, TimeDelta = 8 };
+		ExpressionStore store = new();
+		store.RegisterExpressions("test", [],
+		[
+			new ExpressionEntry { Name = "ParamEyeLOpen", ParameterId = "ParamEyeLOpen", Blend = ExpressionBlendMode.Multiply, CurrentValue = 0.5f },
+			new ExpressionEntry { Name = "ParamEyeROpen", ParameterId = "ParamEyeROpen", Blend = ExpressionBlendMode.Add, CurrentValue = 0.1f },
+		]);
+		ExpressionBehavior expressions = new(store);
+		expressions.BindModel(model);
+		AutoBlinkBehavior blink = new();
+		animation.BeforeEffects = ctx.ResetFrame;
+		animation.AfterEffects = () => { expressions.Execute(ctx); blink.Execute(ctx); };
+		Assert.NotNull(animation.StartMotion("Idle", 0, MotionPriority.Force));
+		animation.Update(0);
+		Assert.Equal(0.5f, model.GetParameterValue(parameters.LeftEyeOpenIndex), 5);
+		Assert.Equal(0.9f, model.GetParameterValue(parameters.RightEyeOpenIndex), 5);
+
+		ctx.TimeDelta = 0.0375;
+		animation.Update(0.25f);
+		Assert.Equal(0.1f, model.GetParameterValue(parameters.LeftEyeOpenIndex), 5);
+		Assert.Equal(0.2125f, model.GetParameterValue(parameters.RightEyeOpenIndex), 5);
+		animation.Update(0.25f);
+		Assert.Equal(0, model.GetParameterValue(parameters.LeftEyeOpenIndex));
+		Assert.Equal(0, model.GetParameterValue(parameters.RightEyeOpenIndex));
+
+		ctx.TimeDelta = 0.3;
+		animation.Update(0.25f);
+		Assert.Equal(0.2f, model.GetParameterValue(parameters.LeftEyeOpenIndex), 5);
+		Assert.Equal(0.75f, model.GetParameterValue(parameters.RightEyeOpenIndex), 5);
+		Assert.False(ctx.Handled);
+	}
+
+	[Live2DAssetsFact]
+	public void 禁用非待机已处理或解绑时取消眨眼而不在恢复后续播()
+	{
+		using var animation = new AnimatedModel(Moc(), ModelDefinition.Parse("""
+			{"FileReferences":{"Moc":"内存"}}
+			"""u8.ToArray()), new Dictionary<string, MotionClip>()) { RandomMotion = false };
+		NativeModel model = animation.Model;
+		ModelParameters parameters = new();
+		foreach (bool opening in new[] { false, true })
+		foreach (string reason in new[] { "禁用", "非待机", "已处理", "解绑" })
+		{
+			parameters.BindModel(model);
+			AutoBlinkBehavior blink = new();
+			BehaviorContext ctx = new() { Model = animation, ModelParameters = parameters, IsIdleMotion = true, TimeDelta = 8 };
+			model.SetParameterValue(parameters.LeftEyeOpenIndex, 1);
+			model.SetParameterValue(parameters.RightEyeOpenIndex, 1);
+			blink.Execute(ctx);
+			ctx.ResetFrame();
+			ctx.TimeDelta = opening ? 0.075 : 0.0375;
+			blink.Execute(ctx);
+
+			int left = parameters.LeftEyeOpenIndex, right = parameters.RightEyeOpenIndex;
+			model.SetParameterValue(left, 0.7f);
+			model.SetParameterValue(right, 0.6f);
+			ctx.ResetFrame();
+			ctx.TimeDelta = 0.016;
+			switch (reason)
+			{
+				case "禁用": ctx.AutoBlinkEnabled = false; break;
+				case "非待机": ctx.IsIdleMotion = false; break;
+				case "已处理": ctx.MarkHandled(); break;
+				case "解绑": parameters.UnbindModel(); break;
+			}
+			blink.Execute(ctx);
+			Assert.Equal(0.7f, model.GetParameterValue(left), 5);
+			Assert.Equal(0.6f, model.GetParameterValue(right), 5);
+			Assert.Equal(reason == "已处理", ctx.Handled);
+
+			ctx.ResetFrame();
+			ctx.AutoBlinkEnabled = true;
+			ctx.IsIdleMotion = true;
+			parameters.BindModel(model);
+			blink.Execute(ctx);
+			Assert.False(ctx.Handled);
+			Assert.Equal(0.7f, model.GetParameterValue(left), 5);
+			Assert.Equal(0.6f, model.GetParameterValue(right), 5);
+			ctx.TimeDelta = 8;
+			blink.Execute(ctx);
+			Assert.True(ctx.Handled);
+			ctx.ResetFrame();
+			ctx.TimeDelta = 0.075;
+			blink.Execute(ctx);
+			Assert.Equal(0, model.GetParameterValue(left));
+			Assert.Equal(0, model.GetParameterValue(right));
+		}
 	}
 
 	[Fact]
@@ -162,4 +310,6 @@ public sealed class Live2DBehaviorLogicTests
 		expressions.Execute(ctx);
 		Assert.False(ctx.Handled);
 	}
+
+	private static byte[] Moc() => File.ReadAllBytes(PreparedModelAssetsTests.FindFixture("nori", "Nori.moc3"));
 }

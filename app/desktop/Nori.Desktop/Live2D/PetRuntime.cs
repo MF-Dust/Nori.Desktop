@@ -317,6 +317,8 @@ public sealed class PetRuntime
 	/// <summary>在当前模型绑定时缓存行为和视线动画使用的固定参数索引。</summary>
 	private void BindFixedBehaviorParameters(NativeModelHost? model)
 	{
+		_autoBlink.Reset();
+		_lastUpdateTime = 0;
 		if (model is null)
 		{
 			_modelParams.UnbindModel();
@@ -906,6 +908,7 @@ public sealed class PetRuntime
 		ctx.IsIdleMotion = isIdleMotion;
 		ctx.AutoBlinkEnabled = AutoBlinkEnabled;
 		ctx.EyeTrackingEnabled = EyeTrackingEnabled;
+		ctx.EyeFocusSourceActive = EyeTrackingEnabled && model.HasPointerInput;
 		ctx.IdleEyeAnimationEnabled = IdleEyeAnimationEnabled;
 		ctx.IdleAnimationEnabled = IdleAnimationEnabled;
 		ctx.ForceIdleEyeAnimation = IdleEyeAnimationEnabled;
@@ -984,6 +987,7 @@ public sealed class PetRuntime
 		float canvasUnitH = (_currentModel.Model.CanvasSize.Y / _currentModel.Model.PixelsPerUnit);
 
 		_currentModel.Animation.RandomMotion = IdleAnimationEnabled;
+		if (!IdleAnimationEnabled) _currentModel.Animation.StopIdleMotion();
 		_currentModel.Update(deltaTime);
 
 		float modelScaleX = _currentModel.ModelMatrix.M11;

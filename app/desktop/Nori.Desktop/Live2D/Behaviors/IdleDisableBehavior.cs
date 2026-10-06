@@ -11,7 +11,7 @@ public sealed class IdleDisableBehavior : IBehaviorPlugin
 	{
 		if (!ctx.IdleAnimationEnabled && ctx.IsIdleMotion)
 		{
-			ctx.Model.StopAllMotions();
+			ctx.Model.StopIdleMotion();
 		}
 	}
 }

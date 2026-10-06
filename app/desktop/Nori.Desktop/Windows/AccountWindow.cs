@@ -1,15 +1,14 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Layout;
 using Avalonia.Markup.Xaml.Styling;
-using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Nori.Core.Cloud;
 using Nori.Core.Platform;
 using Nori.Desktop.Account;
 using Nori.Desktop.Chat;
+using Nori.Desktop.Settings;
 
 namespace Nori.Desktop.Windows;
 
@@ -111,47 +110,7 @@ public sealed class AccountWindow : Window
 	/// 只有标题与关闭按钮，不提供最小化与最大化：本窗口只有「完成登录」与「关闭」
 	/// 两种出口，其余按钮无对应用途。
 	/// </summary>
-	private Control BuildChrome()
-	{
-		TextBlock title = new()
-		{
-			Text = "账户",
-			FontSize = 12, FontWeight = FontWeight.SemiBold,
-			Foreground = ChatPalette.Accent,
-			VerticalAlignment = VerticalAlignment.Center,
-		};
-
-		Button close = new()
-		{
-			Content = "✕",
-			Width = 40, Height = 40,
-			Background = Brushes.Transparent,
-			BorderThickness = default,
-			Foreground = ChatPalette.Muted,
-			FontSize = 12,
-			HorizontalAlignment = HorizontalAlignment.Right,
-			Cursor = new Cursor(StandardCursorType.Hand),
-		};
-		close.Click += (_, _) => Dismiss();
-
-		Border bar = new()
-		{
-			Height = 40,
-			Background = ChatPalette.Deep,
-			BorderBrush = ChatPalette.Panel,
-			BorderThickness = new Thickness(0, 0, 0, 1),
-			Padding = new Thickness(20, 0, 0, 0),
-			Child = new Grid {Children = {title, close}},
-		};
-
-		// 去掉系统边框后需自行处理拖动。只有标题栏可拖：整窗可拖会与输入框内的
-		// 文本拖选冲突。
-		bar.PointerPressed += (_, args) =>
-		{
-			if (args.GetCurrentPoint(this).Properties.IsLeftButtonPressed) BeginMoveDrag(args);
-		};
-		return bar;
-	}
+	private Control BuildChrome() => new NativeWindowChrome(this, () => SettingsLocalization.IsEnglish, onClose: Dismiss, closeOnly: true);
 
 	/// <summary>
 	/// 提交。

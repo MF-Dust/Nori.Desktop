@@ -33,6 +33,16 @@ public sealed class App : Application
 		Resources["SystemAccentColorDark1"] = NoriThemeTokens.Color("nori-teal-pressed");
 		Resources["SystemAccentColorLight1"] = NoriThemeTokens.Color("nori-teal-bright");
 		Resources["AccentForegroundColor"] = NoriThemeTokens.Color("on-teal");
+		// 提示窗独立于设置弹层，统一配色但保留原生模板及阴影。
+		Styles.Add(new Style(selector => selector.OfType<ToolTip>())
+		{
+			Setters =
+			{
+				new Setter(ToolTip.BackgroundProperty, NoriThemeTokens.Brush("bg-tooltip")),
+				new Setter(ToolTip.ForegroundProperty, NoriThemeTokens.Brush("text-primary")),
+				new Setter(ToolTip.BorderBrushProperty, NoriThemeTokens.Brush("line-strong")),
+			},
+		});
 	}
 
 	public override void OnFrameworkInitializationCompleted()

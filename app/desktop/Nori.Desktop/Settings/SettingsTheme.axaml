@@ -69,6 +69,10 @@
 			<StaticResource x:Key="TextBoxBackgroundBrush" ResourceKey="SettingsInputBrush"/>
 			<StaticResource x:Key="TextBoxBorderBrush" ResourceKey="SettingsBorderBrush"/>
 			<StaticResource x:Key="TextBoxMultiLineBackgroundBrush" ResourceKey="SettingsInputBrush"/>
+			<!-- 数字框的步进按钮不读取 TextBox 画刷，需覆盖其独立颜色与按下状态。 -->
+			<StaticResource x:Key="ControlBackgroundHighColor" ResourceKey="NoriBgInputColor"/>
+			<StaticResource x:Key="ButtonSpinnerButtonPressedBrush" ResourceKey="SettingsHoverBrush"/>
+			<StaticResource x:Key="ControlBorderRaisedBrush" ResourceKey="SettingsBorderBrush"/>
 			<!-- 保留 ToggleButton 的选中语义，复用设置按钮模板及键盘焦点，不混用浅色回退模板。 -->
 			<ControlTheme x:Key="SettingsChoiceTheme" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type Button}}">
 				<Setter Property="Background" Value="{DynamicResource SettingsInputBrush}"/>

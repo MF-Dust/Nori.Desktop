@@ -337,7 +337,7 @@ public partial class BridgeCommandsTests
 	[Fact]
 	public Task NativeSettingsThemeInitializesControlTemplates() => WithSettingsUiAsync(() =>
 	{
-		DevolutionsMacOsTheme theme = Assert.IsType<DevolutionsMacOsTheme>(Assert.Single(Application.Current!.Styles));
+		DevolutionsMacOsTheme theme = Assert.Single(Application.Current!.Styles.OfType<DevolutionsMacOsTheme>());
 		Assert.NotEmpty(theme);
 		Button button = new() {Content = "测试"};
 		TextBox input = new();

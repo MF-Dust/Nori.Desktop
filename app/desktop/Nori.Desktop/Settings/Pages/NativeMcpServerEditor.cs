@@ -93,6 +93,7 @@ internal static class NativeMcpServerEditor
 			test.IsEnabled = false;
 			save.IsEnabled = false;
 			feedback.Text = NativeSettingsResources.Get("common.working");
+			feedback.Foreground = SettingsBrushes.Resolve(dialog, "SettingsSecondaryBrush");
 			feedback.IsVisible = true;
 			try
 			{
@@ -108,11 +109,13 @@ internal static class NativeMcpServerEditor
 					feedback.Text = result?.Status == "connected"
 						? Text("连接成功", "Connection succeeded")
 						: result?.ErrorMessage ?? NativeSettingsResources.Get("mcp.disconnected");
+					feedback.Foreground = SettingsBrushes.Resolve(dialog, result?.Status == "connected" ? "SettingsPrimaryBrush" : "SettingsErrorBrush");
 				}
 			}
 			catch (Exception exception)
 			{
 				feedback.Text = SettingsErrorText.Resolve(exception);
+				feedback.Foreground = SettingsBrushes.Resolve(dialog, "SettingsErrorBrush");
 			}
 			finally
 			{

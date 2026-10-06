@@ -20,14 +20,16 @@ internal sealed class NativeWindowChrome : Border
 	private static readonly ConditionalWeakTable<Window, object> ResizeWindows = new();
 	private readonly Window _window;
 	private readonly Func<bool> _english;
+	private readonly bool _closeOnly;
 	private readonly TextBlock? _title;
 	private readonly Button _close;
 	private readonly Button _minimize;
 	private readonly Button _zoom;
 
-	internal NativeWindowChrome(Window window, Func<bool>? english = null, Control? heading = null, Action? onClose = null)
+	internal NativeWindowChrome(Window window, Func<bool>? english = null, Control? heading = null, Action? onClose = null, bool closeOnly = false)
 	{
 		_window = window;
+		_closeOnly = closeOnly;
 		_english = english ?? (() => UiLanguage.IsEnglish(System.Globalization.CultureInfo.CurrentUICulture.Name));
 		Name = "NativeWindowTitleBar";
 		Height = 40;
@@ -64,7 +66,8 @@ internal sealed class NativeWindowChrome : Border
 		{
 			if (args.Property == Window.TitleProperty || args.Property == Window.WindowStateProperty || args.Property == Window.CanResizeProperty || args.Property == Window.CanMinimizeProperty || args.Property == Window.IsVisibleProperty) RefreshLabels();
 		};
-		EnableBorderlessResize(window);
+		// 仅关闭的窗口由调用方按拖动能力选择系统装饰，不覆盖其回退或接管缩放。
+		if (!closeOnly) EnableBorderlessResize(window);
 		RefreshLabels();
 	}
 
@@ -75,6 +78,7 @@ internal sealed class NativeWindowChrome : Border
 		SetLabel(_close, english ? "Close window" : "关闭窗口");
 		SetLabel(_minimize, english ? "Minimize" : "最小化");
 		SetLabel(_zoom, _window.WindowState == WindowState.Maximized ? (english ? "Restore" : "还原") : (english ? "Maximize" : "最大化"));
+		_zoom.IsVisible = _minimize.IsVisible = !_closeOnly;
 		_zoom.IsEnabled = _window.CanResize;
 		_zoom.Opacity = _window.CanResize ? 1 : .35;
 		_minimize.IsEnabled = _window.CanMinimize;

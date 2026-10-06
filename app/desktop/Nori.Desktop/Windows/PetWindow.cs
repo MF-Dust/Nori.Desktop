@@ -687,6 +687,9 @@ public sealed class PetWindow : Window
 			CornerRadius = new CornerRadius(8),
 			Padding = new Thickness(4),
 		};
+		// 保留浅色文字与危险色，悬停和键盘选中使用深色表面而非亮强调色。
+		menu.Resources["MenuItemPointerOverBackgroundBrush"] = NoriThemeTokens.Brush("bg-card-hover");
+		menu.Resources["LayoutBackgroundMidBrush"] = NoriThemeTokens.Brush("bg-selection");
 
 		var openMainItem = CreateMenuItem("打开主界面", () => _services.Windows.Show(WindowLabels.Main));
 		var randomMotionItem = CreateMenuItem("随机动作", () => _runtime.PlayRandomMotion());

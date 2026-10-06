@@ -10,6 +10,7 @@ using Avalonia.Threading;
 using Nori.Core.Cloud;
 using Nori.Core.Platform;
 using Nori.Desktop.Chat;
+using Nori.Desktop.Settings;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Account;
@@ -224,44 +225,7 @@ internal sealed class CloudSyncWindow : Window
 		block.FontFeatures = FontFeatureCollection.Parse("tnum");
 	}
 
-	private Control BuildChrome()
-	{
-		TextBlock title = new()
-		{
-			Text = "云端同步",
-			FontSize = 12, FontWeight = FontWeight.SemiBold,
-			Foreground = ChatPalette.Accent,
-			VerticalAlignment = VerticalAlignment.Center,
-		};
-
-		Button close = new()
-		{
-			Content = "✕",
-			Width = 40, Height = 40,
-			Background = Brushes.Transparent,
-			BorderThickness = default,
-			Foreground = ChatPalette.Muted,
-			FontSize = 12,
-			HorizontalAlignment = HorizontalAlignment.Right,
-			Cursor = new Cursor(StandardCursorType.Hand),
-		};
-		close.Click += (_, _) => Close();
-
-		Border bar = new()
-		{
-			Height = 40,
-			Background = ChatPalette.Deep,
-			BorderBrush = ChatPalette.Panel,
-			BorderThickness = new Thickness(0, 0, 0, 1),
-			Padding = new Thickness(20, 0, 0, 0),
-			Child = new Grid {Children = {title, close}},
-		};
-		bar.PointerPressed += (_, args) =>
-		{
-			if (args.GetCurrentPoint(this).Properties.IsLeftButtonPressed) BeginMoveDrag(args);
-		};
-		return bar;
-	}
+	private Control BuildChrome() => new NativeWindowChrome(this, () => SettingsLocalization.IsEnglish, closeOnly: true);
 
 	private Button Action(string label, IBrush background, IBrush foreground, Action onClick)
 	{

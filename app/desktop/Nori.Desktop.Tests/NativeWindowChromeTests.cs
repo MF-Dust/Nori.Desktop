@@ -26,6 +26,26 @@ public sealed class NativeWindowChromeTests
 
 public partial class BridgeCommandsTests
 {
+	[Theory]
+	[InlineData(WindowDecorations.None)]
+	[InlineData(WindowDecorations.Full)]
+	public Task NativeCloseOnlyChromePreservesCallerDecorations(WindowDecorations decorations) => WithSettingsUiAsync(() =>
+	{
+		Window window = new() { WindowDecorations = decorations, CanResize = false };
+		NativeWindowChrome bar = new(window, closeOnly: true);
+		window.Content = bar;
+		try
+		{
+			window.Show();
+			window.CanResize = true;
+			bar.RefreshLabels();
+			Assert.Equal(decorations, window.WindowDecorations);
+			Assert.Equal("WindowClose", Assert.Single(bar.GetVisualDescendants().OfType<Button>(), button => button.IsVisible).Name);
+		}
+		finally { window.Close(); }
+		return Task.CompletedTask;
+	});
+
 	[Fact]
 	public Task NativeChromePreservesCloseLifecycleAndCapabilities() => WithSettingsUiAsync(() =>
 	{

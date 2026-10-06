@@ -13,7 +13,7 @@ public sealed class ReminderStoreTests
 		using TempDatabase tempDatabase = new("nori-reminder");
 		string path = tempDatabase.Path;
 		{
-			using (SqliteConnection connection = new($"Data Source={path}"))
+			using (SqliteConnection connection = new($"Data Source={path};Pooling=False"))
 			{
 				connection.Open();
 				using SqliteCommand command = connection.CreateCommand();

@@ -107,14 +107,17 @@ public sealed class PluginManagementTests
 		string root = CreateTemp();
 		try
 		{
-			PluginManager manager = CreateManager(root);
-			await manager.InstallAsync(CreateTestPackage(root, "retry.plugin", "1.0.0", entryType: "Nori.PluginRuntime.TestPlugin.ThrowingActivatePlugin"));
-			await Assert.ThrowsAsync<PluginException>(() => manager.EnableAsync("retry.plugin"));
-			PluginInfo failed = Assert.Single(manager.Plugins);
-			Assert.True(failed.UserEnabled);
-			Assert.Contains(failed.State, new[] {PluginLifecycleState.Failed, PluginLifecycleState.Disabled, PluginLifecycleState.PendingRestart});
-			Assert.NotNull(failed.ErrorCode);
-			await manager.DisposeAsync();
+			await Task.Run(async () =>
+			{
+				PluginManager manager = CreateManager(root);
+				await manager.InstallAsync(CreateTestPackage(root, "retry.plugin", "1.0.0", entryType: "Nori.PluginRuntime.TestPlugin.ThrowingActivatePlugin"));
+				await Assert.ThrowsAsync<PluginException>(() => manager.EnableAsync("retry.plugin"));
+				PluginInfo failed = Assert.Single(manager.Plugins);
+				Assert.True(failed.UserEnabled);
+				Assert.Contains(failed.State, new[] {PluginLifecycleState.Failed, PluginLifecycleState.Disabled, PluginLifecycleState.PendingRestart});
+				Assert.NotNull(failed.ErrorCode);
+				await manager.DisposeAsync();
+			});
 		}
 		finally { DeleteDirectory(root); }
 	}

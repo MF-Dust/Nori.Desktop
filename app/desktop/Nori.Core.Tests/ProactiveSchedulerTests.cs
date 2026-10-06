@@ -80,18 +80,7 @@ public sealed class ProactiveSchedulerTests
 		finally { DeleteDatabase(path); }
 	}
 
-	private static string NewPath() => Path.Combine(Path.GetTempPath(), $"nori-proactive-{Guid.NewGuid():N}.db");
+	private static string NewPath() => Path.Combine(Directory.CreateTempSubdirectory("nori-proactive-").FullName, "nori.db");
 
-	private static void DeleteDatabase(string path)
-	{
-		try
-		{
-			File.Delete(path);
-			File.Delete($"{path}-wal");
-			File.Delete($"{path}-shm");
-			foreach (string backup in Directory.GetFiles(Path.GetDirectoryName(path)!, $"{Path.GetFileName(path)}.pre-migration-*.bak")) File.Delete(backup);
-			Directory.Delete(Path.Combine(Path.GetDirectoryName(path)!, "logs"), true);
-		}
-		catch (IOException) { }
-	}
+	private static void DeleteDatabase(string path) => Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
 }

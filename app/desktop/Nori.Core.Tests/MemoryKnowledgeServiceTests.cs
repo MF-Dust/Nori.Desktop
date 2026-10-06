@@ -5,12 +5,13 @@ using Nori.Core.Memory;
 
 namespace Nori.Core.Tests;
 
-public sealed class MemoryKnowledgeServiceTests : IAsyncDisposable
+public sealed class MemoryKnowledgeServiceTests : IAsyncLifetime
 {
 	private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"nori-knowledge-{Guid.NewGuid():N}.db");
 	private readonly string _knowledgePath = Path.Combine(Path.GetTempPath(), $"nori-knowledge-{Guid.NewGuid():N}.md");
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
+	private readonly MemoryService _memory;
 	private readonly KnowledgeService _knowledge;
 
 	public MemoryKnowledgeServiceTests()
@@ -19,8 +20,8 @@ public sealed class MemoryKnowledgeServiceTests : IAsyncDisposable
 		_config = new ConfigStore(_database);
 		_config.InitDefaults("test");
 		_config.Set("memory_knowledge_path", new ConfigValue.Text(_knowledgePath));
-		MemoryService memory = new(new MemoryStore(_database), new StubEmbedding(), _config);
-		_knowledge = new KnowledgeService(_database, memory, _config);
+		_memory = new MemoryService(new MemoryStore(_database), new StubEmbedding(), _config);
+		_knowledge = new KnowledgeService(_database, _memory, _config);
 	}
 
 	[Fact]
@@ -52,12 +53,17 @@ public sealed class MemoryKnowledgeServiceTests : IAsyncDisposable
 		Assert.Equal(3, unchanged.Processed);
 	}
 
-	public async ValueTask DisposeAsync()
+	public Task InitializeAsync() => Task.CompletedTask;
+
+	public async Task DisposeAsync()
 	{
 		await _knowledge.DisposeAsync();
+		await _memory.DisposeAsync();
 		_database.Dispose();
-		try { File.Delete(_databasePath); File.Delete($"{_databasePath}-wal"); File.Delete($"{_databasePath}-shm"); File.Delete(_knowledgePath); }
-		catch (IOException) { }
+		File.Delete(_databasePath);
+		File.Delete($"{_databasePath}-wal");
+		File.Delete($"{_databasePath}-shm");
+		File.Delete(_knowledgePath);
 	}
 
 	private sealed class StubEmbedding : IEmbeddingAdapter

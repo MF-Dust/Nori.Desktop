@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import {chmodSync, mkdtempSync, mkdirSync, unlinkSync, writeFileSync} from "node:fs"
+import {chmodSync, mkdtempSync, mkdirSync, rmSync, unlinkSync, writeFileSync} from "node:fs"
 import {tmpdir} from "node:os"
 import {join} from "node:path"
 import {spawnSync} from "node:child_process"
@@ -13,8 +13,10 @@ assert.throws(() => validateProductVersion("1.2.3-bad/name"))
 assert.throws(() => validateRevision("01"))
 
 const script = join(import.meta.dirname, "validate-publish-structure.mjs")
+const fixtureRoots = []
 const createFixture = (rid) => {
 	const root = mkdtempSync(join(tmpdir(), "nori-publish-fixture-"))
+	fixtureRoots.push(root)
 	const slot = join(root, "app-1.2.3-4")
 	// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时目录
 	mkdirSync(slot, {recursive: true})
@@ -40,30 +42,34 @@ const createFixture = (rid) => {
 	return root
 }
 
-for (const rid of ["win-x64", "linux-x64", "linux-arm64", "osx-x64", "osx-arm64"]) {
-	const root = createFixture(rid)
-	const result = spawnSync(process.execPath, [script, root, rid], {encoding: "utf8"})
-	assert.equal(result.status, 0, `${rid}: ${result.stderr}`)
-	if (["win-x64", "linux-x64", "osx-arm64"].includes(rid)) {
-		const license = rid.startsWith("osx-")
-			? join(root, "app-1.2.3-4", "Nori.Desktop.app", "Contents", "MacOS", "PurismCore.LICENSE.txt")
-			: join(root, "app-1.2.3-4", "PurismCore.LICENSE.txt")
-		// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
-		unlinkSync(license)
-		const missingLicense = spawnSync(process.execPath, [script, root, rid], {encoding: "utf8"})
-		assert.notEqual(missingLicense.status, 0)
-		assert.match(missingLicense.stderr, /PurismCore\.LICENSE\.txt/)
+try {
+	for (const rid of ["win-x64", "linux-x64", "linux-arm64", "osx-x64", "osx-arm64"]) {
+		const root = createFixture(rid)
+		const result = spawnSync(process.execPath, [script, root, rid], {encoding: "utf8"})
+		assert.equal(result.status, 0, `${rid}: ${result.stderr}`)
+		if (["win-x64", "linux-x64", "osx-arm64"].includes(rid)) {
+			const license = rid.startsWith("osx-")
+				? join(root, "app-1.2.3-4", "Nori.Desktop.app", "Contents", "MacOS", "PurismCore.LICENSE.txt")
+				: join(root, "app-1.2.3-4", "PurismCore.LICENSE.txt")
+			// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
+			unlinkSync(license)
+			const missingLicense = spawnSync(process.execPath, [script, root, rid], {encoding: "utf8"})
+			assert.notEqual(missingLicense.status, 0)
+			assert.match(missingLicense.stderr, /PurismCore\.LICENSE\.txt/)
+		}
 	}
-}
-const root = createFixture("linux-x64")
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
-writeFileSync(join(root, "libhostfxr.so"), "forbidden")
-const rejected = spawnSync(process.execPath, [script, root, "linux-x64"], {encoding: "utf8"})
-assert.notEqual(rejected.status, 0)
+	const root = createFixture("linux-x64")
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
+	writeFileSync(join(root, "libhostfxr.so"), "forbidden")
+	const rejected = spawnSync(process.execPath, [script, root, "linux-x64"], {encoding: "utf8"})
+	assert.notEqual(rejected.status, 0)
 
-const mismatched = createFixture("linux-x64")
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
-writeFileSync(join(mismatched, "app-1.2.3-4", "deployment.json"), JSON.stringify({schema_version: 1, product_version: "v1.2.3-test", numeric_version: "1.2.3", revision: 5, rid: "linux-x64", entrypoint: "Nori.Desktop"}))
-const manifestRejected = spawnSync(process.execPath, [script, mismatched, "linux-x64"], {encoding: "utf8"})
-assert.notEqual(manifestRejected.status, 0)
+	const mismatched = createFixture("linux-x64")
+	// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
+	writeFileSync(join(mismatched, "app-1.2.3-4", "deployment.json"), JSON.stringify({schema_version: 1, product_version: "v1.2.3-test", numeric_version: "1.2.3", revision: 5, rid: "linux-x64", entrypoint: "Nori.Desktop"}))
+	const manifestRejected = spawnSync(process.execPath, [script, mismatched, "linux-x64"], {encoding: "utf8"})
+	assert.notEqual(manifestRejected.status, 0)
+} finally {
+	for (const root of fixtureRoots) rmSync(root, {recursive: true, force: true})
+}
 console.log("发布结构 fixture 测试通过")

@@ -26,33 +26,25 @@ public sealed class MemoryEngineBaselineTests : IDisposable
 	[Fact]
 	public void v3数据迁移到v4_保留向量并回填Atom()
 	{
-		string legacy = Path.Combine(Path.GetTempPath(), $"nori-memory-v3-{Guid.NewGuid():N}.db");
-		try
+		using TempDatabase legacy = new("nori-memory-v3");
+		using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={legacy.Path};Pooling=False"))
 		{
-			using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={legacy}"))
-			{
-				connection.Open();
-				using var command = connection.CreateCommand();
-				command.CommandText = """
-					CREATE TABLE memories (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, content TEXT NOT NULL, importance REAL NOT NULL, source TEXT NOT NULL, tags TEXT, embedding TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-					PRAGMA user_version = 3;
-					INSERT INTO memories(type, content, importance, source, embedding, created_at, updated_at) VALUES ('fact', '旧向量记忆', 0.8, 'chat', '[1,0]', '2026-01-01', '2026-01-01');
-					""";
-				command.ExecuteNonQuery();
-			}
+			connection.Open();
+			using var command = connection.CreateCommand();
+			command.CommandText = """
+				CREATE TABLE memories (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, content TEXT NOT NULL, importance REAL NOT NULL, source TEXT NOT NULL, tags TEXT, embedding TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+				PRAGMA user_version = 3;
+				INSERT INTO memories(type, content, importance, source, embedding, created_at, updated_at) VALUES ('fact', '旧向量记忆', 0.8, 'chat', '[1,0]', '2026-01-01', '2026-01-01');
+				""";
+			command.ExecuteNonQuery();
+		}
 
-			using NoriDatabase migrated = NoriDatabase.Open(legacy);
-			MemoryStore store = new(migrated);
-			MemoryItem item = Assert.Single(store.GetAll());
-			Assert.Equal("factual", item.Kind);
-			Assert.Equal("legacy-unknown", item.EmbeddingFingerprint);
-			Assert.Single(store.GetAtoms(item.Id));
-		}
-		finally
-		{
-			try { File.Delete(legacy); File.Delete($"{legacy}-wal"); File.Delete($"{legacy}-shm"); }
-			catch (IOException) { }
-		}
+		using NoriDatabase migrated = NoriDatabase.Open(legacy.Path);
+		MemoryStore store = new(migrated);
+		MemoryItem item = Assert.Single(store.GetAll());
+		Assert.Equal("factual", item.Kind);
+		Assert.Equal("legacy-unknown", item.EmbeddingFingerprint);
+		Assert.Single(store.GetAtoms(item.Id));
 	}
 
 	[Fact]

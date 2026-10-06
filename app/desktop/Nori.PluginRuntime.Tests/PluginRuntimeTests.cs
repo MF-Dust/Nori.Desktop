@@ -108,7 +108,8 @@ public sealed class PluginRuntimeTests
 			File.WriteAllText(Path.Combine(root, "manifest.json"), "private");
 			IPluginAssets assets = new PluginAssetProvider(root);
 
-			Assert.Equal("ok", new StreamReader(assets.OpenRead("web/index.html")).ReadToEnd());
+			using StreamReader reader = new(assets.OpenRead("web/index.html"));
+			Assert.Equal("ok", reader.ReadToEnd());
 			Uri uri = assets.GetUri("web/index.html");
 			Assert.True(uri.IsFile);
 			Assert.EndsWith("index.html", uri.LocalPath.Replace('\\', '/'), StringComparison.Ordinal);
@@ -220,61 +221,67 @@ public sealed class PluginRuntimeTests
 		string root = CreateTemp();
 		try
 		{
-			string package = CreateTestPackage(root, "test.plugin", "1.0.0");
-			string plugins = Path.Combine(root, "plugins");
-			PluginManager manager = new(new PluginRuntimeOptions
+			await Task.Run(async () =>
 			{
-				PluginsDirectory = plugins,
-				DataDirectory = Path.Combine(root, "plugin-data"),
-				KnownCapabilityIds = [],
-			});
+				string package = CreateTestPackage(root, "test.plugin", "1.0.0");
+				string plugins = Path.Combine(root, "plugins");
+				PluginManager manager = new(new PluginRuntimeOptions
+				{
+					PluginsDirectory = plugins,
+					DataDirectory = Path.Combine(root, "plugin-data"),
+					KnownCapabilityIds = [],
+				});
 
-			manager.Installer.Install(package);
-			manager.Discover();
-			await manager.StartAllAsync();
-			PluginInfo info = Assert.Single(manager.Plugins);
-			Assert.Equal(PluginLifecycleState.Active, info.State);
-			Assert.Single(manager.GetContributions<IPluginContribution>());
-			Assert.True(File.Exists(Path.Combine(plugins, "test.plugin", "current.json")));
-			Assert.True(File.Exists(Path.Combine(root, "plugin-data", "test.plugin", "storage.json")));
+				manager.Installer.Install(package);
+				manager.Discover();
+				await manager.StartAllAsync();
+				PluginInfo info = Assert.Single(manager.Plugins);
+				Assert.Equal(PluginLifecycleState.Active, info.State);
+				Assert.Single(manager.GetContributions<IPluginContribution>());
+				Assert.True(File.Exists(Path.Combine(plugins, "test.plugin", "current.json")));
+				Assert.True(File.Exists(Path.Combine(root, "plugin-data", "test.plugin", "storage.json")));
 
-			await manager.DeactivateAsync("test.plugin");
-			Assert.Empty(manager.GetContributions<IPluginContribution>());
-			PluginInfo deactivated = Assert.Single(manager.Plugins);
-			Assert.Contains(deactivated.State, new[] { PluginLifecycleState.Installed, PluginLifecycleState.PendingRestart });
-			Assert.True(File.Exists(Path.Combine(root, "plugin-data", "test.plugin", "storage.json")));
-			if (deactivated.State == PluginLifecycleState.Installed)
-			{
-				await manager.ActivateAsync("test.plugin");
 				await manager.DeactivateAsync("test.plugin");
-				Assert.Contains(Assert.Single(manager.Plugins).State, new[] { PluginLifecycleState.Installed, PluginLifecycleState.PendingRestart });
-			}
-			else
-			{
-				PluginException pending = await Assert.ThrowsAsync<PluginException>(() => manager.ActivateAsync("test.plugin"));
-				Assert.Equal(PluginErrorCodes.UnloadPendingRestart, pending.Code);
-			}
-			await manager.DisposeAsync();
+				Assert.Empty(manager.GetContributions<IPluginContribution>());
+				PluginInfo deactivated = Assert.Single(manager.Plugins);
+				Assert.Contains(deactivated.State, new[] { PluginLifecycleState.Installed, PluginLifecycleState.PendingRestart });
+				Assert.True(File.Exists(Path.Combine(root, "plugin-data", "test.plugin", "storage.json")));
+				if (deactivated.State == PluginLifecycleState.Installed)
+				{
+					await manager.ActivateAsync("test.plugin");
+					await manager.DeactivateAsync("test.plugin");
+					Assert.Contains(Assert.Single(manager.Plugins).State, new[] { PluginLifecycleState.Installed, PluginLifecycleState.PendingRestart });
+				}
+				else
+				{
+					PluginException pending = await Assert.ThrowsAsync<PluginException>(() => manager.ActivateAsync("test.plugin"));
+					Assert.Equal(PluginErrorCodes.UnloadPendingRestart, pending.Code);
+				}
+				await manager.DisposeAsync();
+			});
 		}
 		finally { DeleteDirectory(root); }
 	}
 
 	[Fact]
-	public void Contract程序集由DefaultALC提供()
+	public async Task Contract程序集由DefaultALC提供()
 	{
 		string root = CreateTemp();
 		try
 		{
-			string directory = Path.Combine(root, "1.0.0", "lib");
-			Directory.CreateDirectory(directory);
-			string path = Path.Combine(directory, "Nori.PluginRuntime.TestPlugin.dll");
-			File.Copy(typeof(Nori.PluginRuntime.TestPlugin.TestPlugin).Assembly.Location, path);
-			PluginLoadContext loadContext = new(path);
-			Assembly assembly = loadContext.LoadFromAssemblyPath(path);
-			Type type = assembly.GetType("Nori.PluginRuntime.TestPlugin.TestPlugin", throwOnError: true)!;
-			Assert.True(typeof(INoriPlugin).IsAssignableFrom(type));
-			Assert.Contains(type.GetInterfaces(), item => ReferenceEquals(item.Assembly, typeof(INoriPlugin).Assembly));
-			loadContext.Unload();
+			await Task.Run(() =>
+			{
+				string directory = Path.Combine(root, "1.0.0", "lib");
+				Directory.CreateDirectory(directory);
+				string path = Path.Combine(directory, "Nori.PluginRuntime.TestPlugin.dll");
+				File.Copy(typeof(Nori.PluginRuntime.TestPlugin.TestPlugin).Assembly.Location, path);
+				PluginLoadContext loadContext = new(path);
+				Assembly assembly = loadContext.LoadFromAssemblyPath(path);
+				Type type = assembly.GetType("Nori.PluginRuntime.TestPlugin.TestPlugin", throwOnError: true)!;
+				Assert.True(typeof(INoriPlugin).IsAssignableFrom(type));
+				Assert.Contains(type.GetInterfaces(), item => ReferenceEquals(item.Assembly, typeof(INoriPlugin).Assembly));
+				loadContext.Unload();
+			});
 		}
 		finally { DeleteDirectory(root); }
 	}
@@ -389,13 +396,16 @@ public sealed class PluginRuntimeTests
 		string root = CreateTemp();
 		try
 		{
-			PluginManager manager = CreateManager(root, CreateTestPackage(root, "stop.plugin", "1.0.0", entryType: "Nori.PluginRuntime.TestPlugin.ThrowingDeactivatePlugin"));
-			await manager.StartAllAsync();
-			PluginException exception = await Assert.ThrowsAsync<PluginException>(() => manager.DeactivateAsync("stop.plugin"));
-			Assert.Equal(PluginErrorCodes.DeactivationFailed, exception.Code);
-			Assert.Contains(Assert.Single(manager.Plugins).State, new[] { PluginLifecycleState.Failed, PluginLifecycleState.PendingRestart });
-			Assert.Empty(manager.GetContributions<IPluginContribution>());
-			await manager.DisposeAsync();
+			await Task.Run(async () =>
+			{
+				PluginManager manager = CreateManager(root, CreateTestPackage(root, "stop.plugin", "1.0.0", entryType: "Nori.PluginRuntime.TestPlugin.ThrowingDeactivatePlugin"));
+				await manager.StartAllAsync();
+				PluginException exception = await Assert.ThrowsAsync<PluginException>(() => manager.DeactivateAsync("stop.plugin"));
+				Assert.Equal(PluginErrorCodes.DeactivationFailed, exception.Code);
+				Assert.Contains(Assert.Single(manager.Plugins).State, new[] { PluginLifecycleState.Failed, PluginLifecycleState.PendingRestart });
+				Assert.Empty(manager.GetContributions<IPluginContribution>());
+				await manager.DisposeAsync();
+			});
 		}
 		finally { DeleteDirectory(root); }
 	}

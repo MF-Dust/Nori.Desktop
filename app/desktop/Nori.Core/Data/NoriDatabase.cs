@@ -94,6 +94,8 @@ public sealed class NoriDatabase : IDisposable
 		{
 			DataSource = path,
 			Mode = SqliteOpenMode.ReadWriteCreate,
+			// 宿主共享一个长生命周期连接，无需连接池；释放时必须立即关闭文件句柄。
+			Pooling = false,
 		}.ToString());
 		connection.Open();
 		NoriDatabase database = new(connection, path);
@@ -375,6 +377,7 @@ public sealed class NoriDatabase : IDisposable
 		{
 			DataSource = backupPath,
 			Mode = SqliteOpenMode.ReadOnly,
+			Pooling = false,
 		}.ToString());
 		connection.Open();
 		using SqliteCommand command = connection.CreateCommand();

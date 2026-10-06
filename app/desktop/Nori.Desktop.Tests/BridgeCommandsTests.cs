@@ -427,13 +427,7 @@ public partial class BridgeCommandsTests : IDisposable
 		if (!_databaseReleasedByServices) _database.Dispose();
 		_http.Dispose();
 		_services.Logger.Dispose();
-		try
-		{
-			Directory.Delete(_tempDir, true);
-		}
-		catch (IOException)
-		{
-		}
+		Directory.Delete(_tempDir, true);
 	}
 
 	private BridgeCommands CreateCommands(IUiDispatcher? uiDispatcher = null) =>

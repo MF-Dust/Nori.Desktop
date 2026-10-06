@@ -5,9 +5,7 @@ namespace Nori.AppLauncher.Tests;
 
 public sealed class DeploymentSelectorTests : IDisposable
 {
-	private readonly string _root = Path.Combine(Path.GetTempPath(), "nori-launcher-tests", Guid.NewGuid().ToString("N"));
-
-	public DeploymentSelectorTests() => Directory.CreateDirectory(_root);
+	private readonly string _root = Directory.CreateTempSubdirectory("nori-launcher-tests-").FullName;
 
 	[Fact]
 	public void 当前槽优先于更高版本()
@@ -84,9 +82,8 @@ public sealed class DeploymentSelectorTests : IDisposable
 		}));
 	}
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "测试夹具销毁只能尽力清理，不能让清理异常覆盖测试结果。")]
 	public void Dispose()
 	{
-		try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { }
+		if (Directory.Exists(_root)) Directory.Delete(_root, true);
 	}
 }

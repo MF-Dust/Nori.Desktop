@@ -3,10 +3,10 @@ using Nori.PluginRuntime;
 
 namespace Nori.PluginRuntime.Tests;
 
-public sealed class PluginManagementBridgeTests : IAsyncDisposable
+public sealed class PluginManagementBridgeTests : IDisposable
 {
 	private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-	private readonly string _root = Path.Combine(Path.GetTempPath(), "nori-plugin-bridge-tests", Guid.NewGuid().ToString("N"));
+	private readonly string _root = Directory.CreateTempSubdirectory("nori-plugin-bridge-tests-").FullName;
 
 	private sealed class FakePicker(string? result) : IPluginPackagePicker
 	{
@@ -103,10 +103,8 @@ public sealed class PluginManagementBridgeTests : IAsyncDisposable
 
 	private static JsonElement Args(object value) => JsonSerializer.SerializeToElement(value, JsonOptions);
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "测试夹具销毁只能尽力清理，不能让清理异常覆盖测试结果。")]
-	public async ValueTask DisposeAsync()
+	public void Dispose()
 	{
-		try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { }
-		await ValueTask.CompletedTask;
+		if (Directory.Exists(_root)) Directory.Delete(_root, true);
 	}
 }

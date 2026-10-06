@@ -1,6 +1,6 @@
 namespace Nori.Core.Tests.TestSupport;
 
-/// <summary>临时 SQLite 数据库文件，Dispose 时删除 db 及 WAL/SHM 附属文件。</summary>
+/// <summary>临时 SQLite 数据库文件，Dispose 时删除数据库、附属文件及迁移备份。</summary>
 internal sealed class TempDatabase : IDisposable
 {
 	public TempDatabase(string? prefix = null) =>
@@ -10,14 +10,10 @@ internal sealed class TempDatabase : IDisposable
 
 	public void Dispose()
 	{
-		try
-		{
-			File.Delete(Path);
-			File.Delete($"{Path}-wal");
-			File.Delete($"{Path}-shm");
-		}
-		catch (IOException)
-		{
-		}
+		File.Delete(Path);
+		File.Delete($"{Path}-wal");
+		File.Delete($"{Path}-shm");
+		foreach (string backup in Directory.EnumerateFiles(System.IO.Path.GetDirectoryName(Path)!, $"{System.IO.Path.GetFileName(Path)}.pre-migration-*"))
+			File.Delete(backup);
 	}
 }

@@ -13,6 +13,7 @@ namespace Nori.Core.Tests;
 public class IndexTtsProviderTests : IDisposable
 {
 	private readonly TempDatabase _tempDatabase = new("nori-indextts");
+	private readonly string _root = Directory.CreateTempSubdirectory("nori-indextts-files-").FullName;
 	private readonly NoriDatabase _database;
 	private readonly ConfigStore _config;
 
@@ -201,7 +202,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task 克隆音色上传并返回VoiceId()
 	{
-		string tempDir = Path.Combine(Path.GetTempPath(), $"nori-indextts-upload-{Guid.NewGuid():N}");
+		string tempDir = _root;
 		string template = Path.Combine(tempDir, "voice.wav");
 		Directory.CreateDirectory(tempDir);
 		File.WriteAllBytes(template, MinimalWav());
@@ -223,7 +224,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task 合成时从模板音频自动解析音色()
 	{
-		string tempDir = Path.Combine(Path.GetTempPath(), $"nori-indextts-resolve-{Guid.NewGuid():N}");
+		string tempDir = _root;
 		string template = Path.Combine(tempDir, "voice.wav");
 		Directory.CreateDirectory(tempDir);
 		File.WriteAllBytes(template, MinimalWav());
@@ -244,7 +245,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task 缓存音色未过期时不重复上传()
 	{
-		string tempDir = Path.Combine(Path.GetTempPath(), $"nori-indextts-cache-{Guid.NewGuid():N}");
+		string tempDir = _root;
 		string template = Path.Combine(tempDir, "voice.wav");
 		Directory.CreateDirectory(tempDir);
 		File.WriteAllBytes(template, MinimalWav());
@@ -271,7 +272,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task 音色过期后自动续期且缓存key不漂移()
 	{
-		string tempDir = Path.Combine(Path.GetTempPath(), $"nori-indextts-renew-{Guid.NewGuid():N}");
+		string tempDir = _root;
 		string template = Path.Combine(tempDir, "voice.wav");
 		Directory.CreateDirectory(tempDir);
 		File.WriteAllBytes(template, MinimalWav());
@@ -315,7 +316,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task 换模板后试听使用新音色()
 	{
-		string tempDir = Path.Combine(Path.GetTempPath(), $"nori-indextts-swap-{Guid.NewGuid():N}");
+		string tempDir = _root;
 		string templateA = Path.Combine(tempDir, "voice_a.wav");
 		string templateB = Path.Combine(tempDir, "voice_b.wav");
 		Directory.CreateDirectory(tempDir);
@@ -360,7 +361,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task 同路径不同大小写在Windows语义下命中同一缓存()
 	{
-		string tempDir = Path.Combine(Path.GetTempPath(), $"nori-indextts-case-{Guid.NewGuid():N}");
+		string tempDir = _root;
 		string template = Path.Combine(tempDir, "voice.wav");
 		Directory.CreateDirectory(tempDir);
 		File.WriteAllBytes(template, MinimalWav());
@@ -402,7 +403,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task 完整Speech端点克隆时会归一化到VoiceUpload且使用配置模型()
 	{
-		string tempDir = CreateTempDir();
+		string tempDir = _root;
 		string template = Path.Combine(tempDir, "voice.wav");
 		File.WriteAllBytes(template, MinimalWav());
 		_config.Set("tts_base_url", new ConfigValue.Text("https://api.modelverse.cn/v1/audio/speech"));
@@ -421,7 +422,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task 原模板删除后过期音色仍从本地存档续期()
 	{
-		string tempDir = CreateTempDir();
+		string tempDir = _root;
 		string template = Path.Combine(tempDir, "voice.wav");
 		File.WriteAllBytes(template, MinimalWav());
 		AppStoragePaths paths = new(tempDir);
@@ -482,7 +483,7 @@ public class IndexTtsProviderTests : IDisposable
 	[Fact]
 	public async Task VoiceService换模板后合成缓存使用新音色()
 	{
-		string tempDir = Path.Combine(Path.GetTempPath(), $"nori-indextts-service-swap-{Guid.NewGuid():N}");
+		string tempDir = _root;
 		string templateA = Path.Combine(tempDir, "voice_a.wav");
 		string templateB = Path.Combine(tempDir, "voice_b.wav");
 		Directory.CreateDirectory(tempDir);
@@ -526,15 +527,15 @@ public class IndexTtsProviderTests : IDisposable
 
 	public void Dispose()
 	{
-		_database.Dispose();
-		_tempDatabase.Dispose();
-	}
-
-	private static string CreateTempDir()
-	{
-		string path = Path.Combine(Path.GetTempPath(), $"nori-indextts-files-{Guid.NewGuid():N}");
-		Directory.CreateDirectory(path);
-		return path;
+		try
+		{
+			_database.Dispose();
+			_tempDatabase.Dispose();
+		}
+		finally
+		{
+			Directory.Delete(_root, recursive: true);
+		}
 	}
 
 	private static HttpResponseMessage WavResponse() => new(HttpStatusCode.OK)

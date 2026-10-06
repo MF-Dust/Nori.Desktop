@@ -295,7 +295,7 @@ public class ConfigStoreTests : IDisposable
 		Assert.Equal(plainKey, value.ToStorage());
 
 		// 底层 SQLite 里必须是新格式密文, 且不含明文 (三平台一致)
-		using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_tempDatabase.Path}");
+		using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_tempDatabase.Path};Pooling=False");
 		connection.Open();
 		using var cmd = connection.CreateCommand();
 		cmd.CommandText = "SELECT value FROM config WHERE key = 'llm_api_key'";

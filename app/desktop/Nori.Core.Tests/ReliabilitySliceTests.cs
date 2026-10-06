@@ -207,7 +207,7 @@ public sealed class DatabaseMigrationReliabilityTests
 		string path = Path.Combine(Path.GetTempPath(), $"nori-migration-{Guid.NewGuid():N}.db");
 		try
 		{
-			using (SqliteConnection connection = new($"Data Source={path}"))
+			using (SqliteConnection connection = new($"Data Source={path};Pooling=False"))
 			{
 				connection.Open();
 				using SqliteCommand command = connection.CreateCommand();

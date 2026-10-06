@@ -4,9 +4,7 @@ namespace Nori.Core.Tests;
 
 public sealed class StorageBootstrapperTests : IDisposable
 {
-	private readonly string _root = Path.Combine(Path.GetTempPath(), "nori-storage-tests", Guid.NewGuid().ToString("N"));
-
-	public StorageBootstrapperTests() => Directory.CreateDirectory(_root);
+	private readonly string _root = Directory.CreateTempSubdirectory("nori-storage-tests-").FullName;
 
 	[Fact]
 	public void 首次启动只创建当前版本包内布局()
@@ -65,9 +63,8 @@ public sealed class StorageBootstrapperTests : IDisposable
 		Assert.False(Directory.Exists(packageRoot) && Directory.EnumerateDirectories(packageRoot, "data.staging-*", SearchOption.TopDirectoryOnly).Any());
 	}
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "测试夹具销毁只能尽力清理，不能让清理异常覆盖测试结果。")]
 	public void Dispose()
 	{
-		try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { }
+		if (Directory.Exists(_root)) Directory.Delete(_root, true);
 	}
 }

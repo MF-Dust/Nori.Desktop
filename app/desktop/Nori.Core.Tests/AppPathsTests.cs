@@ -5,9 +5,7 @@ namespace Nori.Core.Tests;
 /// <summary>包内存储路径和 containment 契约。</summary>
 public sealed class AppPathsTests : IDisposable
 {
-	private readonly string _root = Path.Combine(Path.GetTempPath(), "nori-path-tests", Guid.NewGuid().ToString("N"));
-
-	public AppPathsTests() => Directory.CreateDirectory(_root);
+	private readonly string _root = Directory.CreateTempSubdirectory("nori-path-tests-").FullName;
 
 	[Fact]
 	public void 所有业务路径位于包根data内()
@@ -35,9 +33,8 @@ public sealed class AppPathsTests : IDisposable
 		Assert.True(Directory.Exists(paths.LogsDirectory));
 	}
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "测试夹具销毁只能尽力清理，不能让清理异常覆盖测试结果。")]
 	public void Dispose()
 	{
-		try { if (Directory.Exists(_root)) Directory.Delete(_root, true); } catch { }
+		if (Directory.Exists(_root)) Directory.Delete(_root, true);
 	}
 }

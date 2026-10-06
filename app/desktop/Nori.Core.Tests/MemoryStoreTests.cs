@@ -163,43 +163,28 @@ public class MemoryStoreTests : IDisposable
 	[Fact]
 	public void 旧数据库打开时会补列并清空历史向量()
 	{
-		string oldPath = Path.Combine(Path.GetTempPath(), $"nori-memory-old-{Guid.NewGuid():N}.db");
-		try
+		using TempDatabase legacy = new("nori-memory-old");
+		using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={legacy.Path};Pooling=False"))
 		{
-			using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={oldPath}"))
-			{
-				connection.Open();
-				using var command = connection.CreateCommand();
-				command.CommandText = """
-					CREATE TABLE memories (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, content TEXT NOT NULL, importance REAL NOT NULL, source TEXT NOT NULL, tags TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-					INSERT INTO memories (type, content, importance, source, tags, created_at, updated_at) VALUES ('fact', '旧记录', 0.5, 'chat', NULL, 'a', 'a');
-					""";
-				command.ExecuteNonQuery();
-			}
+			connection.Open();
+			using var command = connection.CreateCommand();
+			command.CommandText = """
+				CREATE TABLE memories (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, content TEXT NOT NULL, importance REAL NOT NULL, source TEXT NOT NULL, tags TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+				INSERT INTO memories (type, content, importance, source, tags, created_at, updated_at) VALUES ('fact', '旧记录', 0.5, 'chat', NULL, 'a', 'a');
+				""";
+			command.ExecuteNonQuery();
+		}
 
-			using Nori.Core.Data.NoriDatabase migrated = Nori.Core.Data.NoriDatabase.Open(oldPath);
-			MemoryStore store = new(migrated);
-			MemoryItem item = Assert.Single(store.GetAll());
-			Assert.Null(item.Embedding);
-			Assert.Equal(Nori.Core.Data.NoriDatabase.DatabaseSchemaVersion, migrated.Locked(connection =>
-			{
-				using var command = connection.CreateCommand();
-				command.CommandText = "PRAGMA user_version";
-				return Convert.ToInt64(command.ExecuteScalar());
-			}));
-		}
-		finally
+		using Nori.Core.Data.NoriDatabase migrated = Nori.Core.Data.NoriDatabase.Open(legacy.Path);
+		MemoryStore store = new(migrated);
+		MemoryItem item = Assert.Single(store.GetAll());
+		Assert.Null(item.Embedding);
+		Assert.Equal(Nori.Core.Data.NoriDatabase.DatabaseSchemaVersion, migrated.Locked(connection =>
 		{
-			try
-			{
-				File.Delete(oldPath);
-				File.Delete($"{oldPath}-wal");
-				File.Delete($"{oldPath}-shm");
-			}
-			catch (IOException)
-			{
-			}
-		}
+			using var command = connection.CreateCommand();
+			command.CommandText = "PRAGMA user_version";
+			return Convert.ToInt64(command.ExecuteScalar());
+		}));
 	}
 }
 

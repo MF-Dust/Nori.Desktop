@@ -15,10 +15,14 @@ public sealed class ResourcePathSafetyTests : IDisposable
 {
 	private readonly string _root = Directory.CreateTempSubdirectory("nori-rps-").FullName;
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "测试夹具销毁只能尽力清理，不能让清理异常覆盖测试结果。")]
-	public void Dispose()
+	public void Dispose() => DeleteTestDirectory(_root);
+
+	private static void DeleteTestDirectory(string path)
 	{
-		try { Directory.Delete(_root, recursive: true); } catch { }
+		// 先移除链接，再删除目标目录，避免 Windows junction 的目标先消失导致递归清理失败。
+		foreach (DirectoryInfo directory in new DirectoryInfo(path).EnumerateDirectories())
+			if ((directory.Attributes & FileAttributes.ReparsePoint) != 0) directory.Delete();
+		Directory.Delete(path, recursive: true);
 	}
 
 	[Fact]
@@ -123,7 +127,6 @@ public sealed class ResourcePathSafetyTests : IDisposable
 	/// <summary>Windows 上 symlink 需要开发者模式或管理员特权; 创建能力探测一次并缓存。</summary>
 	private static bool? _canCreateSymbolicLinks;
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "能力探测的临时目录清理失败不能改变探测结果。")]
 	private static bool CanCreateSymbolicLinks()
 	{
 		if (_canCreateSymbolicLinks.HasValue) return _canCreateSymbolicLinks.Value;
@@ -140,7 +143,7 @@ public sealed class ResourcePathSafetyTests : IDisposable
 		}
 		finally
 		{
-			try { Directory.Delete(probeDir, recursive: true); } catch { }
+			DeleteTestDirectory(probeDir);
 		}
 		return _canCreateSymbolicLinks.Value;
 	}

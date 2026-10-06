@@ -2,7 +2,7 @@ using System.IO.Compression;
 
 namespace Nori.PluginRuntime.Tests;
 
-/// <summary>测试插件包的机械操作：写 ZIP 条目、复制程序集、建临时目录与尽力清理。manifest 与包名策略留在各测试类。</summary>
+/// <summary>测试插件包的机械操作：写 ZIP 条目、复制程序集、建临时目录与清理。manifest 与包名策略留在各测试类。</summary>
 internal static class PluginTestPackages
 {
 	internal static void WriteEntry(ZipArchive archive, string name, string content)
@@ -19,16 +19,15 @@ internal static class PluginTestPackages
 		source.CopyTo(target);
 	}
 
-	internal static string CreateTemp(string directoryName)
-	{
-		string path = Path.Combine(Path.GetTempPath(), directoryName, Guid.NewGuid().ToString("N"));
-		Directory.CreateDirectory(path);
-		return path;
-	}
+	internal static string CreateTemp(string directoryName) => Directory.CreateTempSubdirectory($"{directoryName}-").FullName;
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "测试夹具销毁只能尽力清理，不能让清理异常覆盖测试结果。")]
 	internal static void DeleteDirectory(string path)
 	{
-		try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { }
+		// 调用前先结束插件操作阶段，避免测试栈或异步状态机仍持有插件类型及异常。
+		// ALC.Unload 只发出卸载请求，回收已卸载的上下文后才能释放 Windows 的 DLL 映射。
+		GC.Collect();
+		GC.WaitForPendingFinalizers();
+		GC.Collect();
+		if (Directory.Exists(path)) Directory.Delete(path, true);
 	}
 }

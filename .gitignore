@@ -19,5 +19,6 @@ app/desktop/data/
 app/desktop/data.staging-*/
 .nori-storage.json
 .rpiv/
+app/desktop/UniDesktop/native/
 
 *_TODO.md

@@ -117,6 +117,9 @@ jobs:
         run: node scripts/generate-update-manifest.test.mjs
 
       # 不把 build/test/publish 合并成并行 matrix 或后台任务, 避免共享 obj 文件锁。
+      - name: 准备 UniDesktop 原生库
+        run: node scripts/prepare-unidesktop.mjs ${{ matrix.rid }}
+
       - name: 后端门 · 构建
         run: dotnet build Nori.slnx --configuration Release
 

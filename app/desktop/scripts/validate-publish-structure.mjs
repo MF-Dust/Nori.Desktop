@@ -72,6 +72,10 @@ const native = rid.startsWith("win-") ? "Live2DCubismCore.dll" : rid.startsWith(
 const nativeDirectory = rid.startsWith("osx-") ? join(slot, "Nori.Desktop.app", "Contents", "MacOS") : slot;
 file(join(nativeDirectory, native));
 file(join(nativeDirectory, "PurismCore.LICENSE.txt"));
+if (rid === "win-x64" || rid === "linux-x64") {
+	file(join(nativeDirectory, rid === "win-x64" ? "uda_ffi.dll" : "libuda_ffi.so"));
+	file(join(nativeDirectory, "UniDesktop.LICENSE-MIT.txt"));
+}
 const forbidden = new Set(["data", "dotnet", "shared", "coreclr", "hostfxr", "hostpolicy"]);
 const lower = (value) => value.toLowerCase();
 const walkForbidden = (path) => {

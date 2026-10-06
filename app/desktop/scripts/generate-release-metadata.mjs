@@ -113,7 +113,9 @@ const files = walkFiles(publishDir)
 		sha256: sha256(filePath),
 	}))
 	.sort((left, right) => left.path.localeCompare(right.path))
-const externalComponents = [...components.values()].sort((left, right) => `${left.ecosystem}:${left.name}`.localeCompare(`${right.ecosystem}:${right.name}`))
+const externalComponents = [...components.values()]
+	.filter((component) => component.name !== "UniDesktop SDK" || rid === "win-x64" || rid === "linux-x64")
+	.sort((left, right) => `${left.ecosystem}:${left.name}`.localeCompare(`${right.ecosystem}:${right.name}`))
 const ownComponent = {
 	name: "Nori Desktop Pet",
 	version,

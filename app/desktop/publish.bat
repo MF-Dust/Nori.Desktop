@@ -32,6 +32,7 @@ if exist "%ROOT%" rmdir /s /q "%ROOT%"
 mkdir "%ROOT%\%SLOT%" || goto :error
 
 echo 发布 Nori.Desktop 槽...
+node scripts\prepare-unidesktop.mjs win-x64 || goto :error
 dotnet publish Nori.Desktop/Nori.Desktop.csproj -c Release -r win-x64 --self-contained false -p:NoriProductVersion="%APP_VERSION%" -p:NoriDeploymentRevision="%REVISION%" -p:NoriSentryDsnNative="%NORI_SENTRY_DSN_NATIVE%" -p:NoriSentryRelease="%NORI_SENTRY_RELEASE%" -p:NoriSentryEnvironment="%NORI_SENTRY_ENVIRONMENT%" -p:PublishSingleFile=false -p:PublishReadyToRun=false -o "%ROOT%\%SLOT%" || goto :error
 if not "%NORI_KEEP_SYMBOLS%"=="1" if /I not "%NORI_KEEP_SYMBOLS%"=="true" for /r "%ROOT%\%SLOT%" %%F in (*.pdb) do del /q "%%F"
 node scripts\write-deployment-json.mjs "%ROOT%\%SLOT%\deployment.json" "%APP_VERSION%" "%NUMERIC_VERSION%" "%REVISION%" win-x64 Nori.Desktop.exe || goto :error

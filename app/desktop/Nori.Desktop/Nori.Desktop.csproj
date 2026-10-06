@@ -59,6 +59,19 @@
 	<Target Name="NoriCheckPurismCore" BeforeTargets="Build">
 		<Error Condition="'$(NoriCorePath)' == '' Or !Exists('$(NoriCorePath)')" Text="缺少 $(NoriCoreRid) 的 PurismCore 原生库，请检查 Live2D/native/。" />
 	</Target>
+	<Target Name="NoriCheckUniDesktopPublish" BeforeTargets="PrepareForPublish" Condition="'$(NoriCoreRid)' == 'linux-x64' Or '$(NoriCoreRid)' == 'win-x64'">
+		<PropertyGroup>
+			<NoriUdaPublishPath Condition="'$(NoriCoreRid)' == 'linux-x64'">../UniDesktop/native/linux-x64/libuda_ffi.so</NoriUdaPublishPath>
+			<NoriUdaPublishPath Condition="'$(NoriCoreRid)' == 'win-x64'">../UniDesktop/native/win-x64/uda_ffi.dll</NoriUdaPublishPath>
+			<NoriUdaExpectedHash Condition="'$(NoriCoreRid)' == 'linux-x64'">14bc1883da4b89c1e3d5a20ba8d08004ad041592eb364d65d06d984f51da19ba</NoriUdaExpectedHash>
+			<NoriUdaExpectedHash Condition="'$(NoriCoreRid)' == 'win-x64'">ff919cc7f42bfdc2eff6808399482a5dac1c7c8f7e8a9b41a2aca011b7a6c934</NoriUdaExpectedHash>
+		</PropertyGroup>
+		<Error Condition="!Exists('$(NoriUdaPublishPath)')" Text="缺少 UniDesktop 原生库，请先运行 node scripts/prepare-unidesktop.mjs $(NoriCoreRid)。" />
+		<GetFileHash Files="$(NoriUdaPublishPath)" Algorithm="SHA256">
+			<Output TaskParameter="Items" ItemName="NoriUdaPublishHash" />
+		</GetFileHash>
+		<Error Condition="'%(NoriUdaPublishHash.FileHash)' != '$(NoriUdaExpectedHash)'" Text="UniDesktop 原生库 SHA-256 校验失败，请重新运行准备脚本。" />
+	</Target>
 
 	<ItemGroup>
 		<AvaloniaResource Include="Assets/**" />

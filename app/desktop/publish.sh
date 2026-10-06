@@ -73,6 +73,7 @@ for rid in "${@:-$(runtime_rid)}"; do
 	case "$rid" in linux-x64|linux-arm64|osx-x64|osx-arm64) ;; *) echo "不支持的 RID: $rid" >&2; exit 1 ;; esac
 	node scripts/validate-publish-input.mjs "$APP_VERSION" "$REVISION" "$rid"
 	root="bin/publish/$rid"; slot="$root/app-$NUMERIC_VERSION-$REVISION"; desktop_temp="$root/desktop"; launcher_temp="$root/launcher"
+	node scripts/prepare-unidesktop.mjs "$rid"
 	rm -rf "$root"; mkdir -p "$slot" "$desktop_temp" "$launcher_temp"
 	dotnet publish Nori.Desktop/Nori.Desktop.csproj -c Release -r "$rid" --self-contained false -p:NoriProductVersion="$APP_VERSION" -p:NoriDeploymentRevision="$REVISION" -p:NoriSentryDsnNative="${NORI_SENTRY_DSN_NATIVE:-}" -p:NoriSentryRelease="${NORI_SENTRY_RELEASE:-}" -p:NoriSentryEnvironment="${NORI_SENTRY_ENVIRONMENT:-production}" -p:PublishSingleFile=false -p:PublishReadyToRun=false -o "$desktop_temp"
 	if [[ "$KEEP_SYMBOLS" != "1" && "$KEEP_SYMBOLS" != "true" ]]; then find "$desktop_temp" -name '*.pdb' -delete; fi

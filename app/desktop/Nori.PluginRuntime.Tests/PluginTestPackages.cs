@@ -25,9 +25,22 @@ internal static class PluginTestPackages
 	{
 		// 调用前先结束插件操作阶段，避免测试栈或异步状态机仍持有插件类型及异常。
 		// ALC.Unload 只发出卸载请求，回收已卸载的上下文后才能释放 Windows 的 DLL 映射。
-		GC.Collect();
-		GC.WaitForPendingFinalizers();
-		GC.Collect();
-		if (Directory.Exists(path)) Directory.Delete(path, true);
+		for (int attempt = 0; ; attempt++)
+		{
+			GC.Collect();
+			GC.WaitForPendingFinalizers();
+			GC.Collect();
+			try
+			{
+				if (Directory.Exists(path)) Directory.Delete(path, true);
+				return;
+			}
+			catch (Exception exception) when (OperatingSystem.IsWindows() && attempt < 9 &&
+				exception is IOException or UnauthorizedAccessException)
+			{
+				// 等待已结束的线程池任务释放最后的引用及 DLL 映射，最多重试 450 毫秒。
+				Thread.Sleep(50);
+			}
+		}
 	}
 }

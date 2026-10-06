@@ -27,6 +27,9 @@ const createFixture = (rid) => {
 	const slotExecutable = mac ? slotBase : rid.startsWith("win-") ? `${slotBase}.exe` : slotBase
 	const native = rid.startsWith("win-") ? "Live2DCubismCore.dll" : rid.startsWith("osx-") ? "libLive2DCubismCore.dylib" : "libLive2DCubismCore.so"
 	const files = [rootExecutable, `${rootBase}.dll`, `${rootBase}.deps.json`, `${rootBase}.runtimeconfig.json`, join(root, "LICENSE"), join(root, ".current"), join(slot, "deployment.json"), slotExecutable, `${slotBase}.dll`, `${slotBase}.deps.json`, `${slotBase}.runtimeconfig.json`, mac ? join(slot, "Nori.Desktop.app", "Contents", "MacOS", native) : join(slot, native), join(slotBase, "..", "PurismCore.LICENSE.txt")]
+	if (rid === "win-x64" || rid === "linux-x64") {
+		files.push(join(slotBase, "..", rid === "win-x64" ? "uda_ffi.dll" : "libuda_ffi.so"), join(slotBase, "..", "UniDesktop.LICENSE-MIT.txt"))
+	}
 	for (const file of files) {
 		// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时目录
 		mkdirSync(join(file, ".."), {recursive: true})
@@ -47,6 +50,18 @@ try {
 		const root = createFixture(rid)
 		const result = spawnSync(process.execPath, [script, root, rid], {encoding: "utf8"})
 		assert.equal(result.status, 0, `${rid}: ${result.stderr}`)
+		if (rid === "win-x64" || rid === "linux-x64") {
+			for (const name of [rid === "win-x64" ? "uda_ffi.dll" : "libuda_ffi.so", "UniDesktop.LICENSE-MIT.txt"]) {
+				const file = join(root, "app-1.2.3-4", name)
+				// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
+				unlinkSync(file)
+				const missing = spawnSync(process.execPath, [script, root, rid], {encoding: "utf8"})
+				assert.notEqual(missing.status, 0)
+				assert.ok(missing.stderr.includes(name))
+				// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
+				writeFileSync(file, "fixture")
+			}
+		}
 		if (["win-x64", "linux-x64", "osx-arm64"].includes(rid)) {
 			const license = rid.startsWith("osx-")
 				? join(root, "app-1.2.3-4", "Nori.Desktop.app", "Contents", "MacOS", "PurismCore.LICENSE.txt")

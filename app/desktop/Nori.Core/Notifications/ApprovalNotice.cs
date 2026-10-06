@@ -44,7 +44,7 @@ public interface INativeNotifier
 	void Hide(string requestId);
 }
 
-/// <summary>不弹。非 Windows 平台与测试用它，省掉调用方到处判空。</summary>
+/// <summary>不弹。不支持系统通知的平台与测试用它，省掉调用方到处判空。</summary>
 public sealed class NullNativeNotifier : INativeNotifier
 {
 	public static readonly NullNativeNotifier Instance = new();

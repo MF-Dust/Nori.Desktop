@@ -2,6 +2,15 @@
 	"policy": "仅在仓库证据明确或发布前获得分发确认时填写 license；未确认的条目使用 null，不推断许可证。",
 	"components": [
 		{
+			"name": "UniDesktop SDK",
+			"version": "0.2.0",
+			"ecosystem": "native",
+			"purl": "pkg:github/UniDesktop/SDK@v0.2.0",
+			"license": "MIT",
+			"licenseStatus": "verified-upstream-license",
+			"note": "固定官方 v0.2.0 Windows/Linux x64 C ABI 产物；下载归档和原生库校验 SHA-256，MIT 全文随库置于 UniDesktop.LICENSE-MIT.txt。来源及能力边界见 UniDesktop/README.md。"
+		},
+		{
 			"name": "PurismCore",
 			"version": "1.1.0",
 			"ecosystem": "native",

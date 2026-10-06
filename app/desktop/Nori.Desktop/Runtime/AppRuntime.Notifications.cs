@@ -99,6 +99,13 @@ public sealed partial class AppRuntime
 		{
 			if (_notifierTried) return _notifier;
 			_notifierTried = true;
+			if (OperatingSystem.IsLinux())
+			{
+				_notifier = new Notifications.UniDesktopNotifier(
+					Nori.Core.Platform.PlatformServices.Current.DesktopIntegration,
+					failure => LogNotificationFailure("UniDesktop 系统通知失败", failure));
+				return _notifier;
+			}
 			if (!OperatingSystem.IsWindows()) return _notifier;
 
 			try

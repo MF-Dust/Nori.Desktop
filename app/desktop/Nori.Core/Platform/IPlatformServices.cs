@@ -58,6 +58,9 @@ public sealed record PlatformCapabilities
 /// </summary>
 public interface IPlatformServices
 {
+	/// <summary>系统主题、壁纸和通知的 UDA 接口；macOS 与缺失原生库时明确降级。</summary>
+	IDesktopIntegration DesktopIntegration => UniDesktopIntegration.Current;
+
 	/// <summary>当前会话类型</summary>
 	SessionType Session { get; }
 

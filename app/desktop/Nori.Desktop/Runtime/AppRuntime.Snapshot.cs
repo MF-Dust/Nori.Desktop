@@ -278,6 +278,7 @@ public sealed partial class AppRuntime
 			{
 				os = PlatformOsName(),
 				sessionType = Nori.Core.Platform.PlatformServices.Current.Session.ToString().ToLowerInvariant(),
+				uniDesktopAvailable = Nori.Core.Platform.PlatformServices.Current.DesktopIntegration.IsAvailable,
 				supportsGlobalCursor = Nori.Core.Platform.PlatformServices.Current.Capabilities.SupportsGlobalCursor,
 				supportsWindowDrag = Nori.Core.Platform.PlatformServices.Current.Capabilities.SupportsWindowDrag,
 				supportsHitThrough = Nori.Core.Platform.PlatformServices.Current.Capabilities.SupportsHitThrough,

@@ -146,6 +146,16 @@ public sealed class DesktopExpressionTests : IDisposable
 	// ---- 强调色 ----
 
 	[Fact]
+	public async Task SDK没有强调色读数时不修改持久设置()
+	{
+		FakeAppearance appearance = new() { Accent = null };
+		AccentColorChannel channel = new(appearance, _backup);
+		await channel.ApplyAsync(Palette(), CancellationToken.None);
+		Assert.Empty(appearance.AccentWrites);
+		Assert.False(_backup.HasBackup(AccentColorChannel.ChannelKey));
+	}
+
+	[Fact]
 	public async Task 改强调色之前先备份原值()
 	{
 		FakeAppearance appearance = new() {Accent = 0xFFD4C677};

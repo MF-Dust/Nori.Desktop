@@ -33,6 +33,17 @@
 		<PackageReference Include="System.Numerics.Tensors" Version="10.0.11"/>
 	</ItemGroup>
 
+	<PropertyGroup>
+		<NoriUdaRid>$(RuntimeIdentifier)</NoriUdaRid>
+		<NoriUdaRid Condition="'$(NoriUdaRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</NoriUdaRid>
+		<NoriUdaPath Condition="'$(NoriUdaRid)' == 'linux-x64'">../UniDesktop/native/linux-x64/libuda_ffi.so</NoriUdaPath>
+		<NoriUdaPath Condition="'$(NoriUdaRid)' == 'win-x64'">../UniDesktop/native/win-x64/uda_ffi.dll</NoriUdaPath>
+	</PropertyGroup>
+	<ItemGroup Condition="'$(NoriUdaPath)' != '' And Exists('$(NoriUdaPath)')">
+		<None Include="$(NoriUdaPath)" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<None Include="../UniDesktop/LICENSE-MIT" Link="UniDesktop.LICENSE-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<!-- 人格提示词编译进程序集：修改后必须重新构建才生效 -->
 		<EmbeddedResource Include="Chat/nori-system-prompt.md" LogicalName="Nori.Core.Chat.nori-system-prompt.md"/>

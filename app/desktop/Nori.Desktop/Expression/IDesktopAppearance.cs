@@ -1,6 +1,7 @@
 using System.Runtime.Versioning;
 using Avalonia.Media;
 using Microsoft.Win32;
+using Nori.Core.Platform;
 
 namespace Nori.Desktop.Expression;
 
@@ -60,14 +61,23 @@ public sealed class WindowsDesktopAppearance : IDesktopAppearance
 	private const string DwmKey = @"Software\Microsoft\Windows\DWM";
 
 	/// <inheritdoc />
-	public bool IsAvailable => OperatingSystem.IsWindows();
+	public bool IsAvailable => OperatingSystem.IsWindows() && PlatformServices.Current.DesktopIntegration.IsAvailable;
 
 	/// <inheritdoc />
 	public uint? GetAccentColor()
 	{
-		object? value = Registry.CurrentUser.OpenSubKey(DwmKey)?.GetValue("AccentColor");
-		return value is null ? null : Convert.ToUInt32(value, System.Globalization.CultureInfo.InvariantCulture);
+		if (!IsAvailable) return null;
+		try
+		{
+			DesktopAccent? color = PlatformServices.Current.DesktopIntegration.GetAccentColor();
+			return color is null ? null : PackAccent(color);
+		}
+		catch (PlatformNotSupportedException) { return null; }
 	}
+
+	/// <summary>备份继续使用 Windows AABBGGRR 格式，SDK 返回的 RGBA 不能按 ARGB 解释。</summary>
+	internal static uint PackAccent(DesktopAccent color) =>
+		(uint)color.Alpha << 24 | (uint)color.Blue << 16 | (uint)color.Green << 8 | color.Red;
 
 	/// <inheritdoc />
 	public void SetAccentColor(Color color)

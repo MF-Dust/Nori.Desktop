@@ -45,7 +45,9 @@ public sealed class AccentColorChannel : IExpressionChannel
 		if (!_appearance.IsAvailable) return Task.CompletedTask;
 
 		// 改之前先记原值。Remember 自身不覆盖，所以第二次调用不会把她改过的值当成原值存下来。
-		_backup.Remember(ChannelKey, _appearance.GetAccentColor()?.ToString(CultureInfo.InvariantCulture));
+		// SDK 可能在库可用时仍无法读取强调色；没有可还原的原值就不改系统设置。
+		if (_appearance.GetAccentColor() is not {} original) return Task.CompletedTask;
+		_backup.Remember(ChannelKey, original.ToString(CultureInfo.InvariantCulture));
 		_appearance.SetAccentColor(ExpressionColors.Parse(palette.Primary));
 		return Task.CompletedTask;
 	}

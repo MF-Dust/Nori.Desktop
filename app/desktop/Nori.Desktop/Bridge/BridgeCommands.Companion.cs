@@ -310,6 +310,9 @@ public sealed partial class BridgeCommands
 			() => _services.Resources.Import(type, filePath, cancellationToken),
 			cancellationToken);
 		_services.Logger.Write(LogSource.Backend, "info", $"成功导入本地 Live2D 资源: {string.Join(", ", imported)}");
+		if (!_services.SafeMode && _services.PetRuntime is { CurrentModel: not null } pet
+			&& imported.Contains(pet.CurrentModelId, StringComparer.Ordinal))
+			pet.RequestModelLoad(pet.CurrentModelId);
 		Runtime.InvalidateSnapshot();
 		return imported;
 	}

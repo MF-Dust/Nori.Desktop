@@ -47,6 +47,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 
 	private AiDraft _draft = new();
 	private string _importError = "";
+	private bool _telemetryInitialized;
 
 	/// <summary>选择文件或导入期间禁止重复操作和离开当前步骤。</summary>
 	public bool IsImporting { get; private set; }
@@ -424,7 +425,12 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 	private Control BuildReady(bool english)
 	{
 		bool available = _services.Telemetry.IsAvailable;
-		TelemetryEnabled = available && _services.Config.GetTelemetryConsent() != TelemetryConsent.Denied;
+		if (!_telemetryInitialized)
+		{
+			TelemetryEnabled = available && _services.Config.GetTelemetryConsent() != TelemetryConsent.Denied;
+			_telemetryInitialized = true;
+		}
+		TelemetryEnabled &= available;
 
 		CheckBox telemetry = new()
 		{

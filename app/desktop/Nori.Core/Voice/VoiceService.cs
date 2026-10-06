@@ -316,6 +316,9 @@ public sealed class VoiceService : IDisposable
 
 	// ---- 录音识别 ----
 
+	/// <summary>原生录音器的实际采集状态，不把转写中的网络请求视为录音。</summary>
+	public bool IsRecording => _recorderFactory()?.IsRecording == true;
+
 	/// <summary>开始录音；前端权限失败会由 recorder 立即报告。</summary>
 	public async Task StartListeningAsync(CancellationToken cancellationToken = default)
 	{

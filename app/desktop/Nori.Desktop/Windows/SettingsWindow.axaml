@@ -67,6 +67,7 @@
 					<StackPanel Spacing="6" MaxWidth="{Binding #PagePresenter.MaxWidth}" HorizontalAlignment="Stretch">
 						<TextBlock Text="{Binding CurrentPageTitle}" FontSize="{DynamicResource NoriFont3xl}" FontWeight="SemiBold" Foreground="{DynamicResource SettingsPrimaryBrush}"/>
 						<TextBlock Text="{Binding CurrentPageDescription}" FontSize="{DynamicResource NoriFontBase}" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap"/>
+						<TextBlock x:Name="SettingsSaveError" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" FontSize="{DynamicResource NoriFontBase}" Foreground="{DynamicResource SettingsErrorBrush}" TextWrapping="Wrap"/>
 					</StackPanel>
 				</Border>
 				<ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="24,20,24,28">

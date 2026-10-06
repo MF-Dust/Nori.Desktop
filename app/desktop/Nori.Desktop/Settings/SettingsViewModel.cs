@@ -158,8 +158,12 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 		{
 			if (!SetProperty(ref _errorMessage, value)) return;
 			OnPropertyChanged(nameof(CurrentPageError));
+			OnPropertyChanged(nameof(HasError));
 		}
 	}
+
+	/// <summary>窗口级错误在固定页头展示，不依赖长表单的滚动位置。</summary>
+	public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
 
 	/// <summary>注册并显示一个并行实现的设置页。</summary>
 	public void AddPage(SettingsPageBase page)
@@ -243,11 +247,23 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 	/// <summary>等待所有字段防抖保存结束。</summary>
 	public async Task<bool> FlushPendingSavesAsync(CancellationToken cancellationToken = default)
 	{
-		bool[] results = await Task.WhenAll(_pages.Values.Select(page => page.FlushPendingSavesAsync(cancellationToken))).ConfigureAwait(false);
-		await Task.WhenAll(_pages.Values.OfType<NativeSettingsPageBase>().Select(page => page.FlushComplexAsync(cancellationToken))).ConfigureAwait(false);
-		bool success = results.All(static result => result);
-		if (!success) ErrorMessage = SettingsResources.SaveFailed.Resolve(Language);
-		return success;
+		SettingsPageBase[] pages = _pages.Values.ToArray();
+		bool[] results = await Task.WhenAll(pages.Select(page => page.FlushPendingSavesAsync(cancellationToken))).ConfigureAwait(false);
+		await Task.WhenAll(pages.OfType<NativeSettingsPageBase>().Select(page => page.FlushComplexAsync(cancellationToken))).ConfigureAwait(false);
+		int failedIndex = Array.FindIndex(results, static result => !result);
+		await Dispatcher.UIThread.InvokeAsync(() =>
+		{
+			ErrorMessage = failedIndex >= 0
+				? pages[failedIndex].DisplayTitle + ": " + pages[failedIndex].ErrorMessage
+				: string.Empty;
+			if (failedIndex >= 0)
+			{
+				// 关闭被阻止时直接展示失败字段所在页，避免错误藏在其他导航页或搜索结果外。
+				SearchText = string.Empty;
+				CurrentPage = pages[failedIndex];
+			}
+		});
+		return failedIndex < 0;
 	}
 
 	/// <summary>取消查询、等待保存并释放页面。</summary>

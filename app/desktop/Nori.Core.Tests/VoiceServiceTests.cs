@@ -179,6 +179,42 @@ public class VoiceServiceTests : IDisposable
 		Assert.Single(playback.Played);
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task 识别失败后的录音状态区分采集停止与网络转写(bool stopFails)
+	{
+		TestRecorder recorder = new() { StopFails = stopFails };
+		using HttpClient client = new(new FailingHandler());
+		using VoiceService voice = new(client, _config, null, () => recorder);
+		Assert.False(voice.IsRecording);
+		await voice.StartListeningAsync();
+		Assert.True(voice.IsRecording);
+		if (stopFails)
+			await Assert.ThrowsAsync<IOException>(() => voice.StopListeningAndTranscribeAsync());
+		else
+			await Assert.ThrowsAsync<VoiceProviderException>(() => voice.StopListeningAndTranscribeAsync());
+		Assert.Equal(stopFails, voice.IsRecording);
+	}
+
+	private sealed class TestRecorder : IMicrophoneRecorder
+	{
+		public bool StopFails { get; init; }
+		public bool IsRecording { get; private set; }
+		public Task StartAsync(CancellationToken cancellationToken = default)
+		{
+			IsRecording = true;
+			return Task.CompletedTask;
+		}
+		public Task<RecordedAudio> StopAsync(CancellationToken cancellationToken = default)
+		{
+			if (StopFails) throw new IOException("采集停止失败");
+			IsRecording = false;
+			return Task.FromResult(new RecordedAudio([1, 2, 3], "audio/wav", "recording.wav"));
+		}
+		public void Dispose() { }
+	}
+
 	public void Dispose()
 	{
 		_database.Dispose();

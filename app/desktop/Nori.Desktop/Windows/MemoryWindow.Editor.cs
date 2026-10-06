@@ -158,6 +158,7 @@ public sealed partial class MemoryWindow
 			string operation = S(item, "status") == "archived" ? "restore" : "archive";
 			buttons.Children.Insert(0, Button(operation == "restore" ? "archive.restore" : "list.archiveThis", async () =>
 			{
+				if (Draft() != baseline && !await ConfirmAsync("detail.unsavedTitle", "detail.unsavedDesc", dialog)) return;
 				if (await ChangeMemoryAsync(id.Value, operation, dialog)) { allowClose = true; dialog.Close(); }
 			}));
 			buttons.Children.Insert(1, Button("list.deleteThis", async () => { if (await ChangeMemoryAsync(id.Value, "delete", dialog)) { allowClose = true; dialog.Close(); } }, true));

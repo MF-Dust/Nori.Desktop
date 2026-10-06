@@ -54,6 +54,8 @@ public sealed class NativeChatService : IDisposable
 
 	internal long HistoryRevision => _services.Runtime?.ChatHistoryRevision ?? 0;
 
+	internal bool IsRecording => _services.Runtime?.Voice.IsRecording == true;
+
 	/// <summary>检查是否属于原生对话权限范围。</summary>
 	public static bool IsCommandAllowed(string command) => !string.IsNullOrWhiteSpace(command) && AllowedCommands.Contains(command);
 

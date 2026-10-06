@@ -63,6 +63,34 @@ public sealed class NativeChatStateTests
 		Assert.Equal("已接受的输入", state.Draft); Assert.Equal("提供方连接中断", state.Error);
 	}
 
+	[Theory]
+	[InlineData("error")]
+	[InlineData("cancelled")]
+	public void EmptyHistoryRefreshPreservesFailedTurnAndNewDraft(string terminal)
+	{
+		NativeChatState state = new() { Draft = "原始问题" };
+		state.BeginSend(state.Draft); state.AttachSession("active");
+		state.Draft = "下一条草稿";
+		state.ApplyEvent(Event(new { type = terminal, sessionId = "active", error = "连接失败" }));
+		state.MergeLatestHistory(Event(Array.Empty<object>()));
+		Assert.Equal("原始问题", state.FailedInput);
+		Assert.Equal("下一条草稿", state.Draft);
+		Assert.Equal("原始问题", Assert.Single(state.Messages).Content);
+		if (terminal == "error") Assert.Equal("连接失败", state.Error);
+		else Assert.Equal("cancelled", state.Status);
+		state.Clear("");
+		Assert.Empty(state.FailedInput); Assert.Empty(state.Messages);
+	}
+
+	[Fact]
+	public void EmptyHistoryRefreshStillClearsPreviouslyPersistedHistory()
+	{
+		NativeChatState state = new();
+		state.MergeLatestHistory(Event(new[] { new { id = 1, role = "user", content = "持久记录" } }));
+		state.MergeLatestHistory(Event(Array.Empty<object>()));
+		Assert.Empty(state.Messages); Assert.Equal(0, state.OldestId);
+	}
+
 	[Fact]
 	public void HistoryUsesStableIdsSortsDeduplicatesAndRejectsStaleGeneration()
 	{

@@ -176,7 +176,12 @@ internal sealed class NativeChatState
 	internal void MergeLatestHistory(JsonElement page)
 	{
 		if (Sending || page.ValueKind != JsonValueKind.Array) return;
-		if (page.GetArrayLength() == 0) { Clear(""); return; }
+		if (page.GetArrayLength() == 0)
+		{
+			// 已加载的持久历史消失才表示其他窗口清空；空库刷新不能抹掉本轮失败与重试输入。
+			if (_historyIds.Count > 0) Clear("");
+			return;
+		}
 		foreach (JsonElement row in page.EnumerateArray().OrderBy(row => Id(row, "id")))
 		{
 			long id = Id(row, "id");

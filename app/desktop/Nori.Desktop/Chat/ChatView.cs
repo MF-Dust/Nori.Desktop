@@ -297,8 +297,8 @@ public sealed partial class ChatView : UserControl, IDisposable
 		}
 		catch
 		{
-			// 无法区分录音停止失败和转写失败；再次停止是幂等的，不能假定麦克风已释放。
-			_voiceState = "recording"; throw;
+			// 停止采集失败时仍允许再次停止；转写失败则显示真实的已停止状态。
+			_voiceState = _service.IsRecording ? "recording" : "idle"; throw;
 		}
 		finally { _voiceOperation = null; QueueRender(); FlushRender(); }
 	}

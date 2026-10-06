@@ -27,6 +27,7 @@ internal sealed class QuickChatController
 		_services = services; _pet = pet; _register = register; _unregister = unregister;
 		_pet.PropertyChanged += OnPetPropertyChanged;
 		_pet.PositionChanged += OnPetPositionChanged;
+		_pet.DragPressureChanged += OnDragPressureChanged;
 		_pet.Closed += OnPetClosed;
 		_pet.ScalingChanged += OnGeometryChanged;
 		_pet.Screens.Changed += OnGeometryChanged;
@@ -77,6 +78,7 @@ internal sealed class QuickChatController
 			}
 			Reposition();
 			if (!_window.IsVisible) _window.Show();
+			_window.Body.SetDragPressed(_pet.IsDragPressed);
 			QueueLayout();
 		}
 		finally { _transition.Release(); }
@@ -98,6 +100,7 @@ internal sealed class QuickChatController
 		else if (args.Property == Visual.BoundsProperty) QueueLayout();
 	}
 	private void OnPetPositionChanged(object? sender, PixelPointEventArgs args) => QueueLayout();
+	private void OnDragPressureChanged(bool pressed) => _window?.Body.SetDragPressed(pressed);
 	private async void OnPetClosed(object? sender, EventArgs args)
 	{
 		try { await ShutdownAsync(); }
@@ -159,6 +162,7 @@ internal sealed class QuickChatController
 		_disposed = true;
 		_pet.PropertyChanged -= OnPetPropertyChanged;
 		_pet.PositionChanged -= OnPetPositionChanged;
+		_pet.DragPressureChanged -= OnDragPressureChanged;
 		_pet.Closed -= OnPetClosed;
 		_pet.ScalingChanged -= OnGeometryChanged;
 		_pet.Screens.Changed -= OnGeometryChanged;

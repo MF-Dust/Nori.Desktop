@@ -172,6 +172,12 @@ public sealed class QuickChatView : UserControl, IDisposable
 	private readonly Dictionary<string, BubbleVisual> _bubbleViews = new(StringComparer.Ordinal);
 	private readonly ScaleTransform _composerScale = new(1, 1);
 	private readonly ScaleTransform _sendScale = new(1, 1);
+	private readonly ScaleTransform _dragScale = new(1, 1);
+	private bool _dragPressed;
+	private DateTimeOffset _dragStarted;
+	private double _dragFrom = 1;
+	private double _dragTo = 1;
+	private bool _dragAnimating;
 	private bool _hostVisible;
 	private bool _loadedHistory;
 	private bool _refreshQueued;
@@ -210,6 +216,8 @@ public sealed class QuickChatView : UserControl, IDisposable
 		MaxWidth = 280;
 		// 聚焦缩放和多层阴影需要越过内容边界，窗口外层已预留安全边距。
 		ClipToBounds = false;
+		RenderTransformOrigin = new RelativePoint(0.5, 1, RelativeUnit.Relative);
+		RenderTransform = _dragScale;
 		FontFamily = ConversationFont;
 		FontSize = NoriMetrics.FontMd;
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/QuickChat/QuickChatTheme.axaml") });
@@ -249,6 +257,28 @@ public sealed class QuickChatView : UserControl, IDisposable
 		if (!_disposed) _composer.Focus();
 	}
 
+	/// <summary>拖动时轻微压缩对话表面；不改变窗口布局或输入框聚焦动效。</summary>
+	internal void SetDragPressed(bool pressed)
+	{
+		if (_disposed || _dragPressed == pressed) return;
+		DateTimeOffset now = _now();
+		UpdateDragMotion(now, _reduceMotion());
+		_dragPressed = pressed;
+		_dragFrom = _dragScale.ScaleX;
+		_dragTo = pressed ? 0.985 : 1;
+		_dragStarted = now;
+		_dragAnimating = true;
+		UpdateDragMotion(now, _reduceMotion());
+	}
+
+	private void ResetDragMotion()
+	{
+		_dragPressed = false;
+		_dragAnimating = false;
+		_dragFrom = _dragTo = 1;
+		_dragScale.ScaleX = _dragScale.ScaleY = 1;
+	}
+
 	/// <summary>同步宿主可见性；隐藏不会丢弃草稿或取消正在生成的回复。</summary>
 	public void SetHostVisible(bool visible)
 	{
@@ -261,7 +291,11 @@ public sealed class QuickChatView : UserControl, IDisposable
 			QueueRefresh();
 			Render();
 		}
-		else _clock.Stop();
+		else
+		{
+			_clock.Stop();
+			ResetDragMotion();
+		}
 	}
 
 	/// <summary>刷新语言与聊天可用性；首批历史只登记为已见，不弹出旧气泡。</summary>
@@ -589,6 +623,23 @@ public sealed class QuickChatView : UserControl, IDisposable
 			if (progress >= 1) _focusAnimating = false;
 		}
 		UpdateSendMotion(now, reduce);
+		UpdateDragMotion(now, reduce);
+	}
+
+	private void UpdateDragMotion(DateTimeOffset now, bool reduce)
+	{
+		if (reduce)
+		{
+			_dragAnimating = false;
+			_dragScale.ScaleX = _dragScale.ScaleY = 1;
+			return;
+		}
+		if (!_dragAnimating) return;
+		double duration = _dragPressed ? 100 : 180;
+		double progress = Math.Clamp((now - _dragStarted).TotalMilliseconds / duration, 0, 1);
+		double scale = _dragFrom + ((_dragTo - _dragFrom) * ComposerEase.Ease(progress));
+		_dragScale.ScaleX = _dragScale.ScaleY = scale;
+		if (progress >= 1) _dragAnimating = false;
 	}
 
 	private void UpdateSendMotion(DateTimeOffset now, bool reduce)
@@ -802,6 +853,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		_disposed = true;
 		_lifetime.Cancel();
 		_clock.Stop();
+		ResetDragMotion();
 		_state.Changed -= QueueRender;
 		_service.EventReceived -= OnHostEvent;
 		_service.StateChanged -= OnHostStateChanged;

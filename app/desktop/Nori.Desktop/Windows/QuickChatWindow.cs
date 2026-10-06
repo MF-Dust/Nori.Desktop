@@ -84,10 +84,11 @@ public sealed class QuickChatWindow : Window
 		return Body.DesiredSize.Height + QuickChatLayout.ShadowMargin * 2;
 	}
 
-	private Rect[] InteractiveRects() => Body.InteractiveControls
+	internal Rect[] InteractiveRects() => Body.InteractiveControls
 		.Where(control => control.IsEffectivelyVisible && control.Bounds.Width > 0)
 		.Select(control => control.TranslatePoint(default, this) is { } origin
-			? new Rect(origin, control.Bounds.Size) : default)
+			&& control.TranslatePoint(new Point(control.Bounds.Width, control.Bounds.Height), this) is { } end
+			? new Rect(origin, end) : default)
 		.Where(rect => rect.Width > 0).ToArray();
 
 	private void UpdateInputRegion(object? sender, EventArgs args)

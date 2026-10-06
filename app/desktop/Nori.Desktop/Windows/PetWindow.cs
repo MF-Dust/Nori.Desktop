@@ -64,6 +64,8 @@ public sealed class PetWindow : Window
 	private bool _closed;
 
 	public bool AllowClose { get; set; }
+	internal bool IsDragPressed { get; private set; }
+	internal event Action<bool>? DragPressureChanged;
 
 	public PetWindow(WindowDefinition definition, AppServices services)
 	{
@@ -147,6 +149,7 @@ public sealed class PetWindow : Window
 			_cursorTrackingTimer.Stop();
 			_hitShapeTimer?.Stop();
 			_speechOverlay.ClearText();
+			FinishDrag();
 		}
 	}
 
@@ -277,6 +280,7 @@ public sealed class PetWindow : Window
 
 	private void OnClosed(object? sender, EventArgs e)
 	{
+		SetDragPressed(false);
 		_closed = true;
 		_glControl.PauseRenderLoop();
 		_speechOverlay.ClearText();
@@ -555,6 +559,7 @@ public sealed class PetWindow : Window
 		{
 			var pos = e.GetPosition(this);
 			if (!IsModelHit(pos)) return;
+			SetDragPressed(true);
 
 			// 伴侣视窗是原生 Avalonia 窗口, 在 Linux/macOS 上优先让窗口管理器接管移动。
 			// 这条路径也覆盖 Wayland：原生窗口仍可拖动。
@@ -665,8 +670,16 @@ public sealed class PetWindow : Window
 		}
 	}
 
+	private void SetDragPressed(bool pressed)
+	{
+		if (IsDragPressed == pressed) return;
+		IsDragPressed = pressed;
+		DragPressureChanged?.Invoke(pressed);
+	}
+
 	private void FinishDrag()
 	{
+		SetDragPressed(false);
 		if (_isDragging && _hasDragged)
 		{
 			SaveWindowPosition();

@@ -22,6 +22,7 @@ public sealed class WindowManager : IWindowManager
 	private readonly ConcurrentDictionary<string, bool> _visible = new();
 	private PetWindow? _petWindow;
 	private QuickChatController? _quickChat;
+	private PluginPageController? _pluginPages;
 	private AppServices? _services;
 	private WindowBackdropController? _backdrops;
 	private WindowCorners? _corners;
@@ -57,12 +58,21 @@ public sealed class WindowManager : IWindowManager
 	/// <inheritdoc />
 	public event Action<string, bool>? VisibilityChanged;
 
+	/// <summary>当前活跃插件的页面元数据。</summary>
+	public IReadOnlyList<PluginPageInfo> PluginPages => _pluginPages?.Pages ?? [];
+
+	/// <summary>在 UI 线程打开或激活插件页面。</summary>
+	public void OpenPluginPage(string pluginId, string pageId) =>
+		(_pluginPages ?? throw new InvalidOperationException("插件页面宿主尚未就绪")).Open(pluginId, pageId);
+
 	/// <summary>
 	/// 建好全部窗口 (不显示)
 	/// </summary>
 	public void CreateAll(AppServices services)
 	{
 		_services = services;
+		if (services.PluginRuntime is { } runtime)
+			_pluginPages = new PluginPageController(runtime, exception => services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "插件页面资源释放失败", exception: exception));
 		_backdrops = new WindowBackdropController();
 		_corners = new WindowCorners();
 		_ = LoadBackdropPreferenceAsync(services);
@@ -503,6 +513,14 @@ public sealed class WindowManager : IWindowManager
 	/// <inheritdoc />
 	public void ClearPetSpeech() => _petWindow?.ClearSpeech();
 
+	/// <summary>退出事件阻塞等待服务清理前，先解除插件页面的 UI 清理屏障。</summary>
+	internal void ReleasePluginPages()
+	{
+		Dispatcher.UIThread.VerifyAccess();
+		_pluginPages?.Dispose();
+		_pluginPages = null;
+	}
+
 	/// <summary>
 	/// 退出应用
 	///
@@ -570,6 +588,7 @@ public sealed class WindowManager : IWindowManager
 				else if (window is PetWindow petWindow) petWindow.AllowClose = true;
 			}
 
+			ReleasePluginPages();
 			_backdrops?.Dispose();
 			_backdrops = null;
 			_corners?.Dispose();

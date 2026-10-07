@@ -23,7 +23,7 @@ public sealed partial class NativeSettingsPagePresenter
 
 	private void BuildPlugins(StackPanel root, PluginsSettingsViewModel viewModel) =>
 		InitializeComplexBody(root, viewModel,
-			() => JsonSerializer.Serialize(new {viewModel.Plugins, viewModel.SafeMode, viewModel.TrustConfirmed}),
+			() => JsonSerializer.Serialize(new {viewModel.Plugins, viewModel.Pages, viewModel.SafeMode, viewModel.TrustConfirmed}),
 			body => RenderPlugins(body, viewModel));
 
 	private void BuildSkills(StackPanel root, SkillsSettingsViewModel viewModel)
@@ -207,6 +207,13 @@ public sealed partial class NativeSettingsPagePresenter
 			actions.Children.Add(Button(plugin.State == "failed" ? ParityText("重试", "Retry") : NativeSettingsResources.Get("common.enable"),
 				() => _ = RunAsync(() => viewModel.EnableAsync(plugin)), accent: true, enabled: viewModel.CanInstall && ready));
 		actions.Children.Add(Button(NativeSettingsResources.Get("common.delete"), () => _ = RunAsync(() => UninstallPluginAsync(viewModel, plugin)), danger: true, enabled: ready));
+		foreach (Nori.Desktop.Windows.PluginPageInfo page in viewModel.Pages.Where(page => page.PluginId == plugin.Id))
+		{
+			string pluginId = page.PluginId;
+			string pageId = page.Id;
+			actions.Children.Add(Button($"{ParityText("打开", "Open")} · {page.Title}",
+				() => _ = RunAsync(() => viewModel.OpenPageAsync(pluginId, pageId)), accent: true));
+		}
 		foreach (Control action in actions.Children) action.Margin = new Thickness(0, 0, 8, 8);
 		body.Children.Add(actions);
 		foreach (string capability in plugin.Capabilities)

@@ -23,7 +23,8 @@ internal sealed record PluginRuntimeOptions
 	public required string DataDirectory { get; init; }
 	public string? PackageInboxDirectory { get; init; }
 	public string? StagingDirectory { get; init; }
-	public PluginApiVersion HostApiVersion { get; init; } = new(2, 0);
+	public PluginApiVersion HostApiVersion { get; init; } = new(2, 1);
+	public bool EnableAvaloniaPages { get; init; }
 	public PluginVersion HostVersion { get; init; } = new(1, 0, 0);
 	public bool DevelopmentHost { get; init; }
 	public bool SafeMode { get; init; }
@@ -66,7 +67,13 @@ internal sealed class PluginManager : IAsyncDisposable
 	/// <summary>活跃插件集合发生变化 (激活完成 / 停用完成) 时触发，供宿主刷新贡献派生状态。</summary>
 	public event Action? ActivePluginsChanged;
 
-	private void RaiseActiveChanged() => ActivePluginsChanged?.Invoke();
+	public event Action? ContributionsChanged;
+
+	private void RaiseActiveChanged()
+	{
+		ContributionsChanged?.Invoke();
+		ActivePluginsChanged?.Invoke();
+	}
 
 	public PluginManager(PluginRuntimeOptions options)
 	{
@@ -75,7 +82,9 @@ internal sealed class PluginManager : IAsyncDisposable
 		ArgumentException.ThrowIfNullOrWhiteSpace(options.DataDirectory);
 		if (options.ActivationTimeout <= TimeSpan.Zero || options.DeactivationTimeout <= TimeSpan.Zero)
 			throw new ArgumentOutOfRangeException(nameof(options), "插件生命周期超时必须大于零");
-		_options = options;
+		_options = options.EnableAvaloniaPages
+			? options with { KnownCapabilityIds = options.KnownCapabilityIds.Append(PluginCapabilityIds.AvaloniaUi).Distinct(StringComparer.Ordinal).ToArray() }
+			: options;
 		Directory.CreateDirectory(options.PluginsDirectory);
 		Directory.CreateDirectory(options.DataDirectory);
 		string runtimeDirectory = Path.Combine(options.DataDirectory, "runtime");
@@ -247,6 +256,8 @@ internal sealed class PluginManager : IAsyncDisposable
 			if (handle.State == PluginLifecycleState.Incompatible)
 				throw new PluginException(handle.ErrorCode ?? PluginErrorCodes.IncompatibleHost, "插件与当前宿主不兼容");
 
+			if (handle.State == PluginLifecycleState.PendingRestart)
+				throw new PluginException(handle.ErrorCode ?? PluginErrorCodes.UnloadPendingRestart, "插件程序集仍被占用，需要重启后重新启用");
 			_stateStore.SetEnabled(pluginId, true);
 			_startupRecovery.Clear(pluginId);
 			if (handle.State == PluginLifecycleState.Active) return;
@@ -567,10 +578,13 @@ internal sealed class PluginManager : IAsyncDisposable
 		CancellationTokenSource stopSource = CancellationTokenSource.CreateLinkedTokenSource(_shutdownSource.Token);
 		handle.StopSource = stopSource;
 		IEnumerable<IPluginCapability> capabilities = _options.CapabilityFactory?.Invoke(descriptor, stopSource.Token) ?? [];
+		if (_options.EnableAvaloniaPages) capabilities = capabilities.Append(new AvaloniaPageCapability());
 		PluginCapabilityRegistry capabilityRegistry = new(
 			handle.Manifest.Capabilities.Concat(handle.Manifest.OptionalCapabilities),
 			_options.KnownCapabilityIds,
 			capabilities);
+		handle.Contributions = new PluginContributionRegistry { Changed = () => ContributionsChanged?.Invoke() };
+		handle.Contributions.Begin(capabilityRegistry);
 		return new PluginContext
 		{
 			Plugin = descriptor,
@@ -655,6 +669,7 @@ internal sealed class PluginManager : IAsyncDisposable
 		if (_plugins.TryGetValue(manifest.Id, out PluginHandle? existing))
 		{
 			bool sameDirectory = PathsEqual(existing.Directory, directory);
+			if (existing.State == PluginLifecycleState.PendingRestart) return;
 			if (existing.State == PluginLifecycleState.Active)
 			{
 				if (!sameDirectory)
@@ -920,6 +935,6 @@ internal sealed class PluginManager : IAsyncDisposable
 		public PluginLoadContext? LoadContext { get; set; }
 		public PluginContext? Context { get; set; }
 		public CancellationTokenSource? StopSource { get; set; }
-		public PluginContributionRegistry Contributions { get; } = new();
+		public PluginContributionRegistry Contributions { get; set; } = new();
 	}
 }

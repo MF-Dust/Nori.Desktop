@@ -8,6 +8,12 @@ namespace Nori.PluginRuntime;
 internal sealed class PluginLoadContext : AssemblyLoadContext
 {
 
+	private static readonly HashSet<string> SharedAvaloniaAssemblies = new(StringComparer.Ordinal)
+	{
+		"Avalonia", "Avalonia.Base", "Avalonia.Controls", "Avalonia.Markup", "Avalonia.Markup.Xaml",
+		"Avalonia.Themes.Fluent", "Avalonia.Controls.DataGrid", "Avalonia.Controls.ColorPicker", "Avalonia.Controls.ItemsRepeater",
+	};
+
 	private readonly AssemblyDependencyResolver _resolver;
 	private readonly string _pluginRoot;
 
@@ -23,6 +29,11 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
 	{
 		if (assemblyName.Name is { } name && string.Equals(name, PluginAssemblyPolicy.CurrentAssemblyName, StringComparison.Ordinal))
 			return typeof(INoriPlugin).Assembly;
+
+		if (assemblyName.Name is { } avaloniaName && SharedAvaloniaAssemblies.Contains(avaloniaName))
+			return AssemblyLoadContext.Default.LoadFromAssemblyName(assemblyName);
+		if (assemblyName.Name is { } forbidden && IsForbidden(forbidden))
+			throw new PluginException(PluginErrorCodes.ForbiddenReference, $"插件引用了禁止的宿主程序集: {forbidden}");
 
 		string? resolved = _resolver.ResolveAssemblyToPath(assemblyName);
 		if (resolved is null || !IsWithin(_pluginRoot, resolved)) return null;
@@ -47,6 +58,8 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
 			"插件目录包含符号链接");
 		foreach (string path in dlls)
 		{
+			if (Path.GetFileNameWithoutExtension(path).StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase))
+				throw new PluginException(PluginErrorCodes.ForbiddenReference, "插件包不得携带 Avalonia 框架程序集");
 			if (PluginAssemblyPolicy.IsContractAssemblyFile(path))
 				throw new PluginException(PluginErrorCodes.ContractAssemblyDenied, "插件包不得携带宿主 contract 程序集");
 			EnsureAssemblyReferencesAllowed(path);
@@ -63,6 +76,8 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
 			// AssemblyReference 元数据可供宿主做禁止引用扫描。
 			if (!reader.HasMetadata) return;
 			MetadataReader metadata = reader.GetMetadataReader();
+			if (metadata.IsAssembly && metadata.GetString(metadata.GetAssemblyDefinition().Name).StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase))
+				throw new PluginException(PluginErrorCodes.ForbiddenReference, "插件包不得携带 Avalonia 框架程序集");
 			foreach (AssemblyReferenceHandle handle in metadata.AssemblyReferences)
 			{
 				string name = metadata.GetString(metadata.GetAssemblyReference(handle).Name);
@@ -83,7 +98,7 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
 		name.Equals("Nori.Core", StringComparison.OrdinalIgnoreCase) ||
 		name.Equals("Nori.Desktop", StringComparison.OrdinalIgnoreCase) ||
 		PluginAssemblyPolicy.IsLegacyContractAssemblyName(name) ||
-		name.StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase) ||
+		(name.StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase) && !SharedAvaloniaAssemblies.Contains(name)) ||
 		name.StartsWith("Microsoft.AspNetCore", StringComparison.OrdinalIgnoreCase);
 
 	private static bool IsWithin(string root, string path)

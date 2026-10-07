@@ -36,6 +36,7 @@ internal sealed class PluginRuntimeHost : IAsyncDisposable
 			HostVersion = options.HostVersion,
 			DevelopmentHost = options.DevelopmentHost,
 			SafeMode = options.SafeMode,
+			EnableAvaloniaPages = options.EnableAvaloniaPages,
 			OnError = options.OnError,
 			OnLog = options.OnLog,
 		});
@@ -51,6 +52,13 @@ internal sealed class PluginRuntimeHost : IAsyncDisposable
 	{
 		add => _manager.ActivePluginsChanged += value;
 		remove => _manager.ActivePluginsChanged -= value;
+	}
+
+	/// <summary>贡献撤销的同步屏障；返回前宿主必须释放页面引用。</summary>
+	public event Action? ContributionsChanged
+	{
+		add => _manager.ContributionsChanged += value;
+		remove => _manager.ContributionsChanged -= value;
 	}
 
 	/// <summary>枚举当前活跃插件提供的指定类型贡献快照。</summary>
@@ -106,7 +114,8 @@ internal sealed record PluginRuntimeHostOptions
 	public string? PluginDataDirectory { get; init; }
 	public string? PackageInboxDirectory { get; init; }
 	public string? StagingDirectory { get; init; }
-	public PluginApiVersion HostApiVersion { get; init; } = new(2, 0);
+	public PluginApiVersion HostApiVersion { get; init; } = new(2, 1);
+	public bool EnableAvaloniaPages { get; init; }
 	public PluginVersion HostVersion { get; init; } = new(1, 0, 0);
 	public bool DevelopmentHost { get; init; }
 	public bool SafeMode { get; init; }

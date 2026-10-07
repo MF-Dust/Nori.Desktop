@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Nori.PluginRuntime;
@@ -95,6 +94,20 @@ public interface IPluginActionContribution : IPluginContribution
 	Task<JsonObject?> InvokeAsync(JsonNode? arguments, CancellationToken cancellationToken);
 }
 
+/// <summary>原生页面惰性工厂；宿主只在 UI 线程创建页面。</summary>
+public interface IPluginPageContribution : IPluginContribution
+{
+	string Id { get; }
+	string Title { get; }
+	IPluginPage CreatePage();
+}
+
+/// <summary>独占的未挂载控件与页面资源；宿主在 UI 线程释放。</summary>
+public interface IPluginPage : IDisposable
+{
+	Avalonia.Controls.Control Control { get; }
+}
+
 /// <summary>一个插件贡献注册项的可撤销句柄。</summary>
 public interface IPluginRegistration : IDisposable
 {
@@ -141,8 +154,14 @@ public sealed class PluginCapabilityAttribute(string id) : Attribute
 		: id;
 }
 
-/// <summary>宿主当前没有向插件开放的界面能力。</summary>
+/// <summary>宿主支持的界面能力标识。</summary>
 public static class PluginCapabilityIds
+{
+	public const string AvaloniaUi = "ui.avalonia";
+}
+
+[PluginCapability(PluginCapabilityIds.AvaloniaUi)]
+internal sealed class AvaloniaPageCapability : IPluginCapability
 {
 }
 

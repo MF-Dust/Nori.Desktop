@@ -34,6 +34,18 @@ internal sealed class PluginContributionRegistry : IContributionRegistry
 {
 	private readonly object _gate = new();
 	private readonly HashSet<IPluginContribution> _items = new(ReferenceEqualityComparer.Instance);
+	private bool _revoked;
+	private PluginCapabilityRegistry? _capabilities;
+	internal Action? Changed { get; set; }
+
+	internal void Begin(PluginCapabilityRegistry capabilities)
+	{
+		lock (_gate)
+		{
+			_capabilities = capabilities;
+			_revoked = false;
+		}
+	}
 
 	public IPluginRegistration Register<T>(T contribution)
 		where T : class, IPluginContribution
@@ -41,20 +53,44 @@ internal sealed class PluginContributionRegistry : IContributionRegistry
 		ArgumentNullException.ThrowIfNull(contribution);
 		lock (_gate)
 		{
+			if (_revoked) throw new PluginException(PluginErrorCodes.CapabilityUnavailable, "插件贡献已撤销");
+			if (contribution is IPluginPageContribution page)
+			{
+				PluginCapabilityStatus? status = _capabilities?.Statuses.FirstOrDefault(item => item.Id == PluginCapabilityIds.AvaloniaUi);
+				if (status is null) throw new PluginException(PluginErrorCodes.CapabilityMissing, "插件未声明 ui.avalonia 能力");
+				if (!status.Granted) throw new PluginException(PluginErrorCodes.CapabilityNotGranted, "插件原生页面能力未获授权");
+				if (!status.Available) throw new PluginException(PluginErrorCodes.CapabilityUnavailable, "宿主不支持插件原生页面");
+				if (string.IsNullOrWhiteSpace(page.Id) || page.Id.Length > 128 || page.Id.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '_' or '-'))
+					|| string.IsNullOrWhiteSpace(page.Title) || page.Title.Length > 128)
+					throw new PluginException(PluginErrorCodes.InvalidManifest, "插件页面 ID 或标题无效");
+				if (_items.OfType<IPluginPageContribution>().Any(item => item.Id == page.Id))
+					throw new PluginException(PluginErrorCodes.DuplicateContribution, "插件页面 ID 重复");
+			}
 			if (!_items.Add(contribution))
 				throw new PluginException(PluginErrorCodes.DuplicateContribution, "插件重复注册了同一个贡献对象");
 		}
+		Changed?.Invoke();
 		return new PluginRegistration(this, contribution);
 	}
 
 	internal void Remove(IPluginContribution contribution)
 	{
-		lock (_gate) _items.Remove(contribution);
+		bool removed;
+		lock (_gate) removed = _items.Remove(contribution);
+		if (removed) Changed?.Invoke();
 	}
 
 	internal void RevokeAll()
 	{
-		lock (_gate) _items.Clear();
+		bool changed;
+		lock (_gate)
+		{
+			changed = _items.Count > 0;
+			_revoked = true;
+			_items.Clear();
+			_capabilities = null;
+		}
+		if (changed) Changed?.Invoke();
 	}
 
 	internal IReadOnlyList<T> GetAll<T>()

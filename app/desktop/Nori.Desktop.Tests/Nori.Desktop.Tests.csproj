@@ -24,6 +24,7 @@
 		<ProjectReference Include="..\Nori.Core\Nori.Core.csproj" />
 		<ProjectReference Include="..\Nori.Desktop\Nori.Desktop.csproj" />
 		<ProjectReference Include="../Nori.Live2D/Nori.Live2D.csproj" />
+		<ProjectReference Include="../Nori.PluginRuntime.TestPlugin/Nori.PluginRuntime.TestPlugin.csproj" />
 	</ItemGroup>
 
 </Project>

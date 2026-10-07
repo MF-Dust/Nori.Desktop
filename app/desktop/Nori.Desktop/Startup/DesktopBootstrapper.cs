@@ -40,6 +40,8 @@ internal sealed class DesktopBootstrapper
 
 	public void RequestShutdown()
 	{
+		// Exit 在 UI 线程阻塞等待后台服务；此时不能再由插件撤销事件回切 UI。
+		if (_services?.Windows is WindowManager windows) windows.ReleasePluginPages();
 		_shutdownCts.Cancel();
 		if (Interlocked.CompareExchange(ref _shutdownStarted, 1, 0) == 0) _shutdownTask = ShutdownAsync();
 		// Exit 处理器返回后进程即可终止；必须在统一上限内等待清理，而不能把它留成后台任务。
@@ -151,6 +153,7 @@ internal sealed class DesktopBootstrapper
 			HostVersion = PluginHostVersion(),
 			DevelopmentHost = string.Equals(Nori.Core.ProductVersion.Current, "Dev", StringComparison.Ordinal),
 			SafeMode = safeMode,
+			EnableAvaloniaPages = true,
 			Logger = logger,
 			OnError = exception =>
 			{

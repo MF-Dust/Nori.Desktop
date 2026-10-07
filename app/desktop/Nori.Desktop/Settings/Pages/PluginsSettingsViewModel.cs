@@ -44,6 +44,12 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>创建插件 ViewModel。</summary>
 	public PluginsSettingsViewModel(SettingsService service) : base(service) { }
 
+	/// <summary>插件页面纯元数据。</summary>
+	public IReadOnlyList<Nori.Desktop.Windows.PluginPageInfo> Pages => Service.PluginPages;
+
+	/// <summary>打开插件页面。</summary>
+	public Task OpenPageAsync(string pluginId, string pageId) => Service.OpenPluginPageAsync(pluginId, pageId);
+
 	/// <summary>已发现插件。</summary>
 	public IReadOnlyList<PluginItem> Plugins
 	{

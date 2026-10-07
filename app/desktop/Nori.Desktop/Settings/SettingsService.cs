@@ -119,6 +119,7 @@ public sealed class SettingsService : IDisposable
 		_context = new SettingsContext(owner ?? throw new ArgumentNullException(nameof(owner)));
 		_router = new BridgeCommandRouter(services);
 		if (services.Runtime is { } runtime) runtime.StateChanged += OnRuntimeStateChanged;
+		if (services.PluginRuntime is { } plugins) plugins.ContributionsChanged += OnRuntimeStateChanged;
 	}
 
 	/// <summary>允许原生设置窗口执行的命令集合。</summary>
@@ -211,6 +212,22 @@ public sealed class SettingsService : IDisposable
 	/// <summary>更新自动化总开关。</summary>
 	public Task<JsonElement> UpdateAutomationAsync(SettingsAutomationPatchDto patch, CancellationToken cancellationToken = default) =>
 		ExecuteAsync("settings_update_automation", patch, cancellationToken);
+
+	/// <summary>读取不持有插件对象的页面元数据。</summary>
+	public IReadOnlyList<Nori.Desktop.Windows.PluginPageInfo> PluginPages =>
+		(_services.Windows as Nori.Desktop.Windows.WindowManager)?.PluginPages ?? [];
+
+	/// <summary>通过原生窗口管理器打开页面，不增加动态桥接命令。</summary>
+	public async Task OpenPluginPageAsync(string pluginId, string pageId)
+	{
+		ThrowIfDisposed();
+		await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+		{
+			if (!_context.IsVisible) throw new InvalidOperationException("设置窗口不可见");
+			(_services.Windows as Nori.Desktop.Windows.WindowManager
+				?? throw new InvalidOperationException("插件页面宿主尚未就绪")).OpenPluginPage(pluginId, pageId);
+		});
+	}
 
 	/// <summary>读取插件列表。</summary>
 	public Task<JsonElement> ListPluginsAsync(CancellationToken cancellationToken = default) =>
@@ -346,6 +363,7 @@ public sealed class SettingsService : IDisposable
 	{
 		if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 		if (_services.Runtime is { } runtime) runtime.StateChanged -= OnRuntimeStateChanged;
+		if (_services.PluginRuntime is { } plugins) plugins.ContributionsChanged -= OnRuntimeStateChanged;
 		_context.Dispose();
 		StateChanged = null;
 	}

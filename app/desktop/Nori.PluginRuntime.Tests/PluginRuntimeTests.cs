@@ -7,7 +7,7 @@ using Nori.PluginRuntime.TestPlugin;
 
 namespace Nori.PluginRuntime.Tests;
 
-public sealed class PluginRuntimeTests
+public sealed partial class PluginRuntimeTests
 {
 	[Fact]
 	public void Manifest正常解析且独立处理三个版本概念()
@@ -154,9 +154,9 @@ public sealed class PluginRuntimeTests
 	}
 
 	[Fact]
-	public void 单一Runtime程序集不允许被插件包携带且测试插件只引用它()
+	public void 插件包不携带Runtime且测试插件不引用宿主内部程序集()
 	{
-		string[] forbidden = ["Nori.Core", "Nori.Desktop", "Avalonia"];
+		string[] forbidden = ["Nori.Core", "Nori.Desktop"];
 		Assert.Equal("Nori.PluginRuntime", typeof(INoriPlugin).Assembly.GetName().Name);
 		AssemblyName[] references = typeof(Nori.PluginRuntime.TestPlugin.TestPlugin).Assembly.GetReferencedAssemblies();
 		Assert.Contains(references, reference => reference.Name == "Nori.PluginRuntime");

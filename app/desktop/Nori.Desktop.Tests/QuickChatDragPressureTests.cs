@@ -3,6 +3,7 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Nori.Core.Platform;
 using Nori.Desktop.Chat;
 using Nori.Desktop.QuickChat;
 using Nori.Desktop.Windows;
@@ -36,10 +37,12 @@ public partial class BridgeCommandsTests
 
 			window.Body.SetDragPressed(true);
 			FinishQuickChatMotion(window.Body);
-			Assert.Equal(0.985, Assert.IsType<ScaleTransform>(window.Body.RenderTransform).ScaleX, 6);
+			// 原生窗口遵循平台减少动效偏好；具体压感插值由下方注入时钟的测试覆盖。
+			double expectedScale = PlatformServices.Current.PrefersReducedMotion ? 1 : 0.985;
+			Assert.Equal(expectedScale, Assert.IsType<ScaleTransform>(window.Body.RenderTransform).ScaleX, 6);
 			Rect pressed = Assert.Single(window.InteractiveRects());
-			Assert.Equal(normal.Width * 0.985, pressed.Width, 5);
-			Assert.Equal(normal.Height * 0.985, pressed.Height, 5);
+			Assert.Equal(normal.Width * expectedScale, pressed.Width, 5);
+			Assert.Equal(normal.Height * expectedScale, pressed.Height, 5);
 			Assert.Equal(size, window.ClientSize);
 			Assert.Equal(placement.Position, window.Position);
 			CaptureUi(window, $"quick-chat-drag-{width}x{height}-pressed");
@@ -116,7 +119,8 @@ public partial class BridgeCommandsTests
 			SetPetDragPressure(pet, true);
 			Assert.True(pet.IsDragPressed);
 			FinishQuickChatMotion(chat.Body);
-			Assert.Equal(0.985, Assert.IsType<ScaleTransform>(chat.Body.RenderTransform).ScaleX, 6);
+			double expectedScale = PlatformServices.Current.PrefersReducedMotion ? 1 : 0.985;
+			Assert.Equal(expectedScale, Assert.IsType<ScaleTransform>(chat.Body.RenderTransform).ScaleX, 6);
 			typeof(PetWindow).GetMethod("FinishDrag", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pet, null);
 			Assert.False(pet.IsDragPressed);
 			FinishQuickChatMotion(chat.Body);

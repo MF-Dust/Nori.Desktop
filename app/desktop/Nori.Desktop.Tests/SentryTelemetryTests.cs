@@ -1,9 +1,12 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 using Nori.Core.Voice;
 using Nori.Desktop.Telemetry;
 using Sentry;
 using Sentry.Protocol;
+using Sentry.Protocol.Envelopes;
 
 namespace Nori.Desktop.Tests;
 
@@ -15,6 +18,85 @@ namespace Nori.Desktop.Tests;
 /// </summary>
 public sealed class SentryTelemetryTests
 {
+	[Fact]
+	public void 会话仅在启用时开始且关闭重开与释放都只结束一次()
+	{
+		RecordingTransport transport = new();
+		using SentryTelemetry telemetry = new("https://publickey@sentry.invalid/1", "nori@test", "test")
+		{
+			TestTransport = transport,
+		};
+		telemetry.Configure(false);
+		Assert.Empty(transport.Sessions);
+
+		telemetry.Configure(true);
+		Assert.True(SentrySdk.IsSessionActive);
+		telemetry.Configure(true);
+		telemetry.Configure(false);
+		Assert.False(SentrySdk.IsSessionActive);
+		telemetry.Configure(false);
+
+		SessionUpdate[] first = transport.Sessions.ToArray();
+		Assert.Equal(2, first.Length);
+		Assert.True(first[0].IsInitial);
+		Assert.Equal("nori@test", first[0].Release);
+		Assert.Equal("test", first[0].Environment);
+		Assert.Null(first[0].IpAddress);
+		Assert.Null(first[0].UserAgent);
+		Assert.Equal(first[0].Id, first[1].Id);
+		Assert.Equal(SessionEndStatus.Exited, first[1].EndStatus);
+
+		telemetry.Configure(true);
+		telemetry.Dispose();
+		telemetry.Dispose();
+		telemetry.Configure(true);
+		Assert.False(telemetry.IsEnabled);
+		SessionUpdate[] all = transport.Sessions.ToArray();
+		Assert.Equal(4, all.Length);
+		Assert.True(all[2].IsInitial);
+		Assert.NotEqual(first[0].Id, all[2].Id);
+		Assert.Equal(all[2].Id, all[3].Id);
+		Assert.Equal(SessionEndStatus.Exited, all[3].EndStatus);
+	}
+
+	[Theory]
+	[InlineData(true, false, SessionEndStatus.Exited, 1)]
+	[InlineData(false, false, SessionEndStatus.Unhandled, 0)]
+	[InlineData(false, true, SessionEndStatus.Crashed, 1)]
+	public void 异常会话状态在释放时不会被覆盖(bool handled, bool terminal, SessionEndStatus expected, int expectedErrors)
+	{
+		RecordingTransport transport = new();
+		using SentryTelemetry telemetry = new("https://publickey@sentry.invalid/1", "nori@test", "test")
+		{
+			TestTransport = transport,
+		};
+		telemetry.Configure(true);
+		telemetry.CaptureException(new InvalidOperationException("私密内容"), "bridge.test", handled, terminal);
+		telemetry.Dispose();
+
+		SessionUpdate end = Assert.Single(transport.Sessions, update => update.EndStatus is not null);
+		Assert.Equal(expected, end.EndStatus);
+		Assert.Equal(expectedErrors, end.ErrorCount);
+	}
+
+	private sealed class RecordingTransport : Sentry.Extensibility.ITransport
+	{
+		public ConcurrentQueue<SessionUpdate> Sessions { get; } = new();
+
+		public Task SendEnvelopeAsync(Envelope envelope, CancellationToken cancellationToken = default)
+		{
+			foreach (EnvelopeItem item in envelope.Items)
+			{
+				if (item.TryGetType() != "session") continue;
+				using MemoryStream payload = new();
+				item.Payload.Serialize(payload, null);
+				payload.Position = 0;
+				using JsonDocument document = JsonDocument.Parse(payload);
+				Sessions.Enqueue(SessionUpdate.FromJson(document.RootElement));
+			}
+			return Task.CompletedTask;
+		}
+	}
 	[Theory]
 	[InlineData(true, false)]
 	[InlineData(false, false)]
@@ -98,7 +180,8 @@ public sealed class SentryTelemetryTests
 	[Fact]
 	public async Task 无DSN时启停和事务都不会出网()
 	{
-		using SentryTelemetry telemetry = new("", "nori@test", "test");
+		RecordingTransport transport = new();
+		using SentryTelemetry telemetry = new("", "nori@test", "test") { TestTransport = transport };
 
 		Assert.False(telemetry.IsAvailable);
 		telemetry.Configure(true);
@@ -110,6 +193,7 @@ public sealed class SentryTelemetryTests
 		telemetry.CaptureException(new InvalidOperationException("聊天内容"), "bridge.chat_start",
 			tags: new Dictionary<string, string> { ["failure_kind"] = "timeout" });
 		await telemetry.FlushAsync(TimeSpan.FromMilliseconds(10));
+		Assert.Empty(transport.Sessions);
 	}
 
 	[Fact]

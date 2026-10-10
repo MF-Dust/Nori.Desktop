@@ -94,6 +94,9 @@ public sealed class SentryTelemetry : ITelemetry
 	/// </summary>
 	internal Func<SentryEvent, SentryEvent?>? TestBeforeSend { get; set; }
 
+	/// <summary>测试传输替身: 接收包括会话在内的信封, 不访问网络。</summary>
+	internal Sentry.Extensibility.ITransport? TestTransport { get; set; }
+
 	public void CaptureException(Exception exception, string operation, bool handled = true, bool terminal = false, IReadOnlyDictionary<string, string>? tags = null)
 	{
 		if (exception is null) return;
@@ -164,6 +167,7 @@ public sealed class SentryTelemetry : ITelemetry
 	private void ConfigureOptions(SentryOptions options)
 	{
 		options.Dsn = _dsn;
+		if (TestTransport is not null) options.Transport = TestTransport;
 		options.Release = string.IsNullOrWhiteSpace(_release) ? null : _release;
 		options.Environment = _environment;
 		options.IsGlobalModeEnabled = true;
@@ -282,6 +286,8 @@ public sealed class SentryTelemetry : ITelemetry
 		_enabled = false;
 		try
 		{
+			// SDK 自动启动会话但不会在 Dispose 时结束; 先入队结束记录, 再由 SDK 关闭刷新。
+			if (_sdk is not null && SentrySdk.IsSessionActive) SentrySdk.EndSession();
 			_sdk?.Dispose();
 		}
 		catch

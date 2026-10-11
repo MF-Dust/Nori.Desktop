@@ -180,7 +180,7 @@ public sealed partial class AppRuntime
 					Name = fullName,
 					Description = $"[{plugin.Name}] {action.Description}",
 					Parameters = ToolLimits.CapSchema(action.ParametersSchema as JsonObject ?? new JsonObject()),
-					PermissionLevel = "safe",
+					PermissionLevel = ToPluginPermissionLevel(action),
 					Category = PluginToolCategory,
 					Execute = async (arguments, context) =>
 						await action.InvokeAsync(arguments, context.CancellationToken).ConfigureAwait(false),
@@ -198,6 +198,20 @@ public sealed partial class AppRuntime
 		{
 			if (entered) _pluginToolsRefreshGate.Release();
 		}
+	}
+
+	/// <summary>把插件声明的动作权限映射为工具注册表的权限级别；读取失败或未知值按最严格处理。</summary>
+	internal static string ToPluginPermissionLevel(IPluginActionContribution action)
+	{
+		PluginActionPermission permission;
+		try { permission = action.Permission; }
+		catch (Exception) { permission = PluginActionPermission.Dangerous; }
+		return permission switch
+		{
+			PluginActionPermission.Safe => "safe",
+			PluginActionPermission.Confirm => "confirm",
+			_ => "dangerous",
+		};
 	}
 
 	/// <summary>

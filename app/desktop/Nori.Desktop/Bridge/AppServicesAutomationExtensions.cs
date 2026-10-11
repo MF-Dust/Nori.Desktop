@@ -5,9 +5,6 @@ namespace Nori.Desktop.Bridge;
 /// <summary>从应用服务容器取得自动化领域窄接口，避免新调用方继续依赖整个 AutomationRuntime。</summary>
 public static class AppServicesAutomationExtensions
 {
-	public static BrowserAutomationHost BrowserAutomation(this AppServices services) =>
-		new(RequireRuntime(services));
-
 	public static DesktopAutomationHost DesktopAutomation(this AppServices services) =>
 		new(RequireRuntime(services));
 

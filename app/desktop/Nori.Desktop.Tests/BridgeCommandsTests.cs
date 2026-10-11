@@ -10,7 +10,6 @@ using Nori.Core.Logging;
 using Nori.Core.Mcp;
 using Nori.Core.Tools;
 using Nori.Desktop.Automation;
-using Nori.Desktop.Automation.Browser;
 using Nori.Desktop.Automation.Desktop;
 using Nori.Desktop.Automation.Windows;
 using Nori.Desktop.Bridge;
@@ -113,74 +112,6 @@ public partial class BridgeCommandsTests : IDisposable
 		public Window? Self => null;
 		public void PostEvent(string name, object? payload) { }
 		public void PostResult(long id, object? value, string? error) { }
-	}
-
-	private sealed class FakeBrowserRunner : IAutomationBrowserRunner
-	{
-		public int StartCount { get; private set; }
-		public int ExecuteCount { get; private set; }
-		public int CompletedActionCount { get; private set; }
-		public int DisposeCount { get; private set; }
-		public bool FailOnStart { get; init; }
-		public bool PauseForSafety { get; set; }
-		public string VisibleText { get; set; } = "受限测试文本";
-		public TaskCompletionSource<bool>? StartedExecution { get; set; }
-		public TaskCompletionSource<bool>? WaitForRelease { get; set; }
-
-		public Task StartAsync(CancellationToken cancellationToken = default)
-		{
-			StartCount++;
-			if (FailOnStart) throw new InvalidOperationException("模拟 Edge 启动失败: https://example.test/?token=secret");
-			return Task.CompletedTask;
-		}
-
-		public async Task<BrowserAutomationExecutionResult> ExecuteAsync(
-			BrowserAutomationTaskPlan plan,
-			BrowserAutomationExecutionContext executionContext,
-			CancellationToken cancellationToken = default)
-		{
-			ExecuteCount++;
-			StartedExecution?.TrySetResult(true);
-			if (WaitForRelease is not null) await WaitForRelease.Task.WaitAsync(cancellationToken);
-			if (PauseForSafety) throw new BrowserAutomationPolicy.PausedException(
-				BrowserAutomationPolicy.PauseReason.SensitivePage,
-				"模拟安全页面: secret");
-			int completed = 0;
-			string? visibleText = null;
-			foreach (BrowserAutomationAction action in plan.Actions)
-			{
-				cancellationToken.ThrowIfCancellationRequested();
-				await executionContext.EnsureExecutionAllowedAsyncCore(cancellationToken);
-				int step = completed + 1;
-				executionContext.Report(new BrowserAutomationProgress(step, action.Kind, BrowserAutomationProgressState.Running));
-				if (action is BrowserFillAction)
-				{
-					AutomationApprovalCallback? callback = executionContext.ApprovalCallback;
-					if (callback is null) throw new AutomationTaskExecutionException("approval_denied");
-					AutomationApprovalRequest request = new(Guid.NewGuid(), executionContext.TaskId, [AutomationActionKind.TypeText], DateTimeOffset.UtcNow);
-					executionContext.Report(new BrowserAutomationProgress(
-						step,
-						BrowserAutomationActionKind.Fill,
-						BrowserAutomationProgressState.AwaitingApproval,
-						request.RequestId));
-					AutomationApprovalDecision decision = await callback(request, cancellationToken);
-					if (decision.RequestId != request.RequestId || decision.Outcome != AutomationApprovalOutcome.Approved)
-						throw new AutomationTaskExecutionException("approval_denied");
-					executionContext.Report(new BrowserAutomationProgress(step, BrowserAutomationActionKind.Fill, BrowserAutomationProgressState.Running));
-				}
-				if (action is BrowserReadVisibleTextAction) visibleText = VisibleText;
-				completed = step;
-				CompletedActionCount++;
-				executionContext.Report(new BrowserAutomationProgress(step, action.Kind, BrowserAutomationProgressState.ActionSucceeded));
-			}
-			return BrowserAutomationExecutionResult.Completed(completed, visibleText);
-		}
-
-		public ValueTask DisposeAsync()
-		{
-			DisposeCount++;
-			return ValueTask.CompletedTask;
-		}
 	}
 
 	private sealed class FakeDesktopWindowCatalog : IDesktopVisionWindowCatalog
@@ -361,15 +292,13 @@ public partial class BridgeCommandsTests : IDisposable
 	private BridgeCommandsTests(
 		bool safeMode,
 		bool? automationWindows,
-		Func<IAutomationBrowserRunner>? browserRunnerFactory = null,
 		bool automationVision = false,
 		Func<DesktopVisionRunnerRequest, IAutomationTaskRunner>? desktopVisionRunnerFactory = null,
 		Func<IDesktopVisionPlanner>? desktopVisionPlannerFactory = null,
 		Func<IDesktopVisionActionExecutor>? desktopVisionActionFactory = null,
 		Func<IDesktopVisionScreenshotSource>? desktopVisionScreenshotFactory = null,
 		Func<IDesktopVisionWindowCatalog>? desktopVisionWindowCatalogFactory = null,
-		DesktopVisionApprovalCallback? desktopVisionApprovalCallback = null,
-		TimeSpan? browserTaskTimeout = null)
+		DesktopVisionApprovalCallback? desktopVisionApprovalCallback = null)
 	{
 		Directory.CreateDirectory(_tempDir);
 		_dbPath = Path.Combine(_tempDir, "nori.db");
@@ -400,15 +329,13 @@ public partial class BridgeCommandsTests : IDisposable
 				safeMode,
 				automationWindows ?? OperatingSystem.IsWindows(),
 				visionAvailable: automationVision,
-				browserRunnerFactory: browserRunnerFactory,
 				chatService: chat,
 				desktopVisionRunnerFactory: desktopVisionRunnerFactory,
 				desktopVisionPlannerFactory: desktopVisionPlannerFactory,
 				desktopVisionActionFactory: desktopVisionActionFactory,
 				desktopVisionScreenshotFactory: desktopVisionScreenshotFactory,
 				desktopVisionWindowCatalogFactory: desktopVisionWindowCatalogFactory,
-				desktopVisionApprovalCallback: desktopVisionApprovalCallback,
-				browserTaskTimeout: browserTaskTimeout),
+				desktopVisionApprovalCallback: desktopVisionApprovalCallback),
 			Windows = _windows,
 			SafeMode = safeMode,
 			// 不用自动挑选：Windows 上它会创建 AppContainer 配置文件，测试跑完会留在机器上。

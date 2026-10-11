@@ -69,7 +69,7 @@ public sealed class AutomationSettingsPage : NativeSettingsPageBase
 {
 	/// <summary>创建自动化页面。</summary>
 	public AutomationSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "automation", "reach", new("自动化", "Automation"), new("管理桌面、浏览器自动化权限和任务生命周期。", "Manage desktop and browser automation permissions and task lifecycles."), new AutomationSettingsViewModel(service), lifetimeToken)
+		: base(service, "automation", "reach", new("自动化", "Automation"), new("管理桌面自动化权限和任务生命周期。", "Manage desktop automation permissions and task lifecycles."), new AutomationSettingsViewModel(service), lifetimeToken)
 	{
 	}
 }

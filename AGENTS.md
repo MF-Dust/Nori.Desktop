@@ -29,6 +29,8 @@ Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12
   - Plugins are in-process .NET 10 extensions loaded into collectible `AssemblyLoadContext` instances for isolation.
   - Third-party plugins reference the ref-only NuGet package `Nori.PluginSDK` (exposing `INoriPlugin`, `IPluginContext`, and contribution contracts). The desktop host exposes `ui.avalonia` for disposable native page contributions (`IPluginPageContribution` / `IPluginPage`), opened from plugin management in host-owned windows. Page creation and disposal run on the UI thread, and revocation must release pages before ALC unload. `ui.webview` remains unsupported.
   - Packaged as `.noripack` archives and managed safely without host process restarts.
+  - Host Plugin API is 2.3 (`PluginActionPermission` maps plugin actions to safe/confirm/dangerous tools). Any public contract change in `PluginContracts.cs` must be mirrored in `MF-Dust/Nori.PluginSDK` and released as a new SDK version.
+  - Browser DOM automation (Playwright/Edge) lives in the separate plugin repository `MF-Dust/Nori.Plugins.Browser` (`io.nori.browser`); do not reintroduce Playwright or `automation_browser_*` commands into the host.
 - **Security & Secret Storage**:
   - Sensitive config values (`*_api_key`, `*_secret`, `*_token`, `*_password`) are stored as `nsec2:<base64(nonce | ciphertext | tag)>` encrypted with AES-256-GCM.
   - Master keys are stored via platform keystores (Windows DPAPI, macOS Keychain, Linux libsecret, or 0600 file fallback).

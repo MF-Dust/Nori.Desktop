@@ -164,9 +164,6 @@ public sealed class AppServices : IAsyncDisposable
 			: Account.ConsentDialog.AskAsync(owner, request);
 	}
 
-	/// <summary>浏览器运行器工厂；生产默认使用隔离 Edge，测试可注入 fake。</summary>
-	public Func<IAutomationBrowserRunner>? AutomationBrowserRunnerFactory { get; set; }
-
 	/// <summary>桌面视觉运行器工厂；安全模式装配时必须保持为空。</summary>
 	public Func<DesktopVisionRunnerRequest, IAutomationTaskRunner>? AutomationDesktopVisionRunnerFactory { get; set; }
 

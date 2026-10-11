@@ -7,7 +7,7 @@ namespace Nori.Desktop.Tests;
 public sealed class BridgeCommandRouterTests
 {
 	[Theory]
-	[InlineData("automation_browser_status", BridgeCommandDomain.Automation)]
+	[InlineData("automation_get_snapshot", BridgeCommandDomain.Automation)]
 	[InlineData("llm_fetch_models", BridgeCommandDomain.Ai)]
 	[InlineData("settings_update_voice", BridgeCommandDomain.Voice)]
 	[InlineData("model_select", BridgeCommandDomain.Model)]
@@ -22,15 +22,6 @@ public sealed class BridgeCommandRouterTests
 	public void 命令按稳定领域分类(string command, BridgeCommandDomain expected)
 	{
 		Assert.Equal(expected, BridgeCommandRouter.Classify(command));
-	}
-
-	[Fact]
-	public void 浏览器降级状态使用camelCase枚举值()
-	{
-		string json = JsonSerializer.Serialize(BridgeCommandRouter.BrowserUnavailableStatus(), BridgeJson.Options);
-
-		Assert.Contains("\"state\":\"stopped\"", json, StringComparison.Ordinal);
-		Assert.DoesNotContain("\"state\":\"Stopped\"", json, StringComparison.Ordinal);
 	}
 
 	[Fact]

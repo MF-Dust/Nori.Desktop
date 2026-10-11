@@ -18,15 +18,6 @@
 			"license": "MIT",
 			"licenseStatus": "verified-upstream-license",
 			"note": "Copyright (c) 2026 Sakura Motion Project. <https://sakura2d.org/>；v6 ABI 原生产物仅改为 Live2DCubismCore 兼容文件名，MIT 全文随库置于 PurismCore.LICENSE.txt；来源及 SHA-256 见 Live2D/README.md。"
-		},
-		{
-			"name": "Microsoft.Playwright",
-			"version": "1.56.0",
-			"ecosystem": "NuGet",
-			"purl": "pkg:nuget/Microsoft.Playwright@1.56.0",
-			"license": "MIT",
-			"licenseStatus": "confirmed-from-nuget-metadata",
-			"note": "仅使用已安装 Microsoft Edge 的 msedge channel；不随包下载浏览器，任务使用临时隔离 profile。"
 		}
 	]
 }

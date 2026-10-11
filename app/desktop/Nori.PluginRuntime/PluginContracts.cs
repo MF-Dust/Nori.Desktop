@@ -92,6 +92,25 @@ public interface IPluginActionContribution : IPluginContribution
 
 	/// <summary>执行动作并返回可序列化结果。</summary>
 	Task<JsonObject?> InvokeAsync(JsonNode? arguments, CancellationToken cancellationToken);
+
+	/// <summary>
+	/// 动作的调用权限级别 (API 2.3)；宿主按该级别决定是否在每次调用前请求用户授权。
+	/// 旧插件未实现时默认 <see cref="PluginActionPermission.Safe"/>。
+	/// </summary>
+	PluginActionPermission Permission => PluginActionPermission.Safe;
+}
+
+/// <summary>插件动作作为 AI 工具调用时的权限级别。</summary>
+public enum PluginActionPermission
+{
+	/// <summary>无外部副作用，直接执行。</summary>
+	Safe,
+
+	/// <summary>有副作用，执行前需用户确认；用户的权限档位可以放行。</summary>
+	Confirm,
+
+	/// <summary>高风险，除完全放行档外每次执行前都需用户确认。</summary>
+	Dangerous,
 }
 
 /// <summary>原生页面惰性工厂；宿主只在 UI 线程创建页面。</summary>

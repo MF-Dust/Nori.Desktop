@@ -23,7 +23,7 @@ internal sealed record PluginRuntimeOptions
 	public required string DataDirectory { get; init; }
 	public string? PackageInboxDirectory { get; init; }
 	public string? StagingDirectory { get; init; }
-	public PluginApiVersion HostApiVersion { get; init; } = new(2, 1);
+	public PluginApiVersion HostApiVersion { get; init; } = new(2, 3);
 	public bool EnableAvaloniaPages { get; init; }
 	public PluginVersion HostVersion { get; init; } = new(1, 0, 0);
 	public bool DevelopmentHost { get; init; }

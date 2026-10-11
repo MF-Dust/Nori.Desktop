@@ -78,32 +78,14 @@ public sealed partial class BridgeCommands
 			? await RequireVisibleMainAsync(source, () => Automation.GetSnapshot())
 			: throw new InvalidOperationException("自动化快照仅允许原生设置窗口读取"),
 
-		/// 更新自动化设置: invoke("automation_update_settings", {enabled?, allowPointer?, allowKeyboard?, allowScroll?, browserEnabled?})
+		/// 更新自动化设置: invoke("automation_update_settings", {enabled?, allowPointer?, allowKeyboard?, allowScroll?})
 		"automation_update_settings" => await RequireVisibleMainAsync(source, () => UpdateAutomationSettings(args)),
 
-		/// 兼容设置页自动化总开关: invoke("settings_update_automation", {enabled?, desktopEnabled?, browserEnabled?})
+		/// 兼容设置页自动化总开关: invoke("settings_update_automation", {enabled?, desktopEnabled?})
 		"settings_update_automation" => await RequireVisibleMainAsync(source, () => UpdateFrontendAutomationSettings(args)),
-
-		/// 启动浏览器自动化: invoke("automation_browser_start")
-		"automation_browser_start" => await AutomationBrowserStartAsync(source, cancellationToken),
-
-		/// 停止浏览器自动化: invoke("automation_browser_stop")
-		"automation_browser_stop" => await AutomationBrowserStopAsync(source, cancellationToken),
-
-		/// invoke("automation_browser_start_task", {actions})
-		"automation_browser_start_task" => await AutomationBrowserStartTaskAsync(source, args, cancellationToken),
-
-		/// invoke("automation_browser_get_result", {taskId})
-		"automation_browser_get_result" => await RequireVisibleMainAsync(source, () => BrowserTaskResultDto(ParseGuid(args, "taskId"))),
-
-		/// invoke("automation_browser_stop_task", {taskId})
-		"automation_browser_stop_task" => await RequireVisibleMainAsync(source, () => Automation.StopBrowserTask(ParseGuid(args, "taskId"))),
 
 		/// invoke("automation_audit_list", {limit?})
 		"automation_audit_list" => await RequireVisibleMainAsync(source, () => AutomationAuditList(ClampLimit(OptionalInt(args, "limit"), 50))),
-
-		/// 查询浏览器自动化状态: invoke("automation_browser_status")
-		"automation_browser_status" => await RequireVisibleMainAsync(source, () => Automation.GetBrowserStatus()),
 
 		/// invoke("automation_probe_vision")
 		"automation_probe_vision" => await RequireVisibleMainAsync(source, () => Automation.ProbeVision()),
@@ -638,8 +620,7 @@ public sealed partial class BridgeCommands
 		OptionalBool(args, "enabled"),
 		OptionalBool(args, "allowPointer"),
 		OptionalBool(args, "allowKeyboard"),
-		OptionalBool(args, "allowScroll"),
-		OptionalBool(args, "browserEnabled"));
+		OptionalBool(args, "allowScroll"));
 
 	private AutomationSettingsSnapshot UpdateFrontendAutomationSettings(JsonElement args)
 	{
@@ -648,46 +629,7 @@ public sealed partial class BridgeCommands
 			OptionalBool(args, "enabled"),
 			desktopEnabled,
 			desktopEnabled,
-			desktopEnabled,
-			OptionalBool(args, "browserEnabled"));
-	}
-
-	private async Task<object?> AutomationBrowserStartAsync(IBridgeSource source, CancellationToken cancellationToken)
-	{
-		await RequireVisibleMainVoidAsync(source);
-		return await Automation.StartBrowserAsync(cancellationToken).ConfigureAwait(false);
-	}
-
-	private async Task<object?> AutomationBrowserStopAsync(IBridgeSource source, CancellationToken cancellationToken)
-	{
-		await RequireVisibleMainVoidAsync(source);
-		return await Automation.StopBrowserAsync(cancellationToken).ConfigureAwait(false);
-	}
-
-	/// <summary>启动受限浏览器 DOM 任务。前端调用: invoke("automation_browser_start_task", {actions})</summary>
-	private async Task<object?> AutomationBrowserStartTaskAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
-	{
-		await RequireVisibleMainVoidAsync(source);
-		if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty("actions", out JsonElement actions))
-			throw new InvalidOperationException("缺少参数: actions");
-		BrowserAutomationTaskPlan plan = BrowserAutomationTaskPlan.Parse(actions);
-		return await Automation.StartBrowserTaskAsync(plan, cancellationToken).ConfigureAwait(false);
-	}
-
-	/// <summary>读取短期浏览器结果。前端调用: invoke("automation_browser_get_result", {taskId})</summary>
-	private object? BrowserTaskResultDto(Guid taskId)
-	{
-		BrowserAutomationTaskResult? result = Automation.GetBrowserTaskResult(taskId);
-		if (result is null) return null;
-		return new
-		{
-			taskId = result.TaskId,
-			success = result.Succeeded,
-			summary = result.Succeeded ? "浏览器任务已完成" : null,
-			data = result.VisibleText,
-			error = result.FailureCode,
-			finishedAt = result.FinishedAt,
-		};
+			desktopEnabled);
 	}
 
 	/// <summary>读取脱敏审计记录。前端调用: invoke("automation_audit_list", {limit?})</summary>
@@ -696,6 +638,7 @@ public sealed partial class BridgeCommands
 		id = record.Id,
 		taskId = record.TaskId,
 		timestamp = record.Timestamp,
+		// 迁移到插件前的历史浏览器审计记录仍按 browser 展示。
 		taskKind = record.TaskKind == AutomationAuditTaskKind.Browser ? "browser" : "desktop",
 		actionCategory = record.Category switch
 		{

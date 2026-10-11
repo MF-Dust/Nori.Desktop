@@ -129,9 +129,6 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// <summary>配置键: 自动化滚轮能力显式授权。</summary>
 	public const string KeyAutomationAllowScroll = "automation_allow_scroll";
 
-	/// <summary>配置键: 浏览器自动化显式开关。</summary>
-	public const string KeyAutomationBrowserEnabled = "automation_browser_enabled";
-
 	/// <summary>当前配置结构版本。</summary>
 	public const long ConfigSchemaVersion = 3;
 
@@ -515,7 +512,6 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 				(KeyAutomationAllowPointer, new ConfigValue.Boolean(false)),
 				(KeyAutomationAllowKeyboard, new ConfigValue.Boolean(false)),
 				(KeyAutomationAllowScroll, new ConfigValue.Boolean(false)),
-				(KeyAutomationBrowserEnabled, new ConfigValue.Boolean(false)),
 			];
 			foreach ((string key, ConfigValue value) in defaults)
 			{

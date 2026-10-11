@@ -4,32 +4,7 @@ using Nori.Desktop.Automation.Desktop;
 namespace Nori.Desktop.Automation;
 
 /// <summary>
-/// Browser Automation 的窄接口。调用方不需要持有整个 AutomationRuntime。
-/// </summary>
-public sealed class BrowserAutomationHost(AutomationRuntime runtime)
-{
-	private readonly AutomationRuntime _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
-
-	public AutomationBrowserStatusSnapshot GetStatus() => _runtime.GetBrowserStatus();
-
-	public Task<AutomationBrowserStatusSnapshot> StartAsync(CancellationToken cancellationToken = default) =>
-		_runtime.StartBrowserAsync(cancellationToken);
-
-	public Task<AutomationBrowserTaskStartSnapshot> StartTaskAsync(
-		BrowserAutomationTaskPlan plan,
-		CancellationToken cancellationToken = default) =>
-		_runtime.StartBrowserTaskAsync(plan, cancellationToken);
-
-	public BrowserAutomationTaskResult? GetTaskResult(Guid taskId) => _runtime.GetBrowserTaskResult(taskId);
-
-	public bool StopTask(Guid taskId) => _runtime.StopBrowserTask(taskId);
-
-	public Task<AutomationBrowserStatusSnapshot> StopAsync(CancellationToken cancellationToken = default) =>
-		_runtime.StopBrowserAsync(cancellationToken);
-}
-
-/// <summary>
-/// Desktop Vision Automation 的窄接口。窗口枚举和桌面任务不再要求调用方依赖浏览器生命周期方法。
+/// Desktop Vision Automation 的窄接口。
 /// </summary>
 public sealed class DesktopAutomationHost(AutomationRuntime runtime)
 {

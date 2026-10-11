@@ -162,7 +162,6 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			services.SafeMode,
 			OperatingSystem.IsWindows(),
 			visionAvailable: !services.SafeMode,
-			browserRunnerFactory: services.AutomationBrowserRunnerFactory,
 			chatService: services.SafeMode ? null : services.Chat,
 			desktopVisionRunnerFactory: services.SafeMode ? null : services.AutomationDesktopVisionRunnerFactory,
 			desktopVisionPlannerFactory: services.SafeMode ? null : services.AutomationDesktopVisionPlannerFactory,
@@ -175,10 +174,6 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		if (!services.SafeMode && services.Automation.DesktopVisionApprovalCallback is null)
 		{
 			services.Automation.DesktopVisionApprovalCallback = RequestAutomationApprovalAsync;
-		}
-		if (!services.SafeMode && services.Automation.BrowserApprovalCallback is null)
-		{
-			services.Automation.BrowserApprovalCallback = RequestAutomationApprovalAsync;
 		}
 		services.Automation.Changed += OnAutomationChanged;
 		if (services.Update is not null) services.Update.StatusChanged += OnUpdateStatusChanged;

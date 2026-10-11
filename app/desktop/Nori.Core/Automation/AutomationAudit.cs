@@ -7,7 +7,7 @@ namespace Nori.Core.Automation;
 /// <summary>审计任务种类；只允许自动化域内的固定分类。</summary>
 public enum AutomationAuditTaskKind
 {
-	/// <summary>受限 DOM 浏览器任务。</summary>
+	/// <summary>受限 DOM 浏览器任务；浏览器自动化迁到插件后仅用于读取历史记录。</summary>
 	Browser,
 	/// <summary>桌面视觉任务。</summary>
 	Desktop,
@@ -280,10 +280,13 @@ public sealed class AutomationAuditRepository
 		_ => AutomationAuditOutcome.Failed,
 	};
 
+	/// <summary>审计记录的任务时长上限，沿用原自动化任务 120 秒边界。</summary>
+	private static readonly TimeSpan MaxRecordedDuration = TimeSpan.FromSeconds(120);
+
 	private static long? NormalizeDuration(TimeSpan? duration)
 	{
 		if (duration is not { } value || value < TimeSpan.Zero) return null;
-		return Math.Min((long)value.TotalMilliseconds, (long)BrowserAutomationTaskLimits.MaximumDuration.TotalMilliseconds);
+		return Math.Min((long)value.TotalMilliseconds, (long)MaxRecordedDuration.TotalMilliseconds);
 	}
 
 	private static string? NormalizeFailureCode(string? value)

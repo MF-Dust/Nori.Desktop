@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Windows;
-using Nori.Desktop.Automation.Browser;
 using Nori.Desktop.Settings;
 using Nori.Desktop.Memory;
 using Nori.Desktop.Models;
@@ -75,34 +74,8 @@ public sealed class BridgeCommandRouter(AppServices services)
 				cancellationToken).ConfigureAwait(false);
 		}
 
-		// Browser Automation 是可选 feature pack。发布瘦身包不携带 driver 时，
-		// 在路由边界就明确 fail-closed，而不是让传输层或 Playwright 内部报路径错误。
-		if (domain == BridgeCommandDomain.Automation
-			&& command.StartsWith("automation_browser_", StringComparison.Ordinal))
-		{
-			bool available = PlaywrightRuntimeAvailability.IsAvailable();
-			if (!available && command is "automation_browser_start" or "automation_browser_start_task")
-			{
-				throw new InvalidOperationException(PlaywrightRuntimeAvailability.MissingReason);
-			}
-			if (!available && command == "automation_browser_status")
-			{
-				return BrowserUnavailableStatus();
-			}
-		}
-
 		return await _services.Commands.InvokeAsync(source, command, args, cancellationToken).ConfigureAwait(false);
 	}
-
-	/// <summary>构造缺少浏览器 feature pack 时的稳定降级状态。</summary>
-	internal static object BrowserUnavailableStatus() => new
-	{
-		state = AutomationBrowserState.Stopped,
-		enabled = false,
-		available = false,
-		unavailableReason = PlaywrightRuntimeAvailability.MissingReason,
-		running = false,
-	};
 
 	/// <summary>纯命令名分类，不读取用户状态或参数。</summary>
 	public static BridgeCommandDomain Classify(string command)

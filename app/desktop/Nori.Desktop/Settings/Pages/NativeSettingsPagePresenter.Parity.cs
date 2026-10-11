@@ -246,11 +246,10 @@ public sealed partial class NativeSettingsPagePresenter
 		settings.Children.Add(ToggleRow(viewModel, NativeSettingsResources.Get("automation.pointer"), state.AllowPointer, value => viewModel.UpdateSettingsAsync(allowPointer: value), viewModel.CanConfigure && state.Enabled));
 		settings.Children.Add(ToggleRow(viewModel, NativeSettingsResources.Get("automation.keyboard"), state.AllowKeyboard, value => viewModel.UpdateSettingsAsync(allowKeyboard: value), viewModel.CanConfigure && state.Enabled));
 		settings.Children.Add(ToggleRow(viewModel, NativeSettingsResources.Get("automation.scroll"), state.AllowScroll, value => viewModel.UpdateSettingsAsync(allowScroll: value), viewModel.CanConfigure && state.Enabled));
-		settings.Children.Add(ToggleRow(viewModel, NativeSettingsResources.Get("automation.browser"), state.BrowserEnabled, value => viewModel.UpdateFrontendTogglesAsync(browserEnabled: value), viewModel.CanConfigure && state.Enabled));
 		root.Children.Add(WrapCard(settings));
-		StackPanel browser = CardBody(NativeSettingsResources.Get("automation.browser"), $"{state.Browser.State} · {state.Browser.UnavailableReason}");
-		browser.Children.Add(Empty(state.VisionReady ? ParityText("视觉模型已就绪", "Vision model ready") : ParityText("视觉模型尚未就绪", "Vision model not ready")));
-		root.Children.Add(WrapCard(browser));
+		StackPanel vision = CardBody(ParityText("视觉模型", "Vision model"), null);
+		vision.Children.Add(Empty(state.VisionReady ? ParityText("视觉模型已就绪", "Vision model ready") : ParityText("视觉模型尚未就绪", "Vision model not ready")));
+		root.Children.Add(WrapCard(vision));
 
 		StackPanel capability = CardBody(NativeSettingsResources.Get("automation.capabilities"), NativeSettingsResources.Get("automation.status"));
 		foreach (AutomationCapabilityItem item in state.Capabilities)
@@ -261,9 +260,6 @@ public sealed partial class NativeSettingsPagePresenter
 			(bool available, string? reason) = await viewModel.ProbeVisionAsync().ConfigureAwait(true);
 			await NativeSettingsDialogs.ShowMessageAsync(Owner(), NativeSettingsResources.Get("automation.probe"), available ? NativeSettingsResources.Get("common.enable") : reason ?? NativeSettingsResources.Get("common.none")).ConfigureAwait(true);
 		}), enabled: viewModel.IsSupported));
-		capabilityActions.Children.Add(Button(NativeSettingsResources.Get("automation.browserStart"), () => _ = RunAsync(() => viewModel.StartBrowserAsync()), enabled: state.Browser.Available && !state.Browser.Running));
-		capabilityActions.Children.Add(Button(NativeSettingsResources.Get("automation.browserStop"), () => _ = RunAsync(() => viewModel.StopBrowserAsync()), enabled: state.Browser.Running));
-		capabilityActions.Children.Add(Button(NativeSettingsResources.Get("automation.browserTask"), () => _ = RunAsync(() => StartBrowserTaskAsync(viewModel)), enabled: state.Browser.Available));
 		foreach (Control action in capabilityActions.Children) action.Margin = new Thickness(0, 0, 8, 8);
 		capability.Children.Add(capabilityActions);
 		root.Children.Add(WrapCard(capability));
@@ -300,8 +296,11 @@ public sealed partial class NativeSettingsPagePresenter
 		root.Children.Add(WrapCard(audit));
 		StackPanel security = CardBody(ParityText("安全与控制", "Safety and control"), null);
 		security.Children.Add(Empty(ParityText(
-			"自动化默认关闭，桌面和浏览器权限需要分别开启。涉及敏感操作时，任务会等待你的确认。",
-			"Automation is off by default. Desktop and browser permissions are enabled separately. Sensitive actions wait for your approval.")));
+			"自动化默认关闭，鼠标、键盘和滚动权限需要分别开启。涉及敏感操作时，任务会等待你的确认。",
+			"Automation is off by default. Pointer, keyboard, and scroll permissions are enabled separately. Sensitive actions wait for your approval.")));
+		security.Children.Add(Empty(ParityText(
+			"浏览器自动化已拆分为可选插件「Nori 浏览器自动化」(io.nori.browser)，安装并启用后在插件页打开控制页面。",
+			"Browser automation is now the optional plugin \"Nori Browser Automation\" (io.nori.browser). Install and enable it, then open its page from Plugins.")));
 		security.Children.Add(Empty(ParityText(
 			"关闭总开关或撤回输入权限会停止正在运行的任务。审计记录只保留脱敏状态，不保存截图、页面正文或输入内容。",
 			"Turning automation off or revoking input permissions stops active tasks. Audit records contain redacted status without screenshots, page text, or input content.")));
@@ -366,25 +365,14 @@ public sealed partial class NativeSettingsPagePresenter
 		return WrapCard(body, compact: true);
 	}
 
-	private async Task StartBrowserTaskAsync(AutomationSettingsViewModel viewModel)
-	{
-		string? actions = await NativeSettingsDialogs.PromptAsync(Owner(), NativeSettingsResources.Get("automation.browserTask"), NativeSettingsResources.Get("automation.taskActions"), "[{\"type\":\"wait\",\"milliseconds\":1000}]", multiline: true).ConfigureAwait(true);
-		if (!string.IsNullOrWhiteSpace(actions)) await viewModel.StartBrowserTaskAsync(actions).ConfigureAwait(true);
-	}
-
 	private Control TaskRow(AutomationSettingsViewModel viewModel, AutomationTaskItem task)
 	{
 		Grid row = new() {ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8, Margin = new Thickness(0, 4)};
 		StackPanel details = new() {Spacing = 2};
 		details.Children.Add(new TextBlock {Text = $"{task.TaskKind} · {task.State}", Foreground = Brush("SettingsPrimaryBrush")});
-		details.Children.Add(new TextBlock {Text = $"{task.Id} · {task.ProgressCategory}{(task.ResultSummary is null ? "" : $" · {task.ResultSummary}")}", Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap});
+		details.Children.Add(new TextBlock {Text = $"{task.Id} · {task.ProgressCategory}", Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap});
 		row.Children.Add(details);
 		StackPanel actions = new() {Orientation = Orientation.Horizontal, Spacing = 6};
-		if (task.ApprovalRequestId is {Length: > 0} requestId)
-		{
-			actions.Children.Add(Button(NativeSettingsResources.Get("automation.approve"), () => _ = RunAsync(() => viewModel.RespondApprovalAsync(requestId, true))));
-			actions.Children.Add(Button(NativeSettingsResources.Get("automation.deny"), () => _ = RunAsync(() => viewModel.RespondApprovalAsync(requestId, false)), danger: true));
-		}
 		actions.Children.Add(Button(NativeSettingsResources.Get("automation.stopTask"), () => _ = RunAsync(() => viewModel.StopTaskAsync(task.Id)), danger: true));
 		Grid.SetColumn(actions, 1);
 		row.Children.Add(actions);

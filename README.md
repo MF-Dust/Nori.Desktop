@@ -85,7 +85,7 @@
 - **多模型智能 Agent 与生态扩展**：支持 OpenAI / Claude / Gemini / DeepSeek / Ollama 等多平台 LLM，具备流式打字机输出与实时情感/动作标签驱动；内置 SQLite 键值存储与长期记忆体系（Memory.md），支持 Model Context Protocol (MCP) 插件工具扩展。
 - **全链路多模态语音交互**：C# `VoiceService` 驱动（支持 Whisper 离线/在线语音识别、GPT-SoVITS / Custom HTTP / OpenAI / Gemini / MiniMax / IndexTTS-2 TTS）。三平台直接把 WAV 推到声卡，并在播放缓冲上计算 RMS 驱动嘴形。
 - **高可靠安全模式与隐私保护**：内置 `--safe-mode` 命令行排障模式，跳过外部联网与重型模型加载，保留原生窗口和手动修复入口；脱敏诊断导出（`export_diagnostics`）严格排除数据库、对话记忆、提示词、凭据与敏感路径；敏感配置采用 AES-256-GCM (`nsec2:`) 结合系统安全密钥库加密存储。
-- **插件系统扩展体系 (NPS 2.1)**：插件生产代码收敛于 `Nori.PluginRuntime`。插件是受信任的进程内 .NET 扩展，用可回收 `AssemblyLoadContext` 做依赖隔离；活跃插件可以把动作注册成伴侣对话工具。插件可通过 `ui.avalonia` 注册原生 Avalonia 页面，从插件管理页打开；停用时宿主先释放页面再尝试卸载，不提供 WebView。
+- **插件系统扩展体系 (NPS 2.3)**：插件生产代码收敛于 `Nori.PluginRuntime`，第三方插件面向 NuGet 上的 `Nori.PluginSDK` 2.3.0 编译。插件是受信任的进程内 .NET 扩展，用可回收 `AssemblyLoadContext` 做依赖隔离；活跃插件可以把动作注册成伴侣对话工具，并按 safe/confirm/dangerous 声明调用权限。插件可通过 `ui.avalonia` 注册原生 Avalonia 页面，从插件管理页打开；停用时宿主先释放页面再尝试卸载，不提供 WebView。
 - **本地模型自由管理与原生预览**：支持本地 Live2D ZIP/文件夹安全导入与沙盒解压校验；模型管理窗口使用原生 `ModelPreviewControl` 进行隔离 OpenGL 预览与参数编辑。
 - **原生国际化**：首次运行、主窗口、设置、记忆和模型管理等用户窗口使用宿主侧中英文资源。
 
@@ -169,7 +169,7 @@ Nori-Desktop-Pet/
 - **.NET SDK**：[.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) 或更高版本。发布包的目标机需要对应的 .NET Runtime 10。
 - **Node.js**：Node.js 24+ 与 [pnpm](https://pnpm.io/)（必须使用 pnpm），用于主题令牌检查。
 - **Linux 音频**：需要 `libgtk-3-0`，以及 `libasound2t64`（Ubuntu 24.04 起）或 `libasound2`。macOS 录音需要 `Info.plist` 中的 `NSMicrophoneUsageDescription`。
-- **浏览器 DOM 自动化（可选）**：仅 Windows 支持，目标机需安装 Microsoft Edge stable；Playwright 使用 `msedge` channel 和进程临时隔离 profile，不随发布包捆绑或下载浏览器。自动化默认关闭，启用后填充等高风险动作仍需主界面审批。
+- **浏览器 DOM 自动化（可选插件）**：已拆分为独立插件 [Nori.Plugins.Browser](https://github.com/MF-Dust/Nori.Plugins.Browser)（`io.nori.browser`），主程序不再携带 Playwright。仅 Windows 支持，目标机需安装 Microsoft Edge stable；在 设置 → 插件 中安装 `.noripack` 后启用，带副作用的浏览器动作按调用请求授权。
 
 ### 安装与运行
 

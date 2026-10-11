@@ -150,8 +150,6 @@ public sealed record SettingsAutomationPatchDto
 	[JsonPropertyName("desktopEnabled")]
 	public bool? DesktopEnabled { get; init; }
 
-	[JsonPropertyName("browserEnabled")]
-	public bool? BrowserEnabled { get; init; }
 }
 
 /// <summary>原生设置窗口使用的进程内插件风险确认状态。</summary>

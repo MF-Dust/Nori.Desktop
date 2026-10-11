@@ -1,4 +1,4 @@
-# Nori Plugin Specification 2.1
+# Nori Plugin Specification 2.3
 
 本文记录 Nori Desktop 当前插件基础设施与本地插件管理边界。插件是受信任的 .NET 进程内扩展；`AssemblyLoadContext` 只用于依赖隔离和卸载尝试，**不是安全沙箱**。
 
@@ -22,17 +22,17 @@ Nori.PluginRuntime
 
 ## 插件 SDK
 
-目标框架为 .NET 10。旧版 Plugin API 2.0 对应 `Nori.PluginSDK` 2.0.0，已有动作插件仍可使用：
+目标框架为 .NET 10。当前 Plugin API 2.3 对应 `Nori.PluginSDK` 2.3.0：
 
 ```bash
-dotnet add package Nori.PluginSDK --version 2.0.0
+dotnet add package Nori.PluginSDK --version 2.3.0
 ```
 
 或在项目文件中声明：
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Nori.PluginSDK" Version="2.0.0" />
+  <PackageReference Include="Nori.PluginSDK" Version="2.3.0" />
 </ItemGroup>
 ```
 
@@ -40,7 +40,15 @@ dotnet add package Nori.PluginSDK --version 2.0.0
 
 因此 `.noripack` 不得携带 `Nori.PluginRuntime.dll`。插件作者无需克隆 SDK 仓库或使用跨仓库 `ProjectReference`；SDK 源码、示例与更完整的作者指南位于 [`MF-Dust/Nori.PluginSDK`](https://github.com/MF-Dust/Nori.PluginSDK)。
 
-本文新增的原生页面合同属于 API 2.1。旧版 SDK 2.0.0 不包含这些接口；需要将新增公共合同同步到独立 SDK 仓库并发布对应 ref-only 包后，第三方插件才能通过 NuGet 使用页面示例。本仓库的宿主实现和测试夹具不代表 SDK 已经发布。
+SDK 包依赖 Avalonia 12.1.1，但只提供编译期资产；宿主共享自身的 Avalonia 程序集。API 与 SDK 的对应关系：
+
+| Plugin API | 合同 | 最低 SDK |
+| --- | --- | --- |
+| 2.0 | 生命周期、存储、资源、贡献、能力、`IPluginActionContribution` | 2.0.0 |
+| 2.1 | `IPluginPageContribution` / `IPluginPage` 与 `ui.avalonia` | 2.3.0 |
+| 2.3 | `IPluginActionContribution.Permission` / `PluginActionPermission` | 2.3.0 |
+
+宿主不使用 API 2.2。已发布的 SDK 2.2.0 携带宿主早已移除的 WebView 合同，不应再用于新插件；SDK 2.3.0 已删除这些类型。修改公共合同时，必须同步更新独立 SDK 仓库并发布新版本。
 
 ## 核心合同
 
@@ -48,7 +56,7 @@ dotnet add package Nori.PluginSDK --version 2.0.0
 - `PluginDescriptor`、`IPluginContext`、`IPluginLogger`、`IPluginStorage`、`IPluginAssets`。
 - `IPluginContribution`、`IContributionRegistry` 与幂等的 `IPluginRegistration`。
 - `IPluginCapability`、`IPluginCapabilities`、`PluginCapabilityStatus` 与 `[PluginCapability]`。
-- `IPluginActionContribution`：活跃插件可向伴侣对话注册工具。
+- `IPluginActionContribution`：活跃插件可向伴侣对话注册工具；`Permission`（`PluginActionPermission`，API 2.3）声明调用权限级别。
 - `IPluginPageContribution`、`IPluginPage`：活跃插件可注册惰性创建、可释放的 Avalonia 原生页面。
 
 插件不引用 `Nori.Core`、`Nori.Desktop`、`AppServices`、`IServiceProvider`、Bridge、窗口管理或业务运行时。`Nori.PluginRuntime` 程序集中的宿主实现由内部可见性控制，不能作为插件能力使用。
@@ -94,7 +102,7 @@ dotnet add package Nori.PluginSDK --version 2.0.0
 - 依赖使用 `<id>` 加空格分隔的 `>=`、`>`、`<=`、`<`、`=` 约束，例如 `>=1.0.0 <2.0.0`。
 - 重复 JSON 属性、非法路径、未知 schema 与其它解析失败都转换为带稳定 `Code` 的 `PluginException`。
 
-宿主默认 Plugin API 为 2.1。兼容规则是 Host major 必须等于插件 major，且 Host minor 不小于插件 minor；原有 2.0 插件继续兼容。使用原生页面的插件应声明 `"apiVersion": "2.1"` 和 `"capabilities": ["ui.avalonia"]`，使旧宿主在加载前明确拒绝。1.x 插件可以被发现、展示和卸载，但会标记为 `plugin.incompatible_api`，不会创建 ALC 或执行入口。
+宿主默认 Plugin API 为 2.3。兼容规则是 Host major 必须等于插件 major，且 Host minor 不小于插件 minor；原有 2.0/2.1 插件继续兼容。使用原生页面的插件应至少声明 `"apiVersion": "2.1"` 和 `"capabilities": ["ui.avalonia"]`；依赖动作权限审批的插件必须声明 `"apiVersion": "2.3"`，使旧宿主（会把所有动作当作 safe）在加载前明确拒绝。1.x 插件可以被发现、展示和卸载，但会标记为 `plugin.incompatible_api`，不会创建 ALC 或执行入口。
 
 ## `.noripack` 与安装目录
 
@@ -191,7 +199,15 @@ Safe Mode 允许列出、禁用和卸载；拒绝本地安装与启用。Safe Mo
 
 ## 插件动作与包内文件
 
-插件可以注册 `IPluginActionContribution`（Id/Description/参数 Schema/InvokeAsync）。宿主在活跃插件变化时把这些动作注册进 `ToolRegistry` 的 `plugin` 分类（工具名 `plugin__<pluginId>__<actionId>`，权限级别 safe），伴侣 AI 对话即可调用。动作在插件进程内执行，不通过页面事件通道。
+插件可以注册 `IPluginActionContribution`（Id/Description/参数 Schema/InvokeAsync/Permission）。宿主在活跃插件变化时把这些动作注册进 `ToolRegistry` 的 `plugin` 分类（工具名 `plugin__<pluginId>__<actionId>`），伴侣 AI 对话即可调用。动作在插件进程内执行，不通过页面事件通道。
+
+`Permission` 按以下规则映射为工具权限级别；未实现该成员的旧插件使用默认值 `Safe`，读取时抛出异常或返回未知值则按 `dangerous` 处理：
+
+| `PluginActionPermission` | 工具权限 | 行为 |
+| --- | --- | --- |
+| `Safe` | safe | 直接执行 |
+| `Confirm` | confirm | 逐次请求用户授权，用户的权限档位可放行 |
+| `Dangerous` | dangerous | 除完全放行档外每次都请求用户授权 |
 
 `IPluginAssets` 只读取安装目录里的公开文件：`icon.png`、`web/`、`assets/`、`locales/`。`GetUri` 返回该文件的绝对 `file` URI。路径必须留在安装目录内，并拒绝符号链接跳出。宿主不提供回环 HTTP，也不将包内 Web 文件当作页面打开。
 
@@ -278,3 +294,7 @@ public sealed class DemoPage : IPluginPage
 - Arcade、Games、Harness runtime 及对应 WebSocket/world/patch/审批 adapter。
 - WebView、向宿主固定设置导航动态注入页面、插件直接访问宿主窗口管理。
 - 任意 network/filesystem/shell/process/LLM/memory/MCP/automation/pet/chat capability。
+
+## 官方插件
+
+- [`MF-Dust/Nori.Plugins.Browser`](https://github.com/MF-Dust/Nori.Plugins.Browser)（`io.nori.browser`）：原宿主内置的 Playwright/Edge 浏览器 DOM 自动化。宿主不再引用 Playwright，也不再提供 `automation_browser_*` 命令和设置开关；插件以 `.noripack` 单独发布，自带 win32_x64 Playwright 驱动，通过 `run`（confirm）、`run_with_input`（dangerous）等动作和 `ui.avalonia` 控制页面提供能力。

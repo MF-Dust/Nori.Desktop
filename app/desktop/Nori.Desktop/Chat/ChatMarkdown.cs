@@ -179,7 +179,21 @@ public static class ChatMarkdown
 			return panel;
 		}
 
+		/// <summary>段落里遇到的生成图片；行内容器受行高限制会被裁切，因此在段落之后按块级控件放置。</summary>
+		private readonly List<(string Name, string? Alt)> _pendingImages = [];
+
 		private Control? Block(Block block)
+		{
+			Control? child = BlockCore(block);
+			if (_pendingImages.Count == 0 || images is null) return child;
+			StackPanel panel = new() { Spacing = 4 };
+			if (child is TextBlock { Inlines.Count: > 0 } or not (null or TextBlock)) panel.Children.Add(child!);
+			foreach ((string name, string? alt) in _pendingImages) panel.Children.Add(GeneratedImage(name, alt, images));
+			_pendingImages.Clear();
+			return panel;
+		}
+
+		private Control? BlockCore(Block block)
 		{
 			switch (block)
 			{
@@ -353,7 +367,7 @@ public static class ChatMarkdown
 					case LinkInline { IsImage: true } image:
 						// 只显示本机生成的图片；其余图片与 Vue 的消毒策略一致，不创建控件，也不下载地址。
 						if (images is not null && Nori.Core.Chat.Images.GeneratedImageStore.ParseReference(image.Url) is { } name)
-							target.Add(new InlineUIContainer(GeneratedImage(name, image.FirstChild is null ? null : Source(image.FirstChild), images)));
+							_pendingImages.Add((name, image.FirstChild is null ? null : Source(image.FirstChild)));
 						break;
 					case LinkInline link:
 						if (TryHttpUrl(link.Url, out Uri? uri))
@@ -387,6 +401,9 @@ public static class ChatMarkdown
 				MaxHeight = ImageMaxSize,
 			};
 			TextBlock placeholder = Text("图片加载中…", NoriMetrics.FontXs, InlineCodeText);
+			placeholder.Margin = new Thickness(16, 10);
+			placeholder.HorizontalAlignment = HorizontalAlignment.Center;
+			placeholder.VerticalAlignment = VerticalAlignment.Center;
 			Button frame = new()
 			{
 				Name = "ChatGeneratedImage",

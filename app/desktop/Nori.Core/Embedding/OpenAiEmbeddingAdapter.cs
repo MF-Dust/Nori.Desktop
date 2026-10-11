@@ -1,5 +1,4 @@
-using System.ClientModel;
-using System.ClientModel.Primitives;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -7,8 +6,6 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
-using OpenAI;
-using OpenAI.Embeddings;
 using AiEmbeddingGenerationOptions = Microsoft.Extensions.AI.EmbeddingGenerationOptions;
 using Nori.Core.Network;
 
@@ -16,7 +13,7 @@ namespace Nori.Core.Embedding;
 
 /// <summary>
 /// OpenAI 规范 Embedding 适配器。
-/// 使用官方 EmbeddingClient + IEmbeddingGenerator，并在进程内用 8 MiB 分布式缓存包装。
+/// 直接实现 /embeddings 协议的 IEmbeddingGenerator，并在进程内用 8 MiB 分布式缓存包装。
 /// </summary>
 public sealed class OpenAiEmbeddingAdapter(HttpClient httpClient) : IEmbeddingAdapter
 {
@@ -24,7 +21,6 @@ public sealed class OpenAiEmbeddingAdapter(HttpClient httpClient) : IEmbeddingAd
 	private readonly HttpClient _httpClient = httpClient;
 	private readonly Lock _gate = new();
 	private GeneratorState? _state;
-	private HttpClient? _sdkHttpClient;
 	private long _cacheEpoch;
 
 	public async Task<float[]> GetEmbeddingAsync(
@@ -51,12 +47,6 @@ public sealed class OpenAiEmbeddingAdapter(HttpClient httpClient) : IEmbeddingAd
 		if (inputs.Count == 0) return [];
 		string normalizedBase = NormalizeBaseUrl(baseUrl);
 		string normalizedModel = string.IsNullOrWhiteSpace(model) ? "BAAI/bge-m3" : model.Trim();
-		// System.ClientModel 的 ApiKeyCredential 不接受空值; 本地/匿名服务走同样的
-		// OpenAI /embeddings 协议, 但不伪造 Authorization 头。
-		if (string.IsNullOrEmpty(apiKey))
-		{
-			return await GetEmbeddingsWithoutApiKeyAsync(normalizedBase, normalizedModel, inputs, dimensions, cancellationToken).ConfigureAwait(false);
-		}
 		string fingerprint = Fingerprint(normalizedBase, apiKey, normalizedModel, dimensions);
 		IEmbeddingGenerator<string, Embedding<float>> generator = GetGenerator(
 			normalizedBase, apiKey, normalizedModel, dimensions, fingerprint);
@@ -91,14 +81,7 @@ public sealed class OpenAiEmbeddingAdapter(HttpClient httpClient) : IEmbeddingAd
 		{
 			if (_state is {Fingerprint: var current} && current == fingerprint) return _state.Generator;
 
-			HttpClient sdkHttpClient = _sdkHttpClient ??= UrlAccessPolicy.CreateCappedHttpClient(_httpClient);
-			OpenAIClientOptions options = new()
-			{
-				Endpoint = new Uri($"{baseUrl}/"),
-				Transport = new HttpClientPipelineTransport(sdkHttpClient),
-			};
-			EmbeddingClient client = new(model, new ApiKeyCredential(apiKey ?? ""), options);
-			IEmbeddingGenerator<string, Embedding<float>> inner = client.AsIEmbeddingGenerator(dimensions);
+			IEmbeddingGenerator<string, Embedding<float>> inner = new HttpEmbeddingGenerator(_httpClient, baseUrl, apiKey, model, dimensions);
 			MemoryDistributedCache cache = new(Options.Create(new MemoryDistributedCacheOptions {SizeLimit = CacheSizeLimit}));
 			DistributedCachingEmbeddingGenerator<string, Embedding<float>> cached =
 				new(inner, cache)
@@ -110,8 +93,14 @@ public sealed class OpenAiEmbeddingAdapter(HttpClient httpClient) : IEmbeddingAd
 		}
 	}
 
-	private async Task<IReadOnlyList<float[]>> GetEmbeddingsWithoutApiKeyAsync(
+	/// <summary>
+	/// 发送一次 OpenAI 规范的 /embeddings 请求。
+	/// 空密钥用于本地或匿名服务：同样的协议，但不伪造 Authorization 头。
+	/// </summary>
+	internal static async Task<IReadOnlyList<float[]>> RequestEmbeddingsAsync(
+		HttpClient httpClient,
 		string baseUrl,
+		string apiKey,
 		string model,
 		IReadOnlyList<string> inputs,
 		int? dimensions,
@@ -124,12 +113,13 @@ public sealed class OpenAiEmbeddingAdapter(HttpClient httpClient) : IEmbeddingAd
 		{
 			Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
 		};
-		using HttpResponseMessage response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+		if (!string.IsNullOrEmpty(apiKey)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+		using HttpResponseMessage response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
 		string body = await UrlAccessPolicy.ReadCappedTextAsync(
 			response.Content, UrlAccessPolicy.MaxResponseBytes, cancellationToken).ConfigureAwait(false);
 		if (!response.IsSuccessStatusCode)
 		{
-			throw new HttpRequestException($"Embedding HTTP {(int)response.StatusCode}");
+			throw new HttpRequestException($"Embedding HTTP {(int)response.StatusCode}", null, response.StatusCode);
 		}
 		using JsonDocument document = JsonDocument.Parse(body);
 		if (!document.RootElement.TryGetProperty("data", out JsonElement data) || data.ValueKind != JsonValueKind.Array)
@@ -141,7 +131,7 @@ public sealed class OpenAiEmbeddingAdapter(HttpClient httpClient) : IEmbeddingAd
 		{
 			if (!item.TryGetProperty("embedding", out JsonElement values) || values.ValueKind != JsonValueKind.Array)
 				throw new InvalidOperationException("Embedding 响应缺少向量");
-			float[] vector = values.EnumerateArray().Select(value => value.GetSingle()).ToArray();
+			float[] vector = values.EnumerateArray().Select(element => element.GetSingle()).ToArray();
 			int index = item.TryGetProperty("index", out JsonElement indexElement) && indexElement.TryGetInt32(out int parsed)
 				? parsed
 				: vectors.Count;
@@ -171,4 +161,33 @@ public sealed class OpenAiEmbeddingAdapter(HttpClient httpClient) : IEmbeddingAd
 	}
 
 	private sealed record GeneratorState(string Fingerprint, IEmbeddingGenerator<string, Embedding<float>> Generator);
+
+	/// <summary>供分布式缓存包装的最小 IEmbeddingGenerator。</summary>
+	private sealed class HttpEmbeddingGenerator(HttpClient httpClient, string baseUrl, string apiKey, string model, int? dimensions)
+		: IEmbeddingGenerator<string, Embedding<float>>
+	{
+		public async Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+			IEnumerable<string> values,
+			AiEmbeddingGenerationOptions? options = null,
+			CancellationToken cancellationToken = default)
+		{
+			IReadOnlyList<float[]> vectors = await RequestEmbeddingsAsync(
+				httpClient,
+				baseUrl,
+				apiKey,
+				options?.ModelId ?? model,
+				values.ToList(),
+				options?.Dimensions ?? dimensions,
+				cancellationToken).ConfigureAwait(false);
+			return new GeneratedEmbeddings<Embedding<float>>(vectors.Select(vector => new Embedding<float>(vector)));
+		}
+
+		public object? GetService(Type serviceType, object? serviceKey = null) =>
+			serviceKey is null && serviceType.IsInstanceOfType(this) ? this : null;
+
+		public void Dispose()
+		{
+			// 共享 HttpClient 属于调用方。
+		}
+	}
 }

@@ -1,25 +1,19 @@
-using System.ClientModel;
-using System.ClientModel.Primitives;
-using Anthropic;
-using Anthropic.Core;
-using Google.GenAI;
-using Google.GenAI.Types;
+using LlmTornado;
+using LlmTornado.Code;
+using LlmTornado.Code.Vendor;
 using Microsoft.Extensions.AI;
-using OpenAI;
-using OpenAI.Chat;
-using OpenAI.Responses;
-using Nori.Core.Network;
+using Nori.Core.Chat.Tornado;
 
 namespace Nori.Core.Chat;
 
-/// <summary>官方 provider SDK 与 IChatClient 的工厂。</summary>
+/// <summary>基于 LlmTornado 的 IChatClient 工厂；四种协议共用一套转换与传输。</summary>
 public static class ChatClientFactory
 {
 	/// <summary>
 	/// 发给模型服务的客户端标识。
 	///
-	/// provider SDK 默认写的是它自己（形如 <c>OpenAI/2.5.0 (.NET 10.0; Windows …)</c>）——
-	/// 那句话声称发请求的是 OpenAI 的客户端，而不是 Nori。两个后果：
+	/// 客户端库默认写的是它自己（例如 OpenAI SDK 的 <c>OpenAI/2.5.0 (.NET 10.0; Windows …)</c>）——
+	/// 那句话声称发请求的是别的客户端，而不是 Nori。两个后果：
 	///
 	/// · **网关按 User-Agent 拦。** 实测：同一把密钥、同一条地址，curl 打是 200，
 	///   桌宠打是 403，正文只有一句 "Your request was blocked."。拦的是 Cloudflare 的
@@ -61,14 +55,29 @@ public static class ChatClientFactory
 		string model)
 	{
 		string key = apiKey ?? "";
-		return provider switch
+		(LLmProviders vendor, string urlFormat, int? defaultMaxTokens) = provider switch
 		{
-			LlmProvider.OpenAi => CreateOpenAiChatClient(httpClient, baseUrl, key, model),
-			LlmProvider.OpenAiResponses => CreateOpenAiResponsesChatClient(httpClient, baseUrl, key, model),
-			LlmProvider.Anthropic => CreateAnthropicChatClient(httpClient, baseUrl, key, model),
-			LlmProvider.Google => CreateGoogleChatClient(httpClient, baseUrl, key, model),
-			_ => null,
+			LlmProvider.OpenAi => (LLmProviders.OpenAi, FormatRoot(NormalizeEndpoint(baseUrl, "/chat/completions")), (int?)null),
+			LlmProvider.OpenAiResponses => (LLmProviders.OpenAi, FormatRoot(NormalizeEndpoint(baseUrl, "/responses")), null),
+			// Anthropic 要求显式 max_tokens；沿用旧 SDK 接线时的 4096 默认值。
+			LlmProvider.Anthropic => (LLmProviders.Anthropic, FormatRoot(NormalizeAnthropicBaseUrl(baseUrl) + "/v1"), 4096),
+			LlmProvider.Google => (LLmProviders.Google, GoogleFormat(baseUrl), null),
+			_ => (LLmProviders.Unknown, "", null),
 		};
+		if (vendor == LLmProviders.Unknown) return null;
+
+		IEndpointProvider endpointProvider = vendor switch
+		{
+			LLmProviders.Anthropic => new AnthropicEndpointProvider(),
+			LLmProviders.Google => new GoogleEndpointProvider(),
+			_ => new OpenAiEndpointProvider(LLmProviders.OpenAi),
+		};
+		endpointProvider.Auth = new ProviderAuthentication(vendor, key);
+		// 返回值还会被 LlmTornado 以 (端点片段, 子路径, 模型名) 再格式化一次。
+		endpointProvider.UrlResolver = (_, _, _) => urlFormat;
+		TornadoCallScope scope = new(httpClient, key, provider);
+		TornadoApi api = TornadoTransport.CreateApi(endpointProvider, scope);
+		return new TornadoChatClient(api, scope, model, vendor, defaultMaxTokens);
 	}
 
 	internal static Adapters.IModelCatalogAdapter CreateModelCatalogAdapter(LlmProvider provider, HttpClient httpClient) => provider switch
@@ -80,75 +89,15 @@ public static class ChatClientFactory
 		_ => new Adapters.OpenAiChatAdapter(httpClient),
 	};
 
-	private static IChatClient CreateOpenAiChatClient(HttpClient sharedHttpClient, string baseUrl, string apiKey, string model)
-	{
-		string endpoint = NormalizeEndpoint(baseUrl, "/chat/completions");
-		ApiKeyCredential credential = new(apiKey);
-		HttpClient providerHttpClient = CreateProviderHttpClient(sharedHttpClient);
-		OpenAIClientOptions options = new()
-		{
-			Endpoint = ChatEndpoint.CreateHttpUri(endpoint),
-			Transport = new HttpClientPipelineTransport(providerHttpClient),
-		};
-		ChatClient client = new(model, credential, options);
-		return new OwnedChatClient(client.AsIChatClient(), clientOwner: null, providerHttpClient);
-	}
+	/// <summary>把根地址转成 LlmTornado 的 URL 模板，并转义地址本身的花括号。</summary>
+	private static string FormatRoot(string root) =>
+		root.Replace("{", "{{", StringComparison.Ordinal).Replace("}", "}}", StringComparison.Ordinal) + "/{0}{1}";
 
-	private static IChatClient CreateOpenAiResponsesChatClient(HttpClient sharedHttpClient, string baseUrl, string apiKey, string model)
+	private static string GoogleFormat(string baseUrl)
 	{
-		string endpoint = NormalizeEndpoint(baseUrl, "/responses");
-		ApiKeyCredential credential = new(apiKey);
-		HttpClient providerHttpClient = CreateProviderHttpClient(sharedHttpClient);
-		ResponsesClientOptions options = new()
-		{
-			Endpoint = ChatEndpoint.CreateHttpUri(endpoint),
-			Transport = new HttpClientPipelineTransport(providerHttpClient),
-		};
-		ResponsesClient client = new(credential, options);
-		return new OwnedChatClient(client.AsIChatClient(model), clientOwner: null, providerHttpClient);
+		(string root, string version) = NormalizeGoogleBaseUrl(baseUrl);
+		return FormatRoot($"{root}/{(version.Length == 0 ? "v1beta" : version)}");
 	}
-
-	private static IChatClient CreateAnthropicChatClient(HttpClient sharedHttpClient, string baseUrl, string apiKey, string model)
-	{
-		Anthropic.Core.ClientOptions options = new()
-		{
-			BaseUrl = NormalizeAnthropicBaseUrl(baseUrl),
-			ApiKey = apiKey,
-			HttpClient = CreateProviderHttpClient(sharedHttpClient),
-			MaxRetries = 0,
-		};
-		AnthropicClient client = new(options);
-		return new OwnedChatClient(client.AsIChatClient(model, defaultMaxOutputTokens: 4096), client, client.HttpClient);
-	}
-
-	private static IChatClient CreateGoogleChatClient(HttpClient sharedHttpClient, string baseUrl, string apiKey, string model)
-	{
-		HttpClient providerHttpClient = CreateProviderHttpClient(sharedHttpClient);
-		(string googleBaseUrl, string googleApiVersion) = NormalizeGoogleBaseUrl(baseUrl);
-		Google.GenAI.Types.HttpOptions httpOptions = new()
-		{
-			BaseUrl = googleBaseUrl,
-			ApiVersion = googleApiVersion,
-		};
-		Google.GenAI.Types.ClientOptions clientOptions = new()
-		{
-			HttpClientFactory = () => providerHttpClient,
-		};
-		Google.GenAI.Client client = new(
-			enterprise: false,
-			vertexAI: false,
-			apiKey: apiKey,
-			httpOptions: httpOptions,
-			clientOptions: clientOptions);
-		return new OwnedChatClient(client.AsIChatClient(model), client, providerHttpClient);
-	}
-
-	/// <summary>转发用的外层客户端。internal 是为了让用例能验到 User-Agent 真的被换掉。</summary>
-	internal static HttpClient CreateProviderHttpClient(HttpClient sharedHttpClient) =>
-		new(new SharedHttpMessageHandler(sharedHttpClient), disposeHandler: true)
-		{
-			Timeout = sharedHttpClient.Timeout,
-		};
 
 	private static string NormalizeAnthropicBaseUrl(string baseUrl)
 	{
@@ -164,7 +113,7 @@ public static class ChatClientFactory
 	{
 		string normalized = baseUrl.Trim().TrimEnd('/');
 		if (normalized.Length == 0) throw new ChatException("Base URL 不能为空");
-		// 协议头严格校验 (NORI-14): Google SDK 只收字符串 BaseUrl, 非法地址提前转领域错误。
+		// 协议头严格校验 (NORI-14): 非法地址提前转领域错误。
 		_ = ChatEndpoint.CreateHttpUri(normalized);
 		if (normalized.EndsWith("/models", StringComparison.OrdinalIgnoreCase))
 		{
@@ -196,89 +145,5 @@ public static class ChatClientFactory
 			endpoint = endpoint[..^protocolPath.Length].TrimEnd('/');
 		}
 		return endpoint;
-	}
-
-	private sealed class SharedHttpMessageHandler(HttpClient sharedHttpClient) : HttpMessageHandler
-	{
-		protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-		{
-			// 外层 provider HttpClient 已经标记 request 为已发送，转发给共享 HttpClient 前必须复制消息。
-			using HttpRequestMessage forwarded = await CloneRequestAsync(request, cancellationToken).ConfigureAwait(false);
-			HttpResponseMessage response = await sharedHttpClient.SendAsync(forwarded, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-			response.Content = UrlAccessPolicy.WrapResponseContent(response.Content);
-			return response;
-		}
-
-		private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-		{
-			HttpRequestMessage clone = new(request.Method, request.RequestUri)
-			{
-				Version = request.Version,
-				VersionPolicy = request.VersionPolicy,
-			};
-			foreach (KeyValuePair<string, IEnumerable<string>> header in request.Headers)
-			{
-				clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
-			}
-
-			// 覆盖 SDK 写的那一条，理由见 ChatClientFactory.UserAgent。
-			clone.Headers.UserAgent.Clear();
-			clone.Headers.UserAgent.ParseAdd(UserAgent);
-			if (request.Content is not null)
-			{
-				byte[] content = await request.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-				ByteArrayContent clonedContent = new(content);
-				foreach (KeyValuePair<string, IEnumerable<string>> header in request.Content.Headers)
-				{
-					clonedContent.Headers.TryAddWithoutValidation(header.Key, header.Value);
-				}
-				clone.Content = clonedContent;
-			}
-			return clone;
-		}
-
-		protected override void Dispose(bool disposing)
-		{
-			// provider SDK 只拥有这个包装器，不能释放应用级共享客户端。
-		}
-	}
-
-	private sealed class OwnedChatClient(IChatClient inner, IDisposable? clientOwner, HttpClient providerHttpClient) : IChatClient
-	{
-		private int _disposed;
-
-		public Task<ChatResponse> GetResponseAsync(
-			IEnumerable<Microsoft.Extensions.AI.ChatMessage> messages,
-			ChatOptions? options = null,
-			CancellationToken cancellationToken = default) =>
-			inner.GetResponseAsync(messages, options, cancellationToken);
-
-		public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
-			IEnumerable<Microsoft.Extensions.AI.ChatMessage> messages,
-			ChatOptions? options = null,
-			CancellationToken cancellationToken = default) =>
-			inner.GetStreamingResponseAsync(messages, options, cancellationToken);
-
-		public object? GetService(System.Type serviceType, object? serviceKey = null) => inner.GetService(serviceType, serviceKey);
-
-		public void Dispose()
-		{
-			if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-			try
-			{
-				inner.Dispose();
-			}
-			finally
-			{
-				try
-				{
-					clientOwner?.Dispose();
-				}
-				finally
-				{
-					providerHttpClient.Dispose();
-				}
-			}
-		}
 	}
 }

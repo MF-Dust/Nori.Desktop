@@ -209,44 +209,9 @@ public static class UrlAccessPolicy
 		}
 	}
 
-	/// <summary>用受限内容包装响应，防止 SDK 直接读取无界响应体。</summary>
+	/// <summary>用受限内容包装响应，防止客户端库直接读取无界响应体。</summary>
 	internal static HttpContent WrapResponseContent(HttpContent content, long cap = MaxResponseBytes) =>
 		new CappedHttpContent(content, cap);
-
-	/// <summary>为不能注入 HttpContent 的官方 SDK 创建受限客户端。</summary>
-	internal static HttpClient CreateCappedHttpClient(HttpClient httpClient, long cap = MaxResponseBytes) =>
-		new(new CappedResponseHandler(httpClient, cap)) {Timeout = httpClient.Timeout};
-
-	private sealed class CappedResponseHandler(HttpClient inner, long cap) : HttpMessageHandler
-	{
-		protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-		{
-			using HttpRequestMessage forwarded = await CloneRequestAsync(request, cancellationToken).ConfigureAwait(false);
-			HttpResponseMessage response = await inner.SendAsync(forwarded, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-			response.Content = new CappedHttpContent(response.Content, cap);
-			return response;
-		}
-
-		private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-		{
-			HttpRequestMessage clone = new(request.Method, request.RequestUri)
-			{
-				Version = request.Version,
-				VersionPolicy = request.VersionPolicy,
-			};
-			foreach (KeyValuePair<string, IEnumerable<string>> header in request.Headers)
-				clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
-			if (request.Content is not null)
-			{
-				byte[] body = await request.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-				ByteArrayContent content = new(body);
-				foreach (KeyValuePair<string, IEnumerable<string>> header in request.Content.Headers)
-					content.Headers.TryAddWithoutValidation(header.Key, header.Value);
-				clone.Content = content;
-			}
-			return clone;
-		}
-	}
 
 	private sealed class CappedHttpContent(HttpContent inner, long cap) : HttpContent
 	{

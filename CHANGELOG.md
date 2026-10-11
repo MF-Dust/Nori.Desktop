@@ -4,6 +4,7 @@
 
 ### Changed
 
+- 模型协议改由 LlmTornado 统一实现：移除 OpenAI、Anthropic、Google.GenAI 官方 SDK 及 Microsoft.Extensions.AI.OpenAI，上层仍使用 Microsoft.Extensions.AI 抽象；Embedding 改为直接实现 `/embeddings` 协议。win-x64 发布目录减少约 12 MiB（压缩包约 3.5 MiB）。模型请求仍经共享 HttpClient 转发，保留公网地址校验、响应上限与 Nori User-Agent；错误保留 HTTP 状态码与服务端说明，对已配置密钥脱敏，避免附带客户端库拼接的请求头与请求正文。
 - 浏览器 DOM 自动化拆分为独立插件 [Nori.Plugins.Browser](https://github.com/MF-Dust/Nori.Plugins.Browser)（`io.nori.browser`）：主程序移除 Microsoft.Playwright 依赖、`automation_browser_*` 桥接命令、`automation_browser_enabled` 配置与设置页浏览器控件；历史浏览器审计记录仍可读取。
 - 宿主 Plugin API 升至 2.3：`IPluginActionContribution.Permission` 可声明 safe/confirm/dangerous，插件动作工具按级别逐次请求授权；对应 `Nori.PluginSDK` 2.3.0 已同步页面与权限合同并移除 WebView 合同。
 

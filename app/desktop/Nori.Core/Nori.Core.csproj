@@ -8,7 +8,7 @@
 		<RootNamespace>Nori.Core</RootNamespace>
 		<AssemblyName>Nori.Core</AssemblyName>
 		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-		<NoWarn>$(NoWarn);OPENAI001;MEAI001</NoWarn>
+		<NoWarn>$(NoWarn);MEAI001</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -22,10 +22,8 @@
 		<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0"/>
 		<PackageReference Include="ModelContextProtocol.Core" Version="2.2.0"/>
 		<PackageReference Include="Microsoft.Extensions.AI" Version="10.9.0"/>
-		<PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.9.0"/>
-		<PackageReference Include="OpenAI" Version="2.12.0"/>
-		<PackageReference Include="Anthropic" Version="12.42.0"/>
-		<PackageReference Include="Google.GenAI" Version="1.19.0"/>
+		<!-- 四种模型协议 (OpenAI Chat/Responses、Anthropic、Gemini) 统一由 LlmTornado 实现，适配层见 Chat/Tornado。 -->
+		<PackageReference Include="LlmTornado" Version="3.8.73"/>
 		<PackageReference Include="AngleSharp" Version="1.7.1"/>
 		<PackageReference Include="YamlDotNet" Version="18.1.0"/>
 		<PackageReference Include="NLog" Version="6.2.0"/>

@@ -2,6 +2,15 @@
 	"policy": "仅在仓库证据明确或发布前获得分发确认时填写 license；未确认的条目使用 null，不推断许可证。",
 	"components": [
 		{
+			"name": "LlmTornado",
+			"version": "3.8.73",
+			"ecosystem": "NuGet",
+			"purl": "pkg:nuget/LlmTornado@3.8.73",
+			"license": "MIT",
+			"licenseStatus": "confirmed-from-nuget-metadata",
+			"note": "统一实现 OpenAI Chat/Responses、Anthropic Messages 与 Gemini 协议，替代三家官方 SDK；HTTP 经 Nori 共享客户端转发，见 Nori.Core/Chat/Tornado。"
+		},
+		{
 			"name": "UniDesktop SDK",
 			"version": "0.2.0",
 			"ecosystem": "native",

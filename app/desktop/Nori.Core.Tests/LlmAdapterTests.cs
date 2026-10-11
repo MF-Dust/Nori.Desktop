@@ -40,7 +40,7 @@ public class LlmProviderTests
 }
 
 /// <summary>
-/// 模型目录适配器测试。聊天/流式协议由官方 SDK 承担, 适配器只负责拉取模型列表。
+/// 模型目录适配器测试。聊天/流式协议由 LlmTornado 承担 (见 TornadoChatClientTests), 适配器只负责拉取模型列表。
 /// </summary>
 public class LlmAdapterTests
 {

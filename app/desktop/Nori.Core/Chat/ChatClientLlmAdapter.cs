@@ -1,4 +1,3 @@
-using System.ClientModel.Primitives;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;

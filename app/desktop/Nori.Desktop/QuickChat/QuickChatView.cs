@@ -887,7 +887,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 			_bubble = bubble;
 			_enteredAt = owner._now();
 			bool player = bubble.Message.Role == "user";
-			_text = Text(bubble.Message.Content, NoriMetrics.FontMd, FontWeight.Medium, player ? QuickChatPalette.PlayerText : QuickChatPalette.Dark);
+			_text = Text(DisplayText(bubble.Message.Content), NoriMetrics.FontMd, FontWeight.Medium, player ? QuickChatPalette.PlayerText : QuickChatPalette.Dark);
 			_text.TextWrapping = TextWrapping.WrapWithOverflow;
 			_text.LineHeight = 22.75;
 			_text.Opacity = player ? 0.95 : 0.85;
@@ -914,7 +914,8 @@ public sealed class QuickChatView : UserControl, IDisposable
 
 		internal void Render()
 		{
-			if (_text.Text != _bubble.Message.Content) _text.Text = _bubble.Message.Content;
+			string display = DisplayText(_bubble.Message.Content);
+			if (_text.Text != display) _text.Text = display;
 		}
 
 		internal void UpdateMotion(DateTimeOffset now, bool reduceMotion)
@@ -942,5 +943,12 @@ public sealed class QuickChatView : UserControl, IDisposable
 		private void OnMessageChanged() => _owner.QueueRender();
 
 		public void Dispose() => _bubble.Message.Changed -= OnMessageChanged;
+
+		/// <summary>快捷对话气泡是纯文本，生成图片的引用换成一句提示 (图片在完整对话窗口里查看)。</summary>
+		private static string DisplayText(string content)
+		{
+			string stripped = Nori.Core.Chat.Images.GeneratedImageStore.StripReferences(content);
+			return stripped.Length == content.Trim().Length ? content : (stripped + " [图片]").Trim();
+		}
 	}
 }

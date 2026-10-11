@@ -29,6 +29,8 @@ public sealed class AppStoragePaths
 		ResourcesInstalledDirectory = Path.Combine(ResourcesDirectory, "installed");
 		Live2DDirectory = Path.Combine(ResourcesInstalledDirectory, "live2d");
 		ResourcesCacheDirectory = Path.Combine(ResourcesDirectory, "cache");
+		ModelCatalogCachePath = Path.Combine(ResourcesCacheDirectory, "models-dev.json");
+		GeneratedImagesDirectory = Path.Combine(ResourcesDirectory, "generated", "images");
 		ResourcesImportDirectory = Path.Combine(ResourcesDirectory, "temp", "import");
 		IndexTtsDirectory = Path.Combine(ResourcesDirectory, "indextts");
 		IndexTtsVoicesDirectory = Path.Combine(IndexTtsDirectory, "voices");
@@ -61,6 +63,10 @@ public sealed class AppStoragePaths
 	public string ResourcesInstalledDirectory { get; }
 	public string Live2DDirectory { get; }
 	public string ResourcesCacheDirectory { get; }
+	/// <summary>models.dev 模型能力目录的本地精简缓存。</summary>
+	public string ModelCatalogCachePath { get; }
+	/// <summary>AI 生成图片的存放目录 (首次生成时创建)。</summary>
+	public string GeneratedImagesDirectory { get; }
 	public string ResourcesImportDirectory { get; }
 	public string IndexTtsDirectory { get; }
 	public string IndexTtsVoicesDirectory { get; }

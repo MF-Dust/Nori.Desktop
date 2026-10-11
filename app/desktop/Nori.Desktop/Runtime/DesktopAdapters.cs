@@ -126,6 +126,18 @@ public static class ShellOpen
 		Process.Start(new ProcessStartInfo(parsed.AbsoluteUri) {UseShellExecute = true}); // nosemgrep
 	}
 
+	/// <summary>用系统默认程序打开数据目录内的文件 (如 AI 生成的图片)。</summary>
+	public static void OpenDataFile(string file, string dataRoot)
+	{
+		string fullFile = Path.GetFullPath(file);
+		string fullDataRoot = Path.GetFullPath(dataRoot);
+		if (!AppStoragePaths.IsContained(fullFile, fullDataRoot) || !File.Exists(fullFile))
+			throw new InvalidOperationException("不允许打开数据目录之外的文件");
+		AppStoragePaths.EnsureNoReparsePoints(fullFile, fullDataRoot);
+		// 文件已完成 data 根边界和 reparse point 校验。
+		Process.Start(new ProcessStartInfo(fullFile) {UseShellExecute = true}); // nosemgrep
+	}
+
 	/// <summary>使用系统文件管理器打开数据目录内的固定路径。</summary>
 	public static void OpenDataDirectory(string directory, string dataRoot)
 	{

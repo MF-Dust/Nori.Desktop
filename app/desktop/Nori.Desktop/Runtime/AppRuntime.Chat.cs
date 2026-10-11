@@ -111,6 +111,8 @@ public sealed partial class AppRuntime
 
 	private async Task AutoSpeakAsync(string text, string? messageEmotion, CancellationToken ct)
 	{
+		// 生成图片的引用不是要读出来的内容。
+		text = Nori.Core.Chat.Images.GeneratedImageStore.StripReferences(text);
 		if (string.IsNullOrWhiteSpace(text)) return;
 		bool autoTts = ParseBoolFlag(Services.Config.GetStringOr("tts_auto_play", "")) ?? false;
 		if (!autoTts || Services.SafeMode || ct.IsCancellationRequested) return;

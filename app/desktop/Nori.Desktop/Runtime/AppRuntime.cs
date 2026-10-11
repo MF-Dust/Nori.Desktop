@@ -233,7 +233,10 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			replyReaction: new ReplyReactionService(services.Http, config),
 			// 机器状态按分档进提示词，与情绪同层；采集器自己控制开销。
 			// 灯效设备数进硬件清单：它是稳定量，不像负载那样每轮都变。
-			machineState: new MachineStateProvider(rgbDeviceCount: () => RgbChannel.Devices.Count));
+			machineState: new MachineStateProvider(rgbDeviceCount: () => RgbChannel.Devices.Count),
+			// 上下文窗口与思考档位按 models.dev 的模型能力换算；查不到时回退保守默认值。
+			modelCatalog: services.ModelCatalog);
+		if (!services.SafeMode) services.ModelCatalog.Warmup();
 
 		// 窗口显隐变化 (含托盘切换伴侣) 直接作废快照, 主界面的伴侣状态因此不会陈旧
 		if (services.Windows is not null)

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- 思考档位：AI 设置新增「思考强度」(自动/关闭/最低/低/中/高/超高/最大)。按协议换算为 `reasoning_effort`、Anthropic `thinking.budget_tokens`、Gemini 3 `thinkingLevel` 或 Gemini 2.5 `thinkingBudget`，并按模型声明的档位就近取值；「自动」不发送任何参数。Anthropic 开启思考后工具往返原样回传签名思考块，DeepSeek 等 interleaved 模型回传 `reasoning_content`，思考文本不进入回复正文。
+- 模型能力目录：从 [models.dev](https://models.dev) 获取上下文窗口、输出上限、思考档位与多模态能力，精简缓存于 `data/resources/cache/models-dev.json`，24 小时刷新；安全模式只读缓存。设置页显示当前模型信息。
+- 上下文自动压缩：上下文上限按模型窗口计算 (「自动」最多 128K，可选完整窗口或固定值)；历史接近上限时用当前模型把较早对话合并为摘要 (`chat_context_summary`)，此后只读取摘要之后的消息。压缩失败时退回确定性截断；清空聊天记录会一并清除摘要。
+- 图像生成：新增 `generateImage` 工具 (confirm 级别)，支持 OpenAI 兼容 Images API、Gemini 图像模型与 Imagen；图片保存在 `data/resources/generated/images`，以 `nori-image:` 引用附在回复末尾，聊天窗口原生显示并可点击用系统程序打开；朗读与快捷对话气泡会剥离图片引用。地址/密钥留空时沿用同协议的对话服务。
+
 ### Changed
 
 - 模型协议改由 LlmTornado 统一实现：移除 OpenAI、Anthropic、Google.GenAI 官方 SDK 及 Microsoft.Extensions.AI.OpenAI，上层仍使用 Microsoft.Extensions.AI 抽象；Embedding 改为直接实现 `/embeddings` 协议。win-x64 发布目录减少约 12 MiB（压缩包约 3.5 MiB）。模型请求仍经共享 HttpClient 转发，保留公网地址校验、响应上限与 Nori User-Agent；错误保留 HTTP 状态码与服务端说明，对已配置密钥脱敏，避免附带客户端库拼接的请求头与请求正文。

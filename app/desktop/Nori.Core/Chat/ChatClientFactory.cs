@@ -29,6 +29,10 @@ public static class ChatClientFactory
 	public static ILlmAdapter Create(LlmProvider provider, HttpClient httpClient) =>
 		new ChatClientLlmAdapter(provider, httpClient);
 
+	/// <summary>按 provider 创建带生成参数 (思考档位、模型能力) 的适配器。</summary>
+	public static ILlmAdapter Create(LlmProvider provider, HttpClient httpClient, LlmGenerationOptions generation) =>
+		new ChatClientLlmAdapter(provider, httpClient, generation);
+
 	/// <summary>
 	/// 版本号裁成 User-Agent 的 token 能收的字符。
 	///
@@ -52,7 +56,8 @@ public static class ChatClientFactory
 		HttpClient httpClient,
 		string baseUrl,
 		string apiKey,
-		string model)
+		string model,
+		LlmGenerationOptions? generation = null)
 	{
 		string key = apiKey ?? "";
 		(LLmProviders vendor, string urlFormat, int? defaultMaxTokens) = provider switch
@@ -77,7 +82,7 @@ public static class ChatClientFactory
 		endpointProvider.UrlResolver = (_, _, _) => urlFormat;
 		TornadoCallScope scope = new(httpClient, key, provider);
 		TornadoApi api = TornadoTransport.CreateApi(endpointProvider, scope);
-		return new TornadoChatClient(api, scope, model, vendor, defaultMaxTokens);
+		return new TornadoChatClient(api, scope, model, vendor, defaultMaxTokens, generation);
 	}
 
 	internal static Adapters.IModelCatalogAdapter CreateModelCatalogAdapter(LlmProvider provider, HttpClient httpClient) => provider switch

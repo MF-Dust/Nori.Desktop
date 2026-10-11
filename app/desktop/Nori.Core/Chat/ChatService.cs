@@ -396,13 +396,66 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 	});
 
 	/// <summary>
-	/// 清空全部聊天历史
+	/// 清空全部聊天历史 (连同上下文压缩摘要：摘要是这些消息的派生物，不能比原文活得久)
 	/// </summary>
 	public void ClearHistory() => _database.Locked(connection =>
 	{
 		using SqliteCommand command = connection.CreateCommand();
-		command.CommandText = "DELETE FROM chat_messages;";
+		command.CommandText = "DELETE FROM chat_messages; DELETE FROM chat_context_summary;";
 		command.ExecuteNonQuery();
+	});
+
+	/// <summary>读取上下文压缩摘要；尚未压缩过时返回 null。</summary>
+	public ChatContextSummary? GetContextSummary() => _database.Locked(connection =>
+	{
+		using SqliteCommand command = connection.CreateCommand();
+		command.CommandText = "SELECT summary, covered_until, updated_at FROM chat_context_summary WHERE id = 1";
+		using SqliteDataReader reader = command.ExecuteReader();
+		return reader.Read()
+			? new ChatContextSummary(reader.GetString(0), reader.GetInt64(1), reader.GetString(2))
+			: null;
+	});
+
+	/// <summary>
+	/// 保存上下文压缩摘要。
+	///
+	/// 只在被覆盖的消息仍然存在时写入：压缩期间历史被清空的话，迟到的摘要会让一段已删除的对话
+	/// 以摘要的形式复活。
+	/// </summary>
+	public bool SaveContextSummary(string summary, long coveredUntil) => _database.Locked(connection =>
+	{
+		using SqliteCommand command = connection.CreateCommand();
+		command.CommandText = """
+			INSERT INTO chat_context_summary (id, summary, covered_until, updated_at)
+			SELECT 1, $summary, $until, $updatedAt
+			WHERE EXISTS (SELECT 1 FROM chat_messages WHERE id >= $until)
+			ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, covered_until = excluded.covered_until, updated_at = excluded.updated_at;
+			""";
+		command.Parameters.AddWithValue("$summary", summary);
+		command.Parameters.AddWithValue("$until", coveredUntil);
+		command.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture));
+		return command.ExecuteNonQuery() > 0;
+	});
+
+	/// <summary>删除上下文压缩摘要 (下一轮按完整历史重新计算)。</summary>
+	public void ClearContextSummary() => _database.Locked(connection =>
+	{
+		using SqliteCommand command = connection.CreateCommand();
+		command.CommandText = "DELETE FROM chat_context_summary;";
+		command.ExecuteNonQuery();
+	});
+
+	/// <summary>读取指定 id 之后的最新 limit 条消息 (按时间正序)。</summary>
+	public IReadOnlyList<ChatMessage> GetHistoryAfter(long afterId, int limit) => _database.Locked(connection =>
+	{
+		using SqliteCommand command = connection.CreateCommand();
+		command.CommandText = "SELECT id, role, content, created_at FROM chat_messages WHERE id > $after ORDER BY id DESC LIMIT $limit";
+		command.Parameters.AddWithValue("$after", afterId);
+		command.Parameters.AddWithValue("$limit", Math.Max(1, limit));
+		using SqliteDataReader reader = command.ExecuteReader();
+		List<ChatMessage> messages = ReadMessages(reader);
+		messages.Reverse();
+		return (IReadOnlyList<ChatMessage>)messages;
 	});
 
 	/// <summary>
@@ -416,6 +469,9 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 		return reader.ReadToEnd();
 	}
 }
+
+/// <summary>上下文压缩摘要：<paramref name="CoveredUntil"/> 及之前的消息已被并入摘要。</summary>
+public sealed record ChatContextSummary(string Summary, long CoveredUntil, string UpdatedAt);
 
 /// <summary>
 /// 聊天相关错误, 消息直接展示给用户

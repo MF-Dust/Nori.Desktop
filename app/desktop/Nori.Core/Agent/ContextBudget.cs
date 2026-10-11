@@ -37,10 +37,10 @@ public sealed record ContextBudgetOptions
 
 	internal ContextBudgetOptions Normalize() => this with
 	{
-		MaxInputTokens = Math.Clamp(MaxInputTokens, 256, 128_000),
-		ReservedOutputTokens = Math.Clamp(ReservedOutputTokens, 128, 64_000),
-		MaxSystemTokens = Math.Clamp(MaxSystemTokens, 128, 128_000),
-		MaxHistoryTokens = Math.Clamp(MaxHistoryTokens, 0, 128_000),
+		MaxInputTokens = Math.Clamp(MaxInputTokens, 256, ContextWindowPlanner.MaxWindow),
+		ReservedOutputTokens = Math.Clamp(ReservedOutputTokens, 128, 128_000),
+		MaxSystemTokens = Math.Clamp(MaxSystemTokens, 128, ContextWindowPlanner.MaxWindow),
+		MaxHistoryTokens = Math.Clamp(MaxHistoryTokens, 0, ContextWindowPlanner.MaxWindow),
 		MaxPersonaCharacters = Math.Clamp(MaxPersonaCharacters, 256, 512_000),
 		MaxMemoryCharacters = Math.Clamp(MaxMemoryCharacters, 0, 512_000),
 		MaxKnowledgeCharacters = Math.Clamp(MaxKnowledgeCharacters, 0, 512_000),

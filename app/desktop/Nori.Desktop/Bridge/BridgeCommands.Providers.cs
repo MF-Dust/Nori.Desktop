@@ -153,6 +153,68 @@ public sealed partial class BridgeCommands
 			OptionalStr(args, "provider") ?? chat.Provider.AsString(), Str(args, "baseUrl"), apiKey);
 	}
 
+	private async Task<object?> GetModelInfoAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
+	{
+		RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () => (object?)true);
+		AiChatSettings chat = _services.AiSettings.Read().Chat;
+		LlmProvider provider = LlmProviderExtensions.ParseProvider(OptionalStr(args, "provider") ?? chat.Provider.AsString());
+		string baseUrl = OptionalStr(args, "baseUrl") ?? chat.BaseUrl;
+		string model = (OptionalStr(args, "model") ?? chat.Model).Trim();
+		Nori.Core.Chat.Catalog.ModelCapabilities? capabilities = model.Length == 0
+			? null
+			: await _services.ModelCatalog.FindAsync(provider, baseUrl, model, cancellationToken);
+		ContextWindowPlan plan = ContextWindowPlanner.Resolve(
+			ConfigText(ContextWindowPlanner.KeyContextLimit), ConfigText(ContextWindowPlanner.KeyReservedOutput), capabilities);
+		return new
+		{
+			found = capabilities is not null,
+			providerId = capabilities?.ProviderId,
+			modelId = capabilities?.ModelId,
+			name = capabilities?.Name,
+			contextWindow = capabilities?.ContextWindow ?? 0,
+			inputLimit = capabilities?.InputLimit ?? 0,
+			outputLimit = capabilities?.OutputLimit ?? 0,
+			reasoning = capabilities?.Reasoning ?? false,
+			reasoningEfforts = capabilities?.ReasoningEfforts ?? [],
+			reasoningToggle = capabilities?.ReasoningToggle ?? false,
+			reasoningBudget = capabilities?.ReasoningBudget ?? false,
+			toolCall = capabilities?.ToolCall ?? false,
+			imageInput = capabilities?.ImageInput ?? false,
+			imageOutput = capabilities?.ImageOutput ?? false,
+			catalogFetchedAt = _services.ModelCatalog.FetchedAt,
+			context = new
+			{
+				limit = plan.MaxInputTokens,
+				reserved = plan.ReservedOutputTokens,
+				source = plan.Source,
+			},
+		};
+	}
+
+	/// <summary>读取配置的原始文本；整数推断后的值也按文本返回。</summary>
+	private string? ConfigText(string key) => _services.Config.Get(key) switch
+	{
+		ConfigValue.Integer integer => integer.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+		ConfigValue.Text text => text.Value,
+		_ => null,
+	};
+
+	private async Task<object?> ReadGeneratedImageAsync(IBridgeSource source, string name, CancellationToken cancellationToken)
+	{
+		RequireMainVoid(source);
+		if (!Nori.Core.Chat.Images.GeneratedImageStore.IsValidName(name)) throw new InvalidOperationException("图片名称无效");
+		byte[]? bytes = await _services.ImageStore.ReadAsync(name, cancellationToken);
+		return bytes is null ? null : new {name, base64 = Convert.ToBase64String(bytes)};
+	}
+
+	private object? OpenGeneratedImage(IBridgeSource source, string name)
+	{
+		RequireMainVoid(source);
+		string path = _services.ImageStore.Resolve(name) ?? throw new InvalidOperationException("图片不存在或已被删除");
+		Nori.Desktop.Runtime.ShellOpen.OpenDataFile(path, _services.Paths.DataRoot);
+		return null;
+	}
+
 	private async Task<object?> TestAiConnectionAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
 	{
 		string target = OptionalStr(args, "target") ?? "chat";

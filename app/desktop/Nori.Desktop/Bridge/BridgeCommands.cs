@@ -99,6 +99,12 @@ public sealed partial class BridgeCommands
 		// ---- AI 设置 ----
 		// invoke("llm_fetch_models", {provider, baseUrl, apiKey})
 		"llm_fetch_models" => await FetchModelsWithSourceCheckAsync(source, args),
+		/// <summary>
+		/// 查询模型能力 (models.dev)：上下文窗口、输出上限、支持的思考档位与多模态，以及按当前设置换算的上下文上限。
+		/// 前端调用：invoke("llm_model_info", {provider?, baseUrl?, model?}) → {found, contextWindow, reasoningEfforts, ...}
+		/// </summary>
+		"llm_model_info" => await GetModelInfoAsync(source, args, cancellationToken),
+
 		/// invoke("ai_test_connection", {target: "chat" | "embedding", provider?, baseUrl?, apiKey?, model?, dimensions?})
 		"ai_test_connection" => await TestAiConnectionAsync(source, args, cancellationToken),
 
@@ -399,6 +405,18 @@ public sealed partial class BridgeCommands
 
 		// invoke("chat_clear")
 		"chat_clear" => await ClearChatAsync(source, cancellationToken),
+
+		/// <summary>
+		/// 读取 AI 生成的图片 (仅限生成图片目录内的合法文件名)。
+		/// 前端调用：invoke("chat_read_generated_image", {name: "20261011-120000-abcd1234.png"}) → {name, base64} | null
+		/// </summary>
+		"chat_read_generated_image" => await ReadGeneratedImageAsync(source, Str(args, "name"), cancellationToken),
+
+		/// <summary>
+		/// 用系统默认程序打开 AI 生成的图片。
+		/// 前端调用：invoke("chat_open_generated_image", {name: "20261011-120000-abcd1234.png"})
+		/// </summary>
+		"chat_open_generated_image" => OpenGeneratedImage(source, Str(args, "name")),
 
 		// ---- 记忆库 ----
 		/// invoke("memory_add", {content, type?, importance?, tags?})

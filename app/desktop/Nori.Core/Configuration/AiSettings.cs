@@ -14,6 +14,9 @@ public sealed record AiProviderSettings
 {
 	public required AiChatSettings Chat { get; init; }
 	public required AiEmbeddingSettings Embedding { get; init; }
+
+	/// <summary>图像生成配置 (原始值，未做回退)；生效配置见 <see cref="AiSettingsStore.ResolveImage"/>。</summary>
+	public AiImageSettings Image { get; init; } = AiImageSettings.Empty;
 }
 
 /// <summary>聊天 Provider 的运行时配置; 密钥只在后端调用链中流转。</summary>
@@ -25,6 +28,33 @@ public sealed record AiChatSettings
 	public required string Model { get; init; }
 	public required string Persona { get; init; }
 
+	/// <summary>思考档位；默认不发送思考参数。</summary>
+	public LlmReasoningLevel Reasoning { get; init; } = LlmReasoningLevel.Auto;
+
+	public bool IsConfigured => BaseUrl.Length > 0 && ApiKey.Length > 0 && Model.Length > 0;
+}
+
+/// <summary>
+/// 图像生成服务配置。
+///
+/// 地址或密钥留空时，若对话服务使用同一家协议 (OpenAI 兼容 / Google)，生效配置沿用对话服务的
+/// 地址与密钥 —— 绝大多数用户两者是同一个账号。协议不同则不回退，避免把密钥发给另一家服务。
+/// </summary>
+public sealed record AiImageSettings
+{
+	/// <summary>未配置。</summary>
+	public static AiImageSettings Empty { get; } = new() {Provider = "openai", BaseUrl = "", ApiKey = "", Model = "", Size = "auto"};
+
+	/// <summary>协议：openai (Images API) 或 google (Gemini generateContent)。</summary>
+	public required string Provider { get; init; }
+	public required string BaseUrl { get; init; }
+	public required string ApiKey { get; init; }
+	public required string Model { get; init; }
+
+	/// <summary>默认尺寸或比例 (auto / 1024x1024 / 16:9 等)。</summary>
+	public required string Size { get; init; }
+
+	/// <summary>地址、密钥与模型都已具备。</summary>
 	public bool IsConfigured => BaseUrl.Length > 0 && ApiKey.Length > 0 && Model.Length > 0;
 }
 
@@ -47,6 +77,16 @@ public sealed record AiChatSettingsPatch(
 	string? ApiKey = null,
 	string? Model = null,
 	string? Persona = null,
+	bool ApiKeySpecified = false,
+	string? Reasoning = null);
+
+/// <summary>图像生成配置的部分更新。</summary>
+public sealed record AiImageSettingsPatch(
+	string? Provider = null,
+	string? BaseUrl = null,
+	string? ApiKey = null,
+	string? Model = null,
+	string? Size = null,
 	bool ApiKeySpecified = false);
 
 /// <summary>Embedding 配置的部分更新。Embedding API Key 允许显式留空。</summary>
@@ -75,6 +115,13 @@ public sealed class AiSettingsStore(ConfigStore config)
 	public const string KeyEmbeddingModel = "embedding_model";
 	public const string KeyEmbeddingDimensions = "embedding_dimensions";
 	public const string DefaultEmbeddingModel = "BAAI/bge-m3";
+	public const string KeyLlmReasoning = "llm_reasoning_effort";
+	public const string KeyImageProvider = "image_provider";
+	public const string KeyImageBaseUrl = "image_api_base";
+	// 配置键名，不包含任何凭据值。
+	public const string KeyImageApiKey = "image_api_key"; // nosemgrep
+	public const string KeyImageModel = "image_model";
+	public const string KeyImageSize = "image_size";
 	private static readonly string[] SettingsKeys =
 	[
 		KeyLlmProvider,
@@ -86,6 +133,12 @@ public sealed class AiSettingsStore(ConfigStore config)
 		KeyEmbeddingApiKey,
 		KeyEmbeddingModel,
 		KeyEmbeddingDimensions,
+		KeyLlmReasoning,
+		KeyImageProvider,
+		KeyImageBaseUrl,
+		KeyImageApiKey,
+		KeyImageModel,
+		KeyImageSize,
 	];
 
 	private readonly ConfigStore _config = config;
@@ -106,6 +159,7 @@ public sealed class AiSettingsStore(ConfigStore config)
 				ApiKey = GetString(KeyLlmApiKey, ""),
 				Model = GetString(KeyLlmModel, "").Trim(),
 				Persona = GetString(KeyUserPersona, ""),
+				Reasoning = LlmReasoningLevels.Parse(GetString(KeyLlmReasoning, "auto")),
 			},
 			Embedding = new AiEmbeddingSettings
 			{
@@ -114,8 +168,38 @@ public sealed class AiSettingsStore(ConfigStore config)
 				Model = GetString(KeyEmbeddingModel, DefaultEmbeddingModel).Trim(),
 				Dimensions = ParseDimensions(GetString(KeyEmbeddingDimensions, "")),
 			},
+			Image = new AiImageSettings
+			{
+				Provider = NormalizeImageProvider(GetString(KeyImageProvider, "openai")),
+				BaseUrl = GetString(KeyImageBaseUrl, "").Trim(),
+				ApiKey = GetString(KeyImageApiKey, ""),
+				Model = GetString(KeyImageModel, "").Trim(),
+				Size = GetString(KeyImageSize, "auto").Trim() is {Length: > 0} size ? size : "auto",
+			},
 		};
 	}
+
+	/// <summary>
+	/// 计算图像生成的生效配置：地址/密钥留空且对话服务是同一协议时沿用对话服务的值。
+	/// </summary>
+	public static AiImageSettings ResolveImage(AiProviderSettings settings)
+	{
+		ArgumentNullException.ThrowIfNull(settings);
+		AiImageSettings image = settings.Image;
+		bool sameFamily = image.Provider == "google"
+			? settings.Chat.Provider == LlmProvider.Google
+			: settings.Chat.Provider is LlmProvider.OpenAi or LlmProvider.OpenAiResponses;
+		if (!sameFamily) return image;
+		return image with
+		{
+			BaseUrl = image.BaseUrl.Length > 0 ? image.BaseUrl : settings.Chat.BaseUrl,
+			ApiKey = image.ApiKey.Length > 0 ? image.ApiKey : settings.Chat.ApiKey,
+		};
+	}
+
+	/// <summary>规范化图像协议；未知取值按 openai 处理。</summary>
+	public static string NormalizeImageProvider(string? value) =>
+		value?.Trim().ToLowerInvariant() is "google" or "gemini" ? "google" : "openai";
 
 	/// <summary>部分更新聊天配置; 敏感字段仍由 ConfigStore 加密。</summary>
 	public void UpdateChat(AiChatSettingsPatch patch)
@@ -125,6 +209,17 @@ public sealed class AiSettingsStore(ConfigStore config)
 		if (patch.ApiKeySpecified) SetSecret(KeyLlmApiKey, patch.ApiKey);
 		if (patch.Model is not null) SetText(KeyLlmModel, patch.Model);
 		if (patch.Persona is not null) SetText(KeyUserPersona, patch.Persona);
+		if (patch.Reasoning is not null) SetText(KeyLlmReasoning, LlmReasoningLevels.Parse(patch.Reasoning).AsString());
+	}
+
+	/// <summary>部分更新图像生成配置。</summary>
+	public void UpdateImage(AiImageSettingsPatch patch)
+	{
+		if (patch.Provider is not null) SetText(KeyImageProvider, NormalizeImageProvider(patch.Provider));
+		if (patch.BaseUrl is not null) SetText(KeyImageBaseUrl, patch.BaseUrl.Trim());
+		if (patch.ApiKeySpecified) SetSecret(KeyImageApiKey, patch.ApiKey);
+		if (patch.Model is not null) SetText(KeyImageModel, patch.Model.Trim());
+		if (patch.Size is not null) SetText(KeyImageSize, patch.Size.Trim().Length == 0 ? "auto" : patch.Size.Trim());
 	}
 
 	/// <summary>部分更新 Embedding 配置; 不会修改聊天配置。</summary>
@@ -171,8 +266,12 @@ public sealed record AiChatSettingsSnapshot
 	[JsonPropertyName("hasApiKey")]
 	public required bool HasApiKey { get; init; }
 
+	[JsonPropertyName("reasoning")]
+	public string Reasoning { get; init; } = "auto";
+
 	public static AiChatSettingsSnapshot From(AiChatSettings settings) => new()
 	{
+		Reasoning = settings.Reasoning.AsString(),
 		Configured = settings.IsConfigured,
 		Provider = settings.Provider.AsString(),
 		BaseUrl = settings.BaseUrl,
@@ -207,5 +306,38 @@ public sealed record AiEmbeddingSettingsSnapshot
 		BaseUrl = settings.BaseUrl,
 		Dimensions = settings.Dimensions?.ToString(CultureInfo.InvariantCulture) ?? "",
 		HasApiKey = settings.ApiKey.Length > 0,
+	};
+}
+
+/// <summary>图像生成配置的脱敏快照 DTO。</summary>
+public sealed record AiImageSettingsSnapshot
+{
+	[JsonPropertyName("configured")]
+	public required bool Configured { get; init; }
+
+	[JsonPropertyName("provider")]
+	public required string Provider { get; init; }
+
+	[JsonPropertyName("baseUrl")]
+	public required string BaseUrl { get; init; }
+
+	[JsonPropertyName("model")]
+	public required string Model { get; init; }
+
+	[JsonPropertyName("size")]
+	public required string Size { get; init; }
+
+	[JsonPropertyName("hasApiKey")]
+	public required bool HasApiKey { get; init; }
+
+	/// <summary>raw 为用户填写值；configured 按生效配置 (含对话服务回退) 判断。</summary>
+	public static AiImageSettingsSnapshot From(AiImageSettings raw, AiImageSettings effective) => new()
+	{
+		Configured = effective.IsConfigured,
+		Provider = raw.Provider,
+		BaseUrl = raw.BaseUrl,
+		Model = raw.Model,
+		Size = raw.Size,
+		HasApiKey = raw.ApiKey.Length > 0,
 	};
 }

@@ -18,3 +18,10 @@ public interface IToolCallingLlmAdapter
 		Action<LlmUsageInfo>? onUsage = null,
 		CancellationToken cancellationToken = default);
 }
+
+/// <summary>可以按次调用替换生成参数 (思考档位、模型能力) 的适配器。</summary>
+public interface IConfigurableLlmAdapter
+{
+	/// <summary>返回使用指定生成参数的新适配器；原适配器不变。</summary>
+	ILlmAdapter WithGeneration(LlmGenerationOptions options);
+}

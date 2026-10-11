@@ -53,7 +53,8 @@ public partial class BridgeCommandsTests
 	{
 		string[] allowed =
 		[
-			"approval_extend", "approval_respond", "chat_cancel", "chat_clear", "chat_history_page", "chat_start",
+			"approval_extend", "approval_respond", "chat_cancel", "chat_clear", "chat_history_page",
+			"chat_open_generated_image", "chat_read_generated_image", "chat_start",
 			"clipboard_write_text", "open_url", "stt_start", "stt_stop", "tts_stop",
 		];
 		Assert.Equal(allowed, NativeChatService.Commands.Order(StringComparer.Ordinal));
@@ -70,6 +71,22 @@ public partial class BridgeCommandsTests
 			await Assert.ThrowsAsync<InvalidOperationException>(() => CreateCommands().InvokeAsync(spoof, "chat_start", Args(new {text = "你好"})));
 			await Assert.ThrowsAsync<InvalidOperationException>(() => CreateCommands().InvokeAsync(spoof, "open_url", Args(new {url = "https://example.test"})));
 		}
+	}
+
+	[Fact]
+	public async Task NativeChatReadsOnlyGeneratedImagesByValidatedName()
+	{
+		using NativeChatTestSource native = new();
+		byte[] png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1];
+		string name = await _services.ImageStore.SaveAsync(png, "image/png");
+
+		JsonElement result = JsonSerializer.SerializeToElement(
+			await CreateCommands().InvokeAsync(native, "chat_read_generated_image", Args(new {name})), BridgeJson.Options);
+		Assert.Equal(png, Convert.FromBase64String(result.GetProperty("base64").GetString()!));
+
+		await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			CreateCommands().InvokeAsync(native, "chat_read_generated_image", Args(new {name = "../core/security/secret.key"})));
+		Assert.Null(await CreateCommands().InvokeAsync(native, "chat_read_generated_image", Args(new {name = "20260101-000000-00000000.png"})));
 	}
 
 	[Fact]

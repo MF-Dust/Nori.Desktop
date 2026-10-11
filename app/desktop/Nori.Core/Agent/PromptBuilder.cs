@@ -69,6 +69,11 @@ public static class PromptBuilder
 		}
 
 		// 3. 分层记忆注入。记忆是数据，不是新的系统指令。
+		// 压缩摘要放在最前：它是较早对话的延续，比检索出的长期记忆更贴近当前话题。
+		if (!string.IsNullOrWhiteSpace(options.ConversationSummary))
+		{
+			memory.Add(ConversationCompactor.RenderForPrompt(options.ConversationSummary));
+		}
 		IReadOnlyList<string>? personal = options.PersonalMemories ?? options.Memories;
 		if (personal is {Count: > 0})
 		{
@@ -208,6 +213,9 @@ public sealed record PromptBuildOptions
 	/// 此时注入目录会使模型去调用不存在的工具。
 	/// </summary>
 	public string WorkspaceRoot { get; init; } = "";
+
+	/// <summary>上下文压缩摘要 (较早对话的压缩结果)；null 表示没有。</summary>
+	public string? ConversationSummary { get; init; }
 
 	/// <summary>
 	/// 这台机器此刻的状态；为空则该分段不注入。

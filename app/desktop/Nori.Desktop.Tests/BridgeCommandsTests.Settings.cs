@@ -214,6 +214,31 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
+	public async Task AI设置更新思考档位上下文与图像生成()
+	{
+		BridgeCommands commands = CreateCommands();
+		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "settings_update_ai_providers", Args(new
+		{
+			chat = new {reasoning = "high"},
+			context = new {limit = "64k", compaction = false},
+			image = new {provider = "google", model = "gemini-2.5-flash-image", apiKey = "img-secret", size = "16:9"}, // nosemgrep
+		}));
+
+		AiProviderSettings settings = _services.AiSettings.Read();
+		Assert.Equal(Nori.Core.Chat.LlmReasoningLevel.High, settings.Chat.Reasoning);
+		Assert.Equal("64000", _config.GetStringOr(Nori.Core.Agent.ContextWindowPlanner.KeyContextLimit, ""));
+		Assert.False(_config.GetBoolOr(Nori.Core.Agent.ConversationCompactor.KeyEnabled, true));
+		Assert.Equal("google", settings.Image.Provider);
+		Assert.Equal("img-secret", settings.Image.ApiKey);
+		Assert.Equal("16:9", settings.Image.Size);
+
+		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "settings_update_ai_providers", Args(new {context = new {limit = "auto"}}));
+		Assert.False(_config.Exists(Nori.Core.Agent.ContextWindowPlanner.KeyContextLimit));
+		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
+			new FakeBridgeSource(WindowLabels.Main), "settings_update_ai_providers", Args(new {context = new {limit = "abc"}})));
+	}
+
+	[Fact]
 	public async Task 统一AI设置更新保持聊天与Embedding独立()
 	{
 		BridgeCommands commands = CreateCommands();

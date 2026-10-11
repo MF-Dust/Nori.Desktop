@@ -226,8 +226,22 @@ public sealed partial class AppRuntime
 		WorkspaceTools.RegisterAll(Tools, workspace);
 		RegisterTaskTools(Tools, workspace);
 		RegisterScreenTools(Tools);
+		RegisterImageTools(Tools);
 		DeviceTools.RegisterAll(Tools, RefreshDevices);
 	}
+
+	/// <summary>注册图像生成工具。安全模式不出网，不注册；未配置时由 ImageTools 自行注销。</summary>
+	private void RegisterImageTools(ToolRegistry registry) =>
+		ImageTools.RegisterAll(registry, Services.SafeMode || Services.AiSettings is null ? null : ImageGenerator);
+
+	private Nori.Core.Chat.Images.IImageGenerator? _imageGenerator;
+
+	/// <summary>图像生成服务；每次调用读取最新配置 (含对话服务回退)。</summary>
+	internal Nori.Core.Chat.Images.IImageGenerator ImageGenerator =>
+		_imageGenerator ??= new Nori.Core.Chat.Images.ImageGenerationService(
+			Services.Http,
+			() => AiSettingsStore.ResolveImage(Services.AiSettings.Read()),
+			Services.ImageStore);
 
 	/// <summary>
 	/// 注册读屏工具。用户未显式开启、或处于安全模式时不注册。
@@ -465,6 +479,7 @@ public sealed partial class AppRuntime
 		WorkspaceTools.RegisterAll(registry, workspace);
 		RegisterTaskTools(registry, workspace);
 		RegisterScreenTools(registry);
+		RegisterImageTools(registry);
 		DeviceTools.RegisterAll(registry, RefreshDevices);
 		return registry;
 	}

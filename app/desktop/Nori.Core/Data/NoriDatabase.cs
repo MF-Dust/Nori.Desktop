@@ -57,6 +57,12 @@ public sealed class NoriDatabase : IDisposable
 		);
 		CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(importance DESC, id DESC);
 		CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at, id);
+		CREATE TABLE IF NOT EXISTS chat_context_summary (
+		    id            INTEGER PRIMARY KEY CHECK (id = 1),
+		    summary       TEXT NOT NULL,
+		    covered_until INTEGER NOT NULL,
+		    updated_at    TEXT NOT NULL
+		);
 		CREATE TABLE IF NOT EXISTS automation_audit (
 		    id          INTEGER PRIMARY KEY AUTOINCREMENT,
 		    timestamp   TEXT NOT NULL,

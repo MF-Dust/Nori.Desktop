@@ -68,6 +68,20 @@ public sealed partial class ChatView : UserControl, IDisposable
 	internal string VoiceState => _voiceState;
 	internal bool HistoryLoaded => _loadedHistory;
 	private Task<JsonElement> ExecuteAsync(string command, object? args = null, CancellationToken cancellationToken = default) => _execute(command, args, cancellationToken);
+
+	private ChatMarkdownImages? _generatedImages;
+
+	/// <summary>生成图片的读取与打开：经对话命令白名单访问宿主，不直接读文件。</summary>
+	private ChatMarkdownImages GeneratedImages => _generatedImages ??= new ChatMarkdownImages(
+		async (name, cancellationToken) =>
+		{
+			using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+			JsonElement result = await ExecuteAsync("chat_read_generated_image", new { name }, linked.Token).ConfigureAwait(false);
+			return result.ValueKind == JsonValueKind.Object && result.TryGetProperty("base64", out JsonElement data) && data.GetString() is { } base64
+				? Convert.FromBase64String(base64)
+				: null;
+		},
+		name => Run(ExecuteAsync("chat_open_generated_image", new { name }, _lifetime.Token)));
 	internal event Action? LanguageChanged;
 
 	/// <summary>刷新脱敏就绪信息与语言；初次历史加载不会覆盖后来开始的会话。</summary>

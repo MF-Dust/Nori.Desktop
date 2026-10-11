@@ -28,6 +28,7 @@ public sealed class SettingsService : IDisposable
 		"cloud_restore",
 		"ai_test_connection",
 		"llm_fetch_models",
+		"llm_model_info",
 		"settings_update_ai_providers",
 		"settings_update_voice",
 		"settings_ack_voice_notice",

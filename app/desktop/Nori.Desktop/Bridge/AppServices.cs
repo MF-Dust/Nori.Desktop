@@ -76,6 +76,27 @@ public sealed class AppServices : IAsyncDisposable
 		set => _publicHttp = value;
 	}
 
+	private Nori.Core.Chat.Catalog.ModelsDevCatalog? _modelCatalog;
+
+	/// <summary>
+	/// models.dev 模型能力目录 (上下文窗口、思考档位、多模态)。走公网客户端；安全模式下只读本地缓存。
+	/// </summary>
+	public Nori.Core.Chat.Catalog.ModelsDevCatalog ModelCatalog => _modelCatalog ??= new Nori.Core.Chat.Catalog.ModelsDevCatalog(
+		PublicHttp,
+		Paths.ModelCatalogCachePath,
+		() => !SafeMode,
+		message =>
+		{
+			try { Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", message); }
+			catch { }
+		});
+
+	private Nori.Core.Chat.Images.GeneratedImageStore? _imageStore;
+
+	/// <summary>AI 生成图片的本地存储。</summary>
+	public Nori.Core.Chat.Images.GeneratedImageStore ImageStore =>
+		_imageStore ??= new Nori.Core.Chat.Images.GeneratedImageStore(Paths.GeneratedImagesDirectory);
+
 	/// <summary>Agent 聊天/MCP 操作取消注册表</summary>
 	public required Bridge.AgentOperationRegistry AgentOperations { get; init; }
 

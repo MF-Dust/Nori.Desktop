@@ -18,9 +18,27 @@ using NativeInline = Avalonia.Controls.Documents.Inline;
 
 namespace Nori.Desktop.Chat;
 
+/// <summary>
+/// 生成图片的读取与打开回调。
+///
+/// 聊天 Markdown 只为 <c>nori-image:</c> 引用创建图片控件，字节由宿主从生成图片目录读取；
+/// 其余图片地址仍然不加载。
+/// </summary>
+/// <param name="Load">按文件名读取图片字节；不存在时返回 null。</param>
+/// <param name="Open">用系统默认程序打开图片。</param>
+public sealed record ChatMarkdownImages(Func<string, CancellationToken, Task<byte[]?>> Load, Action<string> Open);
+
 /// <summary>将聊天 Markdown 解析为原生控件，并保留 Vue 助手回复的分泡规则。</summary>
 public static class ChatMarkdown
 {
+	/// <summary>生成图片的显示上限 (逻辑像素)。</summary>
+	private const double ImageMaxSize = 320;
+
+	/// <summary>最近解码过的图片；流式刷新与重新渲染时不重复读取和解码。</summary>
+	private static readonly Dictionary<string, Avalonia.Media.Imaging.Bitmap> ImageCache = new(StringComparer.Ordinal);
+	private static readonly LinkedList<string> ImageCacheOrder = new();
+	private const int ImageCacheCapacity = 24;
+
 	private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
 		.DisableHtml()
 		.UseAutoLinks()
@@ -56,11 +74,33 @@ public static class ChatMarkdown
 	/// <param name="text">消息原文。</param>
 	/// <param name="openUrl">宿主的外链打开回调，仅收到经过验证的绝对 HTTP/HTTPS 地址。</param>
 	/// <returns>可直接放入助手气泡的原生控件。</returns>
-	public static Control Render(string text, Action<string> openUrl)
+	/// <param name="images">生成图片的读取回调；为 null 时图片引用不显示。</param>
+	public static Control Render(string text, Action<string> openUrl, ChatMarkdownImages? images = null)
 	{
 		ArgumentNullException.ThrowIfNull(text);
 		ArgumentNullException.ThrowIfNull(openUrl);
-		return new Renderer(text, openUrl).Blocks(Markdown.Parse(text, Pipeline), trimMargins: true);
+		return new Renderer(text, openUrl, images).Blocks(Markdown.Parse(text, Pipeline), trimMargins: true);
+	}
+
+	private static Avalonia.Media.Imaging.Bitmap? CachedImage(string name)
+	{
+		lock (ImageCache) return ImageCache.GetValueOrDefault(name);
+	}
+
+	private static void CacheImage(string name, Avalonia.Media.Imaging.Bitmap bitmap)
+	{
+		lock (ImageCache)
+		{
+			if (ImageCache.ContainsKey(name)) return;
+			ImageCache[name] = bitmap;
+			ImageCacheOrder.AddLast(name);
+			// 淘汰的位图可能仍挂在旧控件上，交给 GC 回收而不主动释放。
+			while (ImageCacheOrder.Count > ImageCacheCapacity && ImageCacheOrder.First is { } oldest)
+			{
+				ImageCache.Remove(oldest.Value);
+				ImageCacheOrder.RemoveFirst();
+			}
+		}
 	}
 
 	/// <summary>按 Vue 的换行、句末标点和长句逗号规则分泡；流式或结构化 Markdown 始终保持单泡。</summary>
@@ -111,7 +151,7 @@ public static class ChatMarkdown
 			&& uri.Scheme is "http" or "https" && uri.Host.Length > 0;
 	}
 
-	private sealed class Renderer(string source, Action<string> openUrl)
+	private sealed class Renderer(string source, Action<string> openUrl, ChatMarkdownImages? images)
 	{
 		public StackPanel Blocks(ContainerBlock blocks, bool trimMargins = false)
 		{
@@ -310,8 +350,10 @@ public static class ChatMarkdown
 						codeText.FontStyle = style;
 						target.Add(new InlineUIContainer(new Border { Child = codeText, Padding = new Thickness(4, 1), CornerRadius = new CornerRadius(NoriMetrics.RadiusXs), Background = InlineCodeBackground }));
 						break;
-					case LinkInline { IsImage: true }:
-						// 与 Vue 的图片消毒策略一致，不创建图片控件，也不下载图片地址。
+					case LinkInline { IsImage: true } image:
+						// 只显示本机生成的图片；其余图片与 Vue 的消毒策略一致，不创建控件，也不下载地址。
+						if (images is not null && Nori.Core.Chat.Images.GeneratedImageStore.ParseReference(image.Url) is { } name)
+							target.Add(new InlineUIContainer(GeneratedImage(name, image.FirstChild is null ? null : Source(image.FirstChild), images)));
 						break;
 					case LinkInline link:
 						if (TryHttpUrl(link.Url, out Uri? uri))
@@ -331,6 +373,83 @@ public static class ChatMarkdown
 					default:
 						target.Add(new Run(Source(inline)));
 						break;
+				}
+			}
+		}
+
+		/// <summary>生成图片：先占位，后台读取并解码后替换；点击用系统程序打开原图。</summary>
+		private static Control GeneratedImage(string name, string? alt, ChatMarkdownImages images)
+		{
+			Image picture = new()
+			{
+				Stretch = Stretch.Uniform,
+				MaxWidth = ImageMaxSize,
+				MaxHeight = ImageMaxSize,
+			};
+			TextBlock placeholder = Text("图片加载中…", NoriMetrics.FontXs, InlineCodeText);
+			Button frame = new()
+			{
+				Name = "ChatGeneratedImage",
+				Padding = new Thickness(0),
+				Margin = new Thickness(0, 6),
+				MinWidth = 0,
+				MinHeight = 0,
+				Background = Brushes.Transparent,
+				BorderThickness = default,
+				Cursor = new Cursor(StandardCursorType.Hand),
+				Content = new Border
+				{
+					CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
+					ClipToBounds = true,
+					BorderBrush = RuleBrush,
+					BorderThickness = new Thickness(1),
+					MinWidth = 120,
+					MinHeight = 60,
+					Child = placeholder,
+				},
+			};
+			string label = string.IsNullOrWhiteSpace(alt) ? "生成的图片" : alt.Trim();
+			ToolTip.SetTip(frame, label);
+			AutomationProperties.SetName(frame, label);
+			frame.Click += (_, args) => { args.Handled = true; images.Open(name); };
+
+			void Show(Avalonia.Media.Imaging.Bitmap bitmap)
+			{
+				picture.Source = bitmap;
+				if (frame.Content is Border border) border.Child = picture;
+			}
+
+			if (CachedImage(name) is { } cached)
+			{
+				Show(cached);
+				return frame;
+			}
+
+			_ = LoadAsync();
+			return frame;
+
+			async Task LoadAsync()
+			{
+				try
+				{
+					byte[]? bytes = await images.Load(name, CancellationToken.None).ConfigureAwait(false);
+					if (bytes is null)
+					{
+						await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => placeholder.Text = "图片已被删除");
+						return;
+					}
+					// 解码放在后台线程，避免大图卡住界面。
+					Avalonia.Media.Imaging.Bitmap bitmap = await Task.Run(() =>
+					{
+						using MemoryStream stream = new(bytes);
+						return Avalonia.Media.Imaging.Bitmap.DecodeToWidth(stream, (int)(ImageMaxSize * 2));
+					}).ConfigureAwait(false);
+					CacheImage(name, bitmap);
+					await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => Show(bitmap));
+				}
+				catch (Exception)
+				{
+					await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => placeholder.Text = "图片无法显示");
 				}
 			}
 		}

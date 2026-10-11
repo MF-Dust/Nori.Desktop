@@ -26,19 +26,30 @@ internal sealed class TornadoChatClient : IChatClient
 	/// <summary>Gemini 3 要求回传工具调用的 thought signature，借 FunctionCallContent 的扩展属性保存。</summary>
 	internal const string ThoughtSignatureKey = "nori.thought_signature";
 
+	/// <summary>Anthropic 的 redacted_thinking 块在 TextReasoningContent 上的标记。</summary>
+	internal const string RedactedReasoningKey = "nori.reasoning_redacted";
+
 	private readonly TornadoApi _api;
 	private readonly TornadoCallScope _scope;
 	private readonly string _model;
 	private readonly LLmProviders _provider;
 	private readonly int? _defaultMaxOutputTokens;
+	private readonly LlmGenerationOptions _generation;
 
-	public TornadoChatClient(TornadoApi api, TornadoCallScope scope, string model, LLmProviders provider, int? defaultMaxOutputTokens)
+	public TornadoChatClient(
+		TornadoApi api,
+		TornadoCallScope scope,
+		string model,
+		LLmProviders provider,
+		int? defaultMaxOutputTokens,
+		LlmGenerationOptions? generation = null)
 	{
 		_api = api;
 		_scope = scope;
 		_model = model;
 		_provider = provider;
 		_defaultMaxOutputTokens = defaultMaxOutputTokens;
+		_generation = generation ?? LlmGenerationOptions.Default;
 	}
 
 	public async Task<ChatResponse> GetResponseAsync(
@@ -224,6 +235,8 @@ internal sealed class TornadoChatClient : IChatClient
 		if (options?.Temperature is { } temperature) request.Temperature = temperature;
 		if (options?.TopP is { } topP) request.TopP = topP;
 		if ((options?.MaxOutputTokens ?? _defaultMaxOutputTokens) is { } maxTokens) request.MaxTokens = maxTokens;
+		ApplyReasoning(request, model);
+		ApplyInterleavedReasoning(request);
 
 		List<Tool> tools = options?.Tools?.OfType<AIFunctionDeclaration>()
 			.Select(function => new Tool(new ToolFunction(function.Name, function.Description, function.JsonSchema)))
@@ -236,6 +249,78 @@ internal sealed class TornadoChatClient : IChatClient
 		}
 		return request;
 	}
+
+	/// <summary>按用户档位与模型能力写入思考参数；Auto 时请求保持原样。</summary>
+	private void ApplyReasoning(ChatRequest request, string model)
+	{
+		ReasoningRequest? plan = ReasoningPlanner.Plan(_scope.Protocol, model, _generation.Reasoning, _generation.Capabilities);
+		if (plan is null) return;
+		if (plan.Effort is { } effort) request.ReasoningEffort = MapEffort(effort);
+		if (plan.BudgetTokens is { } budget)
+		{
+			request.ReasoningBudget = budget;
+			if (_scope.Protocol == LlmProvider.Anthropic && budget > 0)
+			{
+				// Anthropic 的 max_tokens 包含思考预算，必须严格大于预算，否则直接 400。
+				int required = budget + ReasoningPlanner.MinVisibleOutputTokens;
+				if (_generation.Capabilities is {OutputLimit: > 0} capabilities) required = Math.Min(required, capabilities.OutputLimit);
+				request.MaxTokens = Math.Max(request.MaxTokens ?? 0, required);
+			}
+		}
+		if (plan.DisableThinking)
+		{
+			Chain(request, (json, _) => json["thinking"] = new Newtonsoft.Json.Linq.JObject {["type"] = "disabled"});
+		}
+	}
+
+	/// <summary>
+	/// 声明了 interleaved 思考的 OpenAI 兼容模型 (如 DeepSeek 思考模式) 在工具往返时要求回传
+	/// reasoning_content；LlmTornado 不序列化这个字段，在 JSON 层按助手消息顺序补上。
+	/// </summary>
+	private void ApplyInterleavedReasoning(ChatRequest request)
+	{
+		if (_scope.Protocol != LlmProvider.OpenAi) return;
+		if (_generation.Capabilities?.InterleavedField is not { Length: > 0 } field) return;
+		List<string?> reasoning = request.Messages?
+			.Where(message => message.Role == ChatMessageRoles.Assistant)
+			.Select(message => message.ReasoningContent)
+			.ToList() ?? [];
+		if (!reasoning.Any(text => !string.IsNullOrEmpty(text))) return;
+		Chain(request, (json, _) =>
+		{
+			if (json["messages"] is not Newtonsoft.Json.Linq.JArray items) return;
+			List<Newtonsoft.Json.Linq.JObject> assistants = items.OfType<Newtonsoft.Json.Linq.JObject>()
+				.Where(item => (string?)item["role"] == "assistant")
+				.ToList();
+			// 条数对不上说明序列化结构变了，宁可不补也不能把思考内容错配到别的消息上。
+			if (assistants.Count != reasoning.Count) return;
+			for (int index = 0; index < assistants.Count; index++)
+			{
+				if (!string.IsNullOrEmpty(reasoning[index])) assistants[index][field] = reasoning[index];
+			}
+		});
+	}
+
+	private static void Chain(ChatRequest request, Action<Newtonsoft.Json.Linq.JObject, ChatRequest> transform)
+	{
+		Action<Newtonsoft.Json.Linq.JObject, ChatRequest>? previous = request.OnSerialize;
+		request.OnSerialize = (json, source) =>
+		{
+			previous?.Invoke(json, source);
+			transform(json, source);
+		};
+	}
+
+	private static ChatReasoningEfforts MapEffort(string effort) => effort switch
+	{
+		"none" => ChatReasoningEfforts.None,
+		"minimal" => ChatReasoningEfforts.Minimal,
+		"low" => ChatReasoningEfforts.Low,
+		"medium" => ChatReasoningEfforts.Medium,
+		"xhigh" => ChatReasoningEfforts.XHigh,
+		"max" => ChatReasoningEfforts.Max,
+		_ => ChatReasoningEfforts.High,
+	};
 
 	private List<TornadoChatMessage> ConvertMessages(IReadOnlyList<AiChatMessage> messages)
 	{
@@ -263,10 +348,27 @@ internal sealed class TornadoChatClient : IChatClient
 			TornadoChatMessage converted = new(role);
 			List<ChatMessagePart> parts = [];
 			bool hasImage = false;
+			bool hasReasoning = false;
 			foreach (AIContent content in message.Contents)
 			{
 				switch (content)
 				{
+					// Anthropic 开启思考后，带 tool_use 的助手消息必须原样带回签名过的思考块。
+					case TextReasoningContent reasoning when role == ChatMessageRoles.Assistant
+						&& _scope.Protocol == LlmProvider.Anthropic
+						&& !string.IsNullOrEmpty(reasoning.ProtectedData):
+						parts.Insert(parts.Count(part => part.Type == ChatMessageTypes.Reasoning), new ChatMessagePart(new ChatMessageReasoningData
+						{
+							// redacted_thinking 只有加密数据 (在签名里)，正文为空；IsRedacted 由 LlmTornado 据此推断。
+							Content = reasoning.AdditionalProperties?.ContainsKey(RedactedReasoningKey) == true && reasoning.Text.Length == 0 ? null : reasoning.Text,
+							Signature = reasoning.ProtectedData,
+						}));
+						hasReasoning = true;
+						break;
+					case TextReasoningContent {Text.Length: > 0} reasoning when role == ChatMessageRoles.Assistant
+						&& _scope.Protocol == LlmProvider.OpenAi:
+						converted.ReasoningContent = string.Concat(converted.ReasoningContent, reasoning.Text);
+						break;
 					case TextContent {Text.Length: > 0} text:
 						parts.Add(new ChatMessagePart(text.Text));
 						break;
@@ -277,7 +379,7 @@ internal sealed class TornadoChatClient : IChatClient
 				}
 			}
 
-			if (hasImage) converted.Parts = parts;
+			if (hasImage || hasReasoning) converted.Parts = parts;
 			else converted.Content = string.Concat(parts.Select(part => part.Text));
 
 			List<ToolCall> toolCalls = [];
@@ -334,6 +436,8 @@ internal sealed class TornadoChatClient : IChatClient
 		private readonly Dictionary<string, PendingCall> _calls = new(StringComparer.Ordinal);
 		private UsageDetails? _usage;
 		private ChatFinishReason? _finishReason;
+		private readonly System.Text.StringBuilder _reasoningText = new();
+		private List<ChatMessageReasoningData>? _reasoningBlocks;
 
 		public ChatResponseUpdate? Accept(ChatResult result)
 		{
@@ -343,10 +447,15 @@ internal sealed class TornadoChatClient : IChatClient
 			if (MapFinishReason(choice.FinishReason) is { } finish) _finishReason = finish;
 
 			// LlmTornado 在流末尾合成的聚合块只是重复已经流出的文本或思考内容。
-			if (IsSynthesized(result)) return null;
-
 			TornadoChatMessage? message = choice.Delta ?? choice.Message;
+			if (IsSynthesized(result))
+			{
+				// 但 Anthropic 思考块的签名只出现在聚合块里，必须从这里取完整的思考块。
+				CaptureReasoningBlocks(message);
+				return null;
+			}
 			if (message is null) return null;
+			CaptureReasoningDelta(message);
 			if (message.ToolCalls is {Count: > 0} toolCalls)
 			{
 				foreach (ToolCall call in toolCalls)
@@ -378,9 +487,44 @@ internal sealed class TornadoChatClient : IChatClient
 			if (usage is not null) _usage = usage;
 		}
 
+		/// <summary>
+		/// 从聚合块中取完整的思考块；只有带签名 (或已脱敏) 的块才需要原样回传。
+		/// </summary>
+		private void CaptureReasoningBlocks(TornadoChatMessage? message)
+		{
+			List<ChatMessageReasoningData> blocks = message?.Parts?
+				.Where(part => part.Type == ChatMessageTypes.Reasoning && part.Reasoning is not null)
+				.Select(part => part.Reasoning!)
+				.ToList() ?? [];
+			if (blocks.Any(block => !string.IsNullOrEmpty(block.Signature) || block.IsRedacted == true)) _reasoningBlocks = blocks;
+		}
+
+		private void CaptureReasoningDelta(TornadoChatMessage message)
+		{
+			if (!string.IsNullOrEmpty(message.ReasoningContent)) _reasoningText.Append(message.ReasoningContent);
+			if (message.Parts is not {Count: > 0} parts) return;
+			foreach (ChatMessagePart part in parts)
+			{
+				if (part.Type == ChatMessageTypes.Reasoning && part.Reasoning?.Content is {Length: > 0} content) _reasoningText.Append(content);
+			}
+		}
+
 		public IEnumerable<ChatResponseUpdate> Finish()
 		{
 			List<AIContent> contents = [];
+			if (_reasoningBlocks is {Count: > 0} blocks)
+			{
+				foreach (ChatMessageReasoningData block in blocks)
+				{
+					TextReasoningContent reasoning = new(block.Content ?? string.Empty) {ProtectedData = block.Signature};
+					if (block.IsRedacted == true) reasoning.AdditionalProperties = new AdditionalPropertiesDictionary {[RedactedReasoningKey] = true};
+					contents.Add(reasoning);
+				}
+			}
+			else if (_reasoningText.Length > 0)
+			{
+				contents.Add(new TextReasoningContent(_reasoningText.ToString()));
+			}
 			foreach (PendingCall call in _calls.Values)
 			{
 				FunctionCallContent content = new(call.Id, call.Name, ParseArguments(call.Arguments));

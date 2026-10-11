@@ -256,7 +256,7 @@ public sealed partial class BridgeCommands
 		if (hasNestedChat) chat = nestedChat;
 		string? persona = OptionalStr(args, "persona") ?? OptionalStr(chat, "persona");
 		bool hasChatPatch = hasNestedChat
-			|| HasAnyString(args, "provider", "baseUrl", "apiKey", "model", "persona")
+			|| HasAnyString(args, "provider", "baseUrl", "apiKey", "model", "persona", "reasoning")
 			|| persona is not null;
 		if (hasChatPatch)
 		{
@@ -266,8 +266,29 @@ public sealed partial class BridgeCommands
 				ApiKey: OptionalStr(chat, "apiKey"),
 				Model: OptionalStr(chat, "model"),
 				Persona: persona,
-				ApiKeySpecified: HasString(chat, "apiKey")));
+				ApiKeySpecified: HasString(chat, "apiKey"),
+				Reasoning: OptionalStr(chat, "reasoning")));
 		}
+
+		if (TryGetObject(args, "context", out JsonElement context))
+		{
+			if (OptionalStr(context, "limit") is { } limit) UpdateContextLimit(limit);
+			if (OptionalBool(context, "compaction") is { } compaction)
+				_services.Config.Set(Nori.Core.Agent.ConversationCompactor.KeyEnabled, new ConfigValue.Text(compaction ? "1" : "0"));
+		}
+
+		if (TryGetObject(args, "image", out JsonElement image))
+		{
+			_services.AiSettings.UpdateImage(new AiImageSettingsPatch(
+				Provider: OptionalStr(image, "provider"),
+				BaseUrl: OptionalStr(image, "baseUrl"),
+				ApiKey: OptionalStr(image, "apiKey"),
+				Model: OptionalStr(image, "model"),
+				Size: OptionalStr(image, "size"),
+				ApiKeySpecified: HasString(image, "apiKey")));
+		}
+		// 图像工具是否注册取决于图像配置及对话服务的回退地址/密钥，任何 AI 配置变化都要重建。
+		_services.Runtime?.RebuildTools();
 
 		JsonElement embedding = args;
 		bool hasNestedEmbedding = TryGetObject(args, "embedding", out JsonElement nestedEmbedding);
@@ -280,6 +301,30 @@ public sealed partial class BridgeCommands
 				hasNestedEmbedding ? null : "embedding"));
 			Runtime.QueueEmbeddingRebuild();
 		}
+	}
+
+	/// <summary>上下文上限：auto / full / 正整数 token (支持 32k、1m 写法)。</summary>
+	private void UpdateContextLimit(string value)
+	{
+		string text = value.Trim().ToLowerInvariant();
+		if (text is "" or "auto")
+		{
+			_services.Config.Delete(Nori.Core.Agent.ContextWindowPlanner.KeyContextLimit);
+			return;
+		}
+		if (text == "full")
+		{
+			_services.Config.Set(Nori.Core.Agent.ContextWindowPlanner.KeyContextLimit, new ConfigValue.Text("full"));
+			return;
+		}
+		if (!Nori.Core.Agent.ContextWindowPlanner.TryParseTokens(text, out int tokens)
+			|| tokens < Nori.Core.Agent.ContextWindowPlanner.MinWindow
+			|| tokens > Nori.Core.Agent.ContextWindowPlanner.MaxWindow)
+		{
+			throw new InvalidOperationException("上下文上限必须是 auto、full 或 2048 到 2000000 之间的 token 数");
+		}
+		_services.Config.Set(Nori.Core.Agent.ContextWindowPlanner.KeyContextLimit,
+			new ConfigValue.Text(tokens.ToString(System.Globalization.CultureInfo.InvariantCulture)));
 	}
 
 	private static bool TryGetObject(JsonElement args, string name, out JsonElement value)

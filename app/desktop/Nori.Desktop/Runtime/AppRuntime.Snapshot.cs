@@ -79,6 +79,8 @@ public sealed partial class AppRuntime
 		AiChatSettingsSnapshot chatSnapshot = AiChatSettingsSnapshot.From(aiSettings.Chat);
 		bool remoteChat = new Nori.Core.Chat.LuoLiCore.LuoLiCoreSettingsStore(config).Read().IsActive;
 		AiEmbeddingSettingsSnapshot embeddingSnapshot = AiEmbeddingSettingsSnapshot.From(aiSettings.Embedding);
+		AiImageSettingsSnapshot imageSnapshot = AiImageSettingsSnapshot.From(aiSettings.Image, AiSettingsStore.ResolveImage(aiSettings));
+		string contextLimit = config.GetStringOr(Nori.Core.Agent.ContextWindowPlanner.KeyContextLimit, "auto").Trim().ToLowerInvariant();
 
 		var models = ModelCatalogIds().Select(id => new
 		{
@@ -246,6 +248,12 @@ public sealed partial class AppRuntime
 				hasApiKey = chatSnapshot.HasApiKey,
 				chat = chatSnapshot,
 				embedding = embeddingSnapshot,
+				image = imageSnapshot,
+				context = new
+				{
+					limit = contextLimit.Length == 0 ? "auto" : contextLimit,
+					compaction = config.GetBoolOr(Nori.Core.Agent.ConversationCompactor.KeyEnabled, true),
+				},
 			},
 			models = new
 			{

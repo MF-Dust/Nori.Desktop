@@ -16,7 +16,7 @@ public sealed class NativeChatService : IDisposable
 	{
 		"chat_start", "chat_cancel", "chat_history_page", "chat_clear",
 		"approval_respond", "approval_extend", "stt_start", "stt_stop", "tts_stop",
-		"clipboard_write_text", "open_url",
+		"clipboard_write_text", "open_url", "chat_read_generated_image", "chat_open_generated_image",
 	}.ToFrozenSet(StringComparer.Ordinal);
 	private static readonly FrozenSet<string> QuickCommands = new[]
 	{
@@ -77,7 +77,7 @@ public sealed class NativeChatService : IDisposable
 		if (!IsTrustedSource(native) || native.LifetimeToken.IsCancellationRequested
 			|| !(native.Surface == NativeChatSurface.QuickChat ? QuickCommands : AllowedCommands).Contains(command))
 			throw new InvalidOperationException("原生对话窗口不允许执行此命令");
-		if (!source.IsVisible && command is not ("chat_history_page" or "chat_cancel" or "approval_respond" or "stt_stop" or "tts_stop"))
+		if (!source.IsVisible && command is not ("chat_history_page" or "chat_read_generated_image" or "chat_cancel" or "approval_respond" or "stt_stop" or "tts_stop"))
 			throw new InvalidOperationException("对话窗口不可见");
 	}
 

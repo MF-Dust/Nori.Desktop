@@ -66,8 +66,12 @@ public sealed class AgentEngine
 	public const int CallTimeoutSeconds = ChatService.TimeoutSeconds;
 
 	private const int MaxContextRounds = 12;
-	private const int DefaultContextTokens = 12_000;
-	private const int DefaultReservedOutputTokens = 2_000;
+
+	/// <summary>单轮最多读取的历史条数；更早的内容由压缩摘要承担。</summary>
+	private const int MaxHistoryMessages = 400;
+
+	/// <summary>上下文压缩调用的超时 (秒)。</summary>
+	private const int CompactionTimeoutSeconds = 90;
 	private readonly int _maxToolIterations;
 
 
@@ -138,6 +142,7 @@ public sealed class AgentEngine
 	private readonly ReplyReactionService? _replyReaction;
 
 	private readonly Observation.IMachineStateProvider? _machineState;
+	private readonly Chat.Catalog.IModelCapabilityProvider? _modelCatalog;
 	private readonly HttpClient _http;
 	private readonly ConfigStore _config;
 	private readonly ChatService _chat;
@@ -176,9 +181,11 @@ public sealed class AgentEngine
 		Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null,
 		Chat.LuoLiCore.LuoLiCoreConversation? luoLiCore = null,
 		ReplyReactionService? replyReaction = null,
-		Observation.IMachineStateProvider? machineState = null)
+		Observation.IMachineStateProvider? machineState = null,
+		Chat.Catalog.IModelCapabilityProvider? modelCatalog = null)
 	{
 		_machineState = machineState;
+		_modelCatalog = modelCatalog;
 		_http = http;
 		_config = config;
 		_chat = chat;
@@ -249,15 +256,24 @@ public sealed class AgentEngine
 			throw new InvalidOperationException("尚未配置完整的 LLM 参数 (API Base, API Key 或 Model 缺失)");
 		}
 		LlmProvider providerKind = LlmProviderExtensions.ParseProvider(provider);
+		Chat.Catalog.ModelCapabilities? capabilities = await FindCapabilitiesAsync(providerKind, baseUrl, model, runToken);
 		WriteTrace(sessionId, "config", configClock.ElapsedMilliseconds, null, null, "completed");
+		ILlmAdapter baseAdapter = _adapterFactory(providerKind, _http);
+		ILlmAdapter adapter = baseAdapter is IConfigurableLlmAdapter configurable
+			? configurable.WithGeneration(new LlmGenerationOptions {Reasoning = chatSettings.Reasoning, Capabilities = capabilities})
+			: baseAdapter;
 
 		// 2. 组装静态上下文: 最近对话 / 分层记忆 / 情绪 / 动作 / 表情 / 技能 / 工具清单
 		Stopwatch contextClock = Stopwatch.StartNew();
-		IReadOnlyList<(string Role, string Content)> recent = AgentHistory.NormalizeRecent(_chat.GetHistory(MaxContextRounds * 2, 0));
+		bool compactionEnabled = _config.GetBoolOr(ConversationCompactor.KeyEnabled, true);
+		ChatContextSummary? contextSummary = compactionEnabled ? _chat.GetContextSummary() : null;
+		IReadOnlyList<ChatMessage> historyRows = _chat.GetHistoryAfter(contextSummary?.CoveredUntil ?? 0, MaxHistoryMessages);
+		IReadOnlyList<(string Role, string Content)> recent = AgentHistory.NormalizeRecent(historyRows);
 		MemoryContext memoryContext;
 		try
 		{
-			memoryContext = await _memory.BuildContextAsync(userText, recent, runToken);
+			// 记忆检索只看最近几轮，与历史窗口的大小无关。
+			memoryContext = await _memory.BuildContextAsync(userText, recent.TakeLast(MaxContextRounds * 2).ToList(), runToken);
 		}
 		catch (Exception exception)
 		{
@@ -295,17 +311,52 @@ public sealed class AgentEngine
 			ToolsJson = _tools.BuildToolsPrompt(),
 			WorkspaceRoot = PromptBuilder.WorkspaceRootFor(
 				availableToolNames, _config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")),
+			ConversationSummary = contextSummary?.Summary,
 		};
-		ContextBudgetOptions budgetOptions = new()
-		{
-			MaxInputTokens = _config.GetClampedInt("agent_context_tokens", DefaultContextTokens, 512, 128_000),
-			ReservedOutputTokens = _config.GetClampedInt("agent_reserved_output_tokens", DefaultReservedOutputTokens, 128, 64_000),
-		};
+		ContextWindowPlan windowPlan = ContextWindowPlanner.Resolve(
+			ConfigText(ContextWindowPlanner.KeyContextLimit), ConfigText(ContextWindowPlanner.KeyReservedOutput), capabilities);
+		ContextBudgetOptions budgetOptions = ContextWindowPlanner.ToBudget(windowPlan);
 		ContextBudgetResult initialBudget = ContextBudgeter.Build(
 			promptOptions,
 			recent.Append(("user", userText)).ToList(),
 			userText,
 			budgetOptions);
+
+		// 2.1 历史逼近预算时压缩较早的对话。失败只记 trace，本轮退回确定性截断。
+		if (compactionEnabled)
+		{
+			int historyBudget = Math.Max(0, Math.Min(budgetOptions.MaxHistoryTokens,
+				budgetOptions.MaxInputTokens - budgetOptions.ReservedOutputTokens - ContextBudgeter.EstimateTokens(initialBudget.SystemPrompt)));
+			List<ChatMessage> compactable = historyRows.Where(row => !AgentHistory.IsToolFeedback(row)).ToList();
+			if (ConversationCompactor.Plan(compactable, historyBudget, ContextBudgeter.EstimateTokens(userText)) is { } compaction)
+			{
+				Stopwatch compactClock = Stopwatch.StartNew();
+				try
+				{
+					using CancellationTokenSource compactTimeout = CancellationTokenSource.CreateLinkedTokenSource(runToken);
+					compactTimeout.CancelAfter(TimeSpan.FromSeconds(CompactionTimeoutSeconds));
+					string summary = await ConversationCompactor.SummarizeAsync(
+						baseAdapter, baseUrl.TrimEnd('/'), apiKey, model, contextSummary?.Summary, compaction.Summarize,
+						Math.Clamp(historyBudget / 8, 400, ConversationCompactor.MaxSummaryCharacters), compactTimeout.Token);
+					long coveredUntil = compaction.Summarize[^1].Id;
+					if (_chat.SaveContextSummary(summary, coveredUntil))
+					{
+						recent = AgentHistory.NormalizeRecent(historyRows.Where(row => row.Id > coveredUntil).ToList());
+						promptOptions = promptOptions with {ConversationSummary = summary};
+						initialBudget = ContextBudgeter.Build(promptOptions, recent.Append(("user", userText)).ToList(), userText, budgetOptions);
+					}
+					WriteTrace(sessionId, "compact", compactClock.ElapsedMilliseconds, null, null, "completed");
+				}
+				catch (OperationCanceledException) when (runToken.IsCancellationRequested)
+				{
+					throw;
+				}
+				catch (Exception exception)
+				{
+					WriteTrace(sessionId, "compact", compactClock.ElapsedMilliseconds, null, null, "error", FailureCategory(exception));
+				}
+			}
+		}
 		string systemPrompt = initialBudget.SystemPrompt;
 		WriteTrace(sessionId, "context", contextClock.ElapsedMilliseconds, null, null, "completed");
 
@@ -313,12 +364,12 @@ public sealed class AgentEngine
 		List<(string Role, string Content)> working = initialBudget.Messages
 			.Select(message => (message.Role, message.Content)).ToList();
 		ToolExecutionTracker executionTracker = new();
+		List<string> generatedImages = [];
 		ProtocolMessage finalMessage = new("", null, null, null);
 		int currentIteration = -1;
 		DateTimeOffset? callDeadlineUtc = null;
 		try
 		{
-			ILlmAdapter adapter = _adapterFactory(providerKind, _http);
 			async Task<ToolResult> ExecuteToolAsync(string name, JsonNode? arguments, CancellationToken token, string? callId = null)
 			{
 				runToken.ThrowIfCancellationRequested();
@@ -345,6 +396,10 @@ public sealed class AgentEngine
 							: null,
 					});
 					executionTracker.Complete(executionKey, result);
+					if (result.Result is GeneratedImageToolResult {Markdown.Length: > 0} image)
+					{
+						lock (generatedImages) generatedImages.Add(image.Markdown);
+					}
 					callbacks.OnToolExecuted?.Invoke(name, result.Result, result.Error);
 					WriteTrace(sessionId, "tool", toolClock.ElapsedMilliseconds, currentIteration, name,
 						result.Error is null ? "completed" : "error",
@@ -566,6 +621,7 @@ public sealed class AgentEngine
 			{
 				throw new InvalidOperationException("Agent 未产出最终回复");
 			}
+			finalMessage = AttachGeneratedImages(finalMessage, generatedImages);
 			SetState(AgentRunState.Idle);
 
 			// 落库: 只保存用户可见的最终一轮对话 (纯文本, 不再存协议 JSON)
@@ -809,6 +865,46 @@ public sealed class AgentEngine
 			arguments = call.Arguments,
 		}, JsonOptions);
 
+	/// <summary>
+	/// 把本轮生成的图片追加到最终回复末尾。模型若已原样引用了某张图则不重复追加。
+	/// </summary>
+	internal static ProtocolMessage AttachGeneratedImages(ProtocolMessage message, IReadOnlyList<string> images)
+	{
+		if (images.Count == 0) return message;
+		List<string> missing = images.Distinct(StringComparer.Ordinal)
+			.Where(markdown => !message.Text.Contains(markdown[(markdown.IndexOf("](", StringComparison.Ordinal) + 2)..^1], StringComparison.Ordinal))
+			.ToList();
+		if (missing.Count == 0) return message;
+		return message with {Text = message.Text.TrimEnd() + "\n\n" + string.Join("\n\n", missing)};
+	}
+
+	/// <summary>查询模型能力；目录不可用时返回 null，不影响对话。</summary>
+	private async Task<Chat.Catalog.ModelCapabilities?> FindCapabilitiesAsync(
+		LlmProvider provider, string baseUrl, string model, CancellationToken cancellationToken)
+	{
+		if (_modelCatalog is null) return null;
+		try
+		{
+			return await _modelCatalog.FindAsync(provider, baseUrl, model, cancellationToken);
+		}
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			throw;
+		}
+		catch
+		{
+			return null;
+		}
+	}
+
+	/// <summary>读取配置的原始文本；整数、布尔推断后的值也按文本返回。</summary>
+	private string? ConfigText(string key) => _config.Get(key) switch
+	{
+		ConfigValue.Integer integer => integer.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+		ConfigValue.Text text => text.Value,
+		_ => null,
+	};
+
 	private void WriteTrace(
 		string sessionId,
 		string phase,
@@ -857,6 +953,10 @@ public static class AgentHistory
 {
 	/// <summary>工具反馈行前缀</summary>
 	private const string FeedbackPrefix = "【系统工具执行反馈 -";
+
+	/// <summary>是否为旧版落库的工具反馈行 (不属于用户可见对话)。</summary>
+	public static bool IsToolFeedback(ChatMessage row) =>
+		row.Role == "user" && row.Content.StartsWith(FeedbackPrefix, StringComparison.Ordinal);
 
 	/// <summary>
 	/// 把存储行规整为 (role, 纯文本) 序列:

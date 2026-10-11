@@ -16,7 +16,55 @@ public sealed class AiSettingsPage : SettingsPageBase
 		new("google", new("Google Gemini", "Google Gemini")),
 	];
 
+	private static readonly IReadOnlyList<SettingsOption> ReasoningOptions =
+	[
+		new("auto", new("自动 (模型默认)", "Auto (model default)")),
+		new("off", new("关闭", "Off")),
+		new("minimal", new("最低", "Minimal")),
+		new("low", new("低", "Low")),
+		new("medium", new("中", "Medium")),
+		new("high", new("高", "High")),
+		new("xhigh", new("超高", "Extra high")),
+		new("max", new("最大", "Max")),
+	];
+
+	private static readonly IReadOnlyList<SettingsOption> ContextLimitOptions =
+	[
+		new("auto", new("自动 (按模型窗口，最多 128K)", "Auto (model window, up to 128K)")),
+		new("full", new("模型完整窗口", "Full model window")),
+		new("16000", new("16K", "16K")),
+		new("32000", new("32K", "32K")),
+		new("64000", new("64K", "64K")),
+		new("128000", new("128K", "128K")),
+		new("200000", new("200K", "200K")),
+		new("1000000", new("1M", "1M")),
+	];
+
+	private static readonly IReadOnlyList<SettingsOption> ImageProviderOptions =
+	[
+		new("openai", new("OpenAI 兼容 (Images API)", "OpenAI compatible (Images API)")),
+		new("google", new("Google Gemini / Imagen", "Google Gemini / Imagen")),
+	];
+
+	private static readonly IReadOnlyList<SettingsOption> ImageSizeOptions =
+	[
+		new("auto", new("自动", "Auto")),
+		new("1:1", new("1:1 方形", "1:1 Square")),
+		new("16:9", new("16:9 横向", "16:9 Landscape")),
+		new("9:16", new("9:16 纵向", "9:16 Portrait")),
+		new("4:3", new("4:3", "4:3")),
+		new("3:4", new("3:4", "3:4")),
+		new("1024x1024", new("1024×1024", "1024×1024")),
+		new("1536x1024", new("1536×1024", "1536×1024")),
+		new("1024x1536", new("1024×1536", "1024×1536")),
+	];
+
 	private readonly SettingsFieldViewModel _provider;
+	private readonly SettingsFieldViewModel _reasoning;
+	private readonly SettingsFieldViewModel _modelInfo;
+	private readonly SettingsFieldViewModel _contextLimit;
+	private string _modelInfoKey = "";
+	private int _modelInfoRequest;
 	private readonly SettingsFieldViewModel _baseUrl;
 	private readonly SettingsFieldViewModel _model;
 	private readonly SettingsFieldViewModel _apiKey;
@@ -59,12 +107,59 @@ public sealed class AiSettingsPage : SettingsPageBase
 			snapshot => FirstString(snapshot, string.Empty, ["ai", "chat", "persona"], ["ai", "persona"]), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_ai_providers", new { persona = Convert.ToString(value) ?? string.Empty }, token));
 
+		_reasoning = AddField(chat, "reasoning", new("思考强度", "Reasoning effort"),
+			new("思考模型的推理深度。「自动」不发送参数；所选档位不受支持时会就近选择模型支持的档位。", "Reasoning depth for thinking models. Auto sends nothing; unsupported levels snap to the nearest supported one."),
+			SettingsEditorKind.Choice,
+			snapshot => FirstString(snapshot, "auto", ["ai", "chat", "reasoning"]), "auto",
+			(value, token) => ExecuteAsync("settings_update_ai_providers", new {chat = new {reasoning = Convert.ToString(value) ?? "auto"}}, token),
+			options: ReasoningOptions);
+		_modelInfo = AddField(chat, "modelInfo", new("模型信息", "Model info"), new("来自 models.dev 的上下文窗口与能力信息。", "Context window and capabilities from models.dev."), SettingsEditorKind.Multiline,
+			_ => _modelInfo?.Text ?? string.Empty, string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
+		_modelInfo.IsVisible = false;
+
 		AddAction(chat, "fetchModels", new("获取模型", "Fetch models"), new("使用当前服务商列出可用模型。", "List models from the selected provider."), new SettingsCommand(command => _ = FetchModelsAsync()));
 		AddAction(chat, "testChat", new("测试对话连接", "Test chat connection"), new("发送一次最小连接测试。", "Run a minimal connection test."), new SettingsCommand(command => _ = TestChatAsync()));
 
 		_chatResult = AddField(chat, "chatResult", new("对话连接结果", "Chat connection result"), new("", ""), SettingsEditorKind.Multiline,
 			_ => _chatResult?.Text ?? string.Empty, string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
 		_chatResult.IsVisible = false;
+
+		SettingsSectionViewModel context = AddSection(new("上下文", "Context"));
+		_contextLimit = AddField(context, "contextLimit", new("上下文上限", "Context limit"),
+			new("每轮发送给模型的最大上下文。「自动」按模型窗口 (来自 models.dev) 计算，最多 128K，避免长对话产生高额费用。", "Maximum context sent per turn. Auto follows the model window from models.dev, capped at 128K to keep long chats affordable."),
+			SettingsEditorKind.Choice,
+			snapshot => FirstString(snapshot, "auto", ["ai", "context", "limit"]), "auto",
+			(value, token) => ExecuteAsync("settings_update_ai_providers", new {context = new {limit = Convert.ToString(value) ?? "auto"}}, token),
+			options: ContextLimitOptions);
+		AddField(context, "contextCompaction", new("自动压缩上下文", "Auto-compact context"),
+			new("对话接近上限时，用当前模型把较早的内容整理成摘要，保留约定与事实；清空聊天记录会一并清除摘要。", "When the conversation nears the limit, older turns are summarized by the current model. Clearing chat history also clears the summary."),
+			SettingsEditorKind.Boolean,
+			snapshot => SettingsSnapshotReader.Boolean(snapshot, true, "ai", "context", "compaction"), true,
+			(value, token) => ExecuteAsync("settings_update_ai_providers", new {context = new {compaction = Convert.ToBoolean(value)}}, token));
+
+		SettingsSectionViewModel image = AddSection(new("图像生成", "Image generation"));
+		AddField(image, "imageStatus", new("状态", "Status"), new("配置完成后，可以在对话中让 Nori 画图；每次生成前都会请求确认。", "Once configured, ask Nori to draw in chat; each generation asks for confirmation first."), SettingsEditorKind.Multiline,
+			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "ai", "image", "configured")
+				? Text("已启用：对话中可以让 Nori 生成图片。", "Enabled: Nori can generate images in chat.")
+				: Text("未启用：请填写图像模型；地址和密钥留空时沿用同协议的对话服务。", "Disabled: enter an image model. Empty URL/key reuse the chat provider when the protocol matches."),
+			string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
+		AddField(image, "imageProvider", new("协议", "Protocol"), new("OpenAI 兼容服务使用 /images/generations；Google 支持 Gemini 图像模型与 Imagen。", "OpenAI-compatible services use /images/generations; Google supports Gemini image models and Imagen."), SettingsEditorKind.Choice,
+			snapshot => FirstString(snapshot, "openai", ["ai", "image", "provider"]), "openai",
+			(value, token) => ExecuteAsync("settings_update_ai_providers", new {image = new {provider = Convert.ToString(value) ?? "openai"}}, token),
+			options: ImageProviderOptions);
+		AddField(image, "imageBaseUrl", new("接口地址", "Base URL"), new("留空时沿用对话服务地址 (仅同一协议)。", "Leave empty to reuse the chat provider URL (same protocol only)."), SettingsEditorKind.Text,
+			snapshot => FirstString(snapshot, string.Empty, ["ai", "image", "baseUrl"]), string.Empty,
+			(value, token) => ExecuteAsync("settings_update_ai_providers", new {image = new {baseUrl = Convert.ToString(value)?.Trim() ?? string.Empty}}, token));
+		AddField(image, "imageApiKey", new("API 密钥", "API key"), new("留空时沿用对话服务密钥 (仅同一协议)；保存后输入框自动清空。", "Leave empty to reuse the chat key (same protocol only). The input clears after saving."), SettingsEditorKind.Password,
+			snapshot => SettingsSnapshotReader.SecretConfigured(snapshot, "ai", "image", "hasApiKey"), string.Empty,
+			(value, token) => ExecuteAsync("settings_update_ai_providers", new {image = new {apiKey = Convert.ToString(value)?.Trim() ?? string.Empty}}, token), secret: true);
+		AddField(image, "imageModel", new("图像模型", "Image model"), new("例如 gpt-image-1、dall-e-3、gemini-2.5-flash-image、imagen-4.0-generate-001。", "For example gpt-image-1, dall-e-3, gemini-2.5-flash-image or imagen-4.0-generate-001."), SettingsEditorKind.Text,
+			snapshot => FirstString(snapshot, string.Empty, ["ai", "image", "model"]), string.Empty,
+			(value, token) => ExecuteAsync("settings_update_ai_providers", new {image = new {model = Convert.ToString(value)?.Trim() ?? string.Empty}}, token));
+		AddField(image, "imageSize", new("默认尺寸", "Default size"), new("请求未指定比例时使用。", "Used when the request does not specify an aspect ratio."), SettingsEditorKind.Choice,
+			snapshot => FirstString(snapshot, "auto", ["ai", "image", "size"]), "auto",
+			(value, token) => ExecuteAsync("settings_update_ai_providers", new {image = new {size = Convert.ToString(value) ?? "auto"}}, token),
+			options: ImageSizeOptions);
 
 		SettingsSectionViewModel embedding = AddSection(new("向量服务", "Embedding provider"));
 		_embeddingModel = AddField(embedding, "embeddingModel", new("Embedding 模型", "Embedding model"), new("用于记忆和知识库检索。", "Used for memory and knowledge retrieval."), SettingsEditorKind.Text,
@@ -89,7 +184,109 @@ public sealed class AiSettingsPage : SettingsPageBase
 	{
 		base.ApplySnapshot(snapshot);
 		UpdateModelOptions();
+		EnsureCurrentOption(_contextLimit, ContextLimitOptions);
+		_ = RefreshModelInfoAsync(snapshot);
 	}
+
+	/// <summary>配置里的自定义值不在预设选项中时补一项，避免选择框显示为空。</summary>
+	private static void EnsureCurrentOption(SettingsFieldViewModel field, IReadOnlyList<SettingsOption> presets)
+	{
+		string current = field.Selected;
+		if (current.Length == 0 || presets.Any(option => option.Value == current))
+		{
+			if (field.Options.Count != presets.Count) field.SetOptions(presets);
+			return;
+		}
+		string label = Nori.Core.Agent.ContextWindowPlanner.TryParseTokens(current, out int tokens)
+			? FormatTokens(tokens)
+			: current;
+		field.SetOptions(presets.Append(new SettingsOption(current, new(label, label))));
+	}
+
+	/// <summary>模型、协议、地址或上下文设置变化后重新查询 models.dev 能力信息。</summary>
+	private async Task RefreshModelInfoAsync(JsonElement snapshot)
+	{
+		string provider = FirstString(snapshot, "openai", ["ai", "chat", "provider"], ["ai", "provider"]);
+		string baseUrl = FirstString(snapshot, string.Empty, ["ai", "chat", "baseUrl"], ["ai", "baseUrl"]);
+		string model = FirstString(snapshot, string.Empty, ["ai", "chat", "model"], ["ai", "model"]);
+		string limit = FirstString(snapshot, "auto", ["ai", "context", "limit"]);
+		string key = string.Join("|", provider, baseUrl, model, limit, SettingsLocalization.IsEnglish ? "en" : "zh");
+		if (key == _modelInfoKey) return;
+		_modelInfoKey = key;
+		int request = ++_modelInfoRequest;
+		if (model.Length == 0)
+		{
+			_modelInfo.Text = string.Empty;
+			_modelInfo.IsVisible = false;
+			return;
+		}
+		try
+		{
+			JsonElement info = await ExecuteAsync("llm_model_info", new {provider, baseUrl, model}, LifetimeToken).ConfigureAwait(true);
+			if (request != _modelInfoRequest) return;
+			_modelInfo.Text = DescribeModel(info);
+			_modelInfo.IsVisible = _modelInfo.Text.Length > 0;
+		}
+		catch (OperationCanceledException) { }
+		catch (Exception)
+		{
+			// 模型信息只是提示，查询失败不打扰用户；下次快照变化时重试。
+			if (request == _modelInfoRequest) _modelInfoKey = "";
+		}
+	}
+
+	/// <summary>把 llm_model_info 结果整理成一段可读说明。</summary>
+	internal static string DescribeModel(JsonElement info)
+	{
+		if (info.ValueKind != JsonValueKind.Object) return string.Empty;
+		List<string> lines = [];
+		bool found = info.TryGetProperty("found", out JsonElement foundElement) && foundElement.ValueKind == JsonValueKind.True;
+		if (found)
+		{
+			int window = Int(info, "inputLimit") is > 0 and var input ? input : Int(info, "contextWindow");
+			List<string> facts = [];
+			if (window > 0) facts.Add(Text($"上下文窗口 {FormatTokens(window)}", $"Context {FormatTokens(window)}"));
+			if (Int(info, "outputLimit") is > 0 and var output) facts.Add(Text($"最大输出 {FormatTokens(output)}", $"Max output {FormatTokens(output)}"));
+			if (Bool(info, "imageInput")) facts.Add(Text("支持识图", "Vision"));
+			if (Bool(info, "toolCall")) facts.Add(Text("支持工具", "Tools"));
+			lines.Add(string.Join(" · ", facts));
+			if (Bool(info, "reasoning"))
+			{
+				List<string> efforts = info.TryGetProperty("reasoningEfforts", out JsonElement values) && values.ValueKind == JsonValueKind.Array
+					? values.EnumerateArray().Where(value => value.ValueKind == JsonValueKind.String).Select(value => value.GetString()!).ToList()
+					: [];
+				string detail = efforts.Count > 0
+					? string.Join(" / ", efforts)
+					: Bool(info, "reasoningBudget") ? Text("按预算", "token budget") : Text("仅开关", "on/off only");
+				lines.Add(Text($"思考模型：{detail}", $"Reasoning model: {detail}"));
+			}
+			else
+			{
+				lines.Add(Text("非思考模型：思考强度设置不会生效。", "Not a reasoning model: the reasoning setting has no effect."));
+			}
+		}
+		else
+		{
+			lines.Add(Text("models.dev 中没有找到该模型，按保守默认值 (32K) 处理上下文。", "Model not found on models.dev; a conservative 32K context is assumed."));
+		}
+		if (info.TryGetProperty("context", out JsonElement context) && context.ValueKind == JsonValueKind.Object && Int(context, "limit") is > 0 and var limit)
+			lines.Add(Text($"本机每轮上下文上限：{FormatTokens(limit)}", $"Per-turn context limit: {FormatTokens(limit)}"));
+		return string.Join("\n", lines.Where(line => line.Length > 0));
+	}
+
+	private static int Int(JsonElement element, string name) =>
+		element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number) ? number : 0;
+
+	private static bool Bool(JsonElement element, string name) =>
+		element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.True;
+
+	/// <summary>token 数的简写 (128000 → 128K，1048576 → 1M)。</summary>
+	internal static string FormatTokens(int tokens) => tokens switch
+	{
+		>= 1_000_000 => (tokens / 1_000_000.0).ToString("0.#", CultureInfo.InvariantCulture) + "M",
+		>= 1_000 => Math.Round(tokens / 1000.0).ToString("0", CultureInfo.InvariantCulture) + "K",
+		_ => tokens.ToString(CultureInfo.InvariantCulture),
+	};
 
 	private void UpdateModelOptions()
 	{

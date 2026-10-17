@@ -9,7 +9,7 @@ namespace Nori.Core.Chat.Catalog;
 /// 网络被禁用 (安全模式) 时只读缓存；下载失败沿用旧缓存。任何失败都不影响对话本身 ——
 /// 查不到能力时调用方回退到保守默认值。
 /// </summary>
-public sealed class ModelsDevCatalog : IModelCapabilityProvider
+public sealed class ModelsDevCatalog : IModelCapabilityProvider, IAsyncDisposable
 {
 	/// <summary>目录地址。</summary>
 	public static readonly Uri SourceUri = new("https://models.dev/api.json");
@@ -26,9 +26,13 @@ public sealed class ModelsDevCatalog : IModelCapabilityProvider
 	private readonly Action<string>? _warn;
 	private readonly TimeProvider _time;
 	private readonly Lock _gate = new();
+	private readonly CancellationTokenSource _lifetime = new();
 	private ModelsDevIndex? _index;
-	private bool _cacheLoaded;
+	private Task? _cacheLoad;
+	private Task? _warmup;
 	private Task? _refresh;
+	private Task? _disposeTask;
+	private bool _disposed;
 	private DateTimeOffset _lastFailure = DateTimeOffset.MinValue;
 
 	/// <summary>创建目录。</summary>
@@ -86,8 +90,9 @@ public sealed class ModelsDevCatalog : IModelCapabilityProvider
 		{
 			await refresh.WaitAsync(FirstLoadWait, cancellationToken).ConfigureAwait(false);
 		}
-		catch (TimeoutException)
+		catch (Exception) when (!cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
 		{
+			// 超时或下载失败都回退为未知能力；刷新任务已记录失败原因。
 			return null;
 		}
 		lock (_gate) return _index;
@@ -98,43 +103,59 @@ public sealed class ModelsDevCatalog : IModelCapabilityProvider
 	{
 		if (!_networkEnabled()) throw new InvalidOperationException("安全模式已禁用联网，无法更新模型目录");
 		await EnsureCacheLoadedAsync(cancellationToken).ConfigureAwait(false);
-		await DownloadAsync(cancellationToken).ConfigureAwait(false);
+		await StartRefresh(force: true, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>在后台预热目录，不等待结果。</summary>
-	public void Warmup() => _ = WarmupCoreAsync();
+	public void Warmup()
+	{
+		lock (_gate)
+		{
+			ObjectDisposedException.ThrowIf(_disposed, this);
+			if (_warmup is not {IsCompleted: false}) _warmup = Task.Run(WarmupCoreAsync);
+		}
+	}
 
 	private async Task WarmupCoreAsync()
 	{
 		try
 		{
-			await GetIndexAsync().ConfigureAwait(false);
+			await GetIndexAsync(_lifetime.Token).ConfigureAwait(false);
 		}
+		catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+		catch (ObjectDisposedException) when (_disposed) { }
 		catch (Exception exception)
 		{
 			_warn?.Invoke($"模型目录预热失败: {exception.GetType().Name}");
 		}
 	}
 
-	private Task StartRefresh(bool force)
+	private Task StartRefresh(bool force, CancellationToken cancellationToken = default)
 	{
 		lock (_gate)
 		{
+			ObjectDisposedException.ThrowIf(_disposed, this);
 			if (_refresh is {IsCompleted: false} running) return running;
 			// 失败后 10 分钟内不重试，避免离线时每条消息都去碰一次网络。
 			if (!force && _time.GetUtcNow() - _lastFailure < TimeSpan.FromMinutes(10)) return Task.CompletedTask;
 			_refresh = Task.Run(async () =>
 			{
+				using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, cancellationToken);
 				try
 				{
-					await DownloadAsync(CancellationToken.None).ConfigureAwait(false);
+					await DownloadAsync(linked.Token).ConfigureAwait(false);
 				}
+				catch (OperationCanceledException) when (linked.IsCancellationRequested) { throw; }
 				catch (Exception exception)
 				{
 					lock (_gate) _lastFailure = _time.GetUtcNow();
 					_warn?.Invoke($"模型目录更新失败: {exception.GetType().Name}: {SanitizedMessage(exception)}");
+					throw;
 				}
 			});
+			// 过期缓存的调用方不等待刷新；错误已记录，仍需观察无人等待的异常。
+			_ = _refresh.ContinueWith(task => { _ = task.Exception; },
+				CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 			return _refresh;
 		}
 	}
@@ -151,12 +172,18 @@ public sealed class ModelsDevCatalog : IModelCapabilityProvider
 		await WriteCacheAsync(index, cancellationToken).ConfigureAwait(false);
 	}
 
-	private async Task EnsureCacheLoadedAsync(CancellationToken cancellationToken)
+	private Task EnsureCacheLoadedAsync(CancellationToken cancellationToken)
 	{
 		lock (_gate)
 		{
-			if (_cacheLoaded) return;
+			ObjectDisposedException.ThrowIf(_disposed, this);
+			_cacheLoad ??= LoadCacheAsync(_lifetime.Token);
+			return _cacheLoad.WaitAsync(cancellationToken);
 		}
+	}
+
+	private async Task LoadCacheAsync(CancellationToken cancellationToken)
+	{
 		ModelsDevIndex? loaded = null;
 		try
 		{
@@ -171,12 +198,7 @@ public sealed class ModelsDevCatalog : IModelCapabilityProvider
 			// 缓存损坏按没有缓存处理，下一次下载会覆盖它。
 			_warn?.Invoke($"模型目录缓存无法读取: {exception.GetType().Name}");
 		}
-		lock (_gate)
-		{
-			if (_cacheLoaded) return;
-			_cacheLoaded = true;
-			_index ??= loaded;
-		}
+		lock (_gate) _index ??= loaded;
 	}
 
 	private async Task WriteCacheAsync(ModelsDevIndex index, CancellationToken cancellationToken)
@@ -194,6 +216,28 @@ public sealed class ModelsDevCatalog : IModelCapabilityProvider
 			// 写不了缓存只影响下次启动要重新下载，内存中的目录仍然可用。
 			_warn?.Invoke($"模型目录缓存写入失败: {exception.GetType().Name}");
 		}
+	}
+
+	/// <summary>停止接收新任务，取消并等待读缓存、预热和刷新全部结束后再释放令牌。</summary>
+	public ValueTask DisposeAsync()
+	{
+		lock (_gate)
+		{
+			if (_disposeTask is null)
+			{
+				_disposed = true;
+				_disposeTask = DisposeCoreAsync([_cacheLoad ?? Task.CompletedTask, _warmup ?? Task.CompletedTask, _refresh ?? Task.CompletedTask]);
+			}
+			return new ValueTask(_disposeTask);
+		}
+	}
+
+	private async Task DisposeCoreAsync(Task[] pending)
+	{
+		await _lifetime.CancelAsync().ConfigureAwait(false);
+		try { await Task.WhenAll(pending).ConfigureAwait(false); }
+		catch (Exception) { /* 下载失败已由刷新调用方或后台日志处理；此处只确保文件句柄已释放。 */ }
+		finally { _lifetime.Dispose(); }
 	}
 
 	private static string SanitizedMessage(Exception exception) =>

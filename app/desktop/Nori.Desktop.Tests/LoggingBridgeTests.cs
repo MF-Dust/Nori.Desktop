@@ -44,6 +44,7 @@ public partial class BridgeCommandsTests
 		Assert.True(telemetry.Disposed);
 		Assert.True(fixture._services.Logger.GetStatus().Stopped);
 		fixture._databaseReleasedByServices = true;
+		await Assert.ThrowsAsync<ObjectDisposedException>(() => fixture._services.ModelCatalog.GetIndexAsync());
 	}
 
 	[Fact]

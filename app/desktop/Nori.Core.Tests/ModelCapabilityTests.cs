@@ -8,6 +8,7 @@ using ChatMessage = Nori.Core.Chat.ChatMessage;
 namespace Nori.Core.Tests;
 
 /// <summary>models.dev 目录解析与匹配、思考档位换算、上下文窗口与压缩切分。</summary>
+[Collection("HttpClient.DefaultProxy")]
 public sealed class ModelCapabilityTests
 {
 	private const string Source = """
@@ -113,16 +114,68 @@ public sealed class ModelCapabilityTests
 				return new HttpResponseMessage(System.Net.HttpStatusCode.OK) {Content = new StringContent(Source)};
 			}));
 			UrlResolution();
-			ModelsDevCatalog online = new(http, cache, () => true);
+			await using ModelsDevCatalog online = new(http, cache, () => true);
 			Assert.Equal(200000, (await online.FindAsync(LlmProvider.Anthropic, null, "claude-sonnet-4-5"))?.ContextWindow);
 			Assert.True(File.Exists(cache));
 
-			ModelsDevCatalog offline = new(http, cache, () => false);
+			await using ModelsDevCatalog offline = new(http, cache, () => false);
 			Assert.Equal(272000, (await offline.FindAsync(LlmProvider.OpenAi, null, "gpt-5"))?.EffectiveInputWindow);
 			Assert.Equal(1, requests);
 		}
 		finally
 		{
+			Nori.Core.Network.UrlAccessPolicy.ResolveHostForTests = null;
+			if (Directory.Exists(directory)) Directory.Delete(directory, true);
+		}
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task 释放目录会取消并等待后台或手动刷新且不再接受新任务(bool manual)
+	{
+		string directory = Directory.CreateTempSubdirectory("nori-catalog-dispose-").FullName;
+		TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		List<string> warnings = [];
+		using HttpClient http = new(new HttpTestHandler(async (_, token) =>
+		{
+			using CancellationTokenRegistration registration = token.Register(() => cancelled.TrySetResult());
+			started.TrySetResult();
+			// 故意等到显式放行才响应取消，验证释放不只是发取消信号。
+			await release.Task;
+			token.ThrowIfCancellationRequested();
+			return new HttpResponseMessage(System.Net.HttpStatusCode.OK) {Content = new StringContent(Source)};
+		}));
+		ModelsDevCatalog catalog = new(http, Path.Combine(directory, "models-dev.json"), () => true, warnings.Add);
+		Task? refresh = null;
+		try
+		{
+			UrlResolution();
+			if (manual) refresh = catalog.RefreshAsync();
+			else catalog.Warmup();
+			await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+			Task disposing = catalog.DisposeAsync().AsTask();
+			await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+			Assert.False(disposing.IsCompleted);
+			release.TrySetResult();
+			await disposing.WaitAsync(TimeSpan.FromSeconds(5));
+			if (refresh is not null) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => refresh);
+			await catalog.DisposeAsync();
+			Assert.Empty(warnings);
+			Assert.Throws<ObjectDisposedException>(catalog.Warmup);
+			await Assert.ThrowsAsync<ObjectDisposedException>(() => catalog.GetIndexAsync());
+			await Assert.ThrowsAsync<ObjectDisposedException>(() => catalog.RefreshAsync());
+
+			Directory.Delete(directory, true);
+			Assert.False(Directory.Exists(directory));
+		}
+		finally
+		{
+			release.TrySetResult();
+			await catalog.DisposeAsync();
 			Nori.Core.Network.UrlAccessPolicy.ResolveHostForTests = null;
 			if (Directory.Exists(directory)) Directory.Delete(directory, true);
 		}

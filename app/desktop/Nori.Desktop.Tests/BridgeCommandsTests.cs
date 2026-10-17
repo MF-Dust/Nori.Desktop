@@ -342,6 +342,10 @@ public partial class BridgeCommandsTests : IDisposable
 			Sandbox = _sandbox,
 			Update = new Nori.Core.Update.UpdateService(new AppStoragePaths(_tempDir), "win-x64", "0.1.0", safeMode, httpClient: _http),
 		};
+		// 普通桥接测试使用新鲜的空目录缓存，不触发真实 models.dev 联网预热。
+		string catalogCache = _services.Paths.ModelCatalogCachePath;
+		Directory.CreateDirectory(Path.GetDirectoryName(catalogCache)!);
+		File.WriteAllText(catalogCache, Nori.Core.Chat.Catalog.ModelsDevIndex.ParseSource("""{"test":{"models":{}}}""", DateTimeOffset.UtcNow).ToCacheJson());
 		_runtime = new AppRuntime(_services);
 		_services.Runtime = _runtime;
 		_services.Commands = new BridgeCommands(_services, new SynchronousUiDispatcher());
@@ -351,6 +355,7 @@ public partial class BridgeCommandsTests : IDisposable
 	{
 		_services.Update?.Dispose();
 		_runtime.DisposeAsync().GetAwaiter().GetResult();
+		_services.ModelCatalog.DisposeAsync().AsTask().GetAwaiter().GetResult();
 		if (!_databaseReleasedByServices) _database.Dispose();
 		_http.Dispose();
 		_services.Logger.Dispose();

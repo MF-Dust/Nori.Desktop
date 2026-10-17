@@ -249,6 +249,8 @@ public sealed class AppServices : IAsyncDisposable
 				return ValueTask.CompletedTask;
 			}, TimeSpan.FromSeconds(1)),
 			DisposeStep(() => Mcp.DisposeAsync(), TimeSpan.FromSeconds(4))).ConfigureAwait(false);
+		// 目录任务仍可能持有缓存文件；必须等它结束，才能释放 HTTP 和存储资源。
+		if (_modelCatalog is not null) await _modelCatalog.DisposeAsync().ConfigureAwait(false);
 		await DisposeStep(() =>
 		{
 			if (_publicHttp is not null && !ReferenceEquals(_publicHttp, Http)) _publicHttp.Dispose();

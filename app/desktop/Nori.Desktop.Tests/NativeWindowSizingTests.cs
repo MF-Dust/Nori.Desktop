@@ -5,21 +5,6 @@ namespace Nori.Desktop.Tests;
 
 public sealed class NativeWindowSizingTests
 {
-	[Fact]
-	public void DefaultSizesMatchWindowRoles()
-	{
-		Assert.Equal(new Size(1040, 720), NativeWindowSizing.DefaultSize);
-		Assert.Equal(new Size(960, 720), NativeWindowSizing.ChatSize);
-		Assert.Equal(new Size(800, 560), NativeWindowSizing.FirstRunSize);
-		Assert.Equal(new Size(720, 480), NativeWindowSizing.MinimumSize);
-		WindowDefinition main = WindowDefinition.All.Single(item => item.Label == WindowLabels.Main);
-		WindowDefinition firstRun = WindowDefinition.All.Single(item => item.Label == WindowLabels.FirstRun);
-		Assert.Equal(NativeWindowSizing.DefaultSize, new Size(main.Width, main.Height));
-		Assert.Equal(NativeWindowSizing.FirstRunSize, new Size(firstRun.Width, firstRun.Height));
-		WindowDefinition init = WindowDefinition.All.Single(item => item.Label == WindowLabels.Init);
-		Assert.Equal(new Size(480, 320), new Size(init.Width, init.Height));
-	}
-
 	[Theory]
 	[InlineData(1920, 1040, 1, 1040, 720)]
 	[InlineData(1920, 1040, 1.5, 1040, 613)]

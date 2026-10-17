@@ -86,6 +86,7 @@ public sealed class CloudSaveServiceTests : IDisposable
 		const string Secret = "sk-should-never-leave-this-machine";
 		_config.Set("llm_api_key", new ConfigValue.Text(Secret));
 		_config.Set("tts_api_key", new ConfigValue.Text(Secret));
+		_config.Set("l2d_scale_secret_api_key", new ConfigValue.Text(Secret));
 		_config.Set("language", new ConfigValue.Text("zh-CN"));
 
 		CloudSaveBuild build = _service.Build();
@@ -94,6 +95,7 @@ public sealed class CloudSaveServiceTests : IDisposable
 		Assert.DoesNotContain(Secret, wire, StringComparison.Ordinal);
 		Assert.DoesNotContain("llm_api_key", wire, StringComparison.Ordinal);
 		Assert.DoesNotContain("tts_api_key", wire, StringComparison.Ordinal);
+		Assert.DoesNotContain("l2d_scale_secret_api_key", wire, StringComparison.Ordinal);
 		Assert.Contains("zh-CN", wire, StringComparison.Ordinal);
 	}
 
@@ -197,6 +199,7 @@ public sealed class CloudSaveServiceTests : IDisposable
 				["permission_gear"] = "open",
 				["automation_allow_keyboard"] = "true",
 				["llm_api_key"] = "sk-injected",
+				["l2d_scale_secret_api_key"] = "0.5",
 			},
 		};
 
@@ -209,7 +212,8 @@ public sealed class CloudSaveServiceTests : IDisposable
 		Assert.Null(_config.Get("permission_gear"));
 		Assert.Null(_config.Get("automation_allow_keyboard"));
 		Assert.Null(_config.Get("llm_api_key"));
-		Assert.Equal(4, result.Skipped.Count);
+		Assert.Null(_config.Get("l2d_scale_secret_api_key"));
+		Assert.Equal(5, result.Skipped.Count);
 	}
 
 	[Fact]

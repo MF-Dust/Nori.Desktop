@@ -315,7 +315,6 @@ public class ConfigStoreTests : IDisposable
 		ConfigStore other = new(_database, new WrongKeyStore());
 		string readBack = other.GetStringOr("llm_api_key", "");
 		Assert.Equal("", readBack);
-		Assert.NotEqual(plainKey, readBack);
 		SecretIssue? issue = other.GetSecretIssue("llm_api_key");
 		Assert.Equal(SecretIssueCategory.CorruptCiphertext, issue?.Category);
 		Assert.StartsWith(SecretProtector.Prefix, cipher, StringComparison.Ordinal);

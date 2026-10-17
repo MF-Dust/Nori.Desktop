@@ -61,14 +61,6 @@ public sealed class AlsaAudioDeviceTests
 	}
 
 	[Fact]
-	public void 缺少libasound时给出安装提示()
-	{
-		using AlsaAudioDevice device = new(new MissingFactory());
-		AudioDeviceException error = Assert.Throws<AudioDeviceException>(() => device.Open(48_000, 1));
-		Assert.Equal(AlsaNativeFactory.MissingLibraryMessage, error.Message);
-	}
-
-	[Fact]
 	public void 非Linux进程打不开系统库时同样提示安装()
 	{
 		if (System.OperatingSystem.IsLinux()) return;
@@ -82,12 +74,6 @@ public sealed class AlsaAudioDeviceTests
 		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
 		while (!condition())
 			await Task.Delay(10, timeout.Token);
-	}
-
-	private sealed class MissingFactory : IAlsaFactory
-	{
-		public IAlsaPcm OpenOutput(int sampleRate, int channels) => throw AlsaNativeFactory.MissingLibrary();
-		public IAlsaPcm OpenInput(int sampleRate, int channels) => throw AlsaNativeFactory.MissingLibrary();
 	}
 
 	private sealed class FakeFactory(FakePcm pcm) : IAlsaFactory

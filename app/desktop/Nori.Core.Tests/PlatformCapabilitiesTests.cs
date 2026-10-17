@@ -91,12 +91,6 @@ public class PlatformCapabilitiesTests
 	}
 
 	[Fact]
-	public void CurrentPlatformExposesReducedMotionPreference()
-	{
-		_ = PlatformServices.Current.PrefersReducedMotion;
-	}
-
-	[Fact]
 	public void Windows能力齐全()
 	{
 		if (!OperatingSystem.IsWindows()) return;

@@ -135,7 +135,14 @@ public sealed class FirstRunWizardTests
 	[Fact]
 	public async Task 提交失败可以原地重试()
 	{
-		FirstRunWizard wizard = Fails("写配置失败");
+		int calls = 0;
+		FirstRunWizard wizard = new(_ =>
+		{
+			calls++;
+			return calls == 1
+				? Task.FromException(new InvalidOperationException("写配置失败"))
+				: Task.CompletedTask;
+		});
 		for (int step = 0; step < FirstRunWizard.Order.Count - 1; step++) wizard.Next();
 
 		Assert.False(await wizard.FinishAsync());
@@ -145,8 +152,12 @@ public sealed class FirstRunWizardTests
 		Assert.Equal("写配置失败", failed.FinishError);
 		Assert.True(failed.IsLast);
 
-		// 再按一次仍然走得到回调（这里仍会失败，但不是被状态机挡住的）。
-		Assert.False(await wizard.FinishAsync());
+		Assert.True(await wizard.FinishAsync());
+		Assert.Equal(2, calls);
+		WizardState retried = wizard.Snapshot();
+		Assert.Equal(WizardFinishState.Idle, retried.FinishState);
+		Assert.Empty(retried.FinishError);
+		Assert.True(retried.IsLast);
 	}
 
 	/// <summary>失败之后回头改东西，就不该还挂着上一次的错误。</summary>

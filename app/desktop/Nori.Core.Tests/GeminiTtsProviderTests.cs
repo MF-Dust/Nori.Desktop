@@ -5,6 +5,7 @@ using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Tests.TestSupport;
 using Nori.Core.Voice;
+using Nori.Core.Voice.Audio;
 
 namespace Nori.Core.Tests;
 
@@ -41,7 +42,10 @@ public class GeminiTtsProviderTests : IDisposable
         Assert.Equal(new Uri("https://relay.example/v1beta/models/gemini-3.1-flash-tts-preview:generateContent"), handler.LastUri);
         Assert.Equal("secret", apiKey);
         Assert.Equal("audio/wav", audio.Mime);
-        Assert.Equal("RIFF", Encoding.ASCII.GetString(audio.Bytes, 0, 4));
+		PcmAudio decoded = WaveDecoder.Decode(audio.Bytes);
+		Assert.Equal(24000, decoded.SampleRate);
+		Assert.Equal(1, decoded.Channels);
+		Assert.Equal(new[] {1f / 32768, 2f / 32768}, decoded.Samples);
         JsonNode body = JsonNode.Parse(handler.LastBody!)!;
         Assert.Equal("AUDIO", body["generationConfig"]?["responseModalities"]?[0]?.GetValue<string>());
         Assert.Equal("Kore", body["generationConfig"]?["speechConfig"]?["voiceConfig"]?["prebuiltVoiceConfig"]?["voiceName"]?.GetValue<string>());

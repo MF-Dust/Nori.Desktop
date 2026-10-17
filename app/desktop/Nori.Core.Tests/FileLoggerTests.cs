@@ -215,7 +215,10 @@ public class FileLoggerTests : IDisposable
 		FileInfo[] files = new DirectoryInfo(_directory).GetFiles("nori_*.jsonl");
 		Assert.True(files.Length > 1);
 		Assert.True(files.Sum(file => file.Length) <= 8192);
-		Assert.All(ReadLines(_directory), line => Assert.NotNull(JsonDocument.Parse(line)));
+		foreach (string line in ReadLines(_directory))
+		{
+			using JsonDocument document = JsonDocument.Parse(line);
+		}
 	}
 
 	[Theory]

@@ -126,37 +126,83 @@ public sealed class PluginManagementTests
 	public async Task 卸载删除安装目录默认保留数据而deleteData只删精确插件目录()
 	{
 		string root = CreateTemp();
+		PluginManager? manager = null;
 		try
 		{
-			PluginManager manager = CreateManager(root);
+			manager = CreateManager(root);
 			await manager.InstallAsync(CreateTestPackage(root, "keep.plugin", "1.0.0"));
 			await manager.EnableAsync("keep.plugin");
 			await manager.DisableAsync("keep.plugin");
+			string keepInstall = Path.Combine(root, "plugins", "keep.plugin");
 			string keepData = Path.Combine(root, "plugin-data", "keep.plugin");
-			Assert.True(Directory.Exists(keepData));
+			Directory.CreateDirectory(keepData);
+			string keepMarker = Path.Combine(keepData, "keep.txt");
+			File.WriteAllText(keepMarker, "keep");
 			PluginUninstallResult keepResult = await manager.UninstallAsync("keep.plugin");
-			if (!keepResult.RequiresRestart)
+			Assert.True(keepResult.Success);
+			if (keepResult.RequiresRestart)
 			{
-				Assert.False(Directory.Exists(Path.Combine(root, "plugins", "keep.plugin")));
-				Assert.True(Directory.Exists(keepData));
+				PluginInfo pending = Assert.IsType<PluginInfo>(keepResult.Plugin);
+				Assert.Equal(PluginLifecycleState.PendingRestart, pending.State);
+				Assert.Equal(PluginErrorCodes.UninstallPendingRestart, pending.ErrorCode);
+				Assert.True(pending.RequiresRestart);
+				Assert.True(Directory.Exists(keepInstall));
 			}
+			else
+			{
+				Assert.Null(keepResult.Plugin);
+				Assert.False(Directory.Exists(keepInstall));
+			}
+			Assert.True(File.Exists(keepMarker));
+			await manager.DisposeAsync();
+			manager = null;
+			manager = CreateManager(root);
+			Assert.Empty(manager.Discover());
+			Assert.False(Directory.Exists(keepInstall));
+			Assert.True(File.Exists(keepMarker));
 
 			await manager.InstallAsync(CreateTestPackage(root, "delete.plugin", "1.0.0"));
 			await manager.EnableAsync("delete.plugin");
 			await manager.DisableAsync("delete.plugin");
+			string deleteInstall = Path.Combine(root, "plugins", "delete.plugin");
 			string deleteData = Path.Combine(root, "plugin-data", "delete.plugin");
 			string otherData = Path.Combine(root, "plugin-data", "other.plugin");
+			Directory.CreateDirectory(deleteData);
 			Directory.CreateDirectory(otherData);
-			File.WriteAllText(Path.Combine(otherData, "keep.txt"), "keep");
+			File.WriteAllText(Path.Combine(deleteData, "remove.txt"), "remove");
+			string otherMarker = Path.Combine(otherData, "keep.txt");
+			File.WriteAllText(otherMarker, "keep");
 			PluginUninstallResult deleteResult = await manager.UninstallAsync("delete.plugin", deleteData: true);
-			if (!deleteResult.RequiresRestart)
+			Assert.True(deleteResult.Success);
+			if (deleteResult.RequiresRestart)
 			{
-				Assert.False(Directory.Exists(deleteData));
-				Assert.True(File.Exists(Path.Combine(otherData, "keep.txt")));
+				PluginInfo pending = Assert.IsType<PluginInfo>(deleteResult.Plugin);
+				Assert.Equal(PluginLifecycleState.PendingRestart, pending.State);
+				Assert.Equal(PluginErrorCodes.UninstallPendingRestart, pending.ErrorCode);
+				Assert.True(pending.RequiresRestart);
+				Assert.True(Directory.Exists(deleteInstall));
+				Assert.True(Directory.Exists(deleteData));
 			}
+			else
+			{
+				Assert.Null(deleteResult.Plugin);
+				Assert.False(Directory.Exists(deleteInstall));
+				Assert.False(Directory.Exists(deleteData));
+			}
+			Assert.True(File.Exists(otherMarker));
 			await manager.DisposeAsync();
+			manager = null;
+			manager = CreateManager(root);
+			Assert.Empty(manager.Discover());
+			Assert.False(Directory.Exists(deleteInstall));
+			Assert.False(Directory.Exists(deleteData));
+			Assert.True(File.Exists(otherMarker));
 		}
-		finally { DeleteDirectory(root); }
+		finally
+		{
+			if (manager is not null) await manager.DisposeAsync();
+			DeleteDirectory(root);
+		}
 	}
 
 	[Fact]

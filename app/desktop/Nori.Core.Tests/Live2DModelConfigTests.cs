@@ -12,8 +12,8 @@ public class Live2DModelConfigTests
 		Assert.Equal(
 			["l2d_scale_arg-nori", "l2d_scale", "l2d_opacity_arg-nori", "l2d_opacity", "l2d_shadow_arg-nori", "l2d_shadow", "l2d_render_scale_arg-nori", "l2d_render_scale", "l2d_quality_mode_arg-nori", "l2d_quality_mode", "l2d_max_fps_arg-nori", "l2d_max_fps"],
 			keys);
-		Assert.Equal(9, Live2DModelConfig.BehaviorKeys.Count);
-		Assert.Contains("l2d_click_through", Live2DModelConfig.BehaviorKeys);
+		string[] behaviorKeys = ["l2d_auto_blink", "l2d_eye_tracking", "l2d_idle_eye_animation", "l2d_idle_animation", "l2d_expression_enabled", "l2d_lip_sync", "l2d_beat_sync", "l2d_click_interaction", "l2d_click_through"];
+		Assert.Equal(behaviorKeys.Order(StringComparer.Ordinal), Live2DModelConfig.BehaviorKeys.Order(StringComparer.Ordinal));
 		Assert.DoesNotContain("l2d_auto_blink", keys);
 	}
 

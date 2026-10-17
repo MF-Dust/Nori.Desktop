@@ -51,9 +51,9 @@ public sealed class GlRuntimeBoundaryTests
 	}
 
 	[Theory]
-	[InlineData(false, 31, 32)]
-	[InlineData(true, 31, 31)]
-	public void 离屏绘制恢复入口的读写FBO(bool es2, int expectedDraw, int expectedRead)
+	[InlineData(false, 31, 32, 61, 62)]
+	[InlineData(true, 31, 31, 61, 61)]
+	public void 离屏绘制恢复入口读写FBO且下一帧重新捕获(bool es2, int expectedDraw, int expectedRead, int nextDraw, int nextRead)
 	{
 		var gl = new RecordingGlApi { Es2Context = es2 };
 		gl.BindFramebuffer(gl.GL_FRAMEBUFFER, 31);
@@ -71,32 +71,14 @@ public sealed class GlRuntimeBoundaryTests
 		int[] viewport = new int[4];
 		gl.GetIntegerv(gl.GL_VIEWPORT, viewport);
 		Assert.Equal(new[] { 3, 5, 720, 480 }, viewport);
-	}
 
-	[Fact]
-	public void 离屏绘制异常后finally结束且下一帧重新捕获状态()
-	{
-		var gl = new RecordingGlApi();
-		var surface = SurfaceWithHandle(gl, 51);
-		gl.BindFramebuffer(gl.GL_FRAMEBUFFER, 31);
-		gl.BindFramebuffer(0x8CA8, 32);
-		Action draw = () =>
-		{
-			surface.BeginDraw();
-			try { throw new InvalidOperationException("注入回读失败"); }
-			finally { surface.EndDraw(); }
-		};
-		Assert.Throws<InvalidOperationException>(draw);
-		Assert.Equal(31, Read(gl, gl.GL_FRAMEBUFFER_BINDING));
-		Assert.Equal(32, Read(gl, 0x8CAA));
-
-		gl.BindFramebuffer(gl.GL_FRAMEBUFFER, 61);
-		gl.BindFramebuffer(0x8CA8, 62);
+		gl.BindFramebuffer(gl.GL_FRAMEBUFFER, nextDraw);
+		if (!es2) gl.BindFramebuffer(0x8CA8, nextRead);
 		surface.BeginDraw();
-		try { Assert.Equal(51, Read(gl, gl.GL_FRAMEBUFFER_BINDING)); }
-		finally { surface.EndDraw(); }
-		Assert.Equal(61, Read(gl, gl.GL_FRAMEBUFFER_BINDING));
-		Assert.Equal(62, Read(gl, 0x8CAA));
+		Assert.Equal(51, Read(gl, gl.GL_FRAMEBUFFER_BINDING));
+		surface.EndDraw();
+		Assert.Equal(nextDraw, Read(gl, gl.GL_FRAMEBUFFER_BINDING));
+		Assert.Equal(nextRead, Read(gl, 0x8CAA));
 	}
 
 	[Fact]

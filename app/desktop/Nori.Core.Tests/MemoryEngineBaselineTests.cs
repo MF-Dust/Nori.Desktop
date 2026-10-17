@@ -50,7 +50,7 @@ public sealed class MemoryEngineBaselineTests : IDisposable
 	[Fact]
 	public async Task MemoryService_AddAndSearch_兼容旧接口并创建Atom()
 	{
-		MemoryService service = new(new MemoryStore(_database), new StubEmbedding(), _config);
+		await using MemoryService service = new(new MemoryStore(_database), new StubEmbedding(), _config);
 		MemoryItem item = await service.AddAsync("主人喜欢 RPG", "fact", 0.9, "游戏", "agent");
 
 		Assert.Equal("fact", item.Type);
@@ -64,7 +64,7 @@ public sealed class MemoryEngineBaselineTests : IDisposable
 	{
 		MemoryStore store = new(_database);
 		store.AddAggregate("fact", "主人喜欢草莓蛋糕", 0.8, tags: "food");
-		MemoryService service = new(store, new FailingEmbedding(), _config);
+		await using MemoryService service = new(store, new FailingEmbedding(), _config);
 
 		IReadOnlyList<MemoryItem> results = await service.SearchHybridAsync("草莓");
 		Assert.Single(results);
@@ -77,7 +77,7 @@ public sealed class MemoryEngineBaselineTests : IDisposable
 		MemoryStore store = new(_database);
 		store.AddAggregate("fact", "第一条");
 		store.AddAggregate("fact", "第二条");
-		MemoryService service = new(store, new StubEmbedding(), _config);
+		await using MemoryService service = new(store, new StubEmbedding(), _config);
 
 		Assert.Equal(2, await service.ReembedAllAsync());
 		Assert.All(store.GetAll(), item => Assert.NotNull(item.Embedding));
@@ -86,7 +86,7 @@ public sealed class MemoryEngineBaselineTests : IDisposable
 	[Fact]
 	public async Task Embed取消会向上传播()
 	{
-		MemoryService service = new(new MemoryStore(_database), new BlockingEmbedding(), _config);
+		await using MemoryService service = new(new MemoryStore(_database), new BlockingEmbedding(), _config);
 		using CancellationTokenSource cancellation = new();
 		cancellation.Cancel();
 		await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.EmbedAsync("测试", cancellation.Token));
@@ -94,6 +94,7 @@ public sealed class MemoryEngineBaselineTests : IDisposable
 
 	public void Dispose()
 	{
+		_config.Dispose();
 		_database.Dispose();
 		_tempDatabase.Dispose();
 		GC.SuppressFinalize(this);

@@ -30,7 +30,7 @@ public sealed class SkillServiceTests : IDisposable
 		SkillService skills = new(_config, http);
 
 		SkillRecord installed = await WithoutSystemProxy(() =>
-			skills.InstallFromUrlAsync("https://example.com/skill.json"));
+			skills.InstallFromUrlAsync("https://8.8.8.8/skill.json"));
 
 		Assert.Equal("url", installed.Source);
 		Assert.False(installed.Enabled);
@@ -112,7 +112,7 @@ public sealed class SkillServiceTests : IDisposable
 
 		InvalidOperationException error = await WithoutSystemProxy(() =>
 			Assert.ThrowsAsync<InvalidOperationException>(
-				() => skills.InstallFromUrlAsync("https://example.com/empty.skill")));
+				() => skills.InstallFromUrlAsync("https://8.8.8.8/empty.skill")));
 
 		Assert.Equal("远程技能文件内容为空", error.Message);
 		Assert.DoesNotContain(body, error.Message, StringComparison.Ordinal);
@@ -127,7 +127,7 @@ public sealed class SkillServiceTests : IDisposable
 
 		InvalidOperationException error = await WithoutSystemProxy(() =>
 			Assert.ThrowsAsync<InvalidOperationException>(
-				() => skills.InstallFromUrlAsync("https://example.com/large.skill")));
+				() => skills.InstallFromUrlAsync("https://8.8.8.8/large.skill")));
 
 		Assert.Equal("远程文件超过大小上限", error.Message);
 		Assert.DoesNotContain("xxxxx", error.Message, StringComparison.Ordinal);
@@ -143,7 +143,7 @@ public sealed class SkillServiceTests : IDisposable
 
 		InvalidOperationException error = await WithoutSystemProxy(() =>
 			Assert.ThrowsAsync<InvalidOperationException>(
-				() => skills.InstallFromUrlAsync("https://example.com/secret.skill")));
+				() => skills.InstallFromUrlAsync("https://8.8.8.8/secret.skill")));
 
 		Assert.Equal("远程技能文件包含敏感信息，已拒绝", error.Message);
 		Assert.DoesNotContain(secret, error.Message, StringComparison.Ordinal);
@@ -159,7 +159,7 @@ public sealed class SkillServiceTests : IDisposable
 
 		InvalidOperationException error = await WithoutSystemProxy(() =>
 			Assert.ThrowsAsync<InvalidOperationException>(
-				() => skills.InstallFromUrlAsync("https://example.com/broken.skill")));
+				() => skills.InstallFromUrlAsync("https://8.8.8.8/broken.skill")));
 
 		Assert.Equal("远程技能文件格式无效", error.Message);
 		Assert.DoesNotContain(marker, error.Message, StringComparison.Ordinal);
@@ -192,6 +192,7 @@ public sealed class SkillServiceTests : IDisposable
 		Assert.Equal("https://example.com/SKILL.md", skill.Url);
 	}
 
+	// 请求由替身处理；公网 IP 字面量避免内容测试依赖真实 DNS，不会连接该地址。
 	private static HttpClient CreateHttpClient(string body, HttpStatusCode status = HttpStatusCode.OK) =>
 		new(new HttpTestHandler(_ => new HttpResponseMessage(status)
 		{

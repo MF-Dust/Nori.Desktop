@@ -47,6 +47,7 @@ public sealed class ApprovalToastTests
 		// 解得开就说明转义没漏。解不开会抛 XmlException, 正是线上「通知有时候不出来」的成因。
 		XDocument parsed = XDocument.Parse(xml);
 		Assert.NotNull(parsed.Root);
+		Assert.Equal(dirty, parsed.Descendants("text").ElementAt(2).Value);
 	}
 
 	[Fact]

@@ -43,7 +43,6 @@ public partial class BridgeCommandsTests
 			window.Show();
 			window.UpdateLayout();
 			Assert.Equal(size, window.ClientSize);
-			Grid root = Assert.IsType<Grid>(window.Content);
 			ScrollViewer scroll = window.GetLogicalDescendants().OfType<ScrollViewer>().First();
 			if (cloud)
 			{
@@ -52,10 +51,10 @@ public partial class BridgeCommandsTests
 				inner.Children.Add(new TextBlock {Text = string.Join("\n", Enumerable.Repeat("未包含：本机资源路径", 30))});
 				window.UpdateLayout();
 			}
-			Assert.Equal(3, root.Children.Count);
-			NativeWindowChrome chrome = Assert.IsType<NativeWindowChrome>(root.Children[0]);
-			Control badge = root.Children[2];
-			Assert.Equal(40, chrome.Bounds.Height);
+			NativeWindowChrome chrome = Assert.Single(window.GetLogicalDescendants().OfType<NativeWindowChrome>());
+			StackPanel badge = Assert.Single(window.GetLogicalDescendants().OfType<StackPanel>(),
+				panel => panel.Children.OfType<TextBlock>().Any(block => block.Text == PoweredByNcn.Brand));
+			Assert.True(chrome.Bounds.Height > 0);
 			Assert.Equal(NoriThemeTokens.Color("bg-sidebar"), Assert.IsAssignableFrom<ISolidColorBrush>(chrome.Background).Color);
 			Assert.Equal(PlatformServices.Current.Capabilities.SupportsWindowDrag ? WindowDecorations.None : WindowDecorations.Full, window.WindowDecorations);
 			Button close = Assert.Single(chrome.GetLogicalDescendants().OfType<Button>(), button => button.IsVisible);

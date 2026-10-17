@@ -137,13 +137,9 @@ public sealed class ScreenToolsTests
 	{
 		JsonElement result = await CallAsync(Registry(new FakeCapture(), new FakeAnalyzer()), new { });
 
-		foreach (JsonProperty property in result.EnumerateObject())
-		{
-			Assert.NotEqual(JsonValueKind.Array, property.Value.ValueKind);
-		}
-
-		Assert.False(result.TryGetProperty("bytes", out _));
-		Assert.False(result.TryGetProperty("image", out _));
+		Assert.Equal(
+			["answer", "height", "question", "width", "window"],
+			result.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
 	}
 
 	[Fact]

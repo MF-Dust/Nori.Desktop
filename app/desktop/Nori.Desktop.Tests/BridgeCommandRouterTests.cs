@@ -1,29 +1,13 @@
 using System.Text.Json;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Bridge;
+using Nori.Desktop.Windows;
+using Nori.PluginRuntime;
 
 namespace Nori.Desktop.Tests;
 
 public sealed class BridgeCommandRouterTests
 {
-	[Theory]
-	[InlineData("automation_get_snapshot", BridgeCommandDomain.Automation)]
-	[InlineData("llm_fetch_models", BridgeCommandDomain.Ai)]
-	[InlineData("settings_update_voice", BridgeCommandDomain.Voice)]
-	[InlineData("model_select", BridgeCommandDomain.Model)]
-	[InlineData("memory_get", BridgeCommandDomain.Memory)]
-	[InlineData("skills_toggle", BridgeCommandDomain.Skills)]
-	[InlineData("mcp_get_servers", BridgeCommandDomain.Mcp)]
-	[InlineData("tools_set_enabled", BridgeCommandDomain.Tools)]
-	[InlineData("plugin_list", BridgeCommandDomain.Plugins)]
-	[InlineData("get_diagnostic_info", BridgeCommandDomain.Diagnostics)]
-	[InlineData("chat_start", BridgeCommandDomain.Application)]
-	[InlineData("future_command", BridgeCommandDomain.Other)]
-	public void 命令按稳定领域分类(string command, BridgeCommandDomain expected)
-	{
-		Assert.Equal(expected, BridgeCommandRouter.Classify(command));
-	}
-
 	[Fact]
 	public void 视觉探测结果使用reason字段()
 	{
@@ -31,5 +15,37 @@ public sealed class BridgeCommandRouterTests
 
 		Assert.Contains("\"reason\":\"测试原因\"", json, StringComparison.Ordinal);
 		Assert.DoesNotContain("\"message\"", json, StringComparison.Ordinal);
+	}
+}
+
+public partial class BridgeCommandsTests
+{
+	[Fact]
+	public async Task 插件命令路由到插件运行时()
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		await using PluginRuntimeHost pluginRuntime = new(new PluginRuntimeHostOptions
+		{
+			DataDirectory = Path.Combine(fixture._tempDir, "plugin-router"),
+			SafeMode = true,
+		});
+		fixture._services.PluginRuntime = pluginRuntime;
+
+		PluginListResultDto result = Assert.IsType<PluginListResultDto>(await new BridgeCommandRouter(fixture._services).InvokeAsync(
+			new NativeSettingsCommandSource(), "plugin_list", Args(new { })));
+
+		Assert.Empty(result.Plugins);
+	}
+
+	[Fact]
+	public async Task 非插件命令回退到BridgeCommands()
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+
+		InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			new BridgeCommandRouter(fixture._services).InvokeAsync(
+				new FakeBridgeSource(WindowLabels.Main), "future_command", Args(new { })));
+
+		Assert.Equal("未知的命令: future_command", error.Message);
 	}
 }

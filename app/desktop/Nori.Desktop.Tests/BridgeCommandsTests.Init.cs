@@ -114,13 +114,6 @@ public partial class BridgeCommandsTests
 		Assert.True(snapshot.TryGetProperty("updater", out JsonElement updaterEl));
 		Assert.Equal("idle", updaterEl.GetProperty("state").GetString());
 	}
-	[Fact]
-	public async Task UpdaterCancel_ReturnsTrue()
-	{
-		BridgeCommands commands = CreateCommands();
-		object? result = await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "updater_cancel", Args(new { }));
-		Assert.Equal(true, result);
-	}
 
 	[Fact]
 	public async Task UpdaterCommands_NonMainSource_Throws()

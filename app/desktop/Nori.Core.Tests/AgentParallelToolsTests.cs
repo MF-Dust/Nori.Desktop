@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Nori.Core.Agent;
 using Nori.Core.Chat;
@@ -295,11 +296,20 @@ public sealed class AgentParallelToolsTests : IDisposable
 			],
 			ToolCall("slow") + "\n" + ToolCall("fast"));
 
-		// 第二轮收到的消息里，两段工具反馈按调用顺序排列。
-		string transcript = string.Join("\n", adapter.Sent[^1].Select(message => message.Content));
-		int slowAt = transcript.IndexOf("slow", StringComparison.Ordinal);
-		int fastAt = transcript.IndexOf("fast", StringComparison.Ordinal);
-		Assert.True(slowAt >= 0 && fastAt > slowAt, $"顺序不对：slow@{slowAt} fast@{fastAt}");
+		ChatMessageInput[] feedbacks = [.. adapter.Sent[^1].Where(message =>
+			message.Role == "user" && message.Content.StartsWith("【系统工具执行反馈 - ", StringComparison.Ordinal))];
+		(string Name, string Result)[] expected = [("slow", "慢"), ("fast", "快")];
+		Assert.Equal(expected.Length, feedbacks.Length);
+
+		for (int index = 0; index < expected.Length; index++)
+		{
+			ChatMessageInput feedback = feedbacks[index];
+			string prefix = $"【系统工具执行反馈 - {expected[index].Name}】:\n";
+			Assert.StartsWith(prefix, feedback.Content, StringComparison.Ordinal);
+			using JsonDocument feedbackDocument = JsonDocument.Parse(feedback.Content[prefix.Length..]);
+			Assert.Equal(expected[index].Name, feedbackDocument.RootElement.GetProperty("name").GetString());
+			Assert.Equal(expected[index].Result, feedbackDocument.RootElement.GetProperty("result").GetString());
+		}
 	}
 
 	/// <summary>免确认的写操作与默认插件保持顺序，且作为只读批次屏障。</summary>

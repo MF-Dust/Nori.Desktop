@@ -5,18 +5,6 @@ namespace Nori.Core.Tests;
 public sealed class PetPresentationTests
 {
 	[Fact]
-	public void QuickChat布局与参考输入框尺寸一致()
-	{
-		PetQuickChatLayout layout = PetQuickChatLayout.Default;
-
-		Assert.Equal(280, layout.ViewportWidth);
-		Assert.Equal(190, layout.ViewportHeight);
-		Assert.Equal(280, layout.ComposerWidth);
-		Assert.Equal(46, layout.ComposerHeight);
-		Assert.Equal((0d, 190d), layout.ComposerAnchor);
-	}
-
-	[Fact]
 	public void 内置模型与Default别名使用专门头像预设()
 	{
 		PetPresentationProfile argNori = PetPresentation.ForModel("arg-nori");

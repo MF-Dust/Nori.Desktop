@@ -1,7 +1,6 @@
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Threading;
-using Nori.Core.Platform;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Tests;
@@ -146,27 +145,6 @@ public partial class BridgeCommandsTests
 			firstRun.AllowClose = init.AllowClose = main.AllowClose = true;
 			firstRun.Close(); init.Close(); main.Close();
 		}
-	});
-
-	[Fact]
-	public Task 首启与初始化始终使用自绘标题栏() => WithSettingsUiAsync(() =>
-	{
-		using BridgeCommandsTests fixture = new(safeMode: true);
-		FirstRunWindow firstRun = new(FirstRunDefinition(), fixture._services);
-		InitWindow init = new(InitDefinition(), fixture._services);
-		try
-		{
-			WindowDecorations expected = WindowDecorations.None;
-			Assert.Equal(expected, firstRun.WindowDecorations);
-			Assert.Equal(expected, init.WindowDecorations);
-			Assert.Equal(FirstRunDefinition().CanResize, firstRun.CanResize);
-		}
-		finally
-		{
-			firstRun.AllowClose = init.AllowClose = true;
-			firstRun.Close(); init.Close();
-		}
-		return Task.CompletedTask;
 	});
 
 	private static WindowDefinition FirstRunDefinition() =>

@@ -6,61 +6,43 @@ namespace Nori.Core.Tests;
 public sealed class VoicePipelineTests
 {
 	[Fact]
-	public async Task 生产者失败时其原始异常是主错误()
+	public async Task 生产者失败后消费者取消仍保留原始异常()
 	{
 		HttpRequestException primary = new("Provider 失败");
-		using CancellationTokenSource pipelineCts = new();
-		Task producer = Task.Run(async () =>
-		{
-			await Task.Delay(10);
-			throw primary;
-		});
-		Task consumer = Task.Run(async () =>
-		{
-			try
-			{
-				await Task.Delay(50, pipelineCts.Token);
-			}
-			catch (OperationCanceledException)
-			{
-				// 生产者失败内部取消消费者 (模拟 VoiceService.ConsumeAsync 的过滤行为)。
-			}
-		});
+		using CancellationTokenSource consumerCts = new();
+		TaskCompletionSource producerCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource consumerCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		using CancellationTokenRegistration registration = consumerCts.Token.Register(
+			() => consumerCompletion.TrySetCanceled(consumerCts.Token));
+		Task join = VoicePipeline.JoinAsync(producerCompletion.Task, consumerCompletion.Task);
 
-		Exception error = await Assert.ThrowsAsync<HttpRequestException>(() =>
-			VoicePipeline.JoinAsync(producer, consumer));
+		producerCompletion.SetException(primary);
+		Exception producerError = await Assert.ThrowsAsync<HttpRequestException>(() => producerCompletion.Task);
+		Assert.Same(primary, producerError);
+		await consumerCts.CancelAsync();
 
+		Exception error = await Assert.ThrowsAsync<HttpRequestException>(() => join);
 		Assert.Same(primary, error);
-		await pipelineCts.CancelAsync();
 	}
 
 	[Fact]
-	public async Task 消费者失败时生产者的内部取消不参与语义()
+	public async Task 消费者失败后生产者取消仍保留原始异常()
 	{
 		InvalidOperationException primary = new("播放失败");
-		using CancellationTokenSource pipelineCts = new();
-		Task consumer = Task.Run(async () =>
-		{
-			await Task.Delay(10);
-			throw primary;
-		});
-		Task producer = Task.Run(async () =>
-		{
-			try
-			{
-				await Task.Delay(50, pipelineCts.Token);
-			}
-			catch (OperationCanceledException)
-			{
-				throw; // 生产者被流水线取消直接抛 OCE (模拟 ThrowIfCancellationRequested)。
-			}
-		});
+		using CancellationTokenSource producerCts = new();
+		TaskCompletionSource producerCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource consumerCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		using CancellationTokenRegistration registration = producerCts.Token.Register(
+			() => producerCompletion.TrySetCanceled(producerCts.Token));
+		Task join = VoicePipeline.JoinAsync(producerCompletion.Task, consumerCompletion.Task);
 
-		Exception error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			VoicePipeline.JoinAsync(producer, consumer));
+		consumerCompletion.SetException(primary);
+		Exception consumerError = await Assert.ThrowsAsync<InvalidOperationException>(() => consumerCompletion.Task);
+		Assert.Same(primary, consumerError);
+		await producerCts.CancelAsync();
 
+		Exception error = await Assert.ThrowsAsync<InvalidOperationException>(() => join);
 		Assert.Same(primary, error);
-		await pipelineCts.CancelAsync();
 	}
 
 	[Fact]

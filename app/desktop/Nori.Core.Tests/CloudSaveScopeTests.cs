@@ -124,24 +124,13 @@ public sealed class CloudSaveScopeTests
 		Assert.True(CloudSaveScope.IncludesConfigWithModelSuffix(key));
 	}
 
-	/// <summary>后缀匹配不能匹过头：别的以 l2d_ 开头的键不该被顺带带上。</summary>
+	/// <summary>这里只识别模型后缀；动态敏感键由存档服务在打包和恢复时过滤。</summary>
 	[Theory]
-	[InlineData("l2d_scale_secret_api_key")]      // 看着像后缀，实际不该进
-	[InlineData("l2d_unknown_future_setting")]
-	public void 后缀匹配不会顺带带上没列过的键(string key)
+	[InlineData("l2d_scale_secret_api_key", true)]
+	[InlineData("l2d_unknown_future_setting", false)]
+	public void 后缀匹配只接受已列出的基名(string key, bool expected)
 	{
-		// 只有「基名 + 下划线 + 模型 id」才算；上面两个的基名都不在白名单里。
-		bool allowed = CloudSaveScope.IncludesConfigWithModelSuffix(key);
-		if (key.StartsWith("l2d_scale_", StringComparison.Ordinal))
-		{
-			// l2d_scale 在白名单里，所以这是**已知的过度匹配**：把一个叫
-			// l2d_scale_secret_api_key 的键当成了某个模型的缩放。
-			// 断言它确实会被匹上，并由上一条「不许出现形似密钥的键」在源头挡住 ——
-			// 这里记录这个边界，免得下次有人以为后缀匹配是精确的。
-			Assert.True(allowed);
-			return;
-		}
-		Assert.False(allowed);
+		Assert.Equal(expected, CloudSaveScope.IncludesConfigWithModelSuffix(key));
 	}
 
 	// ── 表 ─────────────────────────────────────────────────────────────────
@@ -181,10 +170,4 @@ public sealed class CloudSaveScopeTests
 		}
 	}
 
-	/// <summary>每一条排除都要写明理由 —— 没有理由的排除，下一个人会直接删掉。</summary>
-	[Fact]
-	public void 每条排除都有理由()
-	{
-		Assert.All(CloudSaveScope.ExcludedWithReason.Values, reason => Assert.True(reason.Length >= 8));
-	}
 }

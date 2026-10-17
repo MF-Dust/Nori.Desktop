@@ -453,23 +453,18 @@ public sealed class CloudSyncServiceTests : IDisposable
 		Assert.Equal(0, CloudSyncService.KnownRevisionOf(_config));
 	}
 
-	// ── 与服务端的约定 ──────────────────────────────────────────────────────
+	// ── 客户端遵循的协议值 ──────────────────────────────────────────────────
 
-	/// <summary>
-	/// 上限两边取同一个数。
-	///
-	/// 客户端更大的话，它会放过一份服务端注定拒收的存档；更小的话，用户被本机拦住却
-	/// 找不到服务端的依据。cloud-saves.mjs 里有一条对称的断言。
-	/// </summary>
+	/// <summary>固定客户端存档大小上限；此处不执行服务端代码。</summary>
 	[Fact]
-	public void 上限与服务端一致()
+	public void 客户端存档上限为四MiB()
 	{
 		Assert.Equal(4 * 1024 * 1024, CloudSaveService.MaxBytes);
 	}
 
-	/// <summary>格式标识两边逐字一致。对不上时症状是每一次上传都被拒，而两边各自看都没问题。</summary>
+	/// <summary>保留线上存档使用的格式标识。</summary>
 	[Fact]
-	public void 格式标识与服务端一致()
+	public void 客户端沿用云存档v1格式标识()
 	{
 		Assert.Equal("nori-cloud-v1", CloudSaveDocument.FormatName);
 	}

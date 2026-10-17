@@ -31,11 +31,12 @@ public sealed class DeploymentSelectorTests : IDisposable
 		Assert.Equal("app-1.0.0-2", Path.GetFileName(selected.DeploymentRoot));
 	}
 
-	[Fact]
-	public void 拒绝入口越界和不匹配Rid()
+	[Theory]
+	[InlineData("win-x64", "../outside")]
+	[InlineData("linux-x64", "Nori.Desktop.exe")]
+	public void 拒绝入口越界或不匹配Rid(string rid, string entrypoint)
 	{
-		CreateSlot("app-1.0.0-1", "1.0.0", 1, "linux-x64", "../outside");
-		CreateSlot("app-2.0.0-1", "2.0.0", 1, "linux-x64");
+		CreateSlot("app-1.0.0-1", "1.0.0", 1, rid, entrypoint);
 
 		Assert.Throws<InvalidOperationException>(() => DeploymentSelector.Select(_root, "win-x64"));
 	}

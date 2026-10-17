@@ -36,25 +36,43 @@ public sealed class AutomationTests
 		TaskCompletionSource<bool> started = Signal();
 		TaskCompletionSource<bool> release = Signal();
 		AutomationTask task = manager.Enqueue(async _ => { started.SetResult(true); await release.Task; });
-		await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-		Assert.True(manager.Cancel(task.Id));
-		Assert.Equal(AutomationTaskState.Cancelled, (await task.Completion.WaitAsync(TimeSpan.FromSeconds(5))).State);
-		release.SetResult(true);
-		await Task.Delay(20);
-		Assert.Equal(AutomationTaskState.Cancelled, task.State);
+		try
+		{
+			await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+			Assert.True(manager.Cancel(task.Id));
+			Assert.Equal(AutomationTaskState.Cancelled, (await task.Completion.WaitAsync(TimeSpan.FromSeconds(5))).State);
+			AutomationTask sentinel = manager.Enqueue(_ => Task.CompletedTask);
+			release.SetResult(true);
+			Assert.Equal(AutomationTaskState.Completed, (await sentinel.Completion.WaitAsync(TimeSpan.FromSeconds(5))).State);
+			Assert.Equal(AutomationTaskState.Cancelled, task.State);
+		}
+		finally
+		{
+			release.TrySetResult(true);
+		}
 	}
 
 	[Fact]
-	public async Task 单活动顺序执行并支持取消排队任务()
+	public async Task 活动任务运行时可取消排队任务()
 	{
 		await using AutomationTaskManager manager = new();
+		TaskCompletionSource<bool> started = Signal();
 		TaskCompletionSource<bool> release = Signal();
-		AutomationTask first = manager.Enqueue(async _ => await release.Task);
-		AutomationTask second = manager.Enqueue(_ => Task.CompletedTask);
-		Assert.True(manager.Cancel(second));
-		Assert.Equal(AutomationTaskState.Cancelled, (await second.Completion).State);
-		release.SetResult(true);
-		Assert.Equal(AutomationTaskState.Completed, (await first.Completion.WaitAsync(TimeSpan.FromSeconds(5))).State);
+		AutomationTask first = manager.Enqueue(async _ => { started.SetResult(true); await release.Task; });
+		try
+		{
+			await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+			AutomationTask second = manager.Enqueue(_ => Task.CompletedTask);
+			Assert.Equal(1, manager.QueuedCount);
+			Assert.True(manager.Cancel(second));
+			Assert.Equal(AutomationTaskState.Cancelled, (await second.Completion).State);
+			release.SetResult(true);
+			Assert.Equal(AutomationTaskState.Completed, (await first.Completion.WaitAsync(TimeSpan.FromSeconds(5))).State);
+		}
+		finally
+		{
+			release.TrySetResult(true);
+		}
 	}
 
 	[Fact]

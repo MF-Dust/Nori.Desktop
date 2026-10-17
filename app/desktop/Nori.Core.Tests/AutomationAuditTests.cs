@@ -66,8 +66,10 @@ public sealed class AutomationAuditTests : IDisposable
 		string raw = database.Locked(connection =>
 		{
 			using SqliteCommand command = connection.CreateCommand();
-			command.CommandText = "SELECT task_kind || '|' || event_category || '|' || outcome || '|' || coalesce(failure_code, '') FROM automation_audit;";
-			return command.ExecuteScalar()?.ToString() ?? "";
+			command.CommandText = "SELECT * FROM automation_audit;";
+			using SqliteDataReader reader = command.ExecuteReader();
+			Assert.True(reader.Read());
+			return string.Join("|", Enumerable.Range(0, reader.FieldCount).Select(reader.GetValue));
 		});
 		Assert.DoesNotContain("example.test", raw, StringComparison.Ordinal);
 		Assert.DoesNotContain("token=secret", raw, StringComparison.Ordinal);

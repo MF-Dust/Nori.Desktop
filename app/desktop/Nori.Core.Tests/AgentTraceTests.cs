@@ -37,11 +37,9 @@ public sealed class AgentTraceTests
 	[Fact]
 	public void 记录不包含敏感正文或工具载荷()
 	{
-		const string sensitiveText = "用户提示词、模型回复、工具参数和工具结果";
 		AgentTraceRecord record = new("session", "tool", 12, 0, "weather", "completed");
 		string serialized = JsonSerializer.Serialize(record);
 
-		Assert.DoesNotContain(sensitiveText, serialized, StringComparison.Ordinal);
 		Assert.DoesNotContain("arguments", serialized, StringComparison.OrdinalIgnoreCase);
 		Assert.DoesNotContain("result", serialized, StringComparison.OrdinalIgnoreCase);
 		Assert.DoesNotContain("reply", serialized, StringComparison.OrdinalIgnoreCase);

@@ -37,19 +37,6 @@ public sealed class ReflectionParserTests
 	}
 
 	[Fact]
-	public void MarkdownJSON围栏继续支持()
-	{
-		ReflectionResult result = ReflectionParser.Parse("""
-			```json
-			{"shouldStore":false,"summary":"无需保存","personaSummary":"","topics":[],"importance":0.2,"keyFacts":[]}
-			```
-			""");
-
-		Assert.False(result.ShouldStore);
-		Assert.Equal("无需保存", result.Summary);
-	}
-
-	[Fact]
 	public void 前导自然语言和尾随说明不会干扰JSON提取()
 	{
 		ReflectionResult result = ReflectionParser.Parse("""

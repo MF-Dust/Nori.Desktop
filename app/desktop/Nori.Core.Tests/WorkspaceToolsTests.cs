@@ -109,20 +109,11 @@ public sealed class WorkspaceToolsTests : IDisposable
 	/// 前缀比较挡不住符号链接：工作目录里放一个指向外面的链接，`GetFullPath` 之后它仍然
 	/// 是界内路径。必须解引用之后再比一次。
 	/// </summary>
-	[Fact]
+	[SymbolicLinkFact]
 	public void 指向目录外的符号链接被拦下()
 	{
 		string link = Path.Combine(_root, "escape");
-		try
-		{
-			Directory.CreateSymbolicLink(link, _outside);
-		}
-		catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
-		{
-			// Windows 上建符号链接要开发者模式或管理员权限，建不了就跳过 —— 这一条在能建的
-			// 环境里才有意义，而判据本身由上面几条覆盖。
-			return;
-		}
+		Directory.CreateSymbolicLink(link, _outside);
 
 		Assert.Null(Access().Resolve("escape/secret.txt"));
 	}
@@ -240,19 +231,12 @@ public sealed class WorkspaceToolsTests : IDisposable
 	}
 
 	/// <summary>查找走的也是 <c>Walk</c>，指向目录外的链接同样不得跟随。</summary>
-	[Fact]
+	[SymbolicLinkFact]
 	public async Task 查找不跟随指向目录外的链接()
 	{
 		File.WriteAllText(Path.Combine(_outside, "leak.cs"), "x");
 		Write("inside.cs", "x");
-		try
-		{
-			Directory.CreateSymbolicLink(Path.Combine(_root, "escape"), _outside);
-		}
-		catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
-		{
-			return; // 该环境不允许建符号链接
-		}
+		Directory.CreateSymbolicLink(Path.Combine(_root, "escape"), _outside);
 
 		JsonElement result = await CallAsync(Registry(), "findFiles", new { pattern = "*.cs" });
 
@@ -514,19 +498,12 @@ public sealed class WorkspaceToolsTests : IDisposable
 	/// 它，而其中可能有指向工作目录之外的链接。搜索是 `safe` 档、不经确认，这条路径上的越界
 	/// 等于无确认的任意文件读取。
 	/// </summary>
-	[Fact]
+	[SymbolicLinkFact]
 	public async Task 搜索不跟随指向目录外的链接()
 	{
 		File.WriteAllText(Path.Combine(_outside, "leak.txt"), "越界内容 needle");
 		Write("inside.txt", "界内内容 needle");
-		try
-		{
-			Directory.CreateSymbolicLink(Path.Combine(_root, "escape"), _outside);
-		}
-		catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
-		{
-			return; // 该环境不允许建符号链接
-		}
+		Directory.CreateSymbolicLink(Path.Combine(_root, "escape"), _outside);
 
 		JsonElement found = await CallAsync(Registry(), "searchFiles", new { query = "needle" });
 		string[] paths = [.. found.GetProperty("hits").EnumerateArray().Select(e => e.GetProperty("path").GetString()!)];
@@ -535,17 +512,10 @@ public sealed class WorkspaceToolsTests : IDisposable
 		Assert.DoesNotContain(paths, path => path.Contains("leak", StringComparison.Ordinal));
 	}
 
-	[Fact]
+	[SymbolicLinkFact]
 	public async Task 列目录不列出指向目录外的链接()
 	{
-		try
-		{
-			Directory.CreateSymbolicLink(Path.Combine(_root, "escape"), _outside);
-		}
-		catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
-		{
-			return;
-		}
+		Directory.CreateSymbolicLink(Path.Combine(_root, "escape"), _outside);
 
 		JsonElement listed = await CallAsync(Registry(), "listFiles", new { });
 		string[] names = [.. listed.GetProperty("entries").EnumerateArray().Select(e => e.GetProperty("name").GetString()!)];
@@ -786,5 +756,33 @@ public sealed class WorkspaceToolsTests : IDisposable
 	{
 		Assert.True(WorkspaceAccess.LooksBinary(new byte[] { 0x41, 0x00, 0x42 }));
 		Assert.False(WorkspaceAccess.LooksBinary(Encoding.UTF8.GetBytes("纯文本 plain text")));
+	}
+
+	public sealed class SymbolicLinkFactAttribute : FactAttribute
+	{
+		public SymbolicLinkFactAttribute()
+		{
+			if (!CanCreateDirectorySymbolicLinks()) Skip = "当前环境不支持创建目录符号链接。";
+		}
+	}
+
+	private static bool CanCreateDirectorySymbolicLinks()
+	{
+		DirectoryInfo probe = Directory.CreateTempSubdirectory("nori-ws-symlink-probe-");
+		try
+		{
+			string target = Path.Combine(probe.FullName, "target");
+			Directory.CreateDirectory(target);
+			Directory.CreateSymbolicLink(Path.Combine(probe.FullName, "link"), target);
+			return true;
+		}
+		catch (Exception exception) when (exception is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+		{
+			return false;
+		}
+		finally
+		{
+			probe.Delete(recursive: true);
+		}
 	}
 }

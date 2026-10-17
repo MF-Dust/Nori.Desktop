@@ -258,25 +258,41 @@ public sealed class DesktopExpressionTests : IDisposable
 	///
 	/// 这个属性会被 BuildSnapshot 调到，而快照在应用里到处都在建。第一版在这里同步连 TCP
 	/// （超时 2 秒），结果 CI 上两个时序敏感的界面用例稳定失败 —— 而单元测试一条都没抓到，
-	/// 因为它们不建快照。用一个「连接要花很久」的假实现把这条判据钉住。
+	/// 因为它们不建快照。用可控阻塞的连接探测确认属性仍能读取缓存。
 	/// </summary>
 	[Fact]
-	public void 可用性查询不被慢连接阻塞()
+	public async Task 可用性查询不等待正在运行的连接探测()
 	{
+		using ManualResetEventSlim entered = new();
+		using ManualResetEventSlim release = new();
 		using RgbLightingChannel channel = new(() =>
 		{
-			Thread.Sleep(TimeSpan.FromSeconds(3));
+			entered.Set();
+			release.Wait();
 			return null;
 		});
-
-		System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
-		for (int round = 0; round < 5; round++)
+		Task? probeStart = null, reads = null;
+		try
 		{
-			_ = channel.IsAvailable;
-			_ = channel.Devices;
+			probeStart = Task.Run(() => _ = channel.IsAvailable);
+			Assert.True(entered.Wait(TimeSpan.FromSeconds(5)), "后台连接探测未开始");
+			reads = Task.Run(() =>
+			{
+				for (int round = 0; round < 5; round++)
+				{
+					_ = channel.IsAvailable;
+					_ = channel.Devices;
+				}
+			});
+			await reads.WaitAsync(TimeSpan.FromSeconds(5));
+			await probeStart.WaitAsync(TimeSpan.FromSeconds(5));
 		}
-
-		Assert.True(clock.ElapsedMilliseconds < 500, $"读可用性花了 {clock.ElapsedMilliseconds} ms，说明它在等 I/O");
+		finally
+		{
+			release.Set();
+			if (probeStart is not null) await probeStart.WaitAsync(TimeSpan.FromSeconds(5));
+			if (reads is not null) await reads.WaitAsync(TimeSpan.FromSeconds(5));
+		}
 	}
 
 	[Fact]

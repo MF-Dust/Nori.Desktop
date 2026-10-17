@@ -31,6 +31,7 @@ public sealed class ProviderConnectionTests
 		Assert.True(result.Success);
 		Assert.Equal("ok", result.Category);
 		Assert.True(result.LatencyMs >= 0);
+		Assert.Contains("Nori connection test", handler.LastBody!, StringComparison.Ordinal);
 		Assert.DoesNotContain("test-key", result.Message, StringComparison.Ordinal);
 	}
 
@@ -144,7 +145,7 @@ public sealed class ProviderConnectionTests
 	}
 
 	[Fact]
-	public async Task Embedding探测要求返回非空向量且不写入配置()
+	public async Task Embedding探测成功返回结构化结果()
 	{
 		using HttpTestHandler handler = new(request =>
 		{

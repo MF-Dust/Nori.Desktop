@@ -1,4 +1,5 @@
 using System.Text;
+using Nori.Desktop.Live2D;
 using Nori.Live2D;
 
 namespace Nori.Desktop.Tests;
@@ -60,17 +61,33 @@ public sealed class MotionPlayerFadeAndOpacityTests
 		}
 	}
 
-	[Fact]
-	public void 绘制Tint组合三层不透明度且零模型不透明度清除可见Alpha()
+	[Live2DAssetsFact]
+	public void 绘制Tint提交模型与网格不透明度乘积且零模型不透明度提交零Alpha()
 	{
-		DirectoryInfo? directory = new(AppContext.BaseDirectory);
-		while (directory is not null && !Directory.Exists(Path.Combine(directory.FullName, "Nori.Desktop", "Live2D", "Gl")))
-			directory = directory.Parent;
-		Assert.NotNull(directory);
-		string source = File.ReadAllText(Path.Combine(directory.FullName, "Nori.Desktop", "Live2D", "Gl", "MeshProgram.cs"));
-		// 源码契约直接锁定提交的 alpha 与着色器乘法，不需要 GPU 或外部模型。
-		Assert.Contains("var color = renderer.ModelColor;", source);
-		Assert.Contains("Set(_tint, new(color.X, color.Y, color.Z, color.W * model.Opacity * model.GetDrawableOpacity(drawable)), ref _tintValue);", source);
-		Assert.Contains("pixel *= vec4(tint.rgb * tint.a, tint.a);", source);
+		PreparedModelData assets = NativeGlRendererBufferTests.Assets("arg-nori");
+		var gl = new RecordingGlApi { CreateResources = true };
+		using var model = new NativeModel(assets.Moc.Span);
+		for (int part = 0; part < model.PartCount; part++) model.SetPartOpacity(part, 0.5f);
+		model.Update();
+		using var renderer = new NativeGlRenderer(gl, model, assets.Textures);
+		int drawable = Enumerable.Range(0, model.DrawableCount).First(index =>
+			renderer.GetBindedTextureId(model.GetDrawableTextureIndex(index)) != 0 &&
+			model.GetDrawableOpacity(index) is > 0 and < 1);
+		model.Opacity = 0.3f;
+		renderer.SetModelColor(0.4f, 0.5f, 0.6f, 0.7f);
+		float drawableOpacity = model.GetDrawableOpacity(drawable);
+		Assert.True(drawableOpacity > 0 && drawableOpacity < 1);
+
+		renderer.PreDraw();
+		int tintLocation = Assert.Single(gl.UniformQueries, query => query.Name == "tint").Location;
+		renderer.DrawMesh(drawable);
+		float expectedAlpha = 0.7f * model.Opacity * drawableOpacity;
+		var firstTint = gl.VectorUniforms.Last(call => call.Location == tintLocation);
+		Assert.Equal((0.4f, 0.5f, 0.6f, expectedAlpha), (firstTint.X, firstTint.Y, firstTint.Z, firstTint.W));
+
+		model.Opacity = 0;
+		renderer.DrawMesh(drawable);
+		var zeroTint = gl.VectorUniforms.Last(call => call.Location == tintLocation);
+		Assert.Equal((0.4f, 0.5f, 0.6f, 0), (zeroTint.X, zeroTint.Y, zeroTint.Z, zeroTint.W));
 	}
 }

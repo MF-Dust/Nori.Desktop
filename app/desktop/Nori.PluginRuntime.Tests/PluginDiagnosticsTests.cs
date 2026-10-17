@@ -1,4 +1,3 @@
-using System.Reflection;
 using Nori.PluginRuntime;
 
 namespace Nori.PluginRuntime.Tests;
@@ -12,7 +11,7 @@ public sealed class PluginDiagnosticsTests
 		PluginException exception = new(
 			PluginErrorCodes.ActivationFailed,
 			"插件激活失败: CloudMusic",
-			TypeLoad("Could not load type 'CloudMusic.MissingService'."));
+			TypeLoad("CloudMusic.MissingService"));
 
 		PluginDiagnostics.Attach(exception, "cloud-music", "1.4.0", "2.0", "v1.4.0+abcdef0");
 
@@ -62,7 +61,7 @@ public sealed class PluginDiagnosticsTests
 		PluginException exception = new(
 			PluginErrorCodes.ActivationFailed,
 			"插件激活失败: Demo",
-			new InvalidOperationException("包装", TypeLoad("Could not load type 'Demo.Deep.Type'.")));
+			new InvalidOperationException("包装", TypeLoad("Demo.Deep.Type")));
 
 		PluginDiagnostics.Attach(exception, "demo", null, "2.0", "Dev");
 
@@ -83,17 +82,8 @@ public sealed class PluginDiagnosticsTests
 		Assert.True(exception.DiagnosticTypeLoadTypeName!.Length <= 200);
 	}
 
-	/// <summary>真实类型加载失败时 TypeName 由运行时填充; 测试里用反射模拟同样的内部字段。</summary>
-	private static TypeLoadException TypeLoad(string typeName)
-	{
-		TypeLoadException exception = new($"Could not load type '{typeName}'.");
-		FieldInfo? field = typeof(TypeLoadException)
-			.GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
-			.FirstOrDefault(candidate => candidate.FieldType == typeof(string) &&
-				(candidate.Name.Contains("className", StringComparison.OrdinalIgnoreCase) ||
-				 candidate.Name.Contains("typeName", StringComparison.OrdinalIgnoreCase)));
-		Assert.NotNull(field);
-		field!.SetValue(exception, typeName);
-		return exception;
-	}
+	/// <summary>用现有测试程序集中的不存在类型触发运行时真实的加载失败。</summary>
+	private static TypeLoadException TypeLoad(string typeName) =>
+		Assert.Throws<TypeLoadException>(() => Type.GetType(
+			$"{typeName}, {typeof(PluginDiagnosticsTests).Assembly.FullName}", throwOnError: true));
 }

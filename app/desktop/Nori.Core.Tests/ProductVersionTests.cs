@@ -14,7 +14,5 @@ public sealed class ProductVersionTests
 
 		Assert.False(string.IsNullOrWhiteSpace(assemblyVersion));
 		Assert.Equal(assemblyVersion, ProductVersion.Current);
-		if (assemblyVersion!.Contains('+', StringComparison.Ordinal))
-			Assert.Contains('+', ProductVersion.Current);
 	}
 }

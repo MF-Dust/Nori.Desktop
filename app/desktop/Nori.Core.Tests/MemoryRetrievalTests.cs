@@ -21,6 +21,7 @@ public sealed class MemoryRetrievalTests
 	[Fact]
 	public void 重要度置信度强化和衰减参与最终评分()
 	{
+		DateTimeOffset now = new(2025, 1, 20, 0, 0, 0, TimeSpan.Zero);
 		MemoryItem item = new()
 		{
 			Id = 1,
@@ -28,17 +29,19 @@ public sealed class MemoryRetrievalTests
 			Content = "测试",
 			Importance = 0.9,
 			Source = "chat",
-			CreatedAt = DateTimeOffset.UtcNow.AddDays(-10).ToString("o"),
-			UpdatedAt = DateTimeOffset.UtcNow.AddDays(-10).ToString("o"),
+			CreatedAt = now.AddDays(-10).ToString("o"),
+			UpdatedAt = now.AddDays(-10).ToString("o"),
 			Kind = "episodic",
-			Confidence = 1,
+			Confidence = 0.9,
 			TtlDays = 30,
 			ReinforcementCount = 2,
 		};
 
-		double score = DecayCalculator.FinalScore(1, item, DateTimeOffset.UtcNow);
-		Assert.InRange(score, 0.5, 2.0);
-		Assert.True(DecayCalculator.TemporalScore(item, DateTimeOffset.UtcNow.AddDays(30)) < 0.6);
+		double decay = Math.Exp(-Math.Log(2) * 10 / 30);
+		double expected = 1.2 * 0.975 * 1.1 * decay;
+
+		Assert.Equal(expected, DecayCalculator.FinalScore(1, item, now), 12);
+		Assert.Equal(1.2 * 0.975 * 1.1, DecayCalculator.FinalScore(1, item, now, applyTemporalDecay: false), 12);
 	}
 
 	[Fact]

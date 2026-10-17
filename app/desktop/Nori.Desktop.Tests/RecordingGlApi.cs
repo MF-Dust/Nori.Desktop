@@ -61,6 +61,7 @@ internal sealed unsafe class RecordingGlApi : OpenGLApi
 	public List<ElementDraw> ElementDraws { get; } = [];
 	public List<(int Program, string Name, int Location)> UniformQueries { get; } = [];
 	public List<(int Location, int Value)> IntegerUniforms { get; } = [];
+	public List<(int Location, float X, float Y, float Z, float W)> VectorUniforms { get; } = [];
 	public int VectorUniformCalls { get; private set; }
 	public int MatrixUniformCalls { get; private set; }
 	private readonly Dictionary<(int Program, string Name), int> _uniformLocations = [];
@@ -149,7 +150,11 @@ internal sealed unsafe class RecordingGlApi : OpenGLApi
 	public override void Uniform1i(int index, int data) => IntegerUniforms.Add((index, data));
 	public override void VertexAttribPointer(int index, int length, int type, bool b, int size, nint arr) =>
 		AttributePointers.Add(new(_integers[GL_VERTEX_ARRAY_BINDING], index, _integers[GL_ARRAY_BUFFER_BINDING], size, arr));
-	public override void Uniform4f(int index, float a, float b, float c, float d) { VectorUniformCalls++; }
+	public override void Uniform4f(int index, float a, float b, float c, float d)
+	{
+		VectorUniformCalls++;
+		VectorUniforms.Add((index, a, b, c, d));
+	}
 	public override void UniformMatrix4fv(int index, int length, bool b, ReadOnlySpan<float> data) { MatrixUniformCalls++; }
 	public override int CreateProgram() { CreatedPrograms.Add(++_next); return _next; }
 	public override void AttachShader(int a, int b) {  }

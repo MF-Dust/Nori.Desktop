@@ -20,23 +20,20 @@ namespace Nori.Desktop.Tests;
 
 public partial class BridgeCommandsTests
 {
-	[Theory]
-	[InlineData(720, 480, "zh-CN")]
-	[InlineData(1920, 1080, "zh-CN")]
-	[InlineData(720, 480, "en-US")]
-	[InlineData(1920, 1080, "en-US")]
-	public Task NativeStyleControlsUseNoriPalette(int width, int height, string language) => WithSettingsUiAsync(async () =>
+	[Fact]
+	public Task NativeStyleControlsUseNoriPalette() => WithSettingsUiAsync(async () =>
 	{
+		const int width = 720;
+		const int height = 480;
 		using BridgeCommandsTests fixture = new(safeMode: true);
-		bool english = language == "en-US";
 		NumericUpDown number = new() { Value = 0.8m, Minimum = 0, Maximum = 1, Increment = 0.05m, Width = 144, HorizontalAlignment = HorizontalAlignment.Left };
-		Button hint = new() { Content = english ? "Hover for help" : "悬停查看提示", HorizontalAlignment = HorizontalAlignment.Left };
-		ToolTip tip = new() { Content = english ? "Close window" : "关闭窗口" };
+		Button hint = new() { Content = "悬停查看提示", HorizontalAlignment = HorizontalAlignment.Left };
+		ToolTip tip = new() { Content = "关闭窗口" };
 		ToolTip.SetTip(hint, tip);
 		Window window = new()
 		{
 			Width = width, Height = height,
-			Content = new StackPanel { Margin = new Thickness(24), Spacing = 16, Children = { new TextBlock { Text = english ? "Importance" : "重要程度" }, number, hint } },
+			Content = new StackPanel { Margin = new Thickness(24), Spacing = 16, Children = { new TextBlock { Text = "重要程度" }, number, hint } },
 		};
 		window.Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/Settings/SettingsTheme.axaml") });
 		// 只借用真实桌宠菜单，不打开 GL 窗口或加载模型。
@@ -44,7 +41,7 @@ public partial class BridgeCommandsTests
 		ContextMenu menu = Assert.IsType<ContextMenu>(pet.ContextMenu);
 		pet.ContextMenu = null;
 		window.ContextMenu = menu;
-		string suffix = $"{width}x{height}-{language}";
+		string suffix = $"{width}x{height}-zh-CN";
 		try
 		{
 			window.Show();

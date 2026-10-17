@@ -275,9 +275,13 @@ public partial class BridgeCommandsTests
 		InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
 			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), command, Args(new { })));
 		Assert.Contains("未知的命令", error.Message, StringComparison.Ordinal);
+	}
 
+	[Fact]
+	public async Task 自动化快照不再包含浏览器状态()
+	{
 		string snapshot = JsonSerializer.Serialize(
-			await commands.InvokeAsync(new NativeSettingsCommandSource(), "automation_get_snapshot", Args(new { })), BridgeJson.Options);
+			await CreateCommands().InvokeAsync(new NativeSettingsCommandSource(), "automation_get_snapshot", Args(new { })), BridgeJson.Options);
 		Assert.DoesNotContain("browser", snapshot, StringComparison.OrdinalIgnoreCase);
 	}
 

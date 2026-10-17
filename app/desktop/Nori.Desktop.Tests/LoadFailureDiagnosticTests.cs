@@ -1,4 +1,3 @@
-using System.Reflection;
 using Nori.Desktop.Diagnostics;
 
 namespace Nori.Desktop.Tests;
@@ -49,17 +48,8 @@ public sealed class LoadFailureDiagnosticTests
 		Assert.Null(CrashReporter.LoadFailureTags(new InvalidOperationException("测试")));
 	}
 
-	/// <summary>真实类型加载失败时 TypeName 由运行时填充; 测试里用反射模拟同样的内部字段。</summary>
-	private static TypeLoadException TypeLoad(string typeName)
-	{
-		TypeLoadException exception = new($"Could not load type '{typeName}'.");
-		FieldInfo? field = typeof(TypeLoadException)
-			.GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
-			.FirstOrDefault(candidate => candidate.FieldType == typeof(string) &&
-				(candidate.Name.Contains("className", StringComparison.OrdinalIgnoreCase) ||
-				 candidate.Name.Contains("typeName", StringComparison.OrdinalIgnoreCase)));
-		Assert.NotNull(field);
-		field!.SetValue(exception, typeName);
-		return exception;
-	}
+	/// <summary>用现有测试程序集中的不存在类型触发运行时真实的加载失败。</summary>
+	private static TypeLoadException TypeLoad(string typeName) =>
+		Assert.Throws<TypeLoadException>(() => Type.GetType(
+			$"{typeName}, {typeof(LoadFailureDiagnosticTests).Assembly.FullName}", throwOnError: true));
 }

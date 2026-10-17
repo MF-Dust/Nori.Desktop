@@ -1,54 +1,54 @@
 <Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-	<!-- 保留现有原生控件模板、键盘焦点；对话按钮的所有交互态使用同一套深色令牌。 -->
+	<!-- 对话窗口按钮沿用全局 Fluent 模板与键盘焦点；交互态写在模板呈现器上，覆盖全局按钮画刷。 -->
 	<StyleInclude Source="avares://Nori.Desktop/Settings/SettingsTheme.axaml"/>
 	<Style Selector="Button.chat-button">
-		<Setter Property="Background" Value="{DynamicResource ChatDeepBrush}"/>
+		<Setter Property="Background" Value="{DynamicResource NoriBgAbyssBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource ChatBodyBrush}"/>
 		<Setter Property="BorderBrush" Value="{DynamicResource ChatLineBrush}"/>
 		<Setter Property="BorderThickness" Value="1"/>
 		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
 		<Setter Property="FontSize" Value="{DynamicResource NoriFontXs}"/>
 	</Style>
-	<Style Selector="Button.chat-button:pointerover, Button.chat-button:pressed">
-		<Setter Property="Background" Value="{DynamicResource ChatPanelBrush}"/>
+	<Style Selector="Button.chat-button:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.chat-button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Background" Value="{DynamicResource ChatDeepBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource ChatPrimaryBrush}"/>
-		<Setter Property="BorderBrush" Value="{DynamicResource ChatAccentBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource ChatLineBrush}"/>
 	</Style>
-	<!-- 主按钮与其他窗口一致使用品牌青填充；悬停提亮、按下加深。 -->
+	<!-- 主按钮与其他窗口一致使用品牌青填充；悬停与按下为 primary/90。 -->
 	<Style Selector="Button.chat-button.primary">
 		<Setter Property="Background" Value="{DynamicResource ChatTealBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
-		<Setter Property="BorderBrush" Value="{DynamicResource ChatTealBrush}"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
 	</Style>
-	<Style Selector="Button.chat-button.primary:pointerover">
-		<Setter Property="Background" Value="{DynamicResource ChatAccentBrush}"/>
-		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
-		<Setter Property="BorderBrush" Value="{DynamicResource ChatAccentBrush}"/>
-	</Style>
-	<Style Selector="Button.chat-button.primary:pressed">
+	<Style Selector="Button.chat-button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.chat-button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
 		<Setter Property="Background" Value="{DynamicResource ChatTealPressedBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
-		<Setter Property="BorderBrush" Value="{DynamicResource ChatTealPressedBrush}"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
 	</Style>
 	<!-- danger 是填充色，danger-text 只用于文字。 -->
-	<Style Selector="Button.chat-button.stop, Button.chat-button.stop:pointerover, Button.chat-button.stop:pressed">
+	<Style Selector="Button.chat-button.stop">
 		<Setter Property="Background" Value="{DynamicResource ChatDangerFillBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
-		<Setter Property="BorderBrush" Value="{DynamicResource ChatDangerFillBrush}"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
 	</Style>
-	<Style Selector="Button.chat-button:disabled">
-		<Setter Property="Background" Value="{DynamicResource ChatDeepBrush}"/>
+	<Style Selector="Button.chat-button.stop:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.chat-button.stop:pressed /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Background" Value="{DynamicResource ChatDangerFillBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
+	</Style>
+	<Style Selector="Button.chat-button:disabled /template/ ContentPresenter#PART_ContentPresenter">
 		<Setter Property="Foreground" Value="{DynamicResource ChatDisabledBrush}"/>
-		<Setter Property="BorderBrush" Value="{DynamicResource ChatLineBrush}"/>
 	</Style>
-	<Style Selector="Button.chat-button /template/ Border#BackgroundElement">
-		<Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+	<Style Selector="Button.chat-button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Background" Value="{DynamicResource ChatTealBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource ChatOnTealBrush}"/>
 	</Style>
+	<!-- web 消息输入框：深色输入井 + rounded-2xl 胶囊。 -->
 	<Style Selector="TextBox.chat-composer">
-		<Setter Property="Background" Value="{DynamicResource ChatDeepBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource ChatPrimaryBrush}"/>
-		<Setter Property="BorderBrush" Value="{DynamicResource ChatLineBrush}"/>
-		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
+		<Setter Property="CornerRadius" Value="20"/>
+		<Setter Property="Padding" Value="14,9"/>
+		<Setter Property="MinHeight" Value="40"/>
 		<Setter Property="FontSize" Value="{DynamicResource NoriFontBase}"/>
 	</Style>
 </Styles>

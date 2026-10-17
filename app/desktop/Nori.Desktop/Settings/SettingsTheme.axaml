@@ -1,5 +1,5 @@
 <Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-	<!-- 复用 Devolutions 控件模板、阴影与键盘焦点；统一 Nori 外壳及深色选项状态。 -->
+	<!-- 设置类窗口 (设置 / 模型 / 记忆 / 账号) 的语义画刷与侧栏导航；控件外观由全局 NoriControls.axaml 提供。 -->
 	<Styles.Resources>
 		<ResourceDictionary>
 			<ResourceDictionary.MergedDictionaries>
@@ -8,93 +8,18 @@
 			<StaticResource x:Key="SettingsWindowBrush" ResourceKey="NoriBgBaseBrush"/>
 			<StaticResource x:Key="SettingsSidebarBrush" ResourceKey="NoriBgSidebarBrush"/>
 			<StaticResource x:Key="SettingsCardBrush" ResourceKey="NoriBgCardBrush"/>
-			<StaticResource x:Key="SettingsBorderBrush" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="SettingsBorderBrush" ResourceKey="NoriLineSubtleBrush"/>
 			<StaticResource x:Key="SettingsPrimaryBrush" ResourceKey="NoriTextPrimaryBrush"/>
 			<StaticResource x:Key="SettingsSecondaryBrush" ResourceKey="NoriTextMutedBrush"/>
 			<StaticResource x:Key="SettingsErrorBrush" ResourceKey="NoriDangerTextBrush"/>
 			<StaticResource x:Key="SettingsSelectionBrush" ResourceKey="NoriBgSelectionBrush"/>
 			<StaticResource x:Key="SettingsAccentBrush" ResourceKey="NoriNoriTealBrush"/>
 			<StaticResource x:Key="SettingsInputBrush" ResourceKey="NoriBgInputBrush"/>
-			<StaticResource x:Key="SettingsHoverBrush" ResourceKey="NoriBgCardHoverBrush"/>
+			<StaticResource x:Key="SettingsHoverBrush" ResourceKey="NoriBgDeepBrush"/>
 			<StaticResource x:Key="SettingsAccentForegroundBrush" ResourceKey="NoriOnTealBrush"/>
 			<StaticResource x:Key="SettingsIconForegroundBrush" ResourceKey="NoriTextMutedBrush"/>
 			<StaticResource x:Key="SettingsIconHighlightBrush" ResourceKey="NoriOverlay20Brush"/>
 			<StaticResource x:Key="NoriWindowSurfaceBrush" ResourceKey="NoriBgBaseBrush"/>
-			<!-- Devolutions 的开关及下拉箭头拥有独立画刷，不继承控件前景。 -->
-			<StaticResource x:Key="SystemAccentColor" ResourceKey="NoriNoriTealColor"/>
-			<StaticResource x:Key="SystemAccentColorDark1" ResourceKey="NoriNoriTealPressedColor"/>
-			<StaticResource x:Key="SystemAccentColorLight1" ResourceKey="NoriNoriTealBrightColor"/>
-			<StaticResource x:Key="AccentForegroundColor" ResourceKey="NoriOnTealColor"/>
-			<StaticResource x:Key="ControlBorderAccentBrush" ResourceKey="SettingsAccentBrush"/>
-			<StaticResource x:Key="ControlBackgroundAccentHighBrush" ResourceKey="SettingsAccentBrush"/>
-			<StaticResource x:Key="ControlBackgroundAccentRaisedBrush" ResourceKey="SettingsAccentBrush"/>
-			<StaticResource x:Key="ControlForegroundAccentHighBrush" ResourceKey="SettingsAccentForegroundBrush"/>
-			<StaticResource x:Key="FocusBorderBrush" ResourceKey="NoriWindowFocusGlowBrush"/>
-			<StaticResource x:Key="ToggleSwitchContainerCheckedDefaultBackground" ResourceKey="SettingsAccentBrush"/>
-			<StaticResource x:Key="ToggleSwitchContainerCheckedPointeroverBackground" ResourceKey="NoriNoriTealBrightBrush"/>
-			<StaticResource x:Key="ToggleSwitchContainerCheckedPressedBackground" ResourceKey="NoriNoriTealPressedBrush"/>
-			<StaticResource x:Key="ToggleSwitchContainerCheckedDisabledBackground" ResourceKey="SettingsSelectionBrush"/>
-			<StaticResource x:Key="ToggleSwitchContainerUnCheckedDefaultBackground" ResourceKey="SettingsInputBrush"/>
-			<StaticResource x:Key="ToggleSwitchContainerUnCheckedPointeroverBackground" ResourceKey="SettingsHoverBrush"/>
-			<StaticResource x:Key="ToggleSwitchContainerUnCheckedPressedBackground" ResourceKey="SettingsSelectionBrush"/>
-			<StaticResource x:Key="ToggleSwitchContainerUnCheckedDisabledBackground" ResourceKey="SettingsCardBrush"/>
-			<StaticResource x:Key="ToggleSwitchContainerUnCheckedDisabledBorderBrush" ResourceKey="SettingsBorderBrush"/>
-			<StaticResource x:Key="ToggleSwitchDefaultBorderBrush" ResourceKey="SettingsBorderBrush"/>
-			<StaticResource x:Key="ToggleSwitchKnobBackground" ResourceKey="SettingsPrimaryBrush"/>
-			<StaticResource x:Key="SimpleToggleSwitchContainerCheckedForeground" ResourceKey="SettingsAccentBrush"/>
-			<StaticResource x:Key="ComboBoxButtonBackgroundBrush" ResourceKey="SettingsAccentBrush"/>
-			<StaticResource x:Key="ComboBoxButtonBorderBrush" ResourceKey="SettingsAccentBrush"/>
-			<StaticResource x:Key="ComboBoxButtonInactiveBackgroundBrush" ResourceKey="SettingsInputBrush"/>
-			<StaticResource x:Key="ComboBoxButtonInactiveBorderBrush" ResourceKey="SettingsBorderBrush"/>
-			<StaticResource x:Key="ComboBoxChevronBrush" ResourceKey="SettingsAccentForegroundBrush"/>
-			<StaticResource x:Key="ComboBoxChevronInactiveBrush" ResourceKey="SettingsSecondaryBrush"/>
-			<SolidColorBrush x:Key="TextBoxSelectionHighlightBrush" Color="{StaticResource NoriNoriTealColor}" Opacity="0.3"/>
-			<StaticResource x:Key="TextBoxFocusCornerRadius" ResourceKey="NoriRadiusSm"/>
-			<StaticResource x:Key="ForegroundHighBrush" ResourceKey="SettingsPrimaryBrush"/>
-			<StaticResource x:Key="ForegroundLowBrush" ResourceKey="SettingsSecondaryBrush"/>
-			<StaticResource x:Key="ButtonBackgroundBrush" ResourceKey="SettingsInputBrush"/>
-			<StaticResource x:Key="ButtonPressedBackgroundBrush" ResourceKey="SettingsHoverBrush"/>
-			<StaticResource x:Key="ButtonDisabledBackgroundBrush" ResourceKey="SettingsCardBrush"/>
-			<StaticResource x:Key="ButtonBorderBrush" ResourceKey="SettingsBorderBrush"/>
-			<StaticResource x:Key="ComboBoxBackgroundBrush" ResourceKey="SettingsInputBrush"/>
-			<StaticResource x:Key="ComboBoxPressedBackgroundBrush" ResourceKey="SettingsHoverBrush"/>
-			<StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="SettingsBorderBrush"/>
-			<StaticResource x:Key="ControlBackgroundDisabledHighBrush" ResourceKey="SettingsCardBrush"/>
-			<!-- 弹层与非活动选项同样需要深色底，不能只修复收起时的输入框。 -->
-			<StaticResource x:Key="PopupBackgroundBrush" ResourceKey="SettingsCardBrush"/>
-			<StaticResource x:Key="PopupBorderBrush" ResourceKey="SettingsBorderBrush"/>
-			<StaticResource x:Key="PopupInnerBorderHighlightBrush" ResourceKey="SettingsBorderBrush"/>
-			<StaticResource x:Key="LayoutBackgroundMidBrush" ResourceKey="SettingsSelectionBrush"/>
-			<StaticResource x:Key="ComboBoxItemPointerOverBackgroundBrush" ResourceKey="SettingsHoverBrush"/>
-			<StaticResource x:Key="TextBoxBackgroundBrush" ResourceKey="SettingsInputBrush"/>
-			<StaticResource x:Key="TextBoxBorderBrush" ResourceKey="SettingsBorderBrush"/>
-			<StaticResource x:Key="TextBoxMultiLineBackgroundBrush" ResourceKey="SettingsInputBrush"/>
-			<!-- 数字框的步进按钮不读取 TextBox 画刷，需覆盖其独立颜色与按下状态。 -->
-			<StaticResource x:Key="ControlBackgroundHighColor" ResourceKey="NoriBgInputColor"/>
-			<StaticResource x:Key="ButtonSpinnerButtonPressedBrush" ResourceKey="SettingsHoverBrush"/>
-			<StaticResource x:Key="ControlBorderRaisedBrush" ResourceKey="SettingsBorderBrush"/>
-			<!-- 保留 ToggleButton 的选中语义，复用设置按钮模板及键盘焦点，不混用浅色回退模板。 -->
-			<ControlTheme x:Key="SettingsChoiceTheme" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type Button}}">
-				<Setter Property="Background" Value="{DynamicResource SettingsInputBrush}"/>
-				<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
-				<Setter Property="BorderBrush" Value="{DynamicResource SettingsBorderBrush}"/>
-				<Setter Property="BorderThickness" Value="1"/>
-				<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
-				<Style Selector="^:pointerover, ^:pressed">
-					<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
-				</Style>
-				<Style Selector="^:checked">
-					<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
-					<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
-					<Setter Property="BorderBrush" Value="{DynamicResource SettingsAccentBrush}"/>
-					<Setter Property="FontWeight" Value="SemiBold"/>
-				</Style>
-				<Style Selector="^:disabled">
-					<Setter Property="Background" Value="{DynamicResource SettingsCardBrush}"/>
-					<Setter Property="Foreground" Value="{DynamicResource SettingsSecondaryBrush}"/>
-					<Setter Property="BorderBrush" Value="{DynamicResource SettingsBorderBrush}"/>
-				</Style>
-			</ControlTheme>
 		</ResourceDictionary>
 	</Styles.Resources>
 	<Style Selector="Window">
@@ -103,41 +28,41 @@
 		<Setter Property="Background" Value="{DynamicResource NoriWindowSurfaceBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
 	</Style>
+	<!-- 选项按钮保留 ToggleButton 选中语义；选中为 primary/10 底、品牌青文字与描边。 -->
 	<Style Selector="ToggleButton.settings-choice">
-		<Setter Property="Theme" Value="{StaticResource SettingsChoiceTheme}"/>
+		<Setter Property="MinHeight" Value="30"/>
+		<Setter Property="Padding" Value="12,5"/>
 	</Style>
-	<Style Selector="TextBox:not(.chat-composer):not(.quick-composer), ComboBox">
-		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
+	<Style Selector="ToggleButton.settings-choice:checked">
+		<Setter Property="FontWeight" Value="SemiBold"/>
 	</Style>
-	<Style Selector="Window.models-window ComboBox, Window.models-window TextBox">
-		<Setter Property="MinHeight" Value="34"/>
-		<Setter Property="FontSize" Value="{DynamicResource NoriFontBase}"/>
-	</Style>
-	<Style Selector="Button.danger:not(:disabled)">
-		<Setter Property="Foreground" Value="{DynamicResource SettingsErrorBrush}"/>
-	</Style>
+	<!-- 侧栏导航 (web SidebarNavButton)：32 高、6px 圆角、16px 图标；选中 primary/10 + 品牌青。 -->
 	<Style Selector="Button.settings-nav">
-		<Setter Property="Background" Value="Transparent"/>
+		<!-- 透明色取选中色的零透明度版本，背景过渡时不会经过发白的中间色。 -->
+		<Setter Property="Background" Value="#00202C34"/>
 		<Setter Property="BorderBrush" Value="Transparent"/>
 		<Setter Property="BorderThickness" Value="0"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsSecondaryBrush}"/>
 		<Setter Property="FontSize" Value="{DynamicResource NoriFontBase}"/>
+		<Setter Property="FontWeight" Value="Normal"/>
 		<Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
 	</Style>
-	<!-- 导航是列表行而非浮起的按钮，仅在此处去除库的按钮阴影。 -->
-	<Style Selector="Button.settings-nav /template/ Border#BackgroundElement">
-		<Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+	<Style Selector="Button.settings-nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
+		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
+	</Style>
+	<Style Selector="Button.settings-nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
 	</Style>
 	<Style Selector="Button.settings-nav.selected">
 		<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
-		<Setter Property="FontWeight" Value="SemiBold"/>
+		<Setter Property="FontWeight" Value="Medium"/>
 	</Style>
-	<Style Selector="Button.settings-nav:pointerover">
-		<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
-		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
-	</Style>
-	<Style Selector="Button.settings-nav.selected:pointerover">
+	<Style Selector="Button.settings-nav.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.settings-nav.selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
 		<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
 		<Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}"/>
 	</Style>
@@ -154,7 +79,7 @@
 		<Setter Property="Width" Value="24"/>
 		<Setter Property="Height" Value="24"/>
 		<Setter Property="Stroke" Value="{DynamicResource SettingsIconForegroundBrush}"/>
-		<Setter Property="StrokeThickness" Value="1.8"/>
+		<Setter Property="StrokeThickness" Value="2"/>
 		<Setter Property="StrokeLineCap" Value="Round"/>
 		<Setter Property="StrokeJoin" Value="Round"/>
 	</Style>
@@ -181,6 +106,9 @@
 	<Style Selector="Button.settings-nav[Tag=general] Path.settings-nav-icon, Button.settings-nav[Tag=behaviors] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 4,6 L 12,6 M 16,6 L 20,6 M 4,12 L 7,12 M 11,12 L 20,12 M 4,18 L 13,18 M 17,18 L 20,18 M 16,6 A 2,2 0 1 1 12,6 A 2,2 0 1 1 16,6 M 11,12 A 2,2 0 1 1 7,12 A 2,2 0 1 1 11,12 M 17,18 A 2,2 0 1 1 13,18 A 2,2 0 1 1 17,18"/>
 	</Style>
+	<Style Selector="Button.settings-nav[Tag=account] Path.settings-nav-icon">
+		<Setter Property="Data" Value="M 19,21 L 19,19 A 4,4 0 0 0 15,15 L 9,15 A 4,4 0 0 0 5,19 L 5,21 M 16,7 A 4,4 0 1 1 8,7 A 4,4 0 1 1 16,7"/>
+	</Style>
 	<Style Selector="Button.settings-nav[Tag=updates] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 20,9 A 8,8 0 1 0 20,15 M 20,4 L 20,9 15,9 M 12,7 L 12,17 M 8,13 L 12,17 16,13"/>
 	</Style>
@@ -201,18 +129,5 @@
 	</Style>
 	<Style Selector="Button.settings-nav[Tag=debug] Path.settings-nav-icon">
 		<Setter Property="Data" Value="M 5,4 L 19,4 Q 21,4 21,6 L 21,18 Q 21,20 19,20 L 5,20 Q 3,20 3,18 L 3,6 Q 3,4 5,4 Z M 7,8 L 11,12 7,16 M 13,16 L 17,16"/>
-	</Style>
-	<!-- 选项模板有自己的选中前景，不能沿用强调按钮的深色字。 -->
-	<Style Selector="ComboBoxItem /template/ ContentPresenter#PART_ContentPresenter">
-		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
-	</Style>
-	<Style Selector="ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, ComboBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter, ComboBoxItem:disabled /template/ ContentPresenter#PART_ContentPresenter">
-		<Setter Property="Foreground" Value="{DynamicResource SettingsPrimaryBrush}"/>
-	</Style>
-	<Style Selector="ComboBoxItem:selected /template/ Border#RootPanel">
-		<Setter Property="Background" Value="{DynamicResource SettingsSelectionBrush}"/>
-	</Style>
-	<Style Selector="ComboBoxItem:pointerover /template/ Border#RootPanel">
-		<Setter Property="Background" Value="{DynamicResource SettingsHoverBrush}"/>
 	</Style>
 </Styles>

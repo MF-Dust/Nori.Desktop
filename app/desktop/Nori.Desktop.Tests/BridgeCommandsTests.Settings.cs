@@ -11,7 +11,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Devolutions.AvaloniaTheme.MacOS;
+using Avalonia.Themes.Fluent;
 
 namespace Nori.Desktop.Tests;
 
@@ -362,7 +362,7 @@ public partial class BridgeCommandsTests
 	[Fact]
 	public Task NativeSettingsThemeInitializesControlTemplates() => WithSettingsUiAsync(() =>
 	{
-		DevolutionsMacOsTheme theme = Assert.Single(Application.Current!.Styles.OfType<DevolutionsMacOsTheme>());
+		FluentTheme theme = Assert.Single(Application.Current!.Styles.OfType<FluentTheme>());
 		Assert.NotEmpty(theme);
 		Button button = new() {Content = "测试"};
 		TextBox input = new();
@@ -442,8 +442,9 @@ public partial class BridgeCommandsTests
 				}
 				else
 				{
+					// 普通设置页是无卡片的分组：每个分组都是带标题与字段行的面板。
 					StackPanel form = Assert.IsType<StackPanel>(presenter.Content);
-					Assert.Contains(form.Children, child => child is Border);
+					Assert.Contains(form.Children, child => child is StackPanel section && section.Children.OfType<SettingsFieldPresenter>().Any());
 				}
 				Assert.True(presenter.Bounds.Width > 0);
 				Assert.True(presenter.Bounds.Height > 0);

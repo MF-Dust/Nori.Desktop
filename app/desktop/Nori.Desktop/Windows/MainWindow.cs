@@ -27,7 +27,7 @@ public sealed class MainWindow : Window
 	private readonly AppServices _services;
 	private readonly HomeView _home;
 	private readonly Border _sidebar = new();
-	private readonly TextBlock _homeLabel = Label(NoriMetrics.FontMd, ChatPalette.Teal);
+	private readonly TextBlock _homeLabel = Label(NoriMetrics.FontBase, ChatPalette.Teal);
 	private readonly TextBlock _groupLabel = Label(NoriMetrics.FontXs, ChatPalette.Faint);
 	private readonly TextBlock _pageTitle = Label(NoriMetrics.Font3xl, ChatPalette.Primary);
 	private readonly TextBlock _pageSubtitle = Label(NoriMetrics.FontXs);
@@ -128,14 +128,14 @@ public sealed class MainWindow : Window
 		workspace.Children.Add(BuildSidebar());
 		Grid.SetColumn(body, 1);
 		workspace.Children.Add(body);
-		Grid shell = new() {RowDefinitions = new RowDefinitions("52,*,Auto")};
+		Grid shell = new() {RowDefinitions = new RowDefinitions("44,*,Auto")};
 		shell.Children.Add(BuildHeader());
 		Grid.SetRow(workspace, 1);
 		shell.Children.Add(workspace);
 		Control footer = BuildFooter();
 		Grid.SetRow(footer, 2);
 		shell.Children.Add(footer);
-		return new Border {BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), Child = shell};
+		return NativeWindowChrome.WindowFrame(this, shell);
 	}
 
 	private Border BuildHeader()
@@ -145,34 +145,34 @@ public sealed class MainWindow : Window
 			Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center,
 			Children =
 			{
-				MainVisual.Icon("sparkles", 23, ChatPalette.Teal),
-				new TextBlock {Text = "Nori", FontSize = NoriMetrics.FontXl, FontWeight = FontWeight.SemiBold, Foreground = ChatPalette.Primary},
+				MainVisual.Icon("sparkles", 18, ChatPalette.Teal),
+				new TextBlock {Text = "Nori", FontSize = NoriMetrics.FontLg, FontWeight = FontWeight.Bold, Foreground = ChatPalette.Primary},
 				new Border {Width = 1, Height = 14, Background = ChatPalette.Line, Margin = new Thickness(4, 0)},
 				_brandCaption,
 			},
 		};
-		_windowChrome = new NativeWindowChrome(this, IsEnglish, brand) { Height = 52 };
+		_windowChrome = new NativeWindowChrome(this, IsEnglish, brand) { Height = 44 };
 		return _windowChrome;
 	}
 
 	private Border BuildSidebar()
 	{
-		_homeLabel.FontWeight = FontWeight.SemiBold;
+		// web SidebarNavButton：选中项为 primary/10 底 + 品牌青文字，32 高、16px 图标。
+		_homeLabel.FontWeight = FontWeight.Medium;
 		Border home = new()
 		{
-			Background = ChatPalette.Panel, CornerRadius = new CornerRadius(NoriMetrics.RadiusSm), Padding = new Thickness(13, 12),
-			BorderBrush = ChatPalette.Teal, BorderThickness = new Thickness(2, 0, 0, 0),
-			Child = new StackPanel {Orientation = Orientation.Horizontal, Spacing = 12, Children = {MainVisual.Icon("home", 20, ChatPalette.Teal), _homeLabel}},
+			Background = NoriThemeTokens.Brush("bg-selection"), CornerRadius = new CornerRadius(NoriMetrics.RadiusSm), Padding = new Thickness(10, 8),
+			Child = new StackPanel {Orientation = Orientation.Horizontal, Spacing = 10, Children = {MainVisual.Icon("home", 16, ChatPalette.Teal), _homeLabel}},
 		};
-		_groupLabel.Margin = new Thickness(14, 20, 0, 6);
-		StackPanel navigation = new() {Spacing = 5, Children = {home, _groupLabel}};
+		_groupLabel.Margin = new Thickness(10, 16, 0, 4);
+		StackPanel navigation = new() {Spacing = 2, Children = {home, _groupLabel}};
 		foreach (string window in new[] {WindowLabels.Chat, WindowLabels.Models, WindowLabels.Memory, WindowLabels.Settings})
 		{
 			TextBlock label = Label(NoriMetrics.FontBase, ChatPalette.Body);
 			Ellipse dot = new() {Width = 6, Height = 6, Fill = ChatPalette.Teal, IsVisible = false};
 			Ellipse badge = new() {Width = 6, Height = 6, Fill = ChatPalette.Accent, IsVisible = false};
-			Grid row = new() {ColumnDefinitions = new ColumnDefinitions("20,*,Auto"), ColumnSpacing = 8};
-			row.Children.Add(MainVisual.Icon(window));
+			Grid row = new() {ColumnDefinitions = new ColumnDefinitions("16,*,Auto"), ColumnSpacing = 10};
+			row.Children.Add(MainVisual.Icon(window, 16));
 			Grid.SetColumn(label, 1);
 			row.Children.Add(label);
 			StackPanel dots = new() {Orientation = Orientation.Horizontal, Spacing = 5, VerticalAlignment = VerticalAlignment.Center, Children = {badge, dot}};
@@ -180,8 +180,8 @@ public sealed class MainWindow : Window
 			row.Children.Add(dots);
 			Button button = new()
 			{
-				Name = $"Launcher_{window}", Content = row, Height = 44,
-				Padding = new Thickness(12, 8), BorderThickness = default,
+				Name = $"Launcher_{window}", Content = row, Height = 36,
+				Padding = new Thickness(10, 6), BorderThickness = default,
 				HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
 			};
 			button.Click += (_, _) => RunAction(() => _services.Windows.Show(window));
@@ -190,11 +190,11 @@ public sealed class MainWindow : Window
 		}
 		_collapse.HorizontalAlignment = HorizontalAlignment.Stretch;
 		_collapse.Click += async (_, _) => await ToggleSidebarAsync();
-		Grid contents = new() {RowDefinitions = new RowDefinitions("*,Auto"), Margin = new Thickness(10, 18, 10, 14)};
+		Grid contents = new() {RowDefinitions = new RowDefinitions("*,Auto"), Margin = new Thickness(8, 12, 8, 12)};
 		contents.Children.Add(navigation);
 		Grid.SetRow(_collapse, 1);
 		contents.Children.Add(_collapse);
-		_sidebar.Background = ChatPalette.Deep;
+		_sidebar.Background = NoriThemeTokens.Brush("bg-sidebar");
 		_sidebar.BorderBrush = ChatPalette.Line;
 		_sidebar.BorderThickness = new Thickness(0, 0, 1, 0);
 		_sidebar.Child = contents;
@@ -223,7 +223,7 @@ public sealed class MainWindow : Window
 		row.Children.Add(actions);
 		return new Border
 		{
-			Padding = new Thickness(20, 10), Background = ChatPalette.Deep,
+			Padding = new Thickness(20, 10), Background = Brushes.Transparent,
 			BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 1, 0, 0),
 			Child = new StackPanel {Spacing = 8, Children = {_hints, row}},
 		};
@@ -297,8 +297,8 @@ public sealed class MainWindow : Window
 			};
 			launcher.Label.Text = text;
 			launcher.Label.IsVisible = !_collapsed;
-			launcher.Button.Padding = _collapsed ? new Thickness(6, 8) : new Thickness(12, 8);
-			((Grid)launcher.Button.Content!).ColumnSpacing = _collapsed ? 0 : 8;
+			launcher.Button.Padding = _collapsed ? new Thickness(6, 6) : new Thickness(10, 6);
+			((Grid)launcher.Button.Content!).ColumnSpacing = _collapsed ? 0 : 10;
 			NameControl(launcher.Button, text + (english ? " · opens a window" : " · 打开独立窗口"));
 		}
 	}

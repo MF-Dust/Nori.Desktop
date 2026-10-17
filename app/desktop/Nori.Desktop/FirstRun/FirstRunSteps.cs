@@ -520,7 +520,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		{
 			Width = 320,
 			Padding = new Thickness(14, 10),
-			CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusLg),
 			Background = selected ? ChatPalette.Panel : ChatPalette.Deep,
 			BorderBrush = selected ? ChatPalette.Teal : ChatPalette.Faint,
 			BorderThickness = new Thickness(selected ? 2 : 1),

@@ -55,7 +55,8 @@ public partial class BridgeCommandsTests
 			StackPanel badge = Assert.Single(window.GetLogicalDescendants().OfType<StackPanel>(),
 				panel => panel.Children.OfType<TextBlock>().Any(block => block.Text == PoweredByNcn.Brand));
 			Assert.True(chrome.Bounds.Height > 0);
-			Assert.Equal(NoriThemeTokens.Color("bg-sidebar"), Assert.IsAssignableFrom<ISolidColorBrush>(chrome.Background).Color);
+			// 标题栏与窗口同为玻璃面，只以发丝线分隔。
+			Assert.Equal(Colors.Transparent, Assert.IsAssignableFrom<ISolidColorBrush>(chrome.Background).Color);
 			Assert.Equal(PlatformServices.Current.Capabilities.SupportsWindowDrag ? WindowDecorations.None : WindowDecorations.Full, window.WindowDecorations);
 			Button close = Assert.Single(chrome.GetLogicalDescendants().OfType<Button>(), button => button.IsVisible);
 			Assert.Equal(language == "en-US" ? "Close window" : "关闭窗口", AutomationProperties.GetName(close));

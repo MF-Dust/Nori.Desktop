@@ -92,7 +92,7 @@ public sealed class AccountWindow : Window
 		Grid.SetRow(chrome, 0);
 		Grid.SetRow(_view, 1);
 		Grid.SetRow(badge, 2);
-		Content = root;
+		Content = NativeWindowChrome.WindowFrame(this, root);
 
 		Opened += (_, _) => Dispatcher.UIThread.Post(_view.Activate);
 		Closed += (_, _) => { _view.Deactivate(); _onClosed(_signedIn); };

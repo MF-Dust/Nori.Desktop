@@ -25,7 +25,7 @@ public sealed class ChatWindow : Window
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/Settings/SettingsTheme.axaml") });
 		Background = ChatPalette.Background;
 		_service = new NativeChatService(services, this);
-		Body = new ChatView(_service) { Margin = new Thickness(12) }; Content = Body;
+		Body = new ChatView(_service); Content = Body;
 		NativeWindowChrome.Attach(this, () => UiLanguage.IsEnglish(Body.Language));
 		UpdateTitle(); Body.LanguageChanged += UpdateTitle;
 		Opened += (_, _) => Body.SetHostVisible(true);

@@ -190,7 +190,7 @@ public sealed class HomeView : Panel
 						{
 							Margin = new Thickness(12, 4, 0, 4), VerticalAlignment = VerticalAlignment.Center,
 							Background = ChatPalette.Overlay, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1),
-							CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Padding = new Thickness(9, 4),
+							CornerRadius = new CornerRadius(NoriMetrics.RadiusPill), Padding = new Thickness(9, 4),
 							Child = new StackPanel {Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center, Children = {_statusDot, _petStatus}},
 						},
 					},
@@ -255,7 +255,7 @@ public sealed class HomeView : Panel
 			action.VerticalAlignment = VerticalAlignment.Center;
 			content.Children.Add(action);
 		}
-		return new Border {Background = ChatPalette.Overlay, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Padding = new Thickness(14, 10), Child = content};
+		return new Border {Background = ChatPalette.Overlay, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(NoriMetrics.RadiusLg), Padding = new Thickness(14, 10), Child = content};
 	}
 
 	private static Button ActionButton(string text, Action onClick, bool primary = false)
@@ -394,7 +394,7 @@ public sealed class HomeView : Panel
 			Value.Text = "—";
 			Root = new Border
 			{
-				Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Padding = new Thickness(12),
+				Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(NoriMetrics.RadiusLg), Padding = new Thickness(12),
 				Child = new StackPanel {Spacing = 8, Children = {new StackPanel {Orientation = Orientation.Horizontal, Spacing = 8, Children = {MainVisual.Icon(icon, 15, ChatPalette.Muted), _label}}, Value, _note}},
 			};
 		}
@@ -424,7 +424,7 @@ public sealed class HomeView : Panel
 			bottom.Children.Add(arrow);
 			Root = new Button
 			{
-				Name = "HomeShortcut", HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(14), CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
+				Name = "HomeShortcut", HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(14), CornerRadius = new CornerRadius(NoriMetrics.RadiusLg),
 				Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1),
 				Content = new StackPanel
 				{
@@ -433,7 +433,7 @@ public sealed class HomeView : Panel
 					{
 						new Border
 						{
-							Width = 36, Height = 36, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Background = ChatPalette.Overlay,
+							Width = 36, Height = 36, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(NoriMetrics.RadiusLg), Background = ChatPalette.Overlay,
 							BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), Child = MainVisual.Icon(icon, 19, ChatPalette.Teal),
 						},
 						_title, _description,

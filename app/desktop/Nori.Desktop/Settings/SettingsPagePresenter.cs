@@ -40,7 +40,7 @@ public sealed class SettingsPagePresenter : ContentControl
 		_complex = null;
 		if (_page is not null) _page.PropertyChanged -= OnPagePropertyChanged;
 		_page = DataContext as SettingsPageBase;
-		MaxWidth = _page?.Key is "skills" or "mcp" ? 1200 : 820;
+		MaxWidth = _page?.Key is "skills" or "mcp" ? 1200 : 760;
 		if (_page is null)
 		{
 			Content = null;
@@ -60,31 +60,23 @@ public sealed class SettingsPagePresenter : ContentControl
 	{
 		// 复杂页面由专用呈现器负责，挂载时不能用空的普通分组覆盖它。
 		if (_page is null or NativeSettingsPageBase) return;
-		StackPanel root = new() { Spacing = 18, Margin = new Thickness(0) };
+		// web 设置页不使用卡片：分组只是标题 + 发丝线分隔的行，分组之间留白。
+		StackPanel root = new() { Spacing = 28, Margin = new Thickness(0) };
 		foreach (SettingsSectionViewModel section in _page.Sections)
 		{
-			Border card = new()
-			{
-				Background = Brush("SettingsCardBrush"),
-				BorderBrush = Brush("SettingsBorderBrush"),
-				BorderThickness = new Thickness(1),
-				CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
-				Padding = new Thickness(20, 16),
-			};
-			card.Bind(IsVisibleProperty, new Binding(nameof(SettingsSectionViewModel.IsVisible)) {Source = section});
 			StackPanel content = new() { Spacing = 0 };
+			content.Bind(IsVisibleProperty, new Binding(nameof(SettingsSectionViewModel.IsVisible)) {Source = section});
 			content.Children.Add(new TextBlock
 			{
 				Text = section.Title,
-				FontSize = NoriMetrics.FontLg,
+				FontSize = NoriMetrics.FontBase,
 				FontWeight = FontWeight.SemiBold,
 				Foreground = Brush("SettingsPrimaryBrush"),
-				Margin = new Thickness(0, 0, 0, 14),
+				Margin = new Thickness(0, 0, 0, 10),
 			});
 			foreach (SettingsFieldViewModel field in section.Fields)
 				content.Children.Add(new SettingsFieldPresenter { DataContext = field });
-			card.Child = content;
-			root.Children.Add(card);
+			root.Children.Add(content);
 		}
 
 		if (_page is ProactiveSettingsPage proactive)

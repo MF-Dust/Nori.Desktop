@@ -23,7 +23,7 @@ internal static class QuickChatPalette
 	internal static readonly IBrush FocusedPlaceholder = new ImmutableSolidColorBrush(Tint("chat-focus-placeholder", 255));
 	internal static readonly IBrush DisabledArrow = new ImmutableSolidColorBrush(Tint("chat-composer", 96));
 	internal static readonly IBrush BubbleBorder = new ImmutableSolidColorBrush(Tint("chat-white", 112));
-	internal static readonly IBrush PlayerBorder = new ImmutableSolidColorBrush(Tint("text-faint", 48));
+	internal static readonly IBrush PlayerBorder = new ImmutableSolidColorBrush(Tint("chat-user-border", 48));
 	internal static readonly IBrush Approval = new ImmutableSolidColorBrush(Tint("chat-white", 242));
 	internal static readonly IBrush ApprovalText = new ImmutableSolidColorBrush(Tint("chat-user-bg", 255));
 	internal static readonly IBrush ApprovalDanger = new ImmutableSolidColorBrush(Tint("chat-approval-danger", 255));

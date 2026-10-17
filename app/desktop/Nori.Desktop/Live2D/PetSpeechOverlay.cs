@@ -25,7 +25,7 @@ public sealed class PetSpeechOverlay : Border
 		Background = NoriThemeTokens.Brush("bg-glass-modal");
 		BorderBrush = NoriThemeTokens.Brush("line-glow");
 		BorderThickness = new Avalonia.Thickness(1);
-		CornerRadius = new Avalonia.CornerRadius(NoriMetrics.RadiusMd);
+		CornerRadius = new Avalonia.CornerRadius(NoriMetrics.RadiusXl, NoriMetrics.RadiusXl, NoriMetrics.RadiusXl, NoriMetrics.RadiusXs);
 		BoxShadow = new BoxShadows(new BoxShadow
 		{
 			Blur = 18,

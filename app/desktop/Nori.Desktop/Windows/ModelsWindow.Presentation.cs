@@ -48,7 +48,7 @@ public sealed partial class ModelsWindow
 		var body = Stack();
 		if (title is not null) body.Children.Add(Local(title, NoriMetrics.FontLg, true));
 		foreach (Control child in children) body.Children.Add(child);
-		var border = new Border { Child = body, Padding = new Thickness(20, 16), CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), BorderThickness = new Thickness(1) };
+		var border = new Border { Child = body, Padding = new Thickness(18, 16), CornerRadius = new CornerRadius(NoriMetrics.RadiusLg), BorderThickness = new Thickness(1) };
 		Brush(border, Border.BackgroundProperty, "SettingsCardBrush"); Brush(border, Border.BorderBrushProperty, "SettingsBorderBrush"); return border;
 	}
 	private Button ActionButton(Func<string> label, Func<Task> action, string? name = null, bool danger = false)

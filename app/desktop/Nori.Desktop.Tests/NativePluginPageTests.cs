@@ -59,7 +59,7 @@ public partial class BridgeCommandsTests
 					first.Height = height;
 					await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 					first.UpdateLayout();
-					Assert.Equal(40, first.GetLogicalDescendants().OfType<NativeWindowChrome>().Single().Bounds.Height);
+					Assert.Equal(NativeWindowChrome.TitleBarHeight, first.GetLogicalDescendants().OfType<NativeWindowChrome>().Single().Bounds.Height);
 					Assert.Equal(width, first.ClientSize.Width);
 					Assert.Equal(height, first.ClientSize.Height);
 					CaptureUi(first, $"plugin-page-{width}x{height}-{language}");

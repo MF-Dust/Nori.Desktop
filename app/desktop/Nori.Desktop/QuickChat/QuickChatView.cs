@@ -48,7 +48,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 	private readonly TextBlock _placeholder = new()
 	{
 		Name = "QuickChatPlaceholder",
-		FontSize = NoriMetrics.FontMd,
+		FontSize = NoriMetrics.FontBase,
 		FontWeight = FontWeight.Medium,
 		FontFamily = ConversationFont,
 		VerticalAlignment = VerticalAlignment.Center,
@@ -101,7 +101,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		MaxWidth = 280,
 		Height = 46,
 		Padding = new Thickness(0),
-		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusLg),
 		BorderThickness = new Thickness(1),
 		HorizontalAlignment = HorizontalAlignment.Stretch,
 		RenderTransformOrigin = RelativePoint.Center,
@@ -118,7 +118,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 	{
 		Name = "QuickChatComposerFrost",
 		// 外壳圆角减去 1px 描边，内层材质贴合外轮廓。
-		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd - 1),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusLg - 1),
 		Padding = new Thickness(0),
 		ClipToBounds = true,
 	};
@@ -126,14 +126,14 @@ public sealed class QuickChatView : UserControl, IDisposable
 	{
 		Name = "QuickChatComposerTint",
 		// 外壳圆角减去 1px 描边，内层材质贴合外轮廓。
-		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd - 1),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusLg - 1),
 		IsHitTestVisible = false,
 	};
 	private readonly Border _error = new()
 	{
 		Name = "QuickChatError",
 		Padding = new Thickness(12, 8),
-		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusLg),
 		Background = QuickChatPalette.Error,
 		Margin = new Thickness(0, 0, 0, 8),
 		IsVisible = false,
@@ -142,7 +142,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 	{
 		Name = "QuickChatApproval",
 		Padding = new Thickness(12, 10),
-		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusLg),
 		Background = QuickChatPalette.Error,
 		BorderBrush = QuickChatPalette.PlayerBorder,
 		BorderThickness = new Thickness(1),
@@ -219,7 +219,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		RenderTransformOrigin = new RelativePoint(0.5, 1, RelativeUnit.Relative);
 		RenderTransform = _dragScale;
 		FontFamily = ConversationFont;
-		FontSize = NoriMetrics.FontMd;
+		FontSize = NoriMetrics.FontBase;
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/QuickChat/QuickChatTheme.axaml") });
 		BuildContent();
 		_state.Changed += QueueRender;
@@ -887,7 +887,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 			_bubble = bubble;
 			_enteredAt = owner._now();
 			bool player = bubble.Message.Role == "user";
-			_text = Text(DisplayText(bubble.Message.Content), NoriMetrics.FontMd, FontWeight.Medium, player ? QuickChatPalette.PlayerText : QuickChatPalette.Dark);
+			_text = Text(DisplayText(bubble.Message.Content), NoriMetrics.FontBase, FontWeight.Medium, player ? QuickChatPalette.PlayerText : QuickChatPalette.Dark);
 			_text.TextWrapping = TextWrapping.WrapWithOverflow;
 			_text.LineHeight = 22.75;
 			_text.Opacity = player ? 0.95 : 0.85;
@@ -897,7 +897,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 			{
 				Name = player ? "QuickChatPlayerBubble" : "QuickChatAgentBubble",
 				Padding = new Thickness(16, 10),
-				CornerRadius = player ? new CornerRadius(NoriMetrics.RadiusLg, NoriMetrics.RadiusLg, NoriMetrics.RadiusXs, NoriMetrics.RadiusLg) : new CornerRadius(NoriMetrics.RadiusLg, NoriMetrics.RadiusLg, NoriMetrics.RadiusLg, NoriMetrics.RadiusXs),
+				CornerRadius = player ? new CornerRadius(NoriMetrics.RadiusXl, NoriMetrics.RadiusXl, NoriMetrics.RadiusXs, NoriMetrics.RadiusXl) : new CornerRadius(NoriMetrics.RadiusXl, NoriMetrics.RadiusXl, NoriMetrics.RadiusXl, NoriMetrics.RadiusXs),
 				Background = player ? PlayerGradient() : AgentGradient(),
 				BorderBrush = player ? QuickChatPalette.PlayerBorder : QuickChatPalette.BubbleBorder,
 				BorderThickness = new Thickness(1),

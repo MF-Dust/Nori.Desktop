@@ -695,13 +695,14 @@ public sealed class PetWindow : Window
 		{
 			FontFamily = NoriTypography.System,
 			Background = NoriThemeTokens.Brush("bg-menu"),
-			BorderBrush = NoriThemeTokens.Brush("line-strong"),
+			BorderBrush = NoriThemeTokens.Brush("line-subtle"),
 			BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
-			Padding = new Thickness(4),
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
+			Padding = new Thickness(5),
 		};
-		// 保留浅色文字与危险色，悬停和键盘选中使用深色表面而非亮强调色。
-		menu.Resources["MenuItemPointerOverBackgroundBrush"] = NoriThemeTokens.Brush("bg-card-hover");
+		// web 顶栏菜单：保留浅色文字与危险色，悬停和键盘选中使用冰青 10% 叠加层而非亮强调色。
+		menu.Resources["MenuFlyoutItemBackgroundPointerOver"] = NoriThemeTokens.Brush("hover-ice");
+		menu.Resources["MenuFlyoutItemBackgroundPressed"] = NoriThemeTokens.Brush("hover-ice-strong");
 		menu.Resources["LayoutBackgroundMidBrush"] = NoriThemeTokens.Brush("bg-selection");
 
 		var openMainItem = CreateMenuItem("打开主界面", () => _services.Windows.Show(WindowLabels.Main));

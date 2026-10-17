@@ -198,7 +198,7 @@ public static class ChatMarkdown
 			switch (block)
 			{
 				case HeadingBlock heading:
-					TextBlock title = Paragraph(heading, NoriMetrics.FontMd);
+					TextBlock title = Paragraph(heading, NoriMetrics.FontBase);
 					title.Name = "ChatMarkdownHeading";
 					title.FontWeight = FontWeight.Bold;
 					title.LineHeight = 19.6;

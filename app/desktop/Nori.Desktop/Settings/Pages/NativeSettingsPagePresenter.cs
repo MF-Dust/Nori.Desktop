@@ -149,7 +149,7 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 	private StackPanel CardBody(string title, string? subtitle, bool compact = false)
 	{
 		StackPanel body = new() {Spacing = compact ? 6 : 4};
-		body.Children.Add(new TextBlock {Text = title, FontSize = compact ? 14 : 16, FontWeight = FontWeight.SemiBold, Foreground = Brush("SettingsPrimaryBrush"), TextWrapping = TextWrapping.Wrap});
+		body.Children.Add(new TextBlock {Text = title, FontSize = compact ? NoriMetrics.FontBase : NoriMetrics.FontLg, FontWeight = FontWeight.SemiBold, Foreground = Brush("SettingsPrimaryBrush"), TextWrapping = TextWrapping.Wrap});
 		if (!string.IsNullOrWhiteSpace(subtitle)) body.Children.Add(new TextBlock {Text = subtitle, Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap});
 		return body;
 	}
@@ -159,8 +159,8 @@ public sealed partial class NativeSettingsPagePresenter : ContentControl, IDispo
 		Background = Brush("SettingsCardBrush"),
 		BorderBrush = Brush("SettingsBorderBrush"),
 		BorderThickness = new Thickness(1),
-		CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
-		Padding = compact ? new Thickness(14, 12) : new Thickness(20, 16),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusLg),
+		Padding = compact ? new Thickness(14, 12) : new Thickness(16, 14),
 		Child = body,
 	};
 

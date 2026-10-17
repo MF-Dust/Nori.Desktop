@@ -30,12 +30,12 @@ public sealed partial class ModelsWindow : Window
 	private readonly List<Action> _bindings = [];
 	private readonly List<Action> _adjustBindings = [];
 	private readonly HashSet<Task> _operations = [];
-	private readonly Grid _root = new() { ColumnDefinitions = new ColumnDefinitions("200,*") };
+	private readonly Grid _root = new() { ColumnDefinitions = new ColumnDefinitions("188,*") };
 	private readonly ContentControl _presenter = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
 	private readonly TextBlock _status = new() { FontSize = NoriMetrics.FontXs, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-	private readonly TextBlock _heading = new() { FontSize = NoriMetrics.Font3xl, FontWeight = FontWeight.SemiBold };
-	private readonly TextBlock _description = new() { FontSize = NoriMetrics.FontBase, TextWrapping = TextWrapping.Wrap };
-	private readonly StackPanel _header = new() { Spacing = 6, MaxWidth = 820, Margin = new Thickness(0, 0, 8, 0) };
+	private readonly TextBlock _heading = new() { FontSize = NoriMetrics.Font2xl, FontWeight = FontWeight.SemiBold };
+	private readonly TextBlock _description = new() { FontSize = NoriMetrics.FontXs, TextWrapping = TextWrapping.Wrap };
+	private readonly StackPanel _header = new() { Spacing = 4, MaxWidth = 820, Margin = new Thickness(0, 0, 8, 0) };
 	private readonly Dictionary<string, Button> _navigation = [];
 	private Border _sidebar = null!;
 	private Control _library = null!;
@@ -218,32 +218,24 @@ public sealed partial class ModelsWindow : Window
 	}
 	private void BuildShell()
 	{
-		var nav = new StackPanel { Spacing = 4, Margin = new Thickness(10, 20, 10, 12) };
-		var monogram = new Border { Width = 36, Height = 36, CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Child = Text("N", NoriMetrics.Font2xl, true) };
-		((TextBlock)monogram.Child).HorizontalAlignment = HorizontalAlignment.Center;
-		((TextBlock)monogram.Child).VerticalAlignment = VerticalAlignment.Center;
-		Brush(monogram, Border.BackgroundProperty, "SettingsSelectionBrush"); Brush(monogram.Child, TextBlock.ForegroundProperty, "SettingsAccentBrush");
-		var brand = new Grid { ColumnDefinitions = new ColumnDefinitions("36,*"), ColumnSpacing = 10, Margin = new Thickness(6, 0, 6, 20) };
-		brand.Children.Add(monogram);
-		var name = Stack(Text("NORI", NoriMetrics.FontXs, true), Local(() => T("模型", "Models"), NoriMetrics.FontLg, true)); name.Spacing = 2;
-		Grid.SetColumn(name, 1); brand.Children.Add(name); nav.Children.Add(brand);
+		var nav = new StackPanel { Spacing = 2, Margin = new Thickness(8, 12, 8, 12) };
 		foreach (string section in new[] { "library", "behaviors" })
 		{
 			var icon = new Avalonia.Controls.Shapes.Path(); icon.Classes.Add("settings-nav-icon");
 			var symbol = new Border
 			{
-				Width = 26, Height = 26, CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
-				Child = new Viewbox { Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Child = icon },
+				Width = 16, Height = 16,
+				Child = new Viewbox { Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Child = icon },
 			};
 			symbol.Classes.Add("settings-nav-symbol");
 			TextBlock label = Local(() => section == "library" ? T("模型资料库", "Model library") : T("伴侣交互行为", "Companion behavior"));
 			label.VerticalAlignment = VerticalAlignment.Center;
-			var content = new Grid { ColumnDefinitions = new ColumnDefinitions("26,*"), ColumnSpacing = 9 };
+			var content = new Grid { ColumnDefinitions = new ColumnDefinitions("16,*"), ColumnSpacing = 10 };
 			content.Children.Add(symbol); Grid.SetColumn(label, 1); content.Children.Add(label);
 			var button = new Button
 			{
 				Name = "ModelsNav_" + section, Tag = section, Content = content,
-				MinHeight = 40, Padding = new Thickness(8, 6), Margin = new Thickness(0, 1), CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
+				MinHeight = 32, Padding = new Thickness(10, 6), Margin = new Thickness(0), CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
 				HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
 			};
 			button.Classes.Add("settings-nav");
@@ -258,7 +250,7 @@ public sealed partial class ModelsWindow : Window
 		Grid.SetColumn(main, 1);
 		_header.Children.Add(_heading); _header.Children.Add(_description);
 		Brush(_description, TextBlock.ForegroundProperty, "SettingsSecondaryBrush");
-		var header = new Border { Child = _header, Padding = new Thickness(24, 24, 24, 18), BorderThickness = new Thickness(0, 0, 0, 1) };
+		var header = new Border { Child = _header, Padding = new Thickness(28, 22, 28, 14), BorderThickness = new Thickness(0, 0, 0, 1) };
 		Brush(header, Border.BorderBrushProperty, "SettingsBorderBrush"); main.Children.Add(header);
 		_presenter.Margin = new Thickness(24, 18, 24, 12); Grid.SetRow(_presenter, 1); main.Children.Add(_presenter);
 		var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12, Margin = new Thickness(24, 8, 24, 12) };

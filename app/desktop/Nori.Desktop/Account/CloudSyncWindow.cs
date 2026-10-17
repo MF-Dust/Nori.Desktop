@@ -85,7 +85,7 @@ internal sealed class CloudSyncWindow : Window
 		_forget.HorizontalAlignment = HorizontalAlignment.Left;
 		_overwrite.IsVisible = false;
 
-		Content = BuildBody();
+		Content = Nori.Desktop.Windows.NativeWindowChrome.WindowFrame(this, BuildBody());
 
 		KeyDown += (_, args) =>
 		{

@@ -73,7 +73,8 @@ public sealed partial class ChatView
 		header.Children.Add(home);
 		var settings = Button(() => T("设置", "Settings"), () => { _service.OpenSettings(); return Task.CompletedTask; }, "ChatOpenSettings", "settings", iconOnly: true);
 		settings.Margin = new Thickness(6, 0, 0, 0); header.Children.Add(settings);
-		_main.Children.Add(new Border { Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(18, 10, 18, 6), Child = header });
+		// web 会话头部：与窗口同为玻璃，只以发丝线分隔。
+		_main.Children.Add(new Border { Background = Brushes.Transparent, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(16, 10, 16, 6), Child = header });
 
 		var stream = new Grid { ClipToBounds = true };
 		var flow = new StackPanel { Spacing = 0 };
@@ -94,24 +95,26 @@ public sealed partial class ChatView
 		_statusText.VerticalAlignment = VerticalAlignment.Center; status.Children.Add(_statusText);
 		_retry = Button(() => !_loadedHistory ? T("重新加载历史", "Reload history") : T("重试上一条", "Retry last message"), () => !_loadedHistory ? LoadHistoryAsync(false) : SendAsync(_state.FailedInput), "ChatRetry");
 		Grid.SetColumn(_retry, 1); status.Children.Add(_retry);
-		_statusBar = new Border { Name = "ChatStatus", BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(18, 6), Child = status };
+		_statusBar = new Border { Name = "ChatStatus", BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(16, 6), Child = status };
 		Grid.SetRow(_statusBar, 2); _main.Children.Add(_statusBar);
 
 		var composer = new Grid { ColumnDefinitions = new ColumnDefinitions("40,*,40"), ColumnSpacing = 12 };
 		_microphone = Button(() => VoiceLabel(), ToggleVoiceAsync, "ChatMicrophone", "mic", iconOnly: true);
 		var microphoneContent = new StackPanel { Spacing = 1, HorizontalAlignment = HorizontalAlignment.Center };
 		microphoneContent.Children.Add(Icon("mic", ChatPalette.Muted)); _voiceTime.HorizontalAlignment = HorizontalAlignment.Center; microphoneContent.Children.Add(_voiceTime);
-		_microphone.Content = microphoneContent; _microphone.Height = 40; _microphone.Padding = new Thickness(0); _microphone.VerticalAlignment = VerticalAlignment.Bottom; composer.Children.Add(_microphone);
+		_microphone.Content = microphoneContent; _microphone.Width = 40; _microphone.Height = 40; _microphone.Padding = new Thickness(0); _microphone.CornerRadius = new CornerRadius(NoriMetrics.RadiusPill); _microphone.VerticalAlignment = VerticalAlignment.Bottom; composer.Children.Add(_microphone);
 		_composer.Classes.Add("chat-composer"); Grid.SetColumn(_composer, 1); composer.Children.Add(_composer);
 		var sendSlot = new Grid { VerticalAlignment = VerticalAlignment.Bottom };
 		_send = Button(() => T("发送消息", "Send message"), () => SendAsync(), "ChatSend", "send", primary: true, iconOnly: true);
 		_stop = Button(() => T("停止生成", "Stop generating"), StopGenerationAsync, "ChatStop", "stop", iconOnly: true);
 		_stop.Classes.Add("stop"); _send.Height = 40; _stop.Height = 40;
+		// web 发送键为品牌青圆形按钮。
+		_send.CornerRadius = _stop.CornerRadius = new CornerRadius(NoriMetrics.RadiusPill);
 		sendSlot.Children.Add(_send); sendSlot.Children.Add(_stop); Grid.SetColumn(sendSlot, 2); composer.Children.Add(sendSlot);
-		var footer = new Border { Name = "ChatComposeBar", Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(18, 14), Child = composer };
+		var footer = new Border { Name = "ChatComposeBar", Background = Brushes.Transparent, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(12, 10), Child = composer };
 		Grid.SetRow(footer, 3); _main.Children.Add(footer);
 		_root.Children.Add(_main);
-		Content = new Border { Background = Brushes.Transparent, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(NoriMetrics.RadiusLg), ClipToBounds = true, Child = _root };
+		Content = new Border { Background = Brushes.Transparent, ClipToBounds = true, Child = _root };
 		Localize(() =>
 		{
 			_composer.PlaceholderText = T("输入消息, 回车发送", "Type a message, press Enter to send…");

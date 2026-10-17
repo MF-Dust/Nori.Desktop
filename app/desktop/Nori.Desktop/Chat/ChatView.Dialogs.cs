@@ -43,7 +43,7 @@ public sealed partial class ChatView
 		KeyboardNavigation.SetTabNavigation(dialog, KeyboardNavigationMode.Cycle);
 		var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12 };
 		_dialogTitle.VerticalAlignment = VerticalAlignment.Center;
-		_dialogClose = NativeWindowChrome.TrafficButton("close", "×");
+		_dialogClose = NativeWindowChrome.TrafficButton("close");
 		_dialogClose.Name = "ChatDialogClose";
 		_dialogClose.Click += async (_, _) =>
 		{
@@ -54,8 +54,8 @@ public sealed partial class ChatView
 		var lights = new StackPanel { Orientation = Orientation.Horizontal, Children = { _dialogClose } };
 		foreach (var kind in new[] { "minimize", "zoom" })
 		{
-			var disabled = NativeWindowChrome.TrafficButton(kind, kind == "zoom" ? "+" : "−");
-			disabled.IsEnabled = false; disabled.Opacity = NoriMetrics.OpacityDisabled; lights.Children.Add(disabled);
+			var disabled = NativeWindowChrome.TrafficButton(kind);
+			disabled.IsEnabled = false; lights.Children.Add(disabled);
 		}
 		heading.Children.Add(lights); Grid.SetColumn(_dialogTitle, 1); heading.Children.Add(_dialogTitle); dialog.Children.Add(heading);
 		var contents = new Grid();

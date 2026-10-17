@@ -60,7 +60,7 @@ public partial class BridgeCommandsTests
 			ToolTip.SetIsOpen(hint, true);
 			Dispatcher.UIThread.RunJobs();
 			AssertNoriBrush(tip.Background, "bg-tooltip");
-			AssertNoriBrush(tip.Foreground, "text-primary");
+			AssertNoriBrush(tip.Foreground, "text-body");
 			AssertNoriBrush(tip.BorderBrush, "line-strong");
 			await WaitForTooltipAsync(tip);
 			CaptureUi(Assert.IsAssignableFrom<TopLevel>(TopLevel.GetTopLevel(tip)), "tooltip-" + suffix);
@@ -73,7 +73,7 @@ public partial class BridgeCommandsTests
 			{
 				popup.MouseMove(item.TranslatePoint(new Point(item.Bounds.Width / 2, item.Bounds.Height / 2), popup)!.Value);
 				Border surface = item.GetVisualDescendants().OfType<Border>().Single(control => control.Name == "PART_LayoutRoot");
-				AssertNoriBrush(surface.Background, "bg-card-hover");
+				AssertNoriBrush(surface.Background, "hover-ice");
 				bool danger = item == menu.Items.OfType<MenuItem>().Last();
 				AssertNoriBrush(item.Foreground, danger ? "danger-text" : "text-body");
 				CaptureUi(popup, $"pet-menu-{(danger ? "danger" : "normal")}-{suffix}");

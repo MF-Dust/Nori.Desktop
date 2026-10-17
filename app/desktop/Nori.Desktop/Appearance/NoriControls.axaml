@@ -1,0 +1,365 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+	<!--
+		全局控件外观：模板沿用 Avalonia Fluent，配色、圆角与尺寸对齐 Nori.Web theme-nori。
+		web 的控件是 shadcn 风格：6px 圆角、冰青 10~15% 发丝描边、深色输入井、品牌青填充主按钮。
+	-->
+	<Styles.Resources>
+		<ResourceDictionary>
+			<ResourceDictionary.MergedDictionaries>
+				<ResourceInclude Source="avares://Nori.Desktop/Appearance/NoriThemeResources.g.axaml"/>
+			</ResourceDictionary.MergedDictionaries>
+
+			<!-- 圆角与焦点 -->
+			<StaticResource x:Key="ControlCornerRadius" ResourceKey="NoriRadiusSm"/>
+			<StaticResource x:Key="OverlayCornerRadius" ResourceKey="NoriRadiusMd"/>
+			<StaticResource x:Key="SystemControlFocusVisualPrimaryBrush" ResourceKey="NoriNoriTealBrush"/>
+			<SolidColorBrush x:Key="SystemControlFocusVisualSecondaryBrush" Color="Transparent"/>
+			<Thickness x:Key="SystemControlFocusVisualPrimaryThickness">2</Thickness>
+			<Thickness x:Key="SystemControlFocusVisualSecondaryThickness">0</Thickness>
+			<StaticResource x:Key="SystemAccentColor" ResourceKey="NoriNoriTealColor"/>
+			<StaticResource x:Key="SystemAccentColorDark1" ResourceKey="NoriNoriTealPressedColor"/>
+			<StaticResource x:Key="SystemAccentColorDark2" ResourceKey="NoriNoriTealPressedColor"/>
+			<StaticResource x:Key="SystemAccentColorLight1" ResourceKey="NoriNoriTealSoftColor"/>
+			<StaticResource x:Key="SystemAccentColorLight2" ResourceKey="NoriNoriTealSoftColor"/>
+			<StaticResource x:Key="SystemControlHighlightAccentBrush" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="SystemControlErrorTextForegroundBrush" ResourceKey="NoriDangerTextBrush"/>
+
+			<!-- 按钮 (web outline action: 深色井 + 冰青描边；悬停 muted) -->
+			<StaticResource x:Key="ButtonBackground" ResourceKey="NoriBgAbyssBrush"/>
+			<StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="NoriBgDeepBrush"/>
+			<StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="NoriBgPanelBrush"/>
+			<StaticResource x:Key="ButtonBackgroundDisabled" ResourceKey="NoriBgAbyssBrush"/>
+			<StaticResource x:Key="ButtonForeground" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="ButtonForegroundPressed" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="ButtonForegroundDisabled" ResourceKey="NoriTextDisabledBrush"/>
+			<StaticResource x:Key="ButtonBorderBrush" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="ButtonBorderBrushDisabled" ResourceKey="NoriLineSubtleBrush"/>
+			<!-- 数字框步进按钮与输入井同色，按下为 muted 悬停色。 -->
+			<StaticResource x:Key="RepeatButtonBackground" ResourceKey="NoriBgInputBrush"/>
+			<StaticResource x:Key="RepeatButtonBackgroundPointerOver" ResourceKey="NoriBgDeepBrush"/>
+			<StaticResource x:Key="RepeatButtonBackgroundPressed" ResourceKey="NoriBgCardHoverBrush"/>
+			<StaticResource x:Key="RepeatButtonForeground" ResourceKey="NoriTextBodyBrush"/>
+			<StaticResource x:Key="RepeatButtonForegroundPointerOver" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="RepeatButtonForegroundPressed" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="RepeatButtonBorderBrush" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="RepeatButtonBorderBrushPointerOver" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="RepeatButtonBorderBrushPressed" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="AccentButtonBackground" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="AccentButtonBackgroundPointerOver" ResourceKey="NoriNoriTealPressedBrush"/>
+			<StaticResource x:Key="AccentButtonBackgroundPressed" ResourceKey="NoriNoriTealPressedBrush"/>
+			<StaticResource x:Key="AccentButtonForeground" ResourceKey="NoriOnTealBrush"/>
+			<StaticResource x:Key="AccentButtonForegroundPointerOver" ResourceKey="NoriOnTealBrush"/>
+			<StaticResource x:Key="AccentButtonForegroundPressed" ResourceKey="NoriOnTealBrush"/>
+			<SolidColorBrush x:Key="AccentButtonBorderBrush" Color="Transparent"/>
+			<SolidColorBrush x:Key="AccentButtonBorderBrushPointerOver" Color="Transparent"/>
+			<SolidColorBrush x:Key="AccentButtonBorderBrushPressed" Color="Transparent"/>
+
+			<!-- 选项按钮：选中为 primary/10 底 + 品牌青文字 -->
+			<StaticResource x:Key="ToggleButtonBackground" ResourceKey="NoriBgAbyssBrush"/>
+			<StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="NoriBgDeepBrush"/>
+			<StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="NoriBgPanelBrush"/>
+			<StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="NoriBgSelectionBrush"/>
+			<StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="NoriBgSelectionBrush"/>
+			<StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="NoriBgSelectionBrush"/>
+			<StaticResource x:Key="ToggleButtonForeground" ResourceKey="NoriTextBodyBrush"/>
+			<StaticResource x:Key="ToggleButtonForegroundPointerOver" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="ToggleButtonBorderBrush" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="ToggleButtonBorderBrushPointerOver" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="ToggleButtonBorderBrushChecked" ResourceKey="NoriLineGlowBrush"/>
+			<StaticResource x:Key="ToggleButtonBorderBrushCheckedPointerOver" ResourceKey="NoriLineGlowBrush"/>
+
+			<!-- 文本框 (web: background/60 输入井 + 12~14% 描边，聚焦 1px 品牌青) -->
+			<StaticResource x:Key="TextControlBackground" ResourceKey="NoriBgInputBrush"/>
+			<StaticResource x:Key="TextControlBackgroundPointerOver" ResourceKey="NoriBgInputBrush"/>
+			<StaticResource x:Key="TextControlBackgroundFocused" ResourceKey="NoriBgInputBrush"/>
+			<StaticResource x:Key="TextControlBackgroundDisabled" ResourceKey="NoriBgDeepBrush"/>
+			<StaticResource x:Key="TextControlForeground" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="TextControlForegroundPointerOver" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="TextControlForegroundFocused" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="TextControlForegroundDisabled" ResourceKey="NoriTextDisabledBrush"/>
+			<StaticResource x:Key="TextControlBorderBrush" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="TextControlBorderBrushPointerOver" ResourceKey="NoriLineGlowBrush"/>
+			<StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="TextControlBorderBrushDisabled" ResourceKey="NoriLineSubtleBrush"/>
+			<StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="NoriTextPlaceholderBrush"/>
+			<StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="NoriTextPlaceholderBrush"/>
+			<StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="NoriTextPlaceholderBrush"/>
+			<StaticResource x:Key="TextControlPlaceholderForegroundDisabled" ResourceKey="NoriTextDisabledBrush"/>
+			<Color x:Key="TextControlSelectionHighlightColor">#6677C6D4</Color>
+			<Thickness x:Key="TextControlBorderThemeThickness">1</Thickness>
+			<Thickness x:Key="TextControlBorderThemeThicknessFocused">1</Thickness>
+			<Thickness x:Key="TextControlThemePadding">10,6,10,6</Thickness>
+			<x:Double x:Key="TextControlThemeMinHeight">32</x:Double>
+			<StaticResource x:Key="TextControlButtonForeground" ResourceKey="NoriTextMutedBrush"/>
+			<StaticResource x:Key="TextControlButtonForegroundPointerOver" ResourceKey="NoriTextPrimaryBrush"/>
+			<SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent"/>
+			<StaticResource x:Key="TextControlButtonBackgroundPointerOver" ResourceKey="NoriBgDeepBrush"/>
+			<StaticResource x:Key="TextControlButtonBackgroundPressed" ResourceKey="NoriBgPanelBrush"/>
+
+			<!-- 下拉框：触发器同输入井，弹层为 web 菜单面板 -->
+			<StaticResource x:Key="ComboBoxBackground" ResourceKey="NoriBgInputBrush"/>
+			<StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="NoriBgInputBrush"/>
+			<StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="NoriBgDeepBrush"/>
+			<StaticResource x:Key="ComboBoxBackgroundDisabled" ResourceKey="NoriBgDeepBrush"/>
+			<StaticResource x:Key="ComboBoxBackgroundUnfocused" ResourceKey="NoriBgInputBrush"/>
+			<StaticResource x:Key="ComboBoxBackgroundBorderBrushFocused" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="ComboBoxBackgroundBorderBrushUnfocused" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="ComboBoxBorderBrushPointerOver" ResourceKey="NoriLineGlowBrush"/>
+			<StaticResource x:Key="ComboBoxBorderBrushPressed" ResourceKey="NoriLineGlowBrush"/>
+			<StaticResource x:Key="ComboBoxBorderBrushDisabled" ResourceKey="NoriLineSubtleBrush"/>
+			<StaticResource x:Key="ComboBoxForeground" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="ComboBoxForegroundDisabled" ResourceKey="NoriTextDisabledBrush"/>
+			<StaticResource x:Key="ComboBoxForegroundFocused" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="ComboBoxForegroundFocusedPressed" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="ComboBoxPlaceHolderForeground" ResourceKey="NoriTextPlaceholderBrush"/>
+			<StaticResource x:Key="ComboBoxDropDownGlyphForeground" ResourceKey="NoriTextMutedBrush"/>
+			<StaticResource x:Key="ComboBoxDropDownGlyphForegroundFocused" ResourceKey="NoriTextBodyBrush"/>
+			<StaticResource x:Key="ComboBoxDropDownGlyphForegroundFocusedPressed" ResourceKey="NoriTextBodyBrush"/>
+			<StaticResource x:Key="ComboBoxDropDownGlyphForegroundDisabled" ResourceKey="NoriTextDisabledBrush"/>
+			<StaticResource x:Key="ComboBoxDropDownBackground" ResourceKey="NoriBgMenuBrush"/>
+			<StaticResource x:Key="ComboBoxDropDownBorderBrush" ResourceKey="NoriLineStrongBrush"/>
+			<Thickness x:Key="ComboBoxPadding">10,6,8,6</Thickness>
+			<x:Double x:Key="ComboBoxMinHeight">32</x:Double>
+			<Thickness x:Key="ComboBoxDropdownBorderPadding">4</Thickness>
+			<SolidColorBrush x:Key="ComboBoxItemBackground" Color="Transparent"/>
+			<StaticResource x:Key="ComboBoxItemBackgroundPointerOver" ResourceKey="NoriHoverIceBrush"/>
+			<StaticResource x:Key="ComboBoxItemBackgroundPressed" ResourceKey="NoriHoverIceStrongBrush"/>
+			<StaticResource x:Key="ComboBoxItemBackgroundSelected" ResourceKey="NoriBgSelectionBrush"/>
+			<StaticResource x:Key="ComboBoxItemBackgroundSelectedPointerOver" ResourceKey="NoriBgSelectionBrush"/>
+			<StaticResource x:Key="ComboBoxItemBackgroundSelectedPressed" ResourceKey="NoriBgSelectionBrush"/>
+			<StaticResource x:Key="ComboBoxItemForeground" ResourceKey="NoriTextBodyBrush"/>
+			<StaticResource x:Key="ComboBoxItemForegroundPointerOver" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="ComboBoxItemForegroundPressed" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="ComboBoxItemForegroundSelected" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="ComboBoxItemForegroundSelectedPointerOver" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="ComboBoxItemForegroundSelectedPressed" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="ComboBoxItemForegroundDisabled" ResourceKey="NoriTextDisabledBrush"/>
+			<Thickness x:Key="ComboBoxItemThemePadding">10,6,10,6</Thickness>
+
+			<!-- 开关 (web: 关为冰青 14% 轨道，开为品牌青，旋钮为深色井色) -->
+			<StaticResource x:Key="ToggleSwitchFillOff" ResourceKey="NoriLineInputBrush"/>
+			<StaticResource x:Key="ToggleSwitchFillOffPointerOver" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="ToggleSwitchFillOffPressed" ResourceKey="NoriLineStrongBrush"/>
+			<StaticResource x:Key="ToggleSwitchFillOffDisabled" ResourceKey="NoriLineSubtleBrush"/>
+			<SolidColorBrush x:Key="ToggleSwitchStrokeOff" Color="Transparent"/>
+			<SolidColorBrush x:Key="ToggleSwitchStrokeOffPointerOver" Color="Transparent"/>
+			<SolidColorBrush x:Key="ToggleSwitchStrokeOffPressed" Color="Transparent"/>
+			<SolidColorBrush x:Key="ToggleSwitchStrokeOffDisabled" Color="Transparent"/>
+			<StaticResource x:Key="ToggleSwitchFillOn" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="ToggleSwitchFillOnPointerOver" ResourceKey="NoriNoriTealPressedBrush"/>
+			<StaticResource x:Key="ToggleSwitchFillOnPressed" ResourceKey="NoriNoriTealPressedBrush"/>
+			<StaticResource x:Key="ToggleSwitchFillOnDisabled" ResourceKey="NoriBgSelectionBrush"/>
+			<SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="Transparent"/>
+			<SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="Transparent"/>
+			<SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="Transparent"/>
+			<SolidColorBrush x:Key="ToggleSwitchStrokeOnDisabled" Color="Transparent"/>
+			<StaticResource x:Key="ToggleSwitchKnobFillOff" ResourceKey="NoriTextMutedBrush"/>
+			<StaticResource x:Key="ToggleSwitchKnobFillOffPointerOver" ResourceKey="NoriTextBodyBrush"/>
+			<StaticResource x:Key="ToggleSwitchKnobFillOffPressed" ResourceKey="NoriTextBodyBrush"/>
+			<StaticResource x:Key="ToggleSwitchKnobFillOffDisabled" ResourceKey="NoriTextDisabledBrush"/>
+			<StaticResource x:Key="ToggleSwitchKnobFillOn" ResourceKey="NoriBgAbyssBrush"/>
+			<StaticResource x:Key="ToggleSwitchKnobFillOnPointerOver" ResourceKey="NoriBgAbyssBrush"/>
+			<StaticResource x:Key="ToggleSwitchKnobFillOnPressed" ResourceKey="NoriBgAbyssBrush"/>
+			<StaticResource x:Key="ToggleSwitchKnobFillOnDisabled" ResourceKey="NoriTextDisabledBrush"/>
+			<StaticResource x:Key="ToggleSwitchContentForeground" ResourceKey="NoriTextBodyBrush"/>
+			<x:Double x:Key="ToggleSwitchThemeMinWidth">0</x:Double>
+
+			<!-- 滑块 (web: 6px 轨道，品牌青填充，白色拇指带青色描边) -->
+			<StaticResource x:Key="SliderTrackFill" ResourceKey="NoriBgPanelBrush"/>
+			<StaticResource x:Key="SliderTrackFillPointerOver" ResourceKey="NoriBgPanelBrush"/>
+			<StaticResource x:Key="SliderTrackFillPressed" ResourceKey="NoriBgPanelBrush"/>
+			<StaticResource x:Key="SliderTrackFillDisabled" ResourceKey="NoriBgDeepBrush"/>
+			<StaticResource x:Key="SliderTrackValueFill" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="SliderTrackValueFillPointerOver" ResourceKey="NoriNoriTealBrush"/>
+			<StaticResource x:Key="SliderTrackValueFillPressed" ResourceKey="NoriNoriTealPressedBrush"/>
+			<StaticResource x:Key="SliderTrackValueFillDisabled" ResourceKey="NoriTextDisabledBrush"/>
+			<StaticResource x:Key="SliderThumbBackground" ResourceKey="NoriChatWhiteBrush"/>
+			<StaticResource x:Key="SliderThumbBackgroundPointerOver" ResourceKey="NoriChatWhiteBrush"/>
+			<StaticResource x:Key="SliderThumbBackgroundPressed" ResourceKey="NoriNoriTealSoftBrush"/>
+			<StaticResource x:Key="SliderThumbBackgroundDisabled" ResourceKey="NoriTextDisabledBrush"/>
+			<x:Double x:Key="SliderTrackThemeHeight">6</x:Double>
+			<x:Double x:Key="SliderHorizontalThumbWidth">16</x:Double>
+			<x:Double x:Key="SliderHorizontalThumbHeight">16</x:Double>
+			<x:Double x:Key="SliderVerticalThumbWidth">16</x:Double>
+			<x:Double x:Key="SliderVerticalThumbHeight">16</x:Double>
+			<CornerRadius x:Key="SliderThumbCornerRadius">8</CornerRadius>
+
+			<!-- 滚动条 (web: 5px 细条，冰青 10% 拇指，透明轨道) -->
+			<StaticResource x:Key="ScrollBarPanningThumbBackground" ResourceKey="NoriLineStrongBrush"/>
+			<Color x:Key="ScrollBarPanningThumbBackgroundColor">#269ED2D2</Color>
+			<Color x:Key="ScrollBarThumbBackgroundColor">#339ED2D2</Color>
+			<StaticResource x:Key="ScrollBarThumbFillPointerOver" ResourceKey="NoriLineGlowBrush"/>
+			<StaticResource x:Key="ScrollBarThumbFillPressed" ResourceKey="NoriLineGlowBrush"/>
+			<SolidColorBrush x:Key="ScrollBarTrackFill" Color="Transparent"/>
+			<SolidColorBrush x:Key="ScrollBarTrackFillPointerOver" Color="#0AFFFFFF"/>
+			<SolidColorBrush x:Key="ScrollBarTrackStroke" Color="Transparent"/>
+			<SolidColorBrush x:Key="ScrollBarTrackStrokePointerOver" Color="Transparent"/>
+			<SolidColorBrush x:Key="ScrollBarButtonBackground" Color="Transparent"/>
+			<SolidColorBrush x:Key="ScrollBarButtonBackgroundPointerOver" Color="Transparent"/>
+			<StaticResource x:Key="ScrollBarButtonArrowForeground" ResourceKey="NoriTextFaintBrush"/>
+			<StaticResource x:Key="ScrollBarButtonArrowForegroundPointerOver" ResourceKey="NoriTextBodyBrush"/>
+
+			<!-- 提示条与菜单 (web 程序坞提示 / 顶栏菜单) -->
+			<StaticResource x:Key="ToolTipBackground" ResourceKey="NoriBgTooltipBrush"/>
+			<StaticResource x:Key="ToolTipForeground" ResourceKey="NoriTextBodyBrush"/>
+			<StaticResource x:Key="ToolTipBorderBrush" ResourceKey="NoriLineStrongBrush"/>
+			<Thickness x:Key="ToolTipBorderThemePadding">10,5,10,5</Thickness>
+			<StaticResource x:Key="ToolTipContentThemeFontSize" ResourceKey="NoriFontXs"/>
+			<StaticResource x:Key="MenuFlyoutPresenterBackground" ResourceKey="NoriBgMenuBrush"/>
+			<StaticResource x:Key="MenuFlyoutPresenterBorderBrush" ResourceKey="NoriLineSubtleBrush"/>
+			<Thickness x:Key="MenuFlyoutPresenterThemePadding">5</Thickness>
+			<SolidColorBrush x:Key="MenuFlyoutItemBackground" Color="Transparent"/>
+			<StaticResource x:Key="MenuFlyoutItemBackgroundPointerOver" ResourceKey="NoriHoverIceBrush"/>
+			<StaticResource x:Key="MenuFlyoutItemBackgroundPressed" ResourceKey="NoriHoverIceStrongBrush"/>
+			<StaticResource x:Key="MenuFlyoutItemForeground" ResourceKey="NoriTextBodyBrush"/>
+			<StaticResource x:Key="MenuFlyoutItemForegroundPointerOver" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="MenuFlyoutItemForegroundPressed" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="MenuFlyoutItemForegroundDisabled" ResourceKey="NoriTextDisabledBrush"/>
+			<StaticResource x:Key="FlyoutPresenterBackground" ResourceKey="NoriBgPopoverBrush"/>
+			<StaticResource x:Key="FlyoutBorderThemeBrush" ResourceKey="NoriLineStrongBrush"/>
+
+			<!-- 展开面板：去掉 Fluent 的实心卡片，改为发丝描边 -->
+			<SolidColorBrush x:Key="ExpanderHeaderBackground" Color="Transparent"/>
+			<StaticResource x:Key="ExpanderHeaderBackgroundPointerOver" ResourceKey="NoriBgDeepBrush"/>
+			<StaticResource x:Key="ExpanderHeaderBackgroundPressed" ResourceKey="NoriBgDeepBrush"/>
+			<StaticResource x:Key="ExpanderHeaderForeground" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="ExpanderHeaderForegroundPointerOver" ResourceKey="NoriTextPrimaryBrush"/>
+			<StaticResource x:Key="ExpanderHeaderBorderBrush" ResourceKey="NoriLineSubtleBrush"/>
+			<StaticResource x:Key="ExpanderHeaderBorderBrushPointerOver" ResourceKey="NoriLineStrongBrush"/>
+			<SolidColorBrush x:Key="ExpanderContentBackground" Color="Transparent"/>
+			<StaticResource x:Key="ExpanderContentBorderBrush" ResourceKey="NoriLineSubtleBrush"/>
+			<SolidColorBrush x:Key="ExpanderChevronBackground" Color="Transparent"/>
+			<StaticResource x:Key="ExpanderChevronForeground" ResourceKey="NoriTextMutedBrush"/>
+		</ResourceDictionary>
+	</Styles.Resources>
+
+	<Style Selector="Window">
+		<Setter Property="FontFamily" Value="{DynamicResource DefaultFontFamily}"/>
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontBase}"/>
+		<Setter Property="Foreground" Value="{DynamicResource NoriTextPrimaryBrush}"/>
+	</Style>
+
+	<!-- 按钮：shadcn 尺寸 (32 高、12 横向内距、13/500)，悬停仅过渡背景 -->
+	<Style Selector="Button, RepeatButton, ToggleButton">
+		<Setter Property="Padding" Value="12,6"/>
+		<Setter Property="MinHeight" Value="32"/>
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontSm}"/>
+		<Setter Property="FontWeight" Value="Medium"/>
+		<Setter Property="Cursor" Value="Hand"/>
+		<Setter Property="VerticalContentAlignment" Value="Center"/>
+	</Style>
+	<Style Selector="Button /template/ ContentPresenter#PART_ContentPresenter, ToggleButton /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Transitions">
+			<Transitions>
+				<BrushTransition Property="Background" Duration="0:0:0.15"/>
+			</Transitions>
+		</Setter>
+	</Style>
+	<Style Selector="Button:disabled, ToggleButton:disabled, RepeatButton:disabled">
+		<Setter Property="Opacity" Value="{DynamicResource NoriOpacityDisabled}"/>
+	</Style>
+	<Style Selector="Button.accent, Button.primary">
+		<Setter Property="Background" Value="{DynamicResource NoriNoriTealBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource NoriOnTealBrush}"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
+	</Style>
+	<Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter, Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Background" Value="{DynamicResource NoriNoriTealPressedBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource NoriOnTealBrush}"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
+	</Style>
+	<Style Selector="Button.accent:disabled /template/ ContentPresenter#PART_ContentPresenter, Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Background" Value="{DynamicResource NoriNoriTealBrush}"/>
+		<Setter Property="Foreground" Value="{DynamicResource NoriOnTealBrush}"/>
+	</Style>
+	<!-- 危险操作：web destructive 在玻璃上对比不足，改为红色描边 + 红字 -->
+	<Style Selector="Button.danger:not(:disabled)">
+		<Setter Property="Foreground" Value="{DynamicResource NoriDangerTextBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource NoriDangerBrush}"/>
+	</Style>
+	<Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Background" Value="#26D74745"/>
+		<Setter Property="Foreground" Value="{DynamicResource NoriDangerTextBrush}"/>
+		<Setter Property="BorderBrush" Value="{DynamicResource NoriDangerBrush}"/>
+	</Style>
+	<!-- 幽灵按钮：图标与工具栏 -->
+	<Style Selector="Button.ghost">
+		<Setter Property="Background" Value="Transparent"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
+		<Setter Property="Foreground" Value="{DynamicResource NoriTextMutedBrush}"/>
+	</Style>
+	<Style Selector="Button.ghost:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+		<Setter Property="Background" Value="{DynamicResource NoriOverlay8Brush}"/>
+		<Setter Property="BorderBrush" Value="Transparent"/>
+		<Setter Property="Foreground" Value="{DynamicResource NoriTextPrimaryBrush}"/>
+	</Style>
+
+	<!-- 文本与下拉 -->
+	<Style Selector="TextBox, ComboBox, NumericUpDown">
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontBase}"/>
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
+	</Style>
+	<Style Selector="TextBox /template/ Border#PART_BorderElement, ComboBox /template/ Border#Background">
+		<Setter Property="Transitions">
+			<Transitions>
+				<BrushTransition Property="BorderBrush" Duration="0:0:0.15"/>
+			</Transitions>
+		</Setter>
+	</Style>
+	<Style Selector="ComboBoxItem">
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusXs}"/>
+		<Setter Property="Margin" Value="0,1"/>
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontBase}"/>
+	</Style>
+	<Style Selector="ComboBoxItem:selected">
+		<Setter Property="FontWeight" Value="Medium"/>
+	</Style>
+
+	<!-- 开关：web 32×18 轨道，14px 旋钮 -->
+	<Style Selector="ToggleSwitch">
+		<!-- web 开关不带开/关文字；显式设置内容的开关仍保留自己的文字。 -->
+		<Setter Property="OnContent" Value=""/>
+		<Setter Property="OffContent" Value=""/>
+		<Setter Property="Cursor" Value="Hand"/>
+		<Setter Property="Foreground" Value="{DynamicResource NoriTextBodyBrush}"/>
+	</Style>
+	<Style Selector="ToggleSwitch /template/ Border#OuterBorder, ToggleSwitch /template/ Border#SwitchKnobBounds">
+		<Setter Property="Transitions">
+			<Transitions>
+				<BrushTransition Property="Background" Duration="0:0:0.15"/>
+			</Transitions>
+		</Setter>
+	</Style>
+
+	<!-- 提示条：web 6px 圆角、12/500 -->
+	<Style Selector="ToolTip">
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusSm}"/>
+		<Setter Property="FontWeight" Value="Medium"/>
+	</Style>
+	<Style Selector="MenuItem">
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusXs}"/>
+		<Setter Property="FontSize" Value="{DynamicResource NoriFontSm}"/>
+		<Setter Property="Padding" Value="10,5"/>
+		<Setter Property="MinHeight" Value="26"/>
+	</Style>
+	<Style Selector="ContextMenu">
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusMd}"/>
+		<Setter Property="MinWidth" Value="180"/>
+	</Style>
+
+	<Style Selector="ProgressBar">
+		<Setter Property="Foreground" Value="{DynamicResource NoriNoriTealBrush}"/>
+		<Setter Property="Background" Value="{DynamicResource NoriBgPanelBrush}"/>
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusPill}"/>
+	</Style>
+	<Style Selector="Expander">
+		<Setter Property="CornerRadius" Value="{DynamicResource NoriRadiusMd}"/>
+	</Style>
+</Styles>

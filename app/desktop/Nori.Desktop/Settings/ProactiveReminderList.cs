@@ -102,7 +102,7 @@ public sealed class ProactiveReminderList : ContentControl
 		Content = new Border
 		{
 			Background = Brush("SettingsCardBrush"), BorderBrush = Brush("SettingsBorderBrush"), BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(NoriMetrics.RadiusMd), Padding = new Thickness(20, 16), Child = body,
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusLg), Padding = new Thickness(18, 16), Child = body,
 		};
 	}
 

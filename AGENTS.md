@@ -158,6 +158,8 @@ publish.bat
 ### TypeScript theme tokens
 - `src/` only holds native theme tokens and contrast helpers. Do not add a user-facing page, audio host, or plugin WebView here.
 - Native Avalonia colors, spacing, radius, and font measures come from `src/assets/style/tokens.ts`. Run `pnpm theme:check` after changing tokens and keep the native contrast tests passing.
+- Visual language follows Nori.Web `theme-nori` (deep-sea glass, ice-teal `#9ed2d2` hairlines, primary `#77c6d4`, Tailwind radius scale). Control templates come from Avalonia Fluent; `Nori.Desktop/Appearance/NoriControls.axaml` overrides its resources with Nori tokens. Window chrome (36px titlebar, centered title, traffic lights, gradient focus ring) lives in `NativeWindowChrome`.
+- UI Latin text uses embedded Plus Jakarta Sans, conversation bubbles use embedded Nunito (`Nori.Desktop/Assets/Fonts`, SIL OFL 1.1, Latin subset); CJK falls back per glyph to Noto Sans SC / platform fonts via `NoriTypography`.
 - Do not reintroduce Vue, Vite app hosting, web UI, i18n, UnoCSS, Less, or Web Sentry dependencies.
 - Use `UPPER_SNAKE` for local constants, `camelCase` for local values, and `PascalCase` for exported functions, classes, and types.
 

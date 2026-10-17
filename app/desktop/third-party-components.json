@@ -27,6 +27,24 @@
 			"license": "MIT",
 			"licenseStatus": "verified-upstream-license",
 			"note": "Copyright (c) 2026 Sakura Motion Project. <https://sakura2d.org/>；v6 ABI 原生产物仅改为 Live2DCubismCore 兼容文件名，MIT 全文随库置于 PurismCore.LICENSE.txt；来源及 SHA-256 见 Live2D/README.md。"
+		},
+		{
+			"name": "Plus Jakarta Sans",
+			"version": "google/fonts main (variable, wght)",
+			"ecosystem": "font",
+			"purl": "pkg:github/tokotype/PlusJakartaSans",
+			"license": "OFL-1.1",
+			"licenseStatus": "verified-upstream-license",
+			"note": "界面拉丁字形，与 Nori.Web theme-nori 一致；由可变字体实例化为 400/500/600/700 静态字重并裁剪为拉丁子集，置于 Nori.Desktop/Assets/Fonts，OFL 全文随发布产物置于 licenses/fonts/PlusJakartaSans.OFL.txt。"
+		},
+		{
+			"name": "Nunito",
+			"version": "google/fonts main (variable, wght)",
+			"ecosystem": "font",
+			"purl": "pkg:github/googlefonts/nunito",
+			"license": "OFL-1.1",
+			"licenseStatus": "verified-upstream-license",
+			"note": "对话气泡拉丁字形，与 Nori.Web conversation-panel 一致；由可变字体实例化为 400/500/600/700 静态字重并裁剪为拉丁子集，置于 Nori.Desktop/Assets/Fonts，OFL 全文随发布产物置于 licenses/fonts/Nunito.OFL.txt。"
 		}
 	]
 }

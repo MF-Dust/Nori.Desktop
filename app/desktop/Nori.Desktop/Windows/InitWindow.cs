@@ -233,7 +233,7 @@ internal sealed class InitView : Panel
 			IsVisible = false,
 			Background = ChatPalette.Panel,
 			BorderBrush = ChatPalette.Faint, BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(NoriMetrics.RadiusMd),
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusLg),
 			Padding = new Thickness(22, 18),
 			HorizontalAlignment = HorizontalAlignment.Center,
 			Child = new StackPanel

@@ -122,10 +122,12 @@ public sealed partial class ChatView
 				bool user = _message.Role == "user";
 				var bubble = new Border
 				{
-					Name = user ? "ChatUserBubble" : "ChatAssistantBubble", Padding = new Thickness(18, 12),
-					CornerRadius = user ? new CornerRadius(NoriMetrics.RadiusLg, NoriMetrics.RadiusLg, NoriMetrics.RadiusXs, NoriMetrics.RadiusLg) : new CornerRadius(NoriMetrics.RadiusLg, NoriMetrics.RadiusLg, NoriMetrics.RadiusLg, NoriMetrics.RadiusXs),
-					Background = user ? ChatPalette.UserBackground : ChatPalette.AssistantBackground,
-					BorderBrush = user ? ChatPalette.Line : ChatPalette.AssistantBorder, BorderThickness = new Thickness(1), Child = Body(slice),
+					Name = user ? "ChatUserBubble" : "ChatAssistantBubble", Padding = new Thickness(16, 10),
+					CornerRadius = user ? new CornerRadius(NoriMetrics.RadiusXl, NoriMetrics.RadiusXl, NoriMetrics.RadiusXs, NoriMetrics.RadiusXl) : new CornerRadius(NoriMetrics.RadiusXl, NoriMetrics.RadiusXl, NoriMetrics.RadiusXl, NoriMetrics.RadiusXs),
+					// web 浮动对话气泡：Nori 为薄荷渐变，玩家为深灰渐变。
+					Background = user ? ChatPalette.UserGradient : ChatPalette.AssistantGradient,
+					BorderBrush = user ? ChatPalette.UserBorder : ChatPalette.AssistantBorder, BorderThickness = new Thickness(1), Child = Body(slice),
+					BoxShadow = user ? ChatPalette.UserShadow : ChatPalette.AssistantShadow,
 				};
 				var copy = new Button { Name = "ChatCopy", Content = Icon("copy", ChatPalette.Muted, 12), Width = 26, Height = 26, Padding = new Thickness(5), Opacity = 0, VerticalAlignment = VerticalAlignment.Center };
 				copy.Classes.Add("chat-button");

@@ -62,6 +62,7 @@ internal sealed class DesktopBootstrapper
 		catch (Exception exception)
 		{
 			// 记日志与崩溃窗展示都在 Report 内部完成 (critical: 关窗即退出码 1)
+			StartupSplash.Complete();
 			CrashReporter.Report(exception, critical: true);
 		}
 	}
@@ -84,6 +85,7 @@ internal sealed class DesktopBootstrapper
 		CrashReporter.AttachTelemetry(telemetry);
 
 		cancellationToken.ThrowIfCancellationRequested();
+		StartupSplash.Report(30, "正在打开数据库");
 		NoriDatabase database;
 		try
 		{
@@ -95,6 +97,7 @@ internal sealed class DesktopBootstrapper
 			or Microsoft.Data.Sqlite.SqliteException)
 		{
 			logger.Write(LogSource.Backend, "error", "数据库打开或迁移失败", "Lifecycle", "database.open_failed", exception);
+			StartupSplash.Complete();
 			CrashReporter.ReportStartupFatal("数据库打开或迁移失败", SensitiveDataRedactor.ExceptionSummary(exception));
 			return;
 		}
@@ -114,9 +117,15 @@ internal sealed class DesktopBootstrapper
 		catch (InvalidOperationException exception)
 		{
 			logger.Write(LogSource.Backend, "error", SensitiveDataRedactor.ExceptionSummary(exception));
+			StartupSplash.Complete();
 			CrashReporter.ReportStartupFatal("配置数据库版本过高", SensitiveDataRedactor.ExceptionSummary(exception));
 			return;
 		}
+		StartupSplash.Configure(
+			ParseBoolFlag(config.GetStringOr("splash_enabled", "true")) ?? true,
+			config.GetStringOr("splash_theme", "character"),
+			config.GetStringOr("splash_background", ""));
+		StartupSplash.Report(45, safeMode ? "安全模式：正在准备本地服务" : "正在准备伴侣服务");
 		// 只有完成配置初始化并确认 consent=granted 后才允许初始化 Native Sentry。
 		telemetry.Configure(config.GetTelemetryConsent() == TelemetryConsent.Granted);
 		if (telemetry.IsEnabled)
@@ -167,6 +176,7 @@ internal sealed class DesktopBootstrapper
 				$"插件运行事件 [{LogEntry.SafeIdentifier(descriptor.Id)}@{LogEntry.SafeIdentifier(descriptor.Version.ToString())}]", "Plugin", "plugin.runtime", exception),
 		});
 		_startupPluginRuntime = pluginRuntime;
+		StartupSplash.Report(60, "正在发现本地插件");
 		pluginRuntime.Discover();
 
 		Nori.Core.Mcp.McpManager mcp = new(http, config);
@@ -230,6 +240,7 @@ internal sealed class DesktopBootstrapper
 		}
 
 		cancellationToken.ThrowIfCancellationRequested();
+		StartupSplash.Report(80, "正在准备窗口与桌面伴侣");
 		await Dispatcher.UIThread.InvokeAsync(() =>
 		{
 			services.Windows = new WindowManager(desktop);
@@ -260,6 +271,9 @@ internal sealed class DesktopBootstrapper
 				services.Windows.Show(WindowLabels.Main);
 			else
 				services.Windows.Show(WindowLabels.Init);
+
+			// 窗口已显示，下一轮 UI 调度时撤下启动画面，不等待后台联网或插件入口。
+			Dispatcher.UIThread.Post(StartupSplash.Complete, DispatcherPriority.Background);
 
 			if (SmokeTestRuntime.Current is { } smokeTest)
 			{

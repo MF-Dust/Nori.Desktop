@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType Condition="'$(NoriIsWindowsBuild)' == 'true'">WinExe</OutputType>
+		<OutputType Condition="'$(NoriIsWindowsBuild)' != 'true'">Exe</OutputType>
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+		<ApplicationManifest Condition="'$(NoriIsWindowsBuild)' == 'true'">../Nori.Desktop/app.manifest</ApplicationManifest>
+		<ApplicationIcon Condition="'$(NoriIsWindowsBuild)' == 'true'">../Nori.Desktop/Assets/icon.ico</ApplicationIcon>
+	</PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="Avalonia" Version="12.1.1" />
+		<PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+		<PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+		<Compile Include="../Nori.Startup/SplashMessage.cs" Link="SplashMessage.cs" />
+		<Compile Include="../Nori.Desktop/Appearance/NoriThemeTokens.g.cs" Link="NoriThemeTokens.g.cs" />
+		<AvaloniaResource Include="../src/assets/images/logo.png" Link="Assets/logo.png" />
+		<AvaloniaResource Include="../Nori.Desktop/Appearance/NoriControls.axaml" Link="Appearance/NoriControls.axaml" />
+		<AvaloniaResource Include="../Nori.Desktop/Appearance/NoriThemeResources.g.axaml" Link="Appearance/NoriThemeResources.g.axaml" />
+		<AvaloniaResource Include="../Nori.Desktop/Assets/Fonts/PlusJakartaSans*" Link="Assets/Fonts/%(Filename)%(Extension)" Exclude="../Nori.Desktop/Assets/Fonts/*.txt" />
+		<None Include="../Nori.Desktop/Assets/Fonts/*.OFL.txt" Link="licenses/fonts/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+	</ItemGroup>
+</Project>

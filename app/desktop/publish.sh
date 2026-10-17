@@ -76,6 +76,9 @@ for rid in "${@:-$(runtime_rid)}"; do
 	node scripts/prepare-unidesktop.mjs "$rid"
 	rm -rf "$root"; mkdir -p "$slot" "$desktop_temp" "$launcher_temp"
 	dotnet publish Nori.Desktop/Nori.Desktop.csproj -c Release -r "$rid" --self-contained false -p:NoriProductVersion="$APP_VERSION" -p:NoriDeploymentRevision="$REVISION" -p:NoriSentryDsnNative="${NORI_SENTRY_DSN_NATIVE:-}" -p:NoriSentryRelease="${NORI_SENTRY_RELEASE:-}" -p:NoriSentryEnvironment="${NORI_SENTRY_ENVIRONMENT:-production}" -p:PublishSingleFile=false -p:PublishReadyToRun=false -o "$desktop_temp"
+	# 启动画面与宿主共用相同版本的 Avalonia 运行库，随部署槽更新。
+	dotnet publish Nori.SplashHost/Nori.SplashHost.csproj -c Release -r "$rid" --self-contained false -p:NoriProductVersion="$APP_VERSION" -p:NoriDeploymentRevision="$REVISION" -p:PublishSingleFile=false -p:PublishReadyToRun=false -o "$desktop_temp"
+	chmod +x "$desktop_temp/Nori.SplashHost"
 	if [[ "$KEEP_SYMBOLS" != "1" && "$KEEP_SYMBOLS" != "true" ]]; then find "$desktop_temp" -name '*.pdb' -delete; fi
 	if [[ "$rid" == osx-* ]]; then
 		mkdir -p "$slot/Nori.Desktop.app/Contents/MacOS" "$slot/Nori.Desktop.app/Contents/Resources"

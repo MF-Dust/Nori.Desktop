@@ -27,6 +27,8 @@ const createFixture = (rid) => {
 	const slotExecutable = mac ? slotBase : rid.startsWith("win-") ? `${slotBase}.exe` : slotBase
 	const native = rid.startsWith("win-") ? "Live2DCubismCore.dll" : rid.startsWith("osx-") ? "libLive2DCubismCore.dylib" : "libLive2DCubismCore.so"
 	const files = [rootExecutable, `${rootBase}.dll`, `${rootBase}.deps.json`, `${rootBase}.runtimeconfig.json`, join(root, "LICENSE"), join(root, ".current"), join(slot, "deployment.json"), slotExecutable, `${slotBase}.dll`, `${slotBase}.deps.json`, `${slotBase}.runtimeconfig.json`, mac ? join(slot, "Nori.Desktop.app", "Contents", "MacOS", native) : join(slot, native), join(slotBase, "..", "PurismCore.LICENSE.txt")]
+	const splashBase = join(slotBase, "..", "Nori.SplashHost")
+	files.push(rid.startsWith("win-") ? `${splashBase}.exe` : splashBase, `${splashBase}.dll`, `${splashBase}.deps.json`, `${splashBase}.runtimeconfig.json`)
 	if (rid === "win-x64" || rid === "linux-x64") {
 		files.push(join(slotBase, "..", rid === "win-x64" ? "uda_ffi.dll" : "libuda_ffi.so"), join(slotBase, "..", "UniDesktop.LICENSE-MIT.txt"))
 	}

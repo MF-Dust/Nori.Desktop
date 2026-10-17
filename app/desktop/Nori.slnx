@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="Nori.Live2D/Nori.Live2D.csproj" />
   <Project Path="Nori.AppLauncher/Nori.AppLauncher.csproj" />
+  <Project Path="Nori.SplashHost/Nori.SplashHost.csproj" />
   <Project Path="Nori.AppLauncher.Tests/Nori.AppLauncher.Tests.csproj" />
   <Project Path="Nori.Core.Tests/Nori.Core.Tests.csproj" />
   <Project Path="Nori.PluginRuntime/Nori.PluginRuntime.csproj" />

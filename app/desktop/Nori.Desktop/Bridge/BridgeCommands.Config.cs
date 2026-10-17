@@ -353,6 +353,32 @@ public sealed partial class BridgeCommands
 
 	private static bool HasAnyString(JsonElement args, params string[] names) => names.Any(name => HasString(args, name));
 
+	/// <summary>保存前校验启动画面的主题和本地背景，避免部分写入非法补丁。</summary>
+	private static void ValidateSplashSettings(JsonElement args)
+	{
+		if (HasProperty(args, "splashTheme") && OptionalStr(args, "splashTheme") is not ("character" or "minimal" or "android-studio" or "microsoft-365" or "office-legacy" or "island" or "alls"))
+			throw new InvalidOperationException("请选择受支持的启动画面主题");
+		if (!HasProperty(args, "splashBackground")) return;
+		string background = OptionalStr(args, "splashBackground")
+			?? throw new InvalidOperationException("启动画面背景必须是本地图片的绝对路径，留空可恢复默认");
+		if (background.Length == 0) return;
+		if (background.Replace('\\', '/').StartsWith("//", StringComparison.Ordinal) || !Path.IsPathFullyQualified(background))
+			throw new InvalidOperationException("启动画面背景必须使用本地绝对路径，不支持网址或网络共享路径");
+
+		try
+		{
+			if (Path.GetExtension(background).ToLowerInvariant() is not (".png" or ".jpg" or ".jpeg" or ".webp"))
+				throw new InvalidOperationException("启动画面背景仅支持 PNG、JPG、JPEG 或 WebP 图片");
+			FileInfo file = new(background);
+			if (!file.Exists) throw new InvalidOperationException("启动画面背景文件不存在，请检查图片路径");
+			if (file.Length > 16L * 1024 * 1024) throw new InvalidOperationException("启动画面背景图片不能超过 16 MiB");
+		}
+		catch (Exception exception) when (exception is ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
+		{
+			throw new InvalidOperationException("无法读取启动画面背景图片，请检查路径和访问权限", exception);
+		}
+	}
+
 	/// <summary>可选字段更新: 参数缺失时不动配置</summary>
 	private void UpdateOptionalConfig(JsonElement args, string argName, string configKey)
 	{

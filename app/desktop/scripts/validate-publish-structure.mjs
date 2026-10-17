@@ -70,6 +70,8 @@ file(`${sidecarBase}.deps.json`);
 file(`${sidecarBase}.runtimeconfig.json`);
 const native = rid.startsWith("win-") ? "Live2DCubismCore.dll" : rid.startsWith("osx-") ? "libLive2DCubismCore.dylib" : "libLive2DCubismCore.so";
 const nativeDirectory = rid.startsWith("osx-") ? join(slot, "Nori.Desktop.app", "Contents", "MacOS") : slot;
+file(join(nativeDirectory, rid.startsWith("win-") ? "Nori.SplashHost.exe" : "Nori.SplashHost"), true);
+for (const suffix of [".dll", ".deps.json", ".runtimeconfig.json"]) file(join(nativeDirectory, `Nori.SplashHost${suffix}`));
 file(join(nativeDirectory, native));
 file(join(nativeDirectory, "PurismCore.LICENSE.txt"));
 if (rid === "win-x64" || rid === "linux-x64") {

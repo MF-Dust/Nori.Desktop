@@ -152,6 +152,9 @@ public sealed partial class AppRuntime
 			general = new
 			{
 				language = config.GetStringOr("language", "zh-CN"),
+				splashEnabled = config.GetBoolOr("splash_enabled", true),
+				splashTheme = config.GetStringOr("splash_theme", "character"),
+				splashBackground = config.GetStringOr("splash_background", ""),
 				petAutoSummon = ParseBoolFlag(config.GetStringOr("pet_auto_summon", "true")) ?? true,
 				quickChatEnabled = ParseBoolFlag(config.GetStringOr(ConfigStore.KeyQuickChatEnabled, "true")) ?? true,
 				backgroundBlurEnabled = config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true),

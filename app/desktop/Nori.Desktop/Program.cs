@@ -38,6 +38,7 @@ internal static class Program
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "启动错误展示失败不能覆盖原始错误。")]
 	private static void ShowStartupError(string title, string message)
 	{
+		StartupSplash.Complete();
 		string safe = Nori.Core.Security.SensitiveDataRedactor.Redact(message);
 		if (OperatingSystem.IsWindows())
 		{
@@ -91,6 +92,8 @@ internal static class Program
 	[STAThread]
 	public static void Main(string[] args)
 	{
+		using IDisposable splash = StartupSplash.Start();
+		StartupSplash.Report(5, "正在确认启动环境");
 		if (!StartupOptions.TryParse(args, out StartupOptions? startup, out string parseError))
 		{
 			ShowStartupError("启动参数错误", parseError);
@@ -138,6 +141,7 @@ internal static class Program
 		try
 		{
 			AppStoragePaths paths = StoragePaths ?? throw new InvalidOperationException("存储路径尚未初始化");
+			StartupSplash.Report(15, "正在准备本地存储");
 			StorageBootstrapper.Bootstrap(paths, ProductVersion.Current, RuntimeRid());
 			Logger = new Nori.Core.Logging.FileLogger(paths.LogsDirectory);
 			CrashReporter.AttachLogger(Logger);

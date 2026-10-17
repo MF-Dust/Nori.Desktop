@@ -150,12 +150,16 @@ public sealed partial class BridgeCommands
 			})),
 
 		/// <summary>
-		/// 更新常规设置并同步窗口外观。
-		/// 前端调用：invoke("settings_update_general", {backgroundBlurEnabled: true})
+		/// 更新常规设置并同步窗口外观；启动画面设置在下次启动时生效。
+		/// 前端调用：invoke("settings_update_general", {backgroundBlurEnabled: true, splashEnabled: true, splashTheme: "character", splashBackground: ""})
 		/// </summary>
 		"settings_update_general" => RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () =>
 			Run(() =>
 			{
+				ValidateSplashSettings(args);
+				UpdateBoolConfig(args, "splashEnabled", "splash_enabled");
+				UpdateOptionalConfig(args, "splashTheme", "splash_theme");
+				UpdateOptionalConfig(args, "splashBackground", "splash_background");
 				UpdateOptionalConfig(args, "language", ConfigStore.KeyLanguage);
 				UpdateBoolConfig(args, "petAutoSummon", "pet_auto_summon");
 				UpdateBoolConfig(args, "quickChatEnabled", ConfigStore.KeyQuickChatEnabled);

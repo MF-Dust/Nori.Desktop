@@ -25,6 +25,25 @@ public sealed class GeneralSettingsPage : SettingsPageBase
 			(value, token) => ExecuteAsync("settings_update_general", new { backgroundBlurEnabled = Convert.ToBoolean(value) }, token));
 
 		SettingsSectionViewModel startup = AddSection(new("启动与窗口", "Startup and window"));
+		AddField(startup, "splashEnabled", new("显示启动画面", "Show splash screen"), new("下次启动时生效。", "Applies on the next launch."), SettingsEditorKind.Boolean,
+			snapshot => SettingsSnapshotReader.Boolean(snapshot, true, "general", "splashEnabled"), true,
+			(value, token) => ExecuteAsync("settings_update_general", new { splashEnabled = Convert.ToBoolean(value) }, token));
+		AddField(startup, "splashTheme", new("启动画面主题", "Splash theme"), new("参考布局统一使用 Nori 外观，作品区默认留白；下次启动时生效。", "Reference layouts use Nori styling with artwork areas left blank by default. Applies on the next launch."), SettingsEditorKind.Choice,
+			snapshot => SettingsSnapshotReader.String(snapshot, "character", "general", "splashTheme"), "character",
+			(value, token) => ExecuteAsync("settings_update_general", new { splashTheme = Convert.ToString(value) ?? "character" }, token),
+			options:
+			[
+				new("character", new("Photoshop 布局", "Photoshop layout")),
+				new("android-studio", new("Android Studio 布局", "Android Studio layout")),
+				new("microsoft-365", new("Microsoft 365 布局", "Microsoft 365 layout")),
+				new("office-legacy", new("旧版 Office 布局", "Legacy Office layout")),
+				new("island", new("IslandOnTop 顶部条", "IslandOnTop bar")),
+				new("alls", new("ALLS 全屏", "ALLS fullscreen")),
+				new("minimal", new("简约", "Minimal")),
+			]);
+		AddField(startup, "splashBackground", new("启动画面背景", "Splash background"), new("Photoshop 作品区 / Android Studio 背景：本地 PNG/JPG/JPEG/WebP 绝对路径（最大 16 MiB），不支持网络路径；留空保持空白。下次启动时生效。", "Photoshop artwork / Android Studio background: absolute path to a local PNG/JPG/JPEG/WebP image (up to 16 MiB). No network paths. Leave empty for a blank panel. Applies on the next launch."), SettingsEditorKind.Text,
+			snapshot => SettingsSnapshotReader.String(snapshot, "", "general", "splashBackground"), "",
+			(value, token) => ExecuteAsync("settings_update_general", new { splashBackground = Convert.ToString(value) ?? "" }, token));
 		AddField(startup, "petAutoSummon", new("启动时显示伴侣", "Show pet on startup"), new("启动后自动显示桌面伴侣窗口。", "Show the desktop pet automatically after startup."), SettingsEditorKind.Boolean,
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, true, "general", "petAutoSummon"), true,
 			(value, token) => ExecuteAsync("settings_update_general", new { petAutoSummon = Convert.ToBoolean(value) }, token));

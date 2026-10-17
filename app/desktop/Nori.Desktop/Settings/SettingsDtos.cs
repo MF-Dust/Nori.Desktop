@@ -112,6 +112,15 @@ public sealed record SettingsGeneralPatchDto
 	[JsonPropertyName("language")]
 	public string? Language { get; init; }
 
+	[JsonPropertyName("splashEnabled")]
+	public bool? SplashEnabled { get; init; }
+
+	[JsonPropertyName("splashTheme")]
+	public string? SplashTheme { get; init; }
+
+	[JsonPropertyName("splashBackground")]
+	public string? SplashBackground { get; init; }
+
 	[JsonPropertyName("petAutoSummon")]
 	public bool? PetAutoSummon { get; init; }
 

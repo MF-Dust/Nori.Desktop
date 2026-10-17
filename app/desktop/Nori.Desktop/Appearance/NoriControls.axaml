@@ -6,7 +6,7 @@
 	<Styles.Resources>
 		<ResourceDictionary>
 			<ResourceDictionary.MergedDictionaries>
-				<ResourceInclude Source="avares://Nori.Desktop/Appearance/NoriThemeResources.g.axaml"/>
+				<ResourceInclude Source="NoriThemeResources.g.axaml"/>
 			</ResourceDictionary.MergedDictionaries>
 
 			<!-- 圆角与焦点 -->

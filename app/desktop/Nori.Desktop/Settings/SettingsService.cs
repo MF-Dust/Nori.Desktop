@@ -97,6 +97,7 @@ public sealed class SettingsService : IDisposable
 		"updater_install",
 		"updater_cancel",
 		"updater_restart",
+		"about_list_contributors",
 	}.ToFrozenSet(StringComparer.Ordinal);
 
 	private readonly AppServices _services;

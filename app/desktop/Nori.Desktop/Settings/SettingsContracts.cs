@@ -20,6 +20,10 @@ public enum SettingsEditorKind
 	Slider,
 	Progress,
 	Action,
+	/// <summary>
+	/// 只读头像墙：显示 <see cref="SettingsFieldViewModel.Avatars"/>，Text 作为加载或失败提示。
+	/// </summary>
+	Avatars,
 }
 
 /// <summary>一条可随语言切换的设置文案。</summary>
@@ -28,6 +32,9 @@ public readonly record struct SettingsText(string Chinese, string English)
 	/// <summary>按当前语言解析文案。</summary>
 	public string Resolve(string language) => UiLanguage.IsEnglish(language) ? English : Chinese;
 }
+
+/// <summary>头像墙中的一个头像；位图由创建它的页面持有并释放。</summary>
+public sealed record SettingsAvatar(string Name, Avalonia.Media.Imaging.Bitmap Image);
 
 /// <summary>设置页选项。</summary>
 public sealed record SettingsOption(string Value, SettingsText Text)
@@ -346,6 +353,14 @@ public abstract class SettingsPageBase : SettingsObservableObject, ISettingsPage
 		if (!_prepared) _lifetimeCts.Cancel();
 		foreach (SettingsFieldViewModel field in _fields) field.Dispose();
 		_lifetimeCts.Dispose();
+		OnDisposed();
+	}
+
+	/// <summary>
+	/// 页面释放后调用，子类在这里释放自己持有的非托管资源 (如位图)。
+	/// </summary>
+	protected virtual void OnDisposed()
+	{
 	}
 }
 
@@ -378,6 +393,7 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	private bool _isConfigured;
 	private string _errorText = string.Empty;
 	private ICommand? _command;
+	private IReadOnlyList<SettingsAvatar> _avatars = [];
 
 	/// <summary>创建字段。</summary>
 	public SettingsFieldViewModel(
@@ -487,6 +503,13 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	{
 		get => _command;
 		set => SetProperty(ref _command, value);
+	}
+
+	/// <summary>头像墙条目，仅 <see cref="SettingsEditorKind.Avatars"/> 字段使用。</summary>
+	public IReadOnlyList<SettingsAvatar> Avatars
+	{
+		get => _avatars;
+		set => SetProperty(ref _avatars, value ?? []);
 	}
 
 	/// <summary>字段是否有未保存编辑。</summary>

@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Shapes;
 using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -24,12 +26,17 @@ public sealed class SettingsFieldPresenter : ContentControl
 	private Slider? _slider;
 	private ProgressBar? _progress;
 	private ComboBox? _combo;
+	private WrapPanel? _avatarPanel;
+	private TextBlock? _avatarStatus;
 	private Control? _editor;
 	private Grid? _row;
 	private StackPanel? _editorStack;
 	private bool _updatingOptions;
 	private bool? _stacked;
 	private SettingsBrushPalette? _palette;
+
+	/// <summary>头像墙中单个头像的显示边长。</summary>
+	private const double AvatarSize = 40;
 
 	/// <summary>创建字段呈现器。</summary>
 	public SettingsFieldPresenter()
@@ -74,6 +81,8 @@ public sealed class SettingsFieldPresenter : ContentControl
 		_slider = null;
 		_progress = null;
 		_combo = null;
+		_avatarPanel = null;
+		_avatarStatus = null;
 		_stacked = null;
 		_label = new TextBlock
 		{
@@ -165,7 +174,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 		if (_field is null) return;
 		IsVisible = _field.IsVisible;
 		if (_readOnlyText is not null && !_field.IsReadOnly) { Build(); return; }
-		if (_editor is not null) _editor.IsEnabled = !_field.IsReadOnly || _editor is TextBox or SelectableTextBlock;
+		if (_editor is not null) _editor.IsEnabled = !_field.IsReadOnly || _editor is TextBox or SelectableTextBlock || _field.EditorKind == SettingsEditorKind.Avatars;
 		if (_textBox is not null) _textBox.IsReadOnly = _field.IsReadOnly;
 		if (_numeric is not null) _numeric.IsReadOnly = _field.IsReadOnly;
 	}
@@ -242,6 +251,8 @@ public sealed class SettingsFieldPresenter : ContentControl
 						_field.Selected = _field.Options[_combo.SelectedIndex].Value;
 				};
 				return _combo;
+			case SettingsEditorKind.Avatars:
+				return BuildAvatarWall();
 			case SettingsEditorKind.Action:
 				Button button = new()
 				{
@@ -270,6 +281,51 @@ public sealed class SettingsFieldPresenter : ContentControl
 				});
 				return _textBox;
 		}
+	}
+
+	private Control BuildAvatarWall()
+	{
+		_avatarPanel = new WrapPanel
+		{
+			Orientation = Orientation.Horizontal,
+			ItemSpacing = 8,
+			LineSpacing = 8,
+			HorizontalAlignment = HorizontalAlignment.Left,
+		};
+		_avatarStatus = new TextBlock
+		{
+			FontSize = NoriMetrics.FontXs,
+			TextWrapping = TextWrapping.Wrap,
+			Foreground = Brush("SettingsSecondaryBrush"),
+		};
+		UpdateAvatars();
+		StackPanel stack = new() { Spacing = 6 };
+		stack.Children.Add(_avatarPanel);
+		stack.Children.Add(_avatarStatus);
+		return stack;
+	}
+
+	private void UpdateAvatars()
+	{
+		if (_field is null || _avatarPanel is null || _avatarStatus is null) return;
+		_avatarPanel.Children.Clear();
+		foreach (SettingsAvatar avatar in _field.Avatars)
+		{
+			Ellipse item = new()
+			{
+				Width = AvatarSize,
+				Height = AvatarSize,
+				Fill = new ImageBrush(avatar.Image) { Stretch = Stretch.UniformToFill },
+				Stroke = Brush("SettingsBorderBrush"),
+				StrokeThickness = 1,
+			};
+			ToolTip.SetTip(item, avatar.Name);
+			AutomationProperties.SetName(item, avatar.Name);
+			_avatarPanel.Children.Add(item);
+		}
+		_avatarPanel.IsVisible = _avatarPanel.Children.Count > 0;
+		_avatarStatus.Text = _field.Text;
+		_avatarStatus.IsVisible = !string.IsNullOrWhiteSpace(_field.Text);
 	}
 
 	private void UpdateOptions()
@@ -322,7 +378,11 @@ public sealed class SettingsFieldPresenter : ContentControl
 				if (_textBox is not null && _field.EditorKind == SettingsEditorKind.Password)
 					_textBox.PlaceholderText = _field.IsConfigured ? "••••••••" : null;
 				break;
+			case nameof(SettingsFieldViewModel.Avatars):
+				UpdateAvatars();
+				break;
 			case nameof(SettingsFieldViewModel.Text):
+				if (_avatarStatus is not null) UpdateAvatars();
 				if (_readOnlyText is not null)
 				{
 					_readOnlyText.Text = _field.Text;

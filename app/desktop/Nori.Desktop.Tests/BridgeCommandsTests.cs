@@ -346,6 +346,9 @@ public partial class BridgeCommandsTests : IDisposable
 		string catalogCache = _services.Paths.ModelCatalogCachePath;
 		Directory.CreateDirectory(Path.GetDirectoryName(catalogCache)!);
 		File.WriteAllText(catalogCache, Nori.Core.Chat.Catalog.ModelsDevIndex.ParseSource("""{"test":{"models":{}}}""", DateTimeOffset.UtcNow).ToCacheJson());
+		// 关于页首个快照会读取贡献者；预置新鲜的空缓存，避免测试访问真实 GitHub。
+		File.WriteAllText(_services.Paths.ContributorsCachePath, Nori.Core.Community.GitHubContributorCatalog.ToCacheJson(
+			new Nori.Core.Community.GitHubContributorCatalog.ContributorSnapshot(DateTimeOffset.UtcNow, [])));
 		_runtime = new AppRuntime(_services);
 		_services.Runtime = _runtime;
 		_services.Commands = new BridgeCommands(_services, new SynchronousUiDispatcher());
@@ -356,6 +359,7 @@ public partial class BridgeCommandsTests : IDisposable
 		_services.Update?.Dispose();
 		_runtime.DisposeAsync().GetAwaiter().GetResult();
 		_services.ModelCatalog.DisposeAsync().AsTask().GetAwaiter().GetResult();
+		_services.Contributors.DisposeAsync().AsTask().GetAwaiter().GetResult();
 		if (!_databaseReleasedByServices) _database.Dispose();
 		_http.Dispose();
 		_services.Logger.Dispose();

@@ -620,6 +620,11 @@ public sealed partial class BridgeCommands
 		"set_logging_level" => RequireMain(source, () => SetLoggingLevel(args)),
 		"clear_recent_logs" => RequireMain(source, () => Run(_services.Logger.ClearRecentLogs)),
 		"get_diagnostic_info" => RequireMain(source, () => DiagnosticInfo.Build(_services.PetRuntime, _services.Paths, _services.SafeMode)),
+		/// <summary>
+		/// 读取项目 GitHub 贡献者头像 (关于页)。有缓存时立即返回，过期在后台刷新；安全模式只读缓存。
+		/// 前端调用：invoke("about_list_contributors") → {contributors: [{login, avatar}]}，avatar 为 base64 图片
+		/// </summary>
+		"about_list_contributors" => await ListContributorsAsync(source, cancellationToken),
 		// invoke("export_diagnostics") → {fileName, bytes, skipped}
 		"export_diagnostics" => await ExportDiagnosticsAsync(source, cancellationToken),
 		"open_log_folder" => RequireMain(source, () => Run(OpenLogFolder)),

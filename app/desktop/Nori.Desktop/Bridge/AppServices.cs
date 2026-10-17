@@ -91,6 +91,21 @@ public sealed class AppServices : IAsyncDisposable
 			catch { }
 		});
 
+	private Nori.Core.Community.GitHubContributorCatalog? _contributors;
+
+	/// <summary>
+	/// 项目 GitHub 贡献者目录 (关于页头像)。走公网客户端；安全模式下只读本地缓存。
+	/// </summary>
+	public Nori.Core.Community.GitHubContributorCatalog Contributors => _contributors ??= new Nori.Core.Community.GitHubContributorCatalog(
+		PublicHttp,
+		Paths.ContributorsCachePath,
+		() => !SafeMode,
+		message =>
+		{
+			try { Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", message); }
+			catch { }
+		});
+
 	private Nori.Core.Chat.Images.GeneratedImageStore? _imageStore;
 
 	/// <summary>AI 生成图片的本地存储。</summary>
@@ -251,6 +266,7 @@ public sealed class AppServices : IAsyncDisposable
 			DisposeStep(() => Mcp.DisposeAsync(), TimeSpan.FromSeconds(4))).ConfigureAwait(false);
 		// 目录任务仍可能持有缓存文件；必须等它结束，才能释放 HTTP 和存储资源。
 		if (_modelCatalog is not null) await _modelCatalog.DisposeAsync().ConfigureAwait(false);
+		if (_contributors is not null) await _contributors.DisposeAsync().ConfigureAwait(false);
 		await DisposeStep(() =>
 		{
 			if (_publicHttp is not null && !ReferenceEquals(_publicHttp, Http)) _publicHttp.Dispose();

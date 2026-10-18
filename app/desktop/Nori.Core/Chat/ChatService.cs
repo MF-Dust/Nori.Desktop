@@ -139,7 +139,7 @@ public sealed record ChatMessage
 /// 聊天服务。
 /// 系统提示词以嵌入资源形式编译进程序集，修改 nori-system-prompt.md 后必须重新构建才生效。
 /// </summary>
-public sealed class ChatService(HttpClient httpClient, NoriDatabase database, ConfigStore config)
+public sealed class ChatService(HttpClient httpClient, NoriDatabase database, ConfigStore config, CustomChatProviderRegistry? customProviders = null)
 {
 	/// <summary>配置键: LLM 协议类型</summary>
 	public const string KeyLlmProvider = AiSettingsStore.KeyLlmProvider;
@@ -155,7 +155,10 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 
 	private static readonly Lazy<string> SystemPrompt = new(LoadSystemPrompt);
 
-	private readonly HttpClient _httpClient = httpClient;
+	private readonly LlmClient _llm = new(httpClient, customProviders);
+
+	/// <summary>本实例的扩展提供商；宿主可将同一注册表注入模型列表、探测器与后台消费者。</summary>
+	public CustomChatProviderRegistry CustomProviders => _llm.CustomProviders;
 	private readonly NoriDatabase _database = database;
 	private readonly ConfigStore _config = config;
 	private readonly AiSettingsStore _aiSettings = new(config);
@@ -328,16 +331,16 @@ public sealed class ChatService(HttpClient httpClient, NoriDatabase database, Co
 		string model,
 		IReadOnlyList<ChatMessageInput> messages)
 	{
+		if (string.IsNullOrWhiteSpace(providerStr)) providerStr = _aiSettings.Read().Chat.ProviderId;
+		bool custom = LlmProviderExtensions.IsCustomProvider(providerStr);
 		baseUrl = baseUrl.TrimEnd('/');
-		if (baseUrl.Length == 0) throw new ChatException("Base URL 不能为空");
-		if (apiKey.Length == 0) throw new ChatException("API Key 不能为空");
+		if (!custom && baseUrl.Length == 0) throw new ChatException("Base URL 不能为空");
+		if (!custom && apiKey.Length == 0) throw new ChatException("API Key 不能为空");
 		if (model.Length == 0) throw new ChatException("模型不能为空");
 		if (messages.Count == 0) throw new ChatException("消息不能为空");
 		ChatMessageInput.ValidateImageLimits(messages);
 
-		if (string.IsNullOrWhiteSpace(providerStr)) providerStr = _aiSettings.Read().Chat.Provider.AsString();
-		LlmProvider provider = LlmProviderExtensions.ParseProvider(providerStr);
-		ILlmAdapter adapter = LlmClient.CreateAdapter(provider, _httpClient);
+		ILlmAdapter adapter = _llm.CreateAdapter(providerStr);
 		string modelId = _config.GetStringOr(ConfigStore.KeySelectedModel, "");
 		string systemContent = SystemPrompt.Value + MotionMarkers.BuildHint(_config, modelId);
 		return new PreparedRequest(baseUrl, adapter, systemContent);

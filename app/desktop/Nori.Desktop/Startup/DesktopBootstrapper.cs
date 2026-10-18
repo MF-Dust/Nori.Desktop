@@ -163,6 +163,8 @@ internal sealed class DesktopBootstrapper
 			DevelopmentHost = string.Equals(Nori.Core.ProductVersion.Current, "Dev", StringComparison.Ordinal),
 			SafeMode = safeMode,
 			EnableAvaloniaPages = true,
+			EnableApplicationInterop = true,
+			EnableChatProviders = true,
 			Logger = logger,
 			OnError = exception =>
 			{
@@ -204,7 +206,7 @@ internal sealed class DesktopBootstrapper
 			Chat = chat,
 			Memory = new Nori.Core.Memory.MemoryStore(database),
 			Embedding = new Nori.Core.Embedding.OpenAiEmbeddingAdapter(http),
-			Llm = new LlmClient(http),
+			Llm = new LlmClient(http, chat.CustomProviders),
 			Mcp = mcp,
 			PluginRuntime = pluginRuntime,
 			Update = updateService,

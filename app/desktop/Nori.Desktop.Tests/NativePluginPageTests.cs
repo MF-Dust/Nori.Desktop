@@ -3,6 +3,7 @@ using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
+using Nori.Core.Tools;
 using Nori.Desktop.Settings;
 using Nori.Desktop.Windows;
 using Nori.PluginRuntime;
@@ -53,6 +54,8 @@ public partial class BridgeCommandsTests
 					using PluginPageController controller = new(runtime, errors.Add);
 					await Task.Run(() => runtime.StartAllAsync());
 					Assert.Equal(3, controller.Pages.Count);
+					PluginPageInfo embedded = Assert.Single(controller.SettingsPages);
+					Assert.Equal("settings", embedded.Id);
 					PluginPageWindow first = controller.Open("native.plugin", "home");
 					Assert.Same(first, controller.Open("native.plugin", "home"));
 					first.Width = width;
@@ -67,6 +70,12 @@ public partial class BridgeCommandsTests
 					{
 						fixture._config.Set(Nori.Core.Configuration.ConfigStore.KeyLanguage, new Nori.Core.Configuration.ConfigValue.Text(language));
 						fixture._services.PluginRuntime = runtime;
+						fixture._runtime.Tools.Register(new RegisteredTool
+						{
+							Name = "plugin__native_plugin__state", Description = "读取页面状态", Category = "plugin",
+							PermissionLevel = "safe", Parameters = new System.Text.Json.Nodes.JsonObject(),
+							Execute = async (arguments, context) => await runtime.InvokePluginActionAsync("native.plugin", "state", arguments, context.CancellationToken),
+						});
 						WindowManager manager = new(_ => { });
 						fixture._services.Windows = manager;
 						typeof(WindowManager).GetField("_pluginPages", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(manager, controller);
@@ -80,17 +89,41 @@ public partial class BridgeCommandsTests
 							await WaitUntilAsync(() => settings.GetLogicalDescendants().OfType<Button>().Any(button => button.Content?.ToString()?.Contains("原生页面", StringComparison.Ordinal) == true));
 							settings.UpdateLayout();
 							CaptureUi(settings, $"plugin-settings-{width}x{height}-{language}");
+							// 设置页注册后直接出现在宿主侧栏，不需要再点按钮开窗口。
+							string embeddedKey = PluginSettingsPage.NavigationKey(embedded);
+							Assert.Contains(vm.Groups.SelectMany(group => group.Pages), item => item.Page.Key == embeddedKey);
+							vm.Navigate(embeddedKey);
+							await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+							settings.UpdateLayout();
+							// 内嵌页是统一的所有者装饰器，内部承载插件控件。
+							PluginPageHost host = Assert.IsType<PluginPageHost>(settings.GetLogicalDescendants().OfType<SettingsPagePresenter>().Single().Content);
+							Assert.IsType<StackPanel>(host.Child);
+							CaptureUi(settings, $"plugin-settings-embedded-{width}x{height}-{language}");
+							vm.Navigate("plugins");
+							await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 							Button open = settings.GetLogicalDescendants().OfType<Button>().Single(button => button.Content?.ToString()?.Contains("释放错误", StringComparison.Ordinal) == true);
 							open.BringIntoView();
 							await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 							settings.UpdateLayout();
 							CaptureUi(settings, $"plugin-settings-pages-{width}x{height}-{language}");
+							Expander actions = settings.GetLogicalDescendants().OfType<Expander>().Single(expander => expander.Header?.ToString()?.Contains(language == "en-US" ? "Plugin actions" : "插件动作", StringComparison.Ordinal) == true);
+							actions.IsExpanded = true;
+							actions.BringIntoView();
+							await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+							settings.UpdateLayout();
+							Assert.Contains(settings.GetLogicalDescendants().OfType<Button>(), button => button.Content?.ToString() == (language == "en-US" ? "Reload" : "重新加载"));
+							ToggleSwitch actionToggle = settings.GetLogicalDescendants().OfType<ToggleSwitch>().Single(toggle => Avalonia.Automation.AutomationProperties.GetName(toggle) == "plugin__native_plugin__state");
+							actionToggle.BringIntoView();
+							await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+							settings.UpdateLayout();
+							CaptureUi(settings, $"plugin-settings-actions-{width}x{height}-{language}");
 							settings.Hide();
 							Assert.True(first.IsVisible);
 							first.Close();
 							Assert.Null(first.Content);
 							var state = await runtime.InvokePluginActionAsync("native.plugin", "state", null);
-							Assert.Equal(1, state!["created"]!.GetValue<int>());
+							// 独立窗口已释放，内嵌设置页仍在使用，因此只创建 2 个、释放 1 个。
+							Assert.Equal(2, state!["created"]!.GetValue<int>());
 							Assert.Equal(1, state["disposed"]!.GetValue<int>());
 							PluginPageWindow second = controller.Open("native.plugin", "home");
 							Assert.NotSame(first, second);
@@ -106,6 +139,8 @@ public partial class BridgeCommandsTests
 							Assert.Null(second.Content);
 							Assert.False(second.IsVisible);
 							Assert.Empty(controller.Pages);
+							Assert.Empty(controller.SettingsPages);
+							Assert.DoesNotContain(vm.Groups.SelectMany(group => group.Pages), item => item.Page.Key == embeddedKey);
 							Assert.Throws<InvalidOperationException>(() => controller.Open("native.plugin", "home"));
 						}
 						finally { settings.AllowClose = true; settings.Close(); fixture._services.PluginRuntime = null; }

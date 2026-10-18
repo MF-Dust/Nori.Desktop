@@ -21,10 +21,19 @@ public sealed partial class NativeSettingsPagePresenter
 			() => JsonSerializer.Serialize(new {viewModel.State, viewModel.Audit, viewModel.IsSupported, viewModel.CanConfigure}),
 			body => RenderAutomation(body, viewModel));
 
-	private void BuildPlugins(StackPanel root, PluginsSettingsViewModel viewModel) =>
+	private void BuildPlugins(StackPanel root, PluginsSettingsViewModel viewModel)
+	{
+		TextBox search = new() {Text = viewModel.SearchText, PlaceholderText = ParityText("搜索插件名称、ID 或描述", "Search plugin name, ID or description")};
+		Avalonia.Automation.AutomationProperties.SetName(search, ParityText("搜索插件", "Search plugins"));
+		search.TextChanged += (_, _) => viewModel.SearchText = search.Text ?? "";
+		root.Children.Add(search);
+		CheckBox activeOnly = new() {Content = ParityText("仅运行中", "Active only"), IsChecked = viewModel.ActiveOnly};
+		activeOnly.IsCheckedChanged += (_, _) => viewModel.ActiveOnly = activeOnly.IsChecked == true;
+		root.Children.Add(ActionGroup(activeOnly, Button(ParityText("刷新", "Refresh"), () => _ = RunAsync(() => viewModel.RefreshAsync()))));
 		InitializeComplexBody(root, viewModel,
-			() => JsonSerializer.Serialize(new {viewModel.Plugins, viewModel.Pages, viewModel.SafeMode, viewModel.TrustConfirmed}),
+			() => JsonSerializer.Serialize(new {viewModel.Plugins, viewModel.Actions, viewModel.Pages, viewModel.SettingsPages, viewModel.SafeMode, viewModel.TrustConfirmed, viewModel.SearchText, viewModel.ActiveOnly}),
 			body => RenderPlugins(body, viewModel));
+	}
 
 	private void BuildSkills(StackPanel root, SkillsSettingsViewModel viewModel)
 	{
@@ -206,7 +215,11 @@ public sealed partial class NativeSettingsPagePresenter
 		if (plugin.State is "installed" or "disabled" or "failed")
 			actions.Children.Add(Button(plugin.State == "failed" ? ParityText("重试", "Retry") : NativeSettingsResources.Get("common.enable"),
 				() => _ = RunAsync(() => viewModel.EnableAsync(plugin)), accent: true, enabled: viewModel.CanInstall && ready));
+		if (plugin.State == "active")
+			actions.Children.Add(Button(ParityText("重新加载", "Reload"), () => _ = RunAsync(() => viewModel.ReloadAsync(plugin)), enabled: viewModel.CanInstall && ready));
 		actions.Children.Add(Button(NativeSettingsResources.Get("common.delete"), () => _ = RunAsync(() => UninstallPluginAsync(viewModel, plugin)), danger: true, enabled: ready));
+		foreach (Nori.Desktop.Windows.PluginPageInfo page in viewModel.SettingsPages.Where(page => page.PluginId == plugin.Id))
+			actions.Children.Add(Empty($"{page.Title} · {ParityText("已加入设置导航", "Added to settings navigation")}"));
 		foreach (Nori.Desktop.Windows.PluginPageInfo page in viewModel.Pages.Where(page => page.PluginId == plugin.Id))
 		{
 			string pluginId = page.PluginId;
@@ -216,6 +229,23 @@ public sealed partial class NativeSettingsPagePresenter
 		}
 		foreach (Control action in actions.Children) action.Margin = new Thickness(0, 0, 8, 8);
 		body.Children.Add(actions);
+		IReadOnlyList<McpToolItem> pluginActions = viewModel.GetActions(plugin);
+		if (plugin.State == "active" && pluginActions.Count > 0)
+		{
+			StackPanel actionList = new() {Spacing = 8};
+			foreach (McpToolItem action in pluginActions)
+			{
+				StackPanel row = CardBody(action.Name, $"{action.PermissionLevel} · {action.Description}", compact: true);
+				ToggleSwitch enabled = new() {IsChecked = action.Enabled, OnContent = NativeSettingsResources.Get("common.enable"), OffContent = NativeSettingsResources.Get("common.disable")};
+				Avalonia.Automation.AutomationProperties.SetName(enabled, action.Name);
+				enabled.IsCheckedChanged += (_, _) => _ = RunAsync(() => viewModel.ToggleActionAsync(action, enabled.IsChecked == true));
+				row.Children.Add(ActionGroup(enabled, Button(NativeSettingsResources.Get("common.test"), () => _ = RunAsync(() => TestPluginActionAsync(viewModel, action)),
+					enabled: viewModel.CanInstall && action.Enabled && action.PermissionLevel == "safe")));
+				actionList.Children.Add(row);
+			}
+			actionList.Children.Add(Empty(ParityText("仅 safe 动作支持手动测试；其他动作通过对话审批执行。", "Only safe actions support manual tests; other actions require conversation approval.")));
+			body.Children.Add(new Expander {Header = $"{ParityText("插件动作", "Plugin actions")} · {pluginActions.Count}", Content = actionList, HorizontalAlignment = HorizontalAlignment.Stretch});
+		}
 		foreach (string capability in plugin.Capabilities)
 			body.Children.Add(Empty($"{capability} · {ParityText("必需", "Required")} · {PluginCapabilityLabel(plugin, capability)}"));
 		foreach (string capability in plugin.OptionalCapabilities)
@@ -405,6 +435,17 @@ public sealed partial class NativeSettingsPagePresenter
 		return WrapCard(body, compact: true);
 	}
 
+	private async Task TestPluginActionAsync(PluginsSettingsViewModel viewModel, McpToolItem action)
+	{
+		string schema = action.InputSchema.ValueKind == JsonValueKind.Object ? action.InputSchema.GetRawText() : "{}";
+		string? json = await NativeSettingsDialogs.PromptAsync(Owner(), action.Name,
+			$"{action.Description}\n\n{ParityText("参数结构", "Input schema")}\n{schema}", McpSettingsViewModel.CreateToolArguments(action), multiline: true).ConfigureAwait(true);
+		if (json is null) return;
+		JsonElement result = await viewModel.TestActionAsync(action, json).ConfigureAwait(true);
+		await NativeSettingsDialogs.ShowMessageAsync(Owner(), action.Name, result.ValueKind == JsonValueKind.Undefined
+			? NativeSettingsResources.Get("common.none") : JsonSerializer.Serialize(result, new JsonSerializerOptions {WriteIndented = true})).ConfigureAwait(true);
+	}
+
 	private async Task UninstallPluginAsync(PluginsSettingsViewModel viewModel, PluginItem plugin)
 	{
 		if (!await NativeSettingsDialogs.ConfirmAsync(Owner(), NativeSettingsResources.Get("common.delete"), NativeSettingsResources.Get("plugins.uninstallConfirm"), true).ConfigureAwait(true)) return;
@@ -524,11 +565,11 @@ public sealed partial class NativeSettingsPagePresenter
 		root.Children.Add(WrapCard(trust));
 		Button install = Button(NativeSettingsResources.Get("plugins.install"), () => _ = RunAsync(() => viewModel.InstallLocalAsync()), accent: true, enabled: viewModel.CanInstall);
 		root.Children.Add(install);
-		if (viewModel.Plugins.Count == 0)
+		if (viewModel.FilteredPlugins.Count == 0)
 		{
 			root.Children.Add(Empty(NativeSettingsResources.Get("plugins.noItems")));
 			return;
 		}
-		foreach (PluginItem plugin in viewModel.Plugins) root.Children.Add(PluginCard(viewModel, plugin));
+		foreach (PluginItem plugin in viewModel.FilteredPlugins) root.Children.Add(PluginCard(viewModel, plugin));
 	}
 }

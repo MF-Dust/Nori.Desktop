@@ -1,4 +1,6 @@
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
+using System.Text.Json.Nodes;
 using Nori.PluginRuntime;
 using Nori.PluginRuntime.TestPlugin;
 
@@ -227,7 +229,7 @@ public sealed class PluginManagementTests
 	}
 
 	[Fact]
-	public async Task 活动必需依赖会拒绝Disable且保持双方Active()
+	public async Task 活动必需依赖会拒绝Disable和Reload且保持双方Active()
 	{
 		string root = CreateTemp();
 		try
@@ -241,6 +243,8 @@ public sealed class PluginManagementTests
 
 			PluginException inUse = await Assert.ThrowsAsync<PluginException>(() => manager.DisableAsync("base.plugin"));
 			Assert.Equal(PluginErrorCodes.DependencyInUse, inUse.Code);
+			PluginException reloadInUse = await Assert.ThrowsAsync<PluginException>(() => manager.ReloadAsync("base.plugin"));
+			Assert.Equal(PluginErrorCodes.DependencyInUse, reloadInUse.Code);
 			PluginInfo baseInfo = Assert.Single(manager.Plugins, item => item.Id == "base.plugin");
 			PluginInfo dependentInfo = Assert.Single(manager.Plugins, item => item.Id == "dependent.plugin");
 			Assert.True(baseInfo.UserEnabled);
@@ -272,6 +276,243 @@ public sealed class PluginManagementTests
 			await manager.DisposeAsync();
 		}
 		finally { DeleteDirectory(root); }
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task Reload撤销旧贡献并激活current版本且保留数据和启用意图(bool update)
+	{
+		string root = CreateTemp();
+		try
+		{
+			await Task.Run(async () =>
+			{
+				await using PluginManager manager = CreateManager(root);
+				await manager.InstallAsync(CreateTestPackage(root, "reload.plugin", "1.0.0"));
+				await manager.EnableAsync("reload.plugin");
+				WeakReference previous = ContributionReference(manager);
+				string data = Path.Combine(root, "plugin-data", "reload.plugin");
+				await new JsonPluginStorage(data).SetAsync("keep", JsonValue.Create("saved"));
+				string intent = File.ReadAllText(Path.Combine(root, "plugin-data", "runtime", "plugin-state.json"));
+				List<PluginLifecycleState> transitions = [];
+				manager.ActivePluginsChanged += () => transitions.Add(Assert.Single(manager.Plugins).State);
+				if (update) await manager.InstallAsync(CreateTestPackage(root, "reload.plugin", "1.1.0"));
+
+				await manager.ReloadAsync("reload.plugin");
+
+				PluginInfo info = Assert.Single(manager.Plugins);
+				Assert.Equal(PluginLifecycleState.Active, info.State);
+				Assert.Equal(update ? "1.1.0" : "1.0.0", info.Manifest.Version);
+				Assert.True(info.UserEnabled);
+				Assert.False(info.RequiresRestart);
+				Assert.Null(info.ErrorCode);
+				Assert.False(previous.IsAlive);
+				Assert.Single(manager.GetContributions<IPluginContribution>());
+				Assert.Equal(new[] {PluginLifecycleState.Installed, PluginLifecycleState.Active}, transitions);
+				Assert.Equal("saved", (await new JsonPluginStorage(data).GetAsync("keep"))!.GetValue<string>());
+				Assert.Equal(intent, File.ReadAllText(Path.Combine(root, "plugin-data", "runtime", "plugin-state.json")));
+			});
+		}
+		finally { DeleteDirectory(root); }
+	}
+
+	[Fact]
+	public async Task Reload可从激活失败恢复到新版本而不修改启用意图()
+	{
+		string root = CreateTemp();
+		try
+		{
+			await Task.Run(async () =>
+			{
+				await using PluginManager manager = CreateManager(root);
+				await manager.InstallAsync(CreateTestPackage(root, "retry.plugin", "1.0.0", entryType: "Nori.PluginRuntime.TestPlugin.ThrowingActivatePlugin"));
+				await FailEnableAsync(manager, "retry.plugin");
+				Assert.Equal(PluginLifecycleState.Failed, Assert.Single(manager.Plugins).State);
+				await manager.InstallAsync(CreateTestPackage(root, "retry.plugin", "1.1.0"));
+
+				await manager.ReloadAsync("retry.plugin");
+
+				PluginInfo info = Assert.Single(manager.Plugins);
+				Assert.Equal(PluginLifecycleState.Active, info.State);
+				Assert.Equal("1.1.0", info.Manifest.Version);
+				Assert.True(info.UserEnabled);
+				Assert.False(info.RequiresRestart);
+				Assert.Single(manager.GetContributions<IPluginContribution>());
+			});
+		}
+		finally { DeleteDirectory(root); }
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task Reload无法回收旧版本时返回待重启且不加载第二份(bool failedActivation)
+	{
+		string root = CreateTemp();
+		try
+		{
+			await Task.Run(async () =>
+			{
+				int activations = 0;
+				CancellationToken stopping = default;
+				await using PluginManager manager = new(new PluginRuntimeOptions
+				{
+					PluginsDirectory = Path.Combine(root, "plugins"),
+					DataDirectory = Path.Combine(root, "plugin-data"),
+					OnLog = (_, _, _) => activations++,
+					CapabilityFactory = (_, token) => { stopping = token; return []; },
+				});
+				string entryType = failedActivation ? "Nori.PluginRuntime.TestPlugin.ThrowingActivatePlugin" : "Nori.PluginRuntime.TestPlugin.TestPlugin";
+				await manager.InstallAsync(CreateTestPackage(root, "pinned.plugin", "1.0.0", entryType: entryType));
+				object retained;
+				if (failedActivation)
+					retained = await Assert.ThrowsAsync<PluginException>(() => manager.EnableAsync("pinned.plugin"));
+				else
+				{
+					await manager.EnableAsync("pinned.plugin");
+					retained = Assert.Single(manager.GetContributions<IPluginContribution>());
+				}
+				await manager.InstallAsync(CreateTestPackage(root, "pinned.plugin", "1.1.0"));
+
+				await manager.ReloadAsync("pinned.plugin");
+
+				PluginInfo info = Assert.Single(manager.Discover());
+				Assert.Equal(PluginLifecycleState.PendingRestart, info.State);
+				Assert.Equal(PluginErrorCodes.UnloadPendingRestart, info.ErrorCode);
+				Assert.Equal("1.0.0", info.Manifest.Version);
+				Assert.True(info.UserEnabled);
+				Assert.True(info.RequiresRestart);
+				Assert.True(stopping.IsCancellationRequested);
+				Assert.Empty(manager.GetContributions<IPluginContribution>());
+				Assert.Equal(failedActivation ? 0 : 1, activations);
+				PluginException pending = await Assert.ThrowsAsync<PluginException>(() => manager.ReloadAsync("pinned.plugin"));
+				Assert.Equal(PluginErrorCodes.UnloadPendingRestart, pending.Code);
+				GC.KeepAlive(retained);
+			});
+		}
+		finally { DeleteDirectory(root); }
+	}
+
+	[Theory]
+	[InlineData("../outside", PluginErrorCodes.InvalidPluginId)]
+	[InlineData("missing.plugin", PluginErrorCodes.PluginNotFound)]
+	[InlineData("disabled.plugin", PluginErrorCodes.UserDisabled)]
+	public async Task Reload拒绝非法缺失或用户禁用插件且不改变意图(string id, string code)
+	{
+		string root = CreateTemp();
+		try
+		{
+			await using PluginManager manager = CreateManager(root);
+			await manager.InstallAsync(CreateTestPackage(root, "disabled.plugin", "1.0.0"));
+			PluginException failure = await Assert.ThrowsAsync<PluginException>(() => manager.ReloadAsync(id));
+			Assert.Equal(code, failure.Code);
+			PluginInfo info = Assert.Single(manager.Plugins);
+			Assert.False(info.UserEnabled);
+			Assert.Equal(PluginLifecycleState.Disabled, info.State);
+			Assert.False(Directory.Exists(Path.Combine(root, "plugin-data", "disabled.plugin")));
+		}
+		finally { DeleteDirectory(root); }
+	}
+
+	[Fact]
+	public async Task Reload不能绕过启动失败保护()
+	{
+		string root = CreateTemp();
+		try
+		{
+			await Task.Run(async () =>
+			{
+				await using PluginManager manager = CreateManager(root);
+				await manager.InstallAsync(CreateTestPackage(root, "recovery.plugin", "1.0.0", entryType: "Nori.PluginRuntime.TestPlugin.ThrowingActivatePlugin"));
+				await FailEnableAsync(manager, "recovery.plugin");
+				await Assert.ThrowsAsync<PluginException>(() => manager.ActivateAsync("recovery.plugin"));
+				PluginException failure = await Assert.ThrowsAsync<PluginException>(() => manager.ReloadAsync("recovery.plugin"));
+				Assert.Equal(PluginErrorCodes.StartupRecoveryDisabled, failure.Code);
+				PluginInfo info = Assert.Single(manager.Plugins);
+				Assert.True(info.UserEnabled);
+				Assert.Equal(PluginLifecycleState.Disabled, info.State);
+			});
+		}
+		finally { DeleteDirectory(root); }
+	}
+
+	[Fact]
+	public async Task Reload拒绝待重启卸载且不删除安装或用户数据()
+	{
+		string root = CreateTemp();
+		try
+		{
+			await Task.Run(async () =>
+			{
+				await using PluginManager manager = CreateManager(root);
+				await manager.InstallAsync(CreateTestPackage(root, "uninstall.plugin", "1.0.0"));
+				await manager.EnableAsync("uninstall.plugin");
+				IPluginContribution retained = Assert.Single(manager.GetContributions<IPluginContribution>());
+				Assert.True((await manager.UninstallAsync("uninstall.plugin", deleteData: true)).RequiresRestart);
+				PluginException failure = await Assert.ThrowsAsync<PluginException>(() => manager.ReloadAsync("uninstall.plugin"));
+				Assert.Equal(PluginErrorCodes.UninstallPendingRestart, failure.Code);
+				Assert.True(Directory.Exists(Path.Combine(root, "plugins", "uninstall.plugin")));
+				Assert.True(File.Exists(Path.Combine(root, "plugin-data", "uninstall.plugin", "storage.json")));
+				Assert.False(Assert.Single(manager.Plugins).UserEnabled);
+				GC.KeepAlive(retained);
+			});
+		}
+		finally { DeleteDirectory(root); }
+	}
+
+	[Fact]
+	public async Task Reload拒绝丢失current的活动插件且不停止旧实例()
+	{
+		string root = CreateTemp();
+		try
+		{
+			await Task.Run(async () =>
+			{
+				await using PluginManager manager = CreateManager(root);
+				await manager.InstallAsync(CreateTestPackage(root, "missing.plugin", "1.0.0"));
+				await manager.EnableAsync("missing.plugin");
+				File.Delete(Path.Combine(root, "plugins", "missing.plugin", PluginPackageInstaller.CurrentFileName));
+				PluginException failure = await Assert.ThrowsAsync<PluginException>(() => manager.ReloadAsync("missing.plugin"));
+				Assert.Equal(PluginErrorCodes.PluginNotFound, failure.Code);
+				Assert.Equal(PluginLifecycleState.Active, Assert.Single(manager.Plugins).State);
+				Assert.Single(manager.GetContributions<IPluginContribution>());
+			});
+		}
+		finally { DeleteDirectory(root); }
+	}
+
+	[Fact]
+	public async Task Enable重试激活失败插件时加载已安装的新版本()
+	{
+		string root = CreateTemp();
+		try
+		{
+			await Task.Run(async () =>
+			{
+				await using PluginManager manager = CreateManager(root);
+				await manager.InstallAsync(CreateTestPackage(root, "retry.enable", "1.0.0", entryType: "Nori.PluginRuntime.TestPlugin.ThrowingActivatePlugin"));
+				await FailEnableAsync(manager, "retry.enable");
+				await manager.InstallAsync(CreateTestPackage(root, "retry.enable", "1.1.0"));
+
+				await manager.EnableAsync("retry.enable");
+
+				PluginInfo info = Assert.Single(manager.Plugins);
+				Assert.Equal(PluginLifecycleState.Active, info.State);
+				Assert.Equal("1.1.0", info.Manifest.Version);
+				Assert.Single(manager.GetContributions<IPluginContribution>());
+			});
+		}
+		finally { DeleteDirectory(root); }
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static WeakReference ContributionReference(PluginManager manager) => new(Assert.Single(manager.GetContributions<IPluginContribution>()));
+
+	private static async Task FailEnableAsync(PluginManager manager, string id)
+	{
+		PluginException failure = await Assert.ThrowsAsync<PluginException>(() => manager.EnableAsync(id));
+		Assert.Equal(PluginErrorCodes.ActivationFailed, failure.Code);
 	}
 
 	[Fact]
@@ -320,6 +561,9 @@ public sealed class PluginManagementTests
 			await manager.ActivateAsync("safe.plugin");
 			Assert.False(Directory.Exists(Path.Combine(root, "plugin-data", "safe.plugin")));
 			await Assert.ThrowsAsync<PluginException>(() => manager.EnableAsync("safe.plugin"));
+			PluginException reload = await Assert.ThrowsAsync<PluginException>(() => manager.ReloadAsync("safe.plugin"));
+			Assert.Equal(PluginErrorCodes.SafeModeDisabled, reload.Code);
+			Assert.True(Assert.Single(manager.Plugins).UserEnabled);
 			await manager.DisableAsync("safe.plugin");
 			Assert.False(Assert.Single(manager.Plugins).UserEnabled);
 			await manager.DisposeAsync();

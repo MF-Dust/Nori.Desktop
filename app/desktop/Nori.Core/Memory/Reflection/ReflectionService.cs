@@ -92,12 +92,14 @@ public sealed class ReflectionService
 	private async Task<ReflectionResult> RequestReflectionAsync(IReadOnlyList<ChatMessage> window, CancellationToken cancellationToken)
 	{
 		AiChatSettings chatSettings = new AiSettingsStore(_config).Read().Chat;
-		string provider = chatSettings.Provider.AsString();
+		string provider = chatSettings.ProviderId;
+		bool customProvider = LlmProviderExtensions.IsCustomProvider(provider);
 		string baseUrl = chatSettings.BaseUrl;
 		string apiKey = chatSettings.ApiKey;
 		string model = chatSettings.Model;
-		if (baseUrl.Length == 0 || model.Length == 0) throw new InvalidOperationException("Reflection 缺少 LLM 配置");
-		ILlmAdapter adapter = _adapterFactory(LlmProviderExtensions.ParseProvider(provider), _http);
+		if ((!customProvider && baseUrl.Length == 0) || model.Length == 0) throw new InvalidOperationException("Reflection 缺少 LLM 配置");
+		ILlmAdapter adapter = customProvider
+			? _chat.CustomProviders.CreateAdapter(provider.Trim()) : _adapterFactory(chatSettings.Provider, _http);
 		using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		timeout.CancelAfter(TimeSpan.FromSeconds(60));
 		IReadOnlyList<ChatMessageInput> messages = window.Select(message => new ChatMessageInput

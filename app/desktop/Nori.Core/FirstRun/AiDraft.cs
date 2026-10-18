@@ -41,6 +41,7 @@ public static class AiDraftDefaults
 		OpenAiResponses => "https://api.openai.com/v1",
 		Anthropic => "https://api.anthropic.com/v1",
 		Google => "https://generativelanguage.googleapis.com/v1beta",
+		_ when Chat.LlmProviderExtensions.IsCustomProvider(provider) => "",
 		_ => "https://api.openai.com/v1",
 	};
 

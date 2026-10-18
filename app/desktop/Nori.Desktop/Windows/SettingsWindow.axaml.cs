@@ -1,6 +1,7 @@
 using Avalonia.Animation;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Nori.Core.Configuration;
 using Nori.Desktop.Bridge;
@@ -32,7 +33,7 @@ public partial class SettingsWindow : Window
 		ArgumentNullException.ThrowIfNull(services);
 		WindowStartupLocation = WindowStartupLocation.CenterScreen;
 		_settingsService = new SettingsService(services, this);
-		_viewModel = new SettingsViewModel(_settingsService);
+		_viewModel = new SettingsViewModel(_settingsService, (services.Windows as WindowManager)?.PluginPagesController);
 		DataContext = _viewModel;
 		AllowClose = false;
 		Closing += OnClosing;
@@ -75,6 +76,8 @@ public partial class SettingsWindow : Window
 	{
 		_pageTransitionCts?.Cancel();
 		SettingsPageScroll.Offset = default;
+		// 插件可以自带滚动容器，内嵌页按有限视口测量，避免嵌套滚动撑开内容。
+		SettingsPageScroll.VerticalScrollBarVisibility = PagePresenter.DataContext is PluginSettingsPage ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
 		if (!IsVisible || PagePresenter.DataContext is not SettingsPageBase) return;
 
 		// 只在换页时淡入，不移动表单或重建编辑状态；快速切换取消上一段动画。

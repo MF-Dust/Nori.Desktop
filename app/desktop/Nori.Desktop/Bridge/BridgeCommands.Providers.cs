@@ -150,19 +150,21 @@ public sealed partial class BridgeCommands
 		AiChatSettings chat = _services.AiSettings.Read().Chat;
 		string apiKey = OptionalStr(args, "apiKey") ?? chat.ApiKey;
 		return await _services.Llm.FetchModelsAsync(
-			OptionalStr(args, "provider") ?? chat.Provider.AsString(), Str(args, "baseUrl"), apiKey);
+			OptionalStr(args, "provider") ?? chat.ProviderId, Str(args, "baseUrl"), apiKey);
 	}
 
 	private async Task<object?> GetModelInfoAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
 	{
 		RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () => (object?)true);
 		AiChatSettings chat = _services.AiSettings.Read().Chat;
-		LlmProvider provider = LlmProviderExtensions.ParseProvider(OptionalStr(args, "provider") ?? chat.Provider.AsString());
+		string providerId = OptionalStr(args, "provider") ?? chat.ProviderId;
+		// 插件提供商的模型能力未知，按保守默认值返回，与 AgentEngine 运行时一致，不查内置协议目录。
+		bool customProvider = LlmProviderExtensions.IsCustomProvider(providerId);
 		string baseUrl = OptionalStr(args, "baseUrl") ?? chat.BaseUrl;
 		string model = (OptionalStr(args, "model") ?? chat.Model).Trim();
-		Nori.Core.Chat.Catalog.ModelCapabilities? capabilities = model.Length == 0
+		Nori.Core.Chat.Catalog.ModelCapabilities? capabilities = model.Length == 0 || customProvider
 			? null
-			: await _services.ModelCatalog.FindAsync(provider, baseUrl, model, cancellationToken);
+			: await _services.ModelCatalog.FindAsync(LlmProviderExtensions.ParseProvider(providerId), baseUrl, model, cancellationToken);
 		ContextWindowPlan plan = ContextWindowPlanner.Resolve(
 			ConfigText(ContextWindowPlanner.KeyContextLimit), ConfigText(ContextWindowPlanner.KeyReservedOutput), capabilities);
 		return new
@@ -229,11 +231,11 @@ public sealed partial class BridgeCommands
 	{
 		RequireMainVoid(source);
 		AiChatSettings chat = _services.AiSettings.Read().Chat;
-		string provider = OptionalStr(args, "provider") ?? chat.Provider.AsString();
+		string provider = OptionalStr(args, "provider") ?? chat.ProviderId;
 		string baseUrl = OptionalStr(args, "baseUrl") ?? chat.BaseUrl;
 		string apiKey = OptionalStr(args, "apiKey") ?? chat.ApiKey;
 		string model = OptionalStr(args, "model") ?? chat.Model;
-		ProviderConnectionTester tester = new(_services.Http, _services.Embedding);
+		ProviderConnectionTester tester = new(_services.Http, _services.Embedding, _services.Chat.CustomProviders);
 		return await tester.TestLlmAsync(provider, baseUrl, apiKey, model, cancellationToken);
 	}
 

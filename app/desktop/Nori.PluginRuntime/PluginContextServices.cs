@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Nori.Core.Tools;
 
 namespace Nori.PluginRuntime;
 
@@ -54,6 +55,36 @@ internal sealed class PluginContributionRegistry : IContributionRegistry
 		lock (_gate)
 		{
 			if (_revoked) throw new PluginException(PluginErrorCodes.CapabilityUnavailable, "插件贡献已撤销");
+			if (contribution is IPluginActionContribution action)
+			{
+				string id = action.Id;
+				string description = action.Description;
+				if (string.IsNullOrWhiteSpace(id) || id.Length > ToolLimits.MaxNameCharacters || id.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '_' or '-')))
+					throw new PluginException(PluginErrorCodes.InvalidManifest, "插件动作 ID 无效");
+				if (string.IsNullOrWhiteSpace(description) || description.Length > ToolLimits.MaxDescriptionCharacters
+					|| description.Any(c => char.IsControl(c) && c is not ('\r' or '\n' or '\t')))
+					throw new PluginException(PluginErrorCodes.InvalidManifest, "插件动作描述无效");
+				// 桌面工具只接收对象 Schema，其他根节点会被静默替换为空对象。
+				if (action.ParametersSchema is not null and not JsonObject)
+					throw new PluginException(PluginErrorCodes.InvalidManifest, "插件动作参数 Schema 必须为 JSON 对象或 null");
+				if (_items.OfType<IPluginActionContribution>().Any(item => item.Id == id))
+					throw new PluginException(PluginErrorCodes.DuplicateContribution, "插件动作 ID 重复");
+			}
+			if (contribution is IPluginChatProviderContribution provider)
+			{
+				PluginCapabilityStatus? status = _capabilities?.Statuses.FirstOrDefault(item => item.Id == PluginCapabilityIds.ChatProvider);
+				if (status is null) throw new PluginException(PluginErrorCodes.CapabilityMissing, "插件未声明 ai.provider 能力");
+				if (!status.Granted) throw new PluginException(PluginErrorCodes.CapabilityNotGranted, "插件 AI 提供商能力未获授权");
+				if (!status.Available) throw new PluginException(PluginErrorCodes.CapabilityUnavailable, "宿主不支持插件 AI 提供商");
+				if (string.IsNullOrWhiteSpace(provider.Id) || provider.Id.Length > 64 || provider.Id.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('_' or '-'))
+					|| string.IsNullOrWhiteSpace(provider.Name) || provider.Name.Length > 128 || provider.Name.Any(char.IsControl))
+					throw new PluginException(PluginErrorCodes.InvalidManifest, "插件 AI 提供商 ID 或名称无效");
+				if (provider.DefaultBaseUrl is null || provider.DefaultBaseUrl.Length > 2048 || provider.DefaultBaseUrl.Length > 0 &&
+					(!Uri.TryCreate(provider.DefaultBaseUrl, UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("http" or "https") || uri.UserInfo.Length > 0))
+					throw new PluginException(PluginErrorCodes.InvalidManifest, "插件 AI 提供商默认地址无效");
+				if (_items.OfType<IPluginChatProviderContribution>().Any(item => item.Id == provider.Id))
+					throw new PluginException(PluginErrorCodes.DuplicateContribution, "插件 AI 提供商 ID 重复");
+			}
 			if (contribution is IPluginPageContribution page)
 			{
 				PluginCapabilityStatus? status = _capabilities?.Statuses.FirstOrDefault(item => item.Id == PluginCapabilityIds.AvaloniaUi);

@@ -245,20 +245,22 @@ public sealed class AgentEngine
 		// 1. 读取 AI 与用户自定义人设配置 (秘密只在后端流转)
 		Stopwatch configClock = Stopwatch.StartNew();
 		AiChatSettings chatSettings = new AiSettingsStore(_config).Read().Chat;
-		string provider = chatSettings.Provider.AsString();
+		string provider = chatSettings.ProviderId;
+		bool customProvider = LlmProviderExtensions.IsCustomProvider(provider);
 		string baseUrl = chatSettings.BaseUrl;
 		string apiKey = chatSettings.ApiKey;
 		string model = chatSettings.Model;
 		string userPersona = chatSettings.Persona;
-		if (baseUrl.Length == 0 || apiKey.Length == 0 || model.Length == 0)
+		if (!chatSettings.IsConfigured)
 		{
 			WriteTrace(sessionId, "config", configClock.ElapsedMilliseconds, null, null, "error", "invalid_config");
 			throw new InvalidOperationException("尚未配置完整的 LLM 参数 (API Base, API Key 或 Model 缺失)");
 		}
-		LlmProvider providerKind = LlmProviderExtensions.ParseProvider(provider);
-		Chat.Catalog.ModelCapabilities? capabilities = await FindCapabilitiesAsync(providerKind, baseUrl, model, runToken);
+		Chat.Catalog.ModelCapabilities? capabilities = customProvider
+			? null : await FindCapabilitiesAsync(chatSettings.Provider, baseUrl, model, runToken);
 		WriteTrace(sessionId, "config", configClock.ElapsedMilliseconds, null, null, "completed");
-		ILlmAdapter baseAdapter = _adapterFactory(providerKind, _http);
+		ILlmAdapter baseAdapter = customProvider
+			? _chat.CustomProviders.CreateAdapter(provider.Trim()) : _adapterFactory(chatSettings.Provider, _http);
 		ILlmAdapter adapter = baseAdapter is IConfigurableLlmAdapter configurable
 			? configurable.WithGeneration(new LlmGenerationOptions {Reasoning = chatSettings.Reasoning, Capabilities = capabilities})
 			: baseAdapter;

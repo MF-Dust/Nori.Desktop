@@ -23,8 +23,10 @@ internal sealed record PluginRuntimeOptions
 	public required string DataDirectory { get; init; }
 	public string? PackageInboxDirectory { get; init; }
 	public string? StagingDirectory { get; init; }
-	public PluginApiVersion HostApiVersion { get; init; } = new(2, 3);
+	public PluginApiVersion HostApiVersion { get; init; } = new(2, 4);
 	public bool EnableAvaloniaPages { get; init; }
+	public bool EnableApplicationInterop { get; init; }
+	public bool EnableChatProviders { get; init; }
 	public PluginVersion HostVersion { get; init; } = new(1, 0, 0);
 	public bool DevelopmentHost { get; init; }
 	public bool SafeMode { get; init; }
@@ -82,9 +84,11 @@ internal sealed class PluginManager : IAsyncDisposable
 		ArgumentException.ThrowIfNullOrWhiteSpace(options.DataDirectory);
 		if (options.ActivationTimeout <= TimeSpan.Zero || options.DeactivationTimeout <= TimeSpan.Zero)
 			throw new ArgumentOutOfRangeException(nameof(options), "插件生命周期超时必须大于零");
-		_options = options.EnableAvaloniaPages
-			? options with { KnownCapabilityIds = options.KnownCapabilityIds.Append(PluginCapabilityIds.AvaloniaUi).Distinct(StringComparer.Ordinal).ToArray() }
-			: options;
+		HashSet<string> knownCapabilityIds = new(options.KnownCapabilityIds, StringComparer.Ordinal);
+		if (options.EnableAvaloniaPages) knownCapabilityIds.Add(PluginCapabilityIds.AvaloniaUi);
+		if (options.EnableApplicationInterop) knownCapabilityIds.Add(PluginCapabilityIds.Applications);
+		if (options.EnableChatProviders) knownCapabilityIds.Add(PluginCapabilityIds.ChatProvider);
+		_options = options with { KnownCapabilityIds = knownCapabilityIds.ToArray() };
 		Directory.CreateDirectory(options.PluginsDirectory);
 		Directory.CreateDirectory(options.DataDirectory);
 		string runtimeDirectory = Path.Combine(options.DataDirectory, "runtime");
@@ -249,6 +253,9 @@ internal sealed class PluginManager : IAsyncDisposable
 		await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
 		try
 		{
+			// 激活失败的旧 ALC 仍存活时 Discover 不会换成已安装的新版本；重试前先回收，无法回收则转为待重启。
+			if (_plugins.TryGetValue(pluginId, out PluginHandle? failed) && failed.State == PluginLifecycleState.Failed)
+				UnloadContext(failed);
 			Discover();
 			PluginHandle handle = GetRequiredHandle(pluginId);
 			if (_stateStore.TryGetPendingUninstall(pluginId, out _))
@@ -271,6 +278,51 @@ internal sealed class PluginManager : IAsyncDisposable
 		{
 			_lifecycleGate.Release();
 		}
+	}
+
+	/// <summary>停止并重新加载已启用插件的当前安装版本，保留用户数据与启用意图。</summary>
+	public async Task ReloadAsync(string pluginId, CancellationToken cancellationToken = default)
+	{
+		EnsureNotDisposed();
+		ValidatePluginId(pluginId);
+		if (_options.SafeMode) throw new PluginException(PluginErrorCodes.SafeModeDisabled, "安全模式下不允许重新加载插件");
+		await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+		try
+		{
+			// 先拒绝待重启操作，避免 Discover 的卸载清理覆盖其状态。
+			if (_stateStore.TryGetPendingUninstall(pluginId, out _))
+				throw new PluginException(PluginErrorCodes.UninstallPendingRestart, "插件正在等待重启后卸载");
+			if (_plugins.TryGetValue(pluginId, out PluginHandle? pending) && pending.State == PluginLifecycleState.PendingRestart)
+				throw new PluginException(pending.ErrorCode ?? PluginErrorCodes.UnloadPendingRestart, "插件需要重启后继续操作");
+			Discover();
+			PluginHandle handle = GetRequiredHandle(pluginId);
+			if (!_stateStore.IsEnabled(pluginId))
+				throw new PluginException(PluginErrorCodes.UserDisabled, "插件已由用户禁用");
+			if (_startupRecovery.IsDisabled(pluginId))
+				throw new PluginException(PluginErrorCodes.StartupRecoveryDisabled, "插件已被启动失败保护禁用");
+			if (handle.State == PluginLifecycleState.Incompatible)
+				throw new PluginException(handle.ErrorCode ?? PluginErrorCodes.IncompatibleHost, "插件与当前宿主不兼容");
+			if (_installer.ResolveCurrentDirectory(pluginId) is null)
+				throw new PluginException(PluginErrorCodes.PluginNotFound, "插件不存在或尚未安装");
+			EnsureNoActiveDependents(pluginId);
+
+			bool unloaded;
+			try { await DeactivateCoreAsync(pluginId, cancellationToken, disabled: false).ConfigureAwait(false); }
+			catch (PluginException) { /* 由后续卸载结果决定是否可重新加载 */ }
+			finally { unloaded = UnloadContext(handle); }
+			if (!unloaded) return;
+			cancellationToken.ThrowIfCancellationRequested();
+
+			// 旧实例完全卸载后才重新发现 current.json，不能复用旧版本的 manifest。
+			_plugins.TryRemove(pluginId, out _);
+			Discover();
+			handle = GetRequiredHandle(pluginId);
+			if (handle.State == PluginLifecycleState.Incompatible)
+				throw new PluginException(handle.ErrorCode ?? PluginErrorCodes.IncompatibleHost, "插件与当前宿主不兼容");
+			ValidateDependenciesFor(handle);
+			await ActivateCoreAsync(handle, cancellationToken).ConfigureAwait(false);
+		}
+		finally { _lifecycleGate.Release(); }
 	}
 
 	/// <summary>加载并激活一个已启用插件。宿主启动流程使用此入口。</summary>
@@ -579,6 +631,9 @@ internal sealed class PluginManager : IAsyncDisposable
 		handle.StopSource = stopSource;
 		IEnumerable<IPluginCapability> capabilities = _options.CapabilityFactory?.Invoke(descriptor, stopSource.Token) ?? [];
 		if (_options.EnableAvaloniaPages) capabilities = capabilities.Append(new AvaloniaPageCapability());
+		if (_options.EnableApplicationInterop && descriptor.Capabilities.Contains(PluginCapabilityIds.Applications, StringComparer.Ordinal))
+			capabilities = capabilities.Append(new PluginApplicationCapability(stopSource.Token));
+		if (_options.EnableChatProviders) capabilities = capabilities.Append(new ChatProviderCapability());
 		PluginCapabilityRegistry capabilityRegistry = new(
 			handle.Manifest.Capabilities.Concat(handle.Manifest.OptionalCapabilities),
 			_options.KnownCapabilityIds,
@@ -620,19 +675,14 @@ internal sealed class PluginManager : IAsyncDisposable
 		handle.Context = null;
 		handle.Instance = null;
 		handle.StopSource = null;
-		try { (loadContext ?? handle.LoadContext)?.Unload(); } catch { handle.State = PluginLifecycleState.PendingRestart; }
-		handle.LoadContext = null;
+		handle.LoadContext = loadContext ?? handle.LoadContext;
+		try { UnloadAndTrack(handle); } catch { handle.State = PluginLifecycleState.PendingRestart; }
 		Report(exception, handle);
 	}
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S1854", Justification = "清除局部加载上下文引用以便弱引用卸载检查，避免 GC 保留插件上下文。")]
 	private bool UnloadContext(PluginHandle handle)
 	{
-		PluginLoadContext? context = handle.LoadContext;
-		handle.LoadContext = null;
-		if (context is null) return true;
-		WeakReference weak;
-		try { weak = UnloadAndTrack(context); }
+		try { UnloadAndTrack(handle); }
 		catch (Exception exception)
 		{
 			handle.State = PluginLifecycleState.PendingRestart;
@@ -641,7 +691,8 @@ internal sealed class PluginManager : IAsyncDisposable
 			Report(new PluginException(PluginErrorCodes.UnloadPendingRestart, "插件程序集无法卸载", exception), handle);
 			return false;
 		}
-		context = null;
+		WeakReference? weak = handle.UnloadingContext;
+		if (weak is null) return true;
 		for (int index = 0; index < 10 && weak.IsAlive; index++)
 		{
 			GC.Collect();
@@ -649,7 +700,11 @@ internal sealed class PluginManager : IAsyncDisposable
 			GC.Collect();
 			if (weak.IsAlive) Thread.Sleep(10);
 		}
-		if (!weak.IsAlive) return true;
+		if (!weak.IsAlive)
+		{
+			handle.UnloadingContext = null;
+			return true;
+		}
 		handle.State = PluginLifecycleState.PendingRestart;
 		handle.ErrorCode = PluginErrorCodes.UnloadPendingRestart;
 		handle.ErrorMessage = "插件程序集仍被引用，需要重启";
@@ -657,11 +712,13 @@ internal sealed class PluginManager : IAsyncDisposable
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	private static WeakReference UnloadAndTrack(PluginLoadContext context)
+	private static void UnloadAndTrack(PluginHandle handle)
 	{
-		WeakReference weak = new(context);
+		PluginLoadContext? context = handle.LoadContext;
+		if (context is null) return;
+		handle.UnloadingContext = new WeakReference(context);
+		handle.LoadContext = null;
 		context.Unload();
-		return weak;
 	}
 
 	private void Register(string directory, PluginManifest manifest, PluginLifecycleState state, string? errorCode, string? errorMessage)
@@ -669,7 +726,9 @@ internal sealed class PluginManager : IAsyncDisposable
 		if (_plugins.TryGetValue(manifest.Id, out PluginHandle? existing))
 		{
 			bool sameDirectory = PathsEqual(existing.Directory, directory);
-			if (existing.State == PluginLifecycleState.PendingRestart) return;
+			if (existing.State == PluginLifecycleState.PendingRestart
+				|| existing.State == PluginLifecycleState.Failed && (existing.LoadContext is not null || existing.UnloadingContext?.IsAlive == true))
+				return;
 			if (existing.State == PluginLifecycleState.Active)
 			{
 				if (!sameDirectory)
@@ -933,6 +992,7 @@ internal sealed class PluginManager : IAsyncDisposable
 		public bool UpdatePendingRestart { get; set; }
 		public INoriPlugin? Instance { get; set; }
 		public PluginLoadContext? LoadContext { get; set; }
+		public WeakReference? UnloadingContext { get; set; }
 		public PluginContext? Context { get; set; }
 		public CancellationTokenSource? StopSource { get; set; }
 		public PluginContributionRegistry Contributions { get; set; } = new();

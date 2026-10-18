@@ -130,6 +130,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 
 	private int _snapshotVersion = 1;
 	private readonly Lock _snapshotCacheGate = new();
+	private readonly PluginChatProviderController? _pluginChatProviders;
 	private object? _cachedSnapshot;
 	private int _cachedSnapshotVersion;
 
@@ -210,9 +211,17 @@ public sealed partial class AppRuntime : IAsyncDisposable
 
 		Voice = new VoiceService(services.Http, config, _playback,
 			() => VoiceRetired() ? null : _recorder, services.Paths);
-		_petInteractionService = new PetInteractionReactionService(services.Http, config);
+		_petInteractionService = new PetInteractionReactionService(services.Http, config, customProviders: services.Chat.CustomProviders);
 
 		Tools = BuildToolRegistry(true);
+
+		// 插件 AI 提供商必须在聊天、模型列表与连接测试前就位；撤销时同步注销。
+		if (services.PluginRuntime is { } pluginRuntime && !services.SafeMode)
+		{
+			_pluginChatProviders = new PluginChatProviderController(pluginRuntime, services.Chat.CustomProviders,
+				exception => services.Logger.Write(LogSource.Backend, "warn", "插件 AI 提供商失败", exception: exception));
+			pluginRuntime.ContributionsChanged += InvalidateSnapshot;
+		}
 		Engine = new AgentEngine(
 			services.Http,
 			config,
@@ -230,7 +239,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 				new Nori.Core.Chat.LuoLiCore.LuoLiCoreSettingsStore(config),
 				options => new Nori.Core.Chat.LuoLiCore.LuoLiCoreSdkClient(services.Http, options)),
 			// 走 LuoLiCore 时远端只给文本，表情动作在本地挑。
-			replyReaction: new ReplyReactionService(services.Http, config),
+			replyReaction: new ReplyReactionService(services.Http, config, customProviders: services.Chat.CustomProviders),
 			// 机器状态按分档进提示词，与情绪同层；采集器自己控制开销。
 			// 灯效设备数进硬件清单：它是稳定量，不像负载那样每轮都变。
 			machineState: new MachineStateProvider(rgbDeviceCount: () => RgbChannel.Devices.Count),
@@ -280,6 +289,9 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	{
 		if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 		_lifetimeCts.Cancel();
+		// 先于插件运行时释放：同步注销租约并取消进行中的插件请求，再进入异步清理。
+		if (Services.PluginRuntime is { } pluginRuntime) pluginRuntime.ContributionsChanged -= InvalidateSnapshot;
+		try { _pluginChatProviders?.Dispose(); } catch { }
 		if (_petInteractionSubscribed && Services.PetRuntime is not null)
 		{
 			Services.PetRuntime.InteractionTriggered -= OnPetInteractionTriggered;

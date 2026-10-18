@@ -14,6 +14,7 @@ public sealed class NativePagePlugin : INoriPlugin
 	public ValueTask ActivateAsync(IPluginContext context, CancellationToken cancellationToken)
 	{
 		_pages.Add(context.Contributions.Register(new PageContribution(this, "home", "原生页面 · Native page")));
+		_pages.Add(context.Contributions.Register(new PageContribution(this, "settings", "内嵌设置 · Embedded settings", PluginPagePlacement.Settings)));
 		_pages.Add(context.Contributions.Register(new PageContribution(this, "broken", "工厂错误")));
 		_pages.Add(context.Contributions.Register(new PageContribution(this, "dispose-error", "释放错误")));
 		context.Contributions.Register(new StateContribution(this));
@@ -26,10 +27,11 @@ public sealed class NativePagePlugin : INoriPlugin
 		return ValueTask.CompletedTask;
 	}
 
-	private sealed class PageContribution(NativePagePlugin plugin, string id, string title) : IPluginPageContribution
+	private sealed class PageContribution(NativePagePlugin plugin, string id, string title, PluginPagePlacement placement = PluginPagePlacement.Window) : IPluginPageContribution
 	{
 		public string Id => id;
 		public string Title => title;
+		public PluginPagePlacement Placement => placement;
 		public IPluginPage CreatePage()
 		{
 			Dispatcher.UIThread.VerifyAccess();

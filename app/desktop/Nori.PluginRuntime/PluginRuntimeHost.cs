@@ -37,6 +37,8 @@ internal sealed class PluginRuntimeHost : IAsyncDisposable
 			DevelopmentHost = options.DevelopmentHost,
 			SafeMode = options.SafeMode,
 			EnableAvaloniaPages = options.EnableAvaloniaPages,
+			EnableApplicationInterop = options.EnableApplicationInterop,
+			EnableChatProviders = options.EnableChatProviders,
 			OnError = options.OnError,
 			OnLog = options.OnLog,
 		});
@@ -114,8 +116,10 @@ internal sealed record PluginRuntimeHostOptions
 	public string? PluginDataDirectory { get; init; }
 	public string? PackageInboxDirectory { get; init; }
 	public string? StagingDirectory { get; init; }
-	public PluginApiVersion HostApiVersion { get; init; } = new(2, 3);
+	public PluginApiVersion HostApiVersion { get; init; } = new(2, 4);
 	public bool EnableAvaloniaPages { get; init; }
+	public bool EnableApplicationInterop { get; init; }
+	public bool EnableChatProviders { get; init; }
 	public PluginVersion HostVersion { get; init; } = new(1, 0, 0);
 	public bool DevelopmentHost { get; init; }
 	public bool SafeMode { get; init; }

@@ -30,6 +30,9 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
 		if (assemblyName.Name is { } name && string.Equals(name, PluginAssemblyPolicy.CurrentAssemblyName, StringComparison.Ordinal))
 			return typeof(INoriPlugin).Assembly;
 
+		if (assemblyName.Name == "Microsoft.Extensions.AI.Abstractions")
+			return typeof(Microsoft.Extensions.AI.IChatClient).Assembly;
+
 		if (assemblyName.Name is { } avaloniaName && SharedAvaloniaAssemblies.Contains(avaloniaName))
 			return AssemblyLoadContext.Default.LoadFromAssemblyName(assemblyName);
 		if (assemblyName.Name is { } forbidden && IsForbidden(forbidden))
@@ -58,6 +61,8 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
 			"插件目录包含符号链接");
 		foreach (string path in dlls)
 		{
+			if (Path.GetFileNameWithoutExtension(path).Equals("Microsoft.Extensions.AI.Abstractions", StringComparison.OrdinalIgnoreCase))
+				throw new PluginException(PluginErrorCodes.ForbiddenReference, "插件包不得携带宿主 AI 契约程序集");
 			if (Path.GetFileNameWithoutExtension(path).StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase))
 				throw new PluginException(PluginErrorCodes.ForbiddenReference, "插件包不得携带 Avalonia 框架程序集");
 			if (PluginAssemblyPolicy.IsContractAssemblyFile(path))
@@ -76,6 +81,8 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
 			// AssemblyReference 元数据可供宿主做禁止引用扫描。
 			if (!reader.HasMetadata) return;
 			MetadataReader metadata = reader.GetMetadataReader();
+			if (metadata.IsAssembly && metadata.GetString(metadata.GetAssemblyDefinition().Name).Equals("Microsoft.Extensions.AI.Abstractions", StringComparison.OrdinalIgnoreCase))
+				throw new PluginException(PluginErrorCodes.ForbiddenReference, "插件包不得携带宿主 AI 契约程序集");
 			if (metadata.IsAssembly && metadata.GetString(metadata.GetAssemblyDefinition().Name).StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase))
 				throw new PluginException(PluginErrorCodes.ForbiddenReference, "插件包不得携带 Avalonia 框架程序集");
 			foreach (AssemblyReferenceHandle handle in metadata.AssemblyReferences)

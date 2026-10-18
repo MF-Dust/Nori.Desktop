@@ -119,6 +119,19 @@ public interface IPluginPageContribution : IPluginContribution
 	string Id { get; }
 	string Title { get; }
 	IPluginPage CreatePage();
+
+	/// <summary>页面展示位置 (API 2.4)；旧插件默认使用独立窗口。</summary>
+	PluginPagePlacement Placement => PluginPagePlacement.Window;
+}
+
+/// <summary>插件原生页面的宿主展示位置。</summary>
+public enum PluginPagePlacement
+{
+	/// <summary>独立的宿主窗口。</summary>
+	Window,
+
+	/// <summary>设置侧栏中的内嵌页面。</summary>
+	Settings,
 }
 
 /// <summary>独占的未挂载控件与页面资源；宿主在 UI 线程释放。</summary>
@@ -177,6 +190,8 @@ public sealed class PluginCapabilityAttribute(string id) : Attribute
 public static class PluginCapabilityIds
 {
 	public const string AvaloniaUi = "ui.avalonia";
+	public const string ChatProvider = "ai.provider";
+	public const string Applications = "applications";
 }
 
 [PluginCapability(PluginCapabilityIds.AvaloniaUi)]

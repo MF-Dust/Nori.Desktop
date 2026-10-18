@@ -79,6 +79,7 @@ public sealed class SettingsService : IDisposable
 		"plugin_install_local",
 		"plugin_enable",
 		"plugin_disable",
+		"plugin_reload",
 		"plugin_uninstall",
 		"settings_get_plugin_trust",
 		"settings_set_plugin_trust",
@@ -209,7 +210,11 @@ public sealed class SettingsService : IDisposable
 	public Task<JsonElement> UpdateAutomationAsync(SettingsAutomationPatchDto patch, CancellationToken cancellationToken = default) =>
 		ExecuteAsync("settings_update_automation", patch, cancellationToken);
 
-	/// <summary>读取不持有插件对象的页面元数据。</summary>
+	/// <summary>读取不持有插件对象的页面元数据；设置侧栏页与独立窗口页分开。</summary>
+	public IReadOnlyList<Nori.Desktop.Windows.PluginPageInfo> PluginSettingsPages =>
+		(_services.Windows as Nori.Desktop.Windows.WindowManager)?.PluginPagesController?.SettingsPages ?? [];
+
+	/// <summary>可由插件管理页打开的独立窗口页面。</summary>
 	public IReadOnlyList<Nori.Desktop.Windows.PluginPageInfo> PluginPages =>
 		(_services.Windows as Nori.Desktop.Windows.WindowManager)?.PluginPages ?? [];
 
@@ -325,6 +330,7 @@ public sealed class SettingsService : IDisposable
 			or "plugin_install_local"
 			or "plugin_enable"
 			or "plugin_disable"
+			or "plugin_reload"
 			or "plugin_uninstall"
 			or "clear_recent_logs"
 			or "updater_check"

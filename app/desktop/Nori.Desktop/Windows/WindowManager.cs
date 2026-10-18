@@ -61,6 +61,8 @@ public sealed class WindowManager : IWindowManager
 	/// <summary>当前活跃插件的页面元数据。</summary>
 	public IReadOnlyList<PluginPageInfo> PluginPages => _pluginPages?.Pages ?? [];
 
+	internal PluginPageController? PluginPagesController => _pluginPages;
+
 	/// <summary>在 UI 线程打开或激活插件页面。</summary>
 	public void OpenPluginPage(string pluginId, string pageId) =>
 		(_pluginPages ?? throw new InvalidOperationException("插件页面宿主尚未就绪")).Open(pluginId, pageId);

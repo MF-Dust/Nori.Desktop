@@ -325,7 +325,7 @@ public sealed class McpSettingsViewModel : SettingsPageViewModelBase
 		.Select(value => ParseTool(value, null, "builtin"))
 		.ToArray();
 
-	private static McpToolItem ParseTool(JsonElement value, string? serverId, string fallbackCategory) => new(
+	internal static McpToolItem ParseTool(JsonElement value, string? serverId, string fallbackCategory) => new(
 		SettingsJson.String(value, "name"),
 		SettingsJson.String(value, "description"),
 		SettingsJson.String(value, "permissionLevel", "safe"),

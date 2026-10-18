@@ -43,15 +43,18 @@ public sealed class PetInteractionReactionService
 	private readonly HttpClient _httpClient;
 	private readonly ConfigStore _config;
 	private readonly Func<LlmProvider, HttpClient, ILlmAdapter> _adapterFactory;
+	private readonly CustomChatProviderRegistry _customProviders;
 
 	public PetInteractionReactionService(
 		HttpClient httpClient,
 		ConfigStore config,
-		Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null)
+		Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null,
+		CustomChatProviderRegistry? customProviders = null)
 	{
 		_httpClient = httpClient;
 		_config = config;
 		_adapterFactory = adapterFactory ?? LlmClient.CreateAdapter;
+		_customProviders = customProviders ?? new();
 	}
 
 	/// <summary>发起一次不写聊天历史的伴侣互动请求。</summary>
@@ -61,17 +64,17 @@ public sealed class PetInteractionReactionService
 	{
 		ValidateRequest(request);
 		AiChatSettings chatSettings = new AiSettingsStore(_config).Read().Chat;
-		string providerText = chatSettings.Provider.AsString();
+		string providerText = chatSettings.ProviderId;
 		string baseUrl = chatSettings.BaseUrl;
 		string apiKey = chatSettings.ApiKey;
 		string model = chatSettings.Model;
-		if (baseUrl.Length == 0 || apiKey.Length == 0 || model.Length == 0)
+		if (!chatSettings.IsConfigured)
 		{
 			throw new InvalidOperationException("伴侣互动缺少完整的 LLM 配置");
 		}
 
-		LlmProvider provider = LlmProviderExtensions.ParseProvider(providerText);
-		ILlmAdapter adapter = _adapterFactory(provider, _httpClient);
+		ILlmAdapter adapter = LlmProviderExtensions.IsCustomProvider(providerText)
+			? _customProviders.CreateAdapter(providerText.Trim()) : _adapterFactory(chatSettings.Provider, _httpClient);
 		using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		timeout.CancelAfter(TimeSpan.FromSeconds(TimeoutSeconds));
 

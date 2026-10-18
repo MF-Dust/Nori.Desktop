@@ -19,13 +19,13 @@ public sealed record ProviderConnectionTestResult
 ///
 /// 探测只发送固定短内容，不写配置、聊天或记忆；异常消息经过统一脱敏后才返回。
 /// </summary>
-public sealed class ProviderConnectionTester(HttpClient httpClient, OpenAiEmbeddingAdapter embedding)
+public sealed class ProviderConnectionTester(HttpClient httpClient, OpenAiEmbeddingAdapter embedding, CustomChatProviderRegistry? customProviders = null)
 {
 	private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
 	private const string ProbeSystemPrompt = "只回复 OK。不要调用工具，不要输出任何其他内容。";
 	private const string ProbeText = "Nori connection test";
 
-	private readonly HttpClient _httpClient = httpClient;
+	private readonly LlmClient _llm = new(httpClient, customProviders);
 	private readonly OpenAiEmbeddingAdapter _embedding = embedding;
 
 	public async Task<ProviderConnectionTestResult> TestLlmAsync(
@@ -35,9 +35,19 @@ public sealed class ProviderConnectionTester(HttpClient httpClient, OpenAiEmbedd
 		string model,
 		CancellationToken cancellationToken = default)
 	{
-		string providerName = LlmProviderExtensions.ParseProvider(provider).ToString().ToLowerInvariant();
-		if (string.IsNullOrWhiteSpace(baseUrl)) return Invalid(providerName, "API Base URL 不能为空");
-		if (string.IsNullOrWhiteSpace(apiKey)) return Invalid(providerName, "API Key 不能为空");
+		bool custom = LlmProviderExtensions.IsCustomProvider(provider);
+		string providerName = custom ? provider!.Trim() : LlmProviderExtensions.ParseProvider(provider).ToString().ToLowerInvariant();
+		if (custom)
+		{
+			if (!_llm.CustomProviders.TryGet(providerName, out CustomChatProviderDescriptor? descriptor))
+				return Invalid(providerName, "插件聊天提供商不可用，请启用或重新安装对应插件");
+			if (descriptor.RequiresApiKey && string.IsNullOrWhiteSpace(apiKey)) return Invalid(providerName, "API Key 不能为空");
+		}
+		else
+		{
+			if (string.IsNullOrWhiteSpace(baseUrl)) return Invalid(providerName, "API Base URL 不能为空");
+			if (string.IsNullOrWhiteSpace(apiKey)) return Invalid(providerName, "API Key 不能为空");
+		}
 		if (string.IsNullOrWhiteSpace(model)) return Invalid(providerName, "模型不能为空");
 
 		Stopwatch stopwatch = Stopwatch.StartNew();
@@ -45,7 +55,7 @@ public sealed class ProviderConnectionTester(HttpClient httpClient, OpenAiEmbedd
 		{
 			using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 			timeout.CancelAfter(Timeout);
-			ILlmAdapter adapter = LlmClient.CreateAdapter(LlmProviderExtensions.ParseProvider(provider), _httpClient);
+			ILlmAdapter adapter = _llm.CreateAdapter(provider);
 			await adapter.CompleteAsync(
 				baseUrl.Trim(),
 				apiKey,

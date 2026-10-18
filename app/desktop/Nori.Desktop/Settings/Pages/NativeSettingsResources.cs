@@ -97,7 +97,7 @@ public static class NativeSettingsResources
 		["plugins.capabilities"] = new("能力", "Capabilities"),
 		["plugins.uninstallConfirm"] = new("确定要卸载这个插件吗？", "Uninstall this plugin?"),
 		["plugins.deleteData"] = new("同时删除插件数据吗？", "Delete the plugin data too?"),
-		["plugins.restart"] = new("插件已卸载，重启应用后会完成清理。", "The plugin was uninstalled; restart the app to finish cleanup."),
+		["plugins.restart"] = new("此插件需要重启应用以完成操作。", "Restart the app to complete this plugin operation."),
 
 		["debug.diagnostic"] = new("诊断信息", "Diagnostics"),
 		["debug.refresh"] = new("刷新", "Refresh"),

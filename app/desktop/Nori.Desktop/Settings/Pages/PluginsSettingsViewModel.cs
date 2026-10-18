@@ -40,12 +40,18 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 	private IReadOnlyList<PluginItem> _plugins = [];
 	private bool _safeMode;
 	private bool _trustConfirmed;
+	private string _searchText = "";
+	private bool _activeOnly;
+	private IReadOnlyList<McpToolItem> _actions = [];
 
 	/// <summary>创建插件 ViewModel。</summary>
 	public PluginsSettingsViewModel(SettingsService service) : base(service) { }
 
 	/// <summary>插件页面纯元数据。</summary>
 	public IReadOnlyList<Nori.Desktop.Windows.PluginPageInfo> Pages => Service.PluginPages;
+
+	/// <summary>已注册到设置侧栏的内嵌页面；这些页面由设置导航提供，不再显示独立窗口按钮。</summary>
+	public IReadOnlyList<Nori.Desktop.Windows.PluginPageInfo> SettingsPages => Service.PluginSettingsPages;
 
 	/// <summary>打开插件页面。</summary>
 	public Task OpenPageAsync(string pluginId, string pageId) => Service.OpenPluginPageAsync(pluginId, pageId);
@@ -56,6 +62,42 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 		get => _plugins;
 		private set => SetProperty(ref _plugins, value);
 	}
+
+	/// <summary>按名称、ID、描述搜索插件。</summary>
+	public string SearchText
+	{
+		get => _searchText;
+		set
+		{
+			if (SetProperty(ref _searchText, value ?? "")) NotifyChanged(nameof(FilteredPlugins));
+		}
+	}
+
+	/// <summary>只显示活动插件。</summary>
+	public bool ActiveOnly
+	{
+		get => _activeOnly;
+		set
+		{
+			if (SetProperty(ref _activeOnly, value)) NotifyChanged(nameof(FilteredPlugins));
+		}
+	}
+
+	/// <summary>当前筛选结果。</summary>
+	public IReadOnlyList<PluginItem> FilteredPlugins => Plugins.Where(plugin =>
+		(!ActiveOnly || plugin.State == "active") &&
+		(new[] {plugin.Id, plugin.Name, plugin.Description, plugin.Author}.Any(value => value.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase)))).ToArray();
+
+	/// <summary>宿主工具快照中的插件动作，权限和启用状态以宿主为准。</summary>
+	public IReadOnlyList<McpToolItem> Actions
+	{
+		get => _actions;
+		private set => SetProperty(ref _actions, value);
+	}
+
+	/// <summary>读取指定插件的工具动作。</summary>
+	public IReadOnlyList<McpToolItem> GetActions(PluginItem plugin) => Actions
+		.Where(action => action.Name.StartsWith($"plugin__{plugin.Id.Replace('.', '_')}__", StringComparison.Ordinal)).ToArray();
 
 	/// <summary>当前是否为安全模式。</summary>
 	public bool SafeMode
@@ -84,6 +126,10 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 			SafeMode = SettingsJson.Bool(SettingsJson.Object(snapshot, "app"), "safeMode");
 			JsonElement result = await Service.ExecuteAsync("plugin_list", cancellationToken: cancellationToken).ConfigureAwait(true);
 			Plugins = SettingsJson.Array(result, "plugins").Select(ParsePlugin).Where(item => item.Id.Length > 0).OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+			Actions = SettingsJson.Array(snapshot, "tools")
+				.Where(value => SettingsJson.String(value, "category") == "plugin")
+				.Select(value => McpSettingsViewModel.ParseTool(value, null, "plugin")).ToArray();
+			NotifyChanged(nameof(FilteredPlugins));
 			await RefreshTrustAsync(cancellationToken).ConfigureAwait(true);
 			NotifyChanged(nameof(CanInstall));
 		}
@@ -142,6 +188,43 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 		return updated;
 	}
 
+	/// <summary>重新加载插件，保留数据和启用意图。</summary>
+	public async Task<PluginItem> ReloadAsync(PluginItem plugin, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(plugin);
+		EnsureCanMutate();
+		JsonElement result = await ExecuteAsync("plugin_reload", new {id = plugin.Id}, cancellationToken).ConfigureAwait(true);
+		PluginItem updated = ParsePlugin(result);
+		Replace(updated);
+		return updated;
+	}
+
+	/// <summary>单独启停插件动作，不影响插件页面。</summary>
+	public async Task ToggleActionAsync(McpToolItem action, bool enabled, CancellationToken cancellationToken = default)
+	{
+		EnsureKnownAction(action);
+		await ExecuteAsync("tools_set_enabled", new {name = action.Name, enabled}, cancellationToken).ConfigureAwait(true);
+		await RefreshAsync(cancellationToken).ConfigureAwait(true);
+	}
+
+	/// <summary>通过宿主现有权限边界测试 safe 动作，不绕过确认类动作审批。</summary>
+	public async Task<JsonElement> TestActionAsync(McpToolItem action, string jsonArguments, CancellationToken cancellationToken = default)
+	{
+		EnsureCanMutate();
+		EnsureKnownAction(action);
+		if (!action.Enabled || action.PermissionLevel != "safe") throw new InvalidOperationException("只能手动测试已启用的 safe 插件动作。");
+		JsonElement arguments = SettingsJson.Parse(string.IsNullOrWhiteSpace(jsonArguments) ? "{}" : jsonArguments);
+		if (arguments.ValueKind != JsonValueKind.Object) throw new ArgumentException("动作参数必须是 JSON 对象。", nameof(jsonArguments));
+		return await ExecuteAsync("tools_execute_manual", new {name = action.Name, arguments}, cancellationToken).ConfigureAwait(true);
+	}
+
+	private void EnsureKnownAction(McpToolItem action)
+	{
+		ArgumentNullException.ThrowIfNull(action);
+		if (action.Category != "plugin" || !Actions.Any(item => item.Name == action.Name))
+			throw new InvalidOperationException("插件动作已不可用，请刷新列表。");
+	}
+
 	/// <summary>停用插件。</summary>
 	public async Task<PluginItem> DisableAsync(PluginItem plugin, CancellationToken cancellationToken = default)
 	{
@@ -186,6 +269,7 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 		if (plugin.Id.Length == 0) return;
 		Plugins = Plugins.Where(item => item.Id != plugin.Id).Append(plugin).OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray();
 		NotifyChanged(nameof(Plugins));
+		NotifyChanged(nameof(FilteredPlugins));
 	}
 
 	private static PluginItem ParsePlugin(JsonElement value) => new(

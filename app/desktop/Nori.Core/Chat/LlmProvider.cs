@@ -28,6 +28,7 @@ public static class LlmProviderExtensions
 	/// </summary>
 	public static LlmProvider ParseProvider(string? value)
 	{
+		if (IsCustomProvider(value)) throw new ChatException("插件聊天提供商必须通过实例注册表解析");
 		if (string.IsNullOrWhiteSpace(value)) return LlmProvider.OpenAi;
 
 		return value.Trim().ToLowerInvariant() switch
@@ -38,6 +39,10 @@ public static class LlmProviderExtensions
 			_ => LlmProvider.OpenAi,
 		};
 	}
+
+	/// <summary>识别插件前缀，避免未知或已撤销的插件 ID 被当成 OpenAI。</summary>
+	public static bool IsCustomProvider(string? value) =>
+		value?.Trim().StartsWith("plugin:", StringComparison.OrdinalIgnoreCase) == true;
 
 	/// <summary>
 	/// 转换为标准配置字符串

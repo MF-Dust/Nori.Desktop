@@ -61,7 +61,7 @@
 						<TextBlock x:Name="SettingsSaveError" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" FontSize="{DynamicResource NoriFontBase}" Foreground="{DynamicResource SettingsErrorBrush}" TextWrapping="Wrap"/>
 					</StackPanel>
 				</Border>
-				<ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="28,20,28,28">
+				<ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" VerticalContentAlignment="Stretch" Padding="28,20,28,28">
 					<settings:SettingsPagePresenter x:Name="PagePresenter" DataContext="{Binding CurrentPage}" HorizontalAlignment="Stretch"/>
 				</ScrollViewer>
 			</Grid>

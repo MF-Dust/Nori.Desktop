@@ -25,6 +25,7 @@ public sealed class SettingsPagePresenter : ContentControl
 		DataContextChanged += OnDataContextChanged;
 		AttachedToVisualTree += (_, _) => Build();
 		HorizontalContentAlignment = HorizontalAlignment.Stretch;
+		VerticalContentAlignment = VerticalAlignment.Stretch;
 	}
 
 	/// <summary>在绑定时序不确定时显式刷新当前页面。</summary>
@@ -39,11 +40,29 @@ public sealed class SettingsPagePresenter : ContentControl
 		_complex?.Dispose();
 		_complex = null;
 		if (_page is not null) _page.PropertyChanged -= OnPagePropertyChanged;
+		Content = null;
 		_page = DataContext as SettingsPageBase;
-		MaxWidth = _page?.Key is "skills" or "mcp" ? 1200 : 760;
+		MaxWidth = _page is PluginSettingsPage ? double.PositiveInfinity : _page?.Key is "skills" or "mcp" ? 1200 : 760;
 		if (_page is null)
 		{
 			Content = null;
+			return;
+		}
+		if (_page is PluginSettingsPage plugin)
+		{
+			try
+			{
+				Control control = plugin.Open();
+				if (ReferenceEquals(_page, plugin)) Content = control;
+			}
+			catch (Exception)
+			{
+				if (ReferenceEquals(_page, plugin)) Content = new TextBlock
+				{
+					Text = SettingsLocalization.IsEnglish ? "The plugin page could not be opened. Disable and re-enable the plugin to retry." : "插件页面打开失败，请停用后重新启用插件再试。",
+					Foreground = Brush("SettingsErrorBrush"), TextWrapping = TextWrapping.Wrap,
+				};
+			}
 			return;
 		}
 		if (_page is NativeSettingsPageBase native)
@@ -59,7 +78,7 @@ public sealed class SettingsPagePresenter : ContentControl
 	private void Build()
 	{
 		// 复杂页面由专用呈现器负责，挂载时不能用空的普通分组覆盖它。
-		if (_page is null or NativeSettingsPageBase) return;
+		if (_page is null or NativeSettingsPageBase or PluginSettingsPage) return;
 		// web 设置页不使用卡片：分组只是标题 + 发丝线分隔的行，分组之间留白。
 		StackPanel root = new() { Spacing = 28, Margin = new Thickness(0) };
 		foreach (SettingsSectionViewModel section in _page.Sections)

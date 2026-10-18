@@ -214,6 +214,26 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
+	public async Task AI设置插件提供商按读取规则校验并保存去空白ID()
+	{
+		BridgeCommands commands = CreateCommands();
+		foreach (string forged in new[] {" plugin:missing.plugin:mock", "Plugin:missing.plugin:mock"})
+		{
+			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
+				new FakeBridgeSource(WindowLabels.Main), "settings_update_ai_providers", Args(new {chat = new {provider = forged}})));
+			Assert.False(_config.Exists(Nori.Core.Configuration.AiSettingsStore.KeyLlmProvider));
+		}
+
+		_services.Chat.CustomProviders.Register(
+			new Nori.Core.Chat.CustomChatProviderDescriptor("plugin:local.plugin:mock", "Mock", "", false),
+			(_, _, _) => throw new InvalidOperationException("not used"),
+			(_, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
+		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "settings_update_ai_providers",
+			Args(new {chat = new {provider = "  plugin:local.plugin:mock  "}}));
+		Assert.Equal("plugin:local.plugin:mock", _services.AiSettings.Read().Chat.ProviderId);
+	}
+
+	[Fact]
 	public async Task AI设置更新思考档位上下文与图像生成()
 	{
 		BridgeCommands commands = CreateCommands();

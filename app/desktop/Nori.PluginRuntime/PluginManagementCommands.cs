@@ -86,6 +86,7 @@ internal sealed class PluginManagementCommands
 			"plugin_list" => List(),
 			"plugin_install_local" => await InstallLocalAsync(source, cancellationToken).ConfigureAwait(false),
 			"plugin_enable" => await EnableAsync(args, cancellationToken).ConfigureAwait(false),
+			"plugin_reload" => await ReloadAsync(args, cancellationToken).ConfigureAwait(false),
 			"plugin_disable" => await DisableAsync(args, cancellationToken).ConfigureAwait(false),
 			"plugin_uninstall" => await UninstallAsync(args, cancellationToken).ConfigureAwait(false),
 			_ => throw new InvalidOperationException($"未知插件管理命令: {command}"),
@@ -116,6 +117,18 @@ internal sealed class PluginManagementCommands
 		if (_manager.IsSafeMode) throw new PluginException(PluginErrorCodes.SafeModeDisabled, "安全模式下不允许启用插件");
 		string id = RequiredId(args);
 		await _manager.EnableAsync(id, cancellationToken).ConfigureAwait(false);
+		return ToDto(Find(id));
+	}
+
+	/// <summary>
+	/// 重新加载已启用插件，保留用户数据与启用意图。
+	/// 调用示例：invoke("plugin_reload", { id: "io.nori.example" })
+	/// </summary>
+	private async Task<PluginListItemDto> ReloadAsync(JsonElement args, CancellationToken cancellationToken)
+	{
+		if (_manager.IsSafeMode) throw new PluginException(PluginErrorCodes.SafeModeDisabled, "安全模式下不允许重新加载插件");
+		string id = RequiredId(args);
+		await _manager.ReloadAsync(id, cancellationToken).ConfigureAwait(false);
 		return ToDto(Find(id));
 	}
 

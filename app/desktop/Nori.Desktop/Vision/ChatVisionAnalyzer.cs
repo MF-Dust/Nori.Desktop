@@ -45,7 +45,7 @@ public sealed class ChatVisionAnalyzer : IVisionAnalyzer
 			[new ChatImagePart(screen.Bytes, screen.MimeType)]);
 
 		return _chat.CompleteAsync(
-			chat.Provider.AsString(),
+			chat.ProviderId,
 			chat.BaseUrl,
 			chat.ApiKey,
 			chat.Model,

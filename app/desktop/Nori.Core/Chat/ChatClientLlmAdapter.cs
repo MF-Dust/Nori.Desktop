@@ -9,18 +9,40 @@ namespace Nori.Core.Chat;
 /// 将官方 Microsoft.Extensions.AI IChatClient 适配到 Nori 的旧 ILlmAdapter 契约。
 /// PromptBuilder、流式 JSON 解析与桥接协议因此无需改动。
 /// </summary>
-public sealed class ChatClientLlmAdapter(LlmProvider provider, HttpClient httpClient, LlmGenerationOptions? generation = null)
-	: ILlmAdapter, IToolCallingLlmAdapter, IConfigurableLlmAdapter
+public sealed class ChatClientLlmAdapter : ILlmAdapter, IToolCallingLlmAdapter, IConfigurableLlmAdapter
 {
-	private readonly LlmProvider _provider = provider;
-	private readonly HttpClient _httpClient = httpClient;
-	private readonly LlmGenerationOptions _generation = generation ?? LlmGenerationOptions.Default;
+	private readonly Func<string, string, string, LlmGenerationOptions, IChatClient> _clientFactory;
+	private readonly LlmGenerationOptions _generation;
+
+	/// <summary>内置协议沿用原有客户端与生成参数转换。</summary>
+	public ChatClientLlmAdapter(LlmProvider provider, HttpClient httpClient, LlmGenerationOptions? generation = null)
+		: this((baseUrl, apiKey, model, options) => ChatClientFactory.TryCreateChatClient(provider, httpClient, baseUrl, apiKey, model, options)
+			?? throw new ChatException($"不支持的模型提供商: {provider}"), generation)
+	{
+	}
+
+	/// <summary>每次请求创建独立客户端；客户端由适配器在请求结束时释放。</summary>
+	public ChatClientLlmAdapter(Func<string, string, string, IChatClient> clientFactory, LlmGenerationOptions? generation = null)
+		: this((baseUrl, apiKey, model, _) => clientFactory(baseUrl, apiKey, model), generation)
+	{
+		ArgumentNullException.ThrowIfNull(clientFactory);
+	}
+
+	/// <summary>允许客户端工厂接收生成参数；WithGeneration 保留同一个工厂。</summary>
+	public ChatClientLlmAdapter(
+		Func<string, string, string, LlmGenerationOptions, IChatClient> clientFactory,
+		LlmGenerationOptions? generation = null)
+	{
+		ArgumentNullException.ThrowIfNull(clientFactory);
+		_clientFactory = clientFactory;
+		_generation = generation ?? LlmGenerationOptions.Default;
+	}
 
 	/// <summary>当前生成参数。</summary>
 	public LlmGenerationOptions Generation => _generation;
 
 	/// <inheritdoc />
-	public ILlmAdapter WithGeneration(LlmGenerationOptions options) => new ChatClientLlmAdapter(_provider, _httpClient, options);
+	public ILlmAdapter WithGeneration(LlmGenerationOptions options) => new ChatClientLlmAdapter(_clientFactory, options);
 
 	public async Task<string> CompleteAsync(
 		string baseUrl,
@@ -30,8 +52,7 @@ public sealed class ChatClientLlmAdapter(LlmProvider provider, HttpClient httpCl
 		IReadOnlyList<ChatMessageInput> messages,
 		CancellationToken cancellationToken = default)
 	{
-		using IChatClient client = ChatClientFactory.TryCreateChatClient(_provider, _httpClient, baseUrl, apiKey, model, _generation)
-			?? throw new ChatException($"不支持的模型提供商: {_provider}");
+		using IChatClient client = _clientFactory(baseUrl, apiKey, model, _generation);
 
 		try
 		{
@@ -66,8 +87,7 @@ public sealed class ChatClientLlmAdapter(LlmProvider provider, HttpClient httpCl
 		Action<LlmUsageInfo>? onUsage = null,
 		CancellationToken cancellationToken = default)
 	{
-		using IChatClient client = ChatClientFactory.TryCreateChatClient(_provider, _httpClient, baseUrl, apiKey, model, _generation)
-			?? throw new ChatException($"不支持的模型提供商: {_provider}");
+		using IChatClient client = _clientFactory(baseUrl, apiKey, model, _generation);
 
 		System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 		System.Text.StringBuilder fullText = new();
@@ -117,8 +137,7 @@ public sealed class ChatClientLlmAdapter(LlmProvider provider, HttpClient httpCl
 		Action<LlmUsageInfo>? onUsage = null,
 		CancellationToken cancellationToken = default)
 	{
-		using IChatClient rawClient = ChatClientFactory.TryCreateChatClient(_provider, _httpClient, baseUrl, apiKey, model, _generation)
-			?? throw new ChatException($"不支持的模型提供商: {_provider}");
+		IChatClient rawClient = _clientFactory(baseUrl, apiKey, model, _generation);
 		using IChatClient client = new ChatClientBuilder(rawClient).UseFunctionInvocation().Build();
 
 		AIFunction[] functions = tools.Select(tool => AIFunctionFactory.Create(

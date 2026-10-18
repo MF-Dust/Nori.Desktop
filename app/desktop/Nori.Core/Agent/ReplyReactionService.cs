@@ -35,7 +35,8 @@ public sealed record ReplyReactionRequest
 public sealed class ReplyReactionService(
 	HttpClient httpClient,
 	ConfigStore config,
-	Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null)
+	Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null,
+	CustomChatProviderRegistry? customProviders = null)
 {
 	/// <summary>比触摸那条更短：它排在回复之后，等它就是让她把已经想好的话憋着。</summary>
 	public const int TimeoutSeconds = 5;
@@ -54,6 +55,7 @@ public sealed class ReplyReactionService(
 	private readonly HttpClient _httpClient = httpClient;
 	private readonly ConfigStore _config = config;
 	private readonly Func<LlmProvider, HttpClient, ILlmAdapter> _adapterFactory = adapterFactory ?? LlmClient.CreateAdapter;
+	private readonly CustomChatProviderRegistry _customProviders = customProviders ?? new();
 
 	/// <summary>挑一个。任何失败都退化成空反应，绝不让它影响这一轮对话。</summary>
 	public async Task<PetInteractionReaction> ReactAsync(
@@ -73,7 +75,8 @@ public sealed class ReplyReactionService(
 
 		try
 		{
-			ILlmAdapter adapter = _adapterFactory(chat.Provider, _httpClient);
+			ILlmAdapter adapter = LlmProviderExtensions.IsCustomProvider(chat.ProviderId)
+				? _customProviders.CreateAdapter(chat.ProviderId.Trim()) : _adapterFactory(chat.Provider, _httpClient);
 			using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 			timeout.CancelAfter(TimeSpan.FromSeconds(TimeoutSeconds));
 

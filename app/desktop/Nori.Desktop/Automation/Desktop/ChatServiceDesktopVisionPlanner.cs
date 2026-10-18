@@ -32,7 +32,7 @@ public sealed class ChatServiceDesktopVisionPlanner : IDesktopVisionPlanner
 		}
 
 		return _chat.CompleteAsync(
-			chat.Provider.AsString(),
+			chat.ProviderId,
 			chat.BaseUrl,
 			chat.ApiKey,
 			chat.Model,

@@ -22,7 +22,16 @@ public sealed record AiProviderSettings
 /// <summary>聊天 Provider 的运行时配置; 密钥只在后端调用链中流转。</summary>
 public sealed record AiChatSettings
 {
+	private string? _providerId;
+
 	public required LlmProvider Provider { get; init; }
+
+	/// <summary>保留原始提供商 ID；旧调用方只设置枚举时仍返回内置协议名。</summary>
+	public string ProviderId
+	{
+		get => _providerId ?? Provider.AsString();
+		init => _providerId = value;
+	}
 	public required string BaseUrl { get; init; }
 	public required string ApiKey { get; init; }
 	public required string Model { get; init; }
@@ -31,7 +40,9 @@ public sealed record AiChatSettings
 	/// <summary>思考档位；默认不发送思考参数。</summary>
 	public LlmReasoningLevel Reasoning { get; init; } = LlmReasoningLevel.Auto;
 
-	public bool IsConfigured => BaseUrl.Length > 0 && ApiKey.Length > 0 && Model.Length > 0;
+	/// <summary>插件的地址和密钥要求由实例注册表验证；此处只判断模型是否已选择。</summary>
+	public bool IsConfigured => Model.Length > 0
+		&& (LlmProviderExtensions.IsCustomProvider(ProviderId) || (BaseUrl.Length > 0 && ApiKey.Length > 0));
 }
 
 /// <summary>
@@ -149,12 +160,14 @@ public sealed class AiSettingsStore(ConfigStore config)
 		IReadOnlyDictionary<string, ConfigValue> values = _config.GetMany(SettingsKeys);
 		ConfigValue? Find(string key) => values.TryGetValue(key, out ConfigValue? value) ? value : null;
 		string GetString(string key, string fallback) => ConfigValue.AsStringOr(Find(key), fallback);
+		string providerId = GetString(KeyLlmProvider, "openai");
 
 		return new AiProviderSettings
 		{
 			Chat = new AiChatSettings
 			{
-				Provider = LlmProviderExtensions.ParseProvider(GetString(KeyLlmProvider, "openai")),
+				Provider = LlmProviderExtensions.IsCustomProvider(providerId) ? LlmProvider.OpenAi : LlmProviderExtensions.ParseProvider(providerId),
+				ProviderId = providerId,
 				BaseUrl = GetString(KeyLlmBaseUrl, "").Trim(),
 				ApiKey = GetString(KeyLlmApiKey, ""),
 				Model = GetString(KeyLlmModel, "").Trim(),
@@ -186,6 +199,7 @@ public sealed class AiSettingsStore(ConfigStore config)
 	{
 		ArgumentNullException.ThrowIfNull(settings);
 		AiImageSettings image = settings.Image;
+		if (LlmProviderExtensions.IsCustomProvider(settings.Chat.ProviderId)) return image;
 		bool sameFamily = image.Provider == "google"
 			? settings.Chat.Provider == LlmProvider.Google
 			: settings.Chat.Provider is LlmProvider.OpenAi or LlmProvider.OpenAiResponses;
@@ -273,7 +287,7 @@ public sealed record AiChatSettingsSnapshot
 	{
 		Reasoning = settings.Reasoning.AsString(),
 		Configured = settings.IsConfigured,
-		Provider = settings.Provider.AsString(),
+		Provider = LlmProviderExtensions.IsCustomProvider(settings.ProviderId) ? settings.ProviderId : settings.Provider.AsString(),
 		BaseUrl = settings.BaseUrl,
 		Model = settings.Model,
 		Persona = settings.Persona,

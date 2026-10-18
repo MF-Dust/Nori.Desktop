@@ -250,6 +250,14 @@ public sealed partial class AppRuntime
 				persona = chatSnapshot.Persona,
 				hasApiKey = chatSnapshot.HasApiKey,
 				chat = chatSnapshot,
+				// 插件提供商只暴露元数据，设置页据此生成选项；不含工厂或插件对象。
+				providers = Services.Chat.CustomProviders.GetProviders().Select(provider => new
+				{
+					id = provider.Id,
+					name = provider.Name,
+					defaultBaseUrl = provider.DefaultBaseUrl,
+					requiresApiKey = provider.RequiresApiKey,
+				}).ToArray(),
 				embedding = embeddingSnapshot,
 				image = imageSnapshot,
 				context = new
@@ -398,6 +406,7 @@ public sealed partial class AppRuntime
 			{
 				name = tool.Name, description = tool.Description,
 				permissionLevel = tool.PermissionLevel, category = tool.Category, enabled = tool.Enabled,
+				inputSchema = tool.Parameters,
 			}).ToArray(),
 			mcpServersCount = McpServerCount(),
 			emotion = new {type = Emotion.CurrentType},

@@ -174,6 +174,12 @@ public sealed partial class AppRuntime
 				if (string.IsNullOrWhiteSpace(action.Id)) continue;
 				string pluginName = plugin.Id.Replace('.', '_');
 				string fullName = $"plugin__{pluginName}__{action.Id}";
+				// 单个超长工具名只跳过自身，不能让整个插件分类刷新失败。
+				if (fullName.Length > ToolLimits.MaxNameCharacters)
+				{
+					Services.Logger.Write(LogSource.Backend, "warn", $"插件动作工具名超过 {ToolLimits.MaxNameCharacters} 个字符，已跳过: {plugin.Id}");
+					continue;
+				}
 				if (!names.Add(fullName)) continue;
 				tools.Add(new RegisteredTool
 				{

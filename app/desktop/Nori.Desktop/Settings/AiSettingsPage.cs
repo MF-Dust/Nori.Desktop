@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Nori.Core.Chat;
 using System.Globalization;
 using Avalonia.Threading;
 
@@ -60,6 +61,7 @@ public sealed class AiSettingsPage : SettingsPageBase
 	];
 
 	private readonly SettingsFieldViewModel _provider;
+	private IReadOnlyList<CustomChatProviderDescriptor> _pluginProviders = [];
 	private readonly SettingsFieldViewModel _reasoning;
 	private readonly SettingsFieldViewModel _modelInfo;
 	private readonly SettingsFieldViewModel _contextLimit;
@@ -182,10 +184,41 @@ public sealed class AiSettingsPage : SettingsPageBase
 
 	internal override void ApplySnapshot(JsonElement snapshot)
 	{
+		_pluginProviders = ReadCustomProviders(snapshot);
 		base.ApplySnapshot(snapshot);
+		UpdateProviderOptions();
 		UpdateModelOptions();
 		EnsureCurrentOption(_contextLimit, ContextLimitOptions);
 		_ = RefreshModelInfoAsync(snapshot);
+	}
+
+	/// <summary>内置协议 + 当前活跃插件提供商；撤销后选中项仍保留，避免静默改成 OpenAI。</summary>
+	private void UpdateProviderOptions()
+	{
+		List<SettingsOption> options = [.. ProviderOptions];
+		options.AddRange(_pluginProviders.Select(provider => new SettingsOption(provider.Id, new(provider.Name, provider.Name))));
+		string selected = _provider.Selected;
+		if (selected.Length > 0 && selected.StartsWith("plugin:", StringComparison.Ordinal) && !options.Any(option => option.Value == selected))
+			options.Add(new SettingsOption(selected, new(Text("插件提供商 (当前不可用)", "Plugin provider (unavailable)"), Text("插件提供商 (当前不可用)", "Plugin provider (unavailable)"))));
+		_provider.SetOptions(options);
+	}
+
+	/// <summary>快照只带插件提供商的公开元数据。</summary>
+	private static IReadOnlyList<CustomChatProviderDescriptor> ReadCustomProviders(JsonElement snapshot)
+	{
+		if (!snapshot.TryGetProperty("ai", out JsonElement ai) || !ai.TryGetProperty("providers", out JsonElement providers) || providers.ValueKind != JsonValueKind.Array)
+			return [];
+		List<CustomChatProviderDescriptor> result = [];
+		foreach (JsonElement item in providers.EnumerateArray())
+		{
+			if (item.ValueKind != JsonValueKind.Object) continue;
+			string id = SettingsSnapshotReader.String(item, string.Empty, "id");
+			string name = SettingsSnapshotReader.String(item, string.Empty, "name");
+			if (!id.StartsWith("plugin:", StringComparison.Ordinal) || name.Length == 0) continue;
+			bool requiresApiKey = !item.TryGetProperty("requiresApiKey", out JsonElement required) || required.ValueKind != JsonValueKind.False;
+			result.Add(new CustomChatProviderDescriptor(id, name, SettingsSnapshotReader.String(item, string.Empty, "defaultBaseUrl"), requiresApiKey));
+		}
+		return result;
 	}
 
 	/// <summary>配置里的自定义值不在预设选项中时补一项，避免选择框显示为空。</summary>
@@ -297,7 +330,7 @@ public sealed class AiSettingsPage : SettingsPageBase
 
 	private async Task<JsonElement> SaveProviderAsync(string provider, CancellationToken cancellationToken)
 	{
-		string address = await Dispatcher.UIThread.InvokeAsync(() => DefaultBaseUrl(provider, _baseUrl.Text));
+		string address = await Dispatcher.UIThread.InvokeAsync(() => DefaultBaseUrl(provider, _baseUrl.Text, _pluginProviders));
 		JsonElement result = await ExecuteAsync("settings_update_ai_providers", new {chat = new {provider, baseUrl = address}}, cancellationToken).ConfigureAwait(false);
 		await Dispatcher.UIThread.InvokeAsync(() =>
 		{
@@ -308,7 +341,10 @@ public sealed class AiSettingsPage : SettingsPageBase
 	}
 
 	/// <summary>更换协议时只替换已知默认地址，保留自定义代理。</summary>
-	internal static string DefaultBaseUrl(string provider, string current)
+	internal static string DefaultBaseUrl(string provider, string current) => DefaultBaseUrl(provider, current, []);
+
+	/// <summary>插件提供商的地址来自其元数据；空默认地址表示不需要地址。</summary>
+	internal static string DefaultBaseUrl(string provider, string current, IReadOnlyList<CustomChatProviderDescriptor> customProviders)
 	{
 		Dictionary<string, string> defaults = new(StringComparer.Ordinal)
 		{
@@ -318,8 +354,14 @@ public sealed class AiSettingsPage : SettingsPageBase
 			["google"] = "https://generativelanguage.googleapis.com/v1beta",
 		};
 		string address = current.Trim();
-		return (address.Length == 0 || defaults.Values.Contains(address, StringComparer.OrdinalIgnoreCase))
-			&& defaults.TryGetValue(provider, out string? next) ? next : address;
+		// 只替换空值或已知默认地址（内置协议与插件的默认值），保留自定义代理。
+		bool replace = address.Length == 0
+			|| defaults.Values.Any(value => string.Equals(value, address, StringComparison.OrdinalIgnoreCase))
+			|| customProviders.Any(item => item.DefaultBaseUrl.Length > 0 && string.Equals(item.DefaultBaseUrl, address, StringComparison.OrdinalIgnoreCase));
+		if (!provider.StartsWith("plugin:", StringComparison.Ordinal))
+			return replace && defaults.TryGetValue(provider, out string? next) ? next : address;
+		string? pluginDefault = customProviders.FirstOrDefault(item => item.Id == provider)?.DefaultBaseUrl;
+		return replace ? pluginDefault ?? "" : address;
 	}
 
 	/// <summary>校验可选向量维度，空值表示恢复模型默认。</summary>

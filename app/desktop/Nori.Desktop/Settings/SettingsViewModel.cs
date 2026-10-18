@@ -4,6 +4,7 @@ using System.Windows.Input;
 using Avalonia.Threading;
 using Nori.Core.Configuration;
 using Nori.Desktop.Settings.Pages;
+using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Settings;
 
@@ -31,6 +32,7 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 	];
 
 	private readonly SettingsService _service;
+	private readonly PluginPageController? _pluginPages;
 	private readonly CancellationTokenSource _lifetimeCts = new();
 	private readonly Dictionary<string, SettingsPageBase> _pages = new(StringComparer.Ordinal);
 	private readonly Dictionary<string, SettingsGroupViewModel> _groups = new(StringComparer.Ordinal);
@@ -46,9 +48,14 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 	private int _snapshotEpoch;
 
 	/// <summary>创建设置窗口状态。</summary>
-	public SettingsViewModel(SettingsService service)
+	public SettingsViewModel(SettingsService service) : this(service, null)
+	{
+	}
+
+	internal SettingsViewModel(SettingsService service, PluginPageController? pluginPages)
 	{
 		_service = service ?? throw new ArgumentNullException(nameof(service));
+		_pluginPages = pluginPages;
 		foreach ((string key, SettingsText title) in GroupOrder)
 		{
 			SettingsGroupViewModel group = new(title, key);
@@ -77,6 +84,41 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 		AddPage(new PluginsSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new DebugSettingsPage(_service, _lifetimeCts.Token));
 		_service.StateChanged += OnStateChanged;
+		if (_pluginPages is not null)
+		{
+			_pluginPages.SettingsPagesChanged += ReconcilePluginPages;
+			ReconcilePluginPages();
+		}
+	}
+
+	private void ReconcilePluginPages()
+	{
+		Dispatcher.UIThread.VerifyAccess();
+		if (_disposed || _pluginPages is null) return;
+		IReadOnlyList<PluginPageInfo> active = _pluginPages.SettingsPages;
+		foreach (PluginSettingsPage page in _pages.Values.OfType<PluginSettingsPage>().ToArray())
+		{
+			if (active.Any(info => ReferenceEquals(info, page.Info))) continue;
+			_pages.Remove(page.Key);
+			SettingsGroupViewModel group = _groups[page.GroupKey];
+			group.Pages.Remove(group.Pages.Single(item => ReferenceEquals(item.Page, page)));
+			if (ReferenceEquals(CurrentPage, page)) CurrentPage = _pages["plugins"];
+			page.Dispose();
+		}
+		if (active.Count > 0 && !_groups.ContainsKey(PluginSettingsPage.NavigationGroup))
+		{
+			SettingsGroupViewModel group = new(new("插件设置", "Plugin settings"), PluginSettingsPage.NavigationGroup);
+			group.SetLanguage(Language);
+			_groups.Add(group.Key, group);
+			Groups.Add(group);
+		}
+		foreach (PluginPageInfo info in active)
+		{
+			if (!_pages.ContainsKey(PluginSettingsPage.NavigationKey(info)))
+				AddPage(new PluginSettingsPage(_service, _pluginPages, info, _lifetimeCts.Token));
+		}
+		if (active.Count == 0 && _groups.Remove(PluginSettingsPage.NavigationGroup, out SettingsGroupViewModel? empty)) Groups.Remove(empty);
+		RefreshFilteredGroups();
 	}
 
 	/// <summary>所有导航分组。</summary>
@@ -352,6 +394,7 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 		_disposed = true;
 		_lifetimeCts.Cancel();
 		_service.StateChanged -= OnStateChanged;
+		if (_pluginPages is not null) _pluginPages.SettingsPagesChanged -= ReconcilePluginPages;
 		foreach (SettingsPageBase page in _pages.Values) page.Dispose();
 		_lifetimeCts.Dispose();
 	}

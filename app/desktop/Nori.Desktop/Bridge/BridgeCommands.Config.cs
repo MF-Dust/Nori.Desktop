@@ -260,8 +260,13 @@ public sealed partial class BridgeCommands
 			|| persona is not null;
 		if (hasChatPatch)
 		{
+			string? provider = OptionalStr(chat, "provider")?.Trim();
+			// 插件 ID 必须先存在于当前运行实例，不能写入已撤销或伪造的提供商；判定规则与读取时一致。
+			if (Nori.Core.Chat.LlmProviderExtensions.IsCustomProvider(provider)
+				&& !_services.Chat.CustomProviders.TryGet(provider!, out _))
+				throw new InvalidOperationException("插件聊天提供商不可用，请启用或重新安装对应插件");
 			_services.AiSettings.UpdateChat(new AiChatSettingsPatch(
-				Provider: OptionalStr(chat, "provider"),
+				Provider: provider,
 				BaseUrl: OptionalStr(chat, "baseUrl"),
 				ApiKey: OptionalStr(chat, "apiKey"),
 				Model: OptionalStr(chat, "model"),

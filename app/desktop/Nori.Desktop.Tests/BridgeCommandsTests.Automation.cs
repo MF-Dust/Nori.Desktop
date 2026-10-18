@@ -107,13 +107,21 @@ public partial class BridgeCommandsTests
 
 		string json = JsonSerializer.Serialize(fixture._services.Automation!.ListDesktopWindows(), BridgeJson.Options);
 
-		Assert.Contains("\"width\":800", json, StringComparison.Ordinal);
-		Assert.Contains("\"height\":600", json, StringComparison.Ordinal);
-		Assert.Contains("\"isForeground\":true", json, StringComparison.Ordinal);
-		Assert.DoesNotContain("窗口标题-secret", json, StringComparison.Ordinal);
-		Assert.DoesNotContain("4321", json, StringComparison.Ordinal);
-		Assert.DoesNotContain("4660", json, StringComparison.Ordinal);
-		Assert.DoesNotContain("handle", json, StringComparison.OrdinalIgnoreCase);
+		using JsonDocument document = JsonDocument.Parse(json);
+		JsonElement window = Assert.Single(document.RootElement.EnumerateArray());
+		Assert.Equal("height,isForeground,token,width", string.Join(',', window.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal)));
+		string token = window.GetProperty("token").GetString()!;
+		Assert.Matches("^desktop-[0-9a-f]{32}$", token);
+		Assert.Equal(800, window.GetProperty("width").GetInt32());
+		Assert.Equal(600, window.GetProperty("height").GetInt32());
+		Assert.True(window.GetProperty("isForeground").GetBoolean());
+
+		// token 是随机十六进制，可能恰好含有进程号或句柄的数字；去掉 token 后再确认原始标识没有泄露。
+		string withoutToken = json.Replace(token, "desktop-token", StringComparison.Ordinal);
+		Assert.DoesNotContain("窗口标题-secret", withoutToken, StringComparison.Ordinal);
+		Assert.DoesNotContain("4321", withoutToken, StringComparison.Ordinal);
+		Assert.DoesNotContain("4660", withoutToken, StringComparison.Ordinal);
+		Assert.DoesNotContain("handle", withoutToken, StringComparison.OrdinalIgnoreCase);
 	}
 
 	[Fact]

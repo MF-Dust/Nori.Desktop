@@ -365,4 +365,5 @@ Task WaitForExitAsync(int processId, CancellationToken cancellationToken = defau
 
 ## 官方插件
 
+- [`MF-Dust/Nori.Plugins.OAuth`](https://github.com/MF-Dust/Nori.Plugins.OAuth)（`io.nori.chatgpt`）：独立构建和发布的 `.noripack`，通过 ChatGPT/Codex 设备码 OAuth 提供聊天渠道和原生登录页，不随宿主发布。
 - [`MF-Dust/Nori.Plugins.Browser`](https://github.com/MF-Dust/Nori.Plugins.Browser)（`io.nori.browser`）：原宿主内置的 Playwright/Edge 浏览器 DOM 自动化。宿主不再引用 Playwright，也不再提供 `automation_browser_*` 命令和设置开关；插件以 `.noripack` 单独发布，自带 win32_x64 Playwright 驱动，通过 `run`（confirm）、`run_with_input`（dangerous）等动作和 `ui.avalonia` 控制页面提供能力。

@@ -61,12 +61,13 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public void QuickChatGrowingBubblesKeepComposerAtSameHeight()
+	public void QuickChatGrowingBubblesStayBelowPetAndGrowDownward()
 	{
 		PixelRect work = new(0, 0, 1920, 1080);
 		QuickChatPlacement shortPanel = QuickChatLayout.Calculate(new(900, 600), new(280, 150), 1, work, 74);
 		QuickChatPlacement tallPanel = QuickChatLayout.Calculate(new(900, 600), new(280, 150), 1, work, 300);
-		Assert.Equal(shortPanel.Position.Y + shortPanel.Height, tallPanel.Position.Y + tallPanel.Height);
+		Assert.Equal(shortPanel.Position.Y, tallPanel.Position.Y);
+		Assert.True(shortPanel.Position.Y + QuickChatLayout.ShadowMargin > 750);
 	}
 
 	[Fact]

@@ -31,12 +31,13 @@ public sealed partial class QuickChatView : UserControl, IDisposable
 	private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromMilliseconds(16) };
 	private readonly QuickChatState _state = new();
 	private readonly StackPanel _bubblePanel = new() { Name = "QuickChatBubbles", Spacing = 8, Margin = new Thickness(0, 0, 0, 12) };
-	private readonly Grid _content = new() { RowDefinitions = new RowDefinitions("*,Auto,Auto,Auto,Auto,Auto"), HorizontalAlignment = HorizontalAlignment.Stretch };
+	private readonly Grid _content = new() { RowDefinitions = new RowDefinitions("*,Auto,Auto,Auto,Auto"), HorizontalAlignment = HorizontalAlignment.Stretch };
 	private readonly ScrollViewer _bubbleScroll = new()
 	{
 		Name = "QuickChatBubbleScroll",
+		Margin = new Thickness(0, 0, 0, 8),
 		HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-		VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
+		VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
 	};
 	private readonly QuickChatComposer _composer = new()
 	{
@@ -469,16 +470,19 @@ public sealed partial class QuickChatView : UserControl, IDisposable
 		_composerShell.Child = _composerFrost;
 		_composerShell.RenderTransform = _composerScale;
 
-		_bubbleScroll.Content = _bubblePanel;
-		_content.Children.Add(_bubbleScroll);
 		BuildScanReadout();
-		Grid.SetRow(_scanReadout, 1); _content.Children.Add(_scanReadout);
-		Grid.SetRow(_error, 2); _content.Children.Add(_error);
-		Grid.SetRow(_approval, 3); _content.Children.Add(_approval);
+		// 分析和对话共用纵向滚动区域，空间不足时滚动，不再覆盖头像或输入框。
+		StackPanel messages = new();
+		messages.Children.Add(_scanReadout);
+		messages.Children.Add(_bubblePanel);
+		_bubbleScroll.Content = messages;
+		_content.Children.Add(_bubbleScroll);
+		Grid.SetRow(_error, 1); _content.Children.Add(_error);
+		Grid.SetRow(_approval, 2); _content.Children.Add(_approval);
 		_activity.Margin = new Thickness(4, 0, 4, 6);
 		_activity.IsVisible = false;
-		Grid.SetRow(_activity, 4); _content.Children.Add(_activity);
-		Grid.SetRow(_composerShell, 5); _content.Children.Add(_composerShell);
+		Grid.SetRow(_activity, 3); _content.Children.Add(_activity);
+		Grid.SetRow(_composerShell, 4); _content.Children.Add(_composerShell);
 		Content = _content;
 		AutomationProperties.SetLiveSetting(_bubblePanel, AutomationLiveSetting.Polite);
 		AutomationProperties.SetLiveSetting(_activity, AutomationLiveSetting.Polite);
@@ -894,7 +898,7 @@ public sealed partial class QuickChatView : UserControl, IDisposable
 			_bubble = bubble;
 			_enteredAt = owner._now();
 			bool player = bubble.Message.Role == "user";
-			_text = Text(DisplayText(bubble.Message.Content), NoriMetrics.FontBase, FontWeight.Medium, player ? QuickChatPalette.PlayerText : QuickChatPalette.Dark);
+			_text = Text(DisplayText(bubble.SegmentText), NoriMetrics.FontBase, FontWeight.Medium, player ? QuickChatPalette.PlayerText : QuickChatPalette.Dark);
 			_text.TextWrapping = TextWrapping.WrapWithOverflow;
 			_text.LineHeight = 22.75;
 			_text.Opacity = player ? 0.95 : 0.85;
@@ -921,7 +925,7 @@ public sealed partial class QuickChatView : UserControl, IDisposable
 
 		internal void Render()
 		{
-			string display = DisplayText(_bubble.Message.Content);
+			string display = DisplayText(_bubble.SegmentText);
 			if (_text.Text != display) _text.Text = display;
 		}
 

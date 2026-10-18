@@ -132,14 +132,16 @@ internal sealed class QuickChatController
 		int petHeight = (int)Math.Ceiling(size.Height * scale);
 		int composerWidth = (int)Math.Ceiling(308 * scale);
 		int side = Math.Max(0, (composerWidth - petWidth) / 2);
-		int reserve = (int)Math.Ceiling((QuickChatLayout.ComposerHeight + QuickChatLayout.ShadowMargin - 2) * scale);
+		// 为整列分析、对话和输入条预留空间；靠近屏幕底部时一起上移，不把内容压到模型上。
+		double maximumHeight = Math.Max(QuickChatLayout.ComposerHeight + QuickChatLayout.ShadowMargin * 2,
+			work.Height / scale - size.Height - QuickChatLayout.PetGap + QuickChatLayout.ShadowMargin);
+		double contentHeight = _window.MeasureContentHeight(maximumHeight);
+		int reserve = (int)Math.Ceiling((contentHeight + QuickChatLayout.PetGap - QuickChatLayout.ShadowMargin) * scale);
 		PixelPoint position = new(
 			Math.Clamp(_pet.Position.X, work.X + side, Math.Max(work.X + side, work.Right - petWidth - side)),
 			Math.Clamp(_pet.Position.Y, work.Y, Math.Max(work.Y, work.Bottom - petHeight - reserve)));
 		if (position != _pet.Position) _pet.Position = position;
-		double availableHeight = Math.Max(74, (position.Y + petHeight + reserve - work.Y) / scale);
-		QuickChatPlacement layout = QuickChatLayout.Calculate(position, size, scale, work,
-			_window.MeasureContentHeight(Math.Min(availableHeight, work.Height / scale)));
+		QuickChatPlacement layout = QuickChatLayout.Calculate(position, size, scale, work, contentHeight);
 		_window.Width = layout.Width; _window.Height = layout.Height;
 		_window.Position = layout.Position;
 		_window.EnsureTopmost();

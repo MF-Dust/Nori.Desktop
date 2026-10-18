@@ -9,6 +9,7 @@ internal static class QuickChatLayout
 {
 	internal const double ShadowMargin = 14;
 	internal const double ComposerHeight = 46;
+	internal const double PetGap = 8;
 	internal static QuickChatPlacement Calculate(PixelPoint petPosition, Size petSize, double scaling,
 		PixelRect workArea, double contentHeight)
 	{
@@ -18,9 +19,8 @@ internal static class QuickChatLayout
 			Math.Min(ComposerHeight + ShadowMargin * 2, workArea.Height / scale), workArea.Height / scale);
 		int pixelsW = (int)Math.Ceiling(width * scale), pixelsH = (int)Math.Ceiling(height * scale);
 		int x = (int)Math.Round(petPosition.X + petSize.Width * scale / 2 - pixelsW / 2d);
-		// 输入条上缘覆盖模型裁剪下沿 2 DIP，气泡增高只向上扩展。
-		int bottom = (int)Math.Round(petPosition.Y + (petSize.Height - 2 + ComposerHeight + ShadowMargin) * scale);
-		int y = bottom - pixelsH;
+		// 内容从模型下沿往下排；窗口顶部的透明阴影边距不占可见间隔。
+		int y = (int)Math.Round(petPosition.Y + (petSize.Height + PetGap - ShadowMargin) * scale);
 		return new QuickChatPlacement(new PixelPoint(
 			Math.Clamp(x, workArea.X, Math.Max(workArea.X, workArea.Right - pixelsW)),
 			Math.Clamp(y, workArea.Y, Math.Max(workArea.Y, workArea.Bottom - pixelsH))), width, height);

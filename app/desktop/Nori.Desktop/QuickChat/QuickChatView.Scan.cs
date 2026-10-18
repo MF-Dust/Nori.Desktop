@@ -55,10 +55,11 @@ public sealed partial class QuickChatView
 	internal void ShowScanReadout(string text)
 	{
 		if (_disposed) return;
-		_scanFullText = text;
-		_scanCharacters = text.EnumerateRunes().Select(rune => rune.ToString()).ToArray();
+		// 芯片读数保留段落和列表文字，不把 Markdown 标记当作扫描结果显示。
+		_scanFullText = Markdig.Markdown.ToPlainText(text).Trim();
+		_scanCharacters = _scanFullText.EnumerateRunes().Select(rune => rune.ToString()).ToArray();
 		_scanReceivedAt = _now(); _scanCount = -1;
-		AutomationProperties.SetName(_scanReadout, text);
+		AutomationProperties.SetName(_scanReadout, _scanFullText);
 		RenderScan(_scanReceivedAt);
 	}
 

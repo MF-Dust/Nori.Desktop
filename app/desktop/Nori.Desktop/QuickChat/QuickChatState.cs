@@ -12,11 +12,13 @@ internal enum QuickChatBubblePhase
 	Exiting,
 }
 
-/// <summary>悬浮对话气泡；接收时间只在第一次出现时确定，流式更新不会延长寿命。</summary>
-internal sealed class QuickChatBubble(NativeChatMessage message, DateTimeOffset receivedAt)
+/// <summary>悬浮对话显示分段；Message 保留完整源消息，同源分段共享首次接收时间。</summary>
+internal sealed class QuickChatBubble(NativeChatMessage message, int segmentIndex, string segmentText, DateTimeOffset receivedAt)
 {
 	internal NativeChatMessage Message { get; } = message;
-	internal string Key => Message.Key;
+	internal string SourceKey => Message.Key;
+	internal string Key => segmentIndex == 0 ? Message.Key : $"{Message.Key}:segment:{segmentIndex}";
+	internal string SegmentText { get; set; } = segmentText;
 	internal DateTimeOffset ReceivedAt { get; } = receivedAt;
 	internal QuickChatBubblePhase Phase { get; set; } = QuickChatBubblePhase.Entering;
 	internal DateTimeOffset? ExitStartedAt { get; set; }
@@ -142,12 +144,29 @@ internal sealed class QuickChatState
 		foreach (NativeChatMessage message in Chat.Messages)
 		{
 			if (!_received.TryGetValue(message.Key, out DateTimeOffset? receivedAt) || receivedAt is null) continue;
-			if (existing.TryGetValue(message.Key, out QuickChatBubble? current)) next.Add(current);
-			else if (now - receivedAt.Value < BubbleLifetime) next.Add(new QuickChatBubble(message, receivedAt.Value));
+			IReadOnlyList<string> segments = message.Role == "assistant"
+				? ChatMarkdown.Split(message.Content, message.Streaming)
+				: [message.Content];
+			if (segments.Count == 0 && message.Content.Length > 0) segments = [message.Content];
+			for (int index = 0; index < segments.Count; index++)
+			{
+				string key = index == 0 ? message.Key : $"{message.Key}:segment:{index}";
+				if (existing.TryGetValue(key, out QuickChatBubble? current))
+				{
+					current.SegmentText = segments[index];
+					next.Add(current);
+				}
+				else if (now - receivedAt.Value < BubbleLifetime)
+				{
+					next.Add(new QuickChatBubble(message, index, segments[index], receivedAt.Value));
+				}
+			}
 		}
 		foreach (QuickChatBubble exiting in _bubbles.Where(item => item.Phase == QuickChatBubblePhase.Exiting && next.All(nextItem => nextItem.Key != item.Key))) next.Add(exiting);
+		string[] visibleSources = next.Select(item => item.SourceKey).Distinct(StringComparer.Ordinal).TakeLast(MaximumBubbles).ToArray();
+		HashSet<string> retainedSources = visibleSources.ToHashSet(StringComparer.Ordinal);
 		_bubbles.Clear();
-		_bubbles.AddRange(next.TakeLast(MaximumBubbles));
+		_bubbles.AddRange(next.Where(item => retainedSources.Contains(item.SourceKey)));
 		Tick(now);
 		PruneInvisibleMessages();
 		Changed?.Invoke();
@@ -197,7 +216,7 @@ internal sealed class QuickChatState
 	private void PruneInvisibleMessages()
 	{
 		HashSet<NativeChatMessage> active = Chat.Sending ? Chat.Messages.TakeLast(2).ToHashSet() : [];
-		HashSet<string> visible = _bubbles.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
+		HashSet<string> visible = _bubbles.Select(item => item.SourceKey).ToHashSet(StringComparer.Ordinal);
 		foreach (NativeChatMessage message in Chat.Messages.Where(message => !active.Contains(message) && !visible.Contains(message.Key)).ToArray())
 		{
 			Chat.Messages.Remove(message);

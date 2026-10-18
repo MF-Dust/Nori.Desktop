@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Nori.Core.Live2D;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Models;
 
@@ -117,7 +118,7 @@ internal sealed class ModelRegionOverlay : Control
 			using (context.PushOpacity(selected ? 0.22 : 0.1)) context.DrawRectangle(Accent, null, rect);
 			context.DrawRectangle(null, new Pen(Accent, selected ? 2 : 1), rect);
 			string label = region.Name + " · " + (region.ReactionMode == PetInteractionReactionMode.Ai ? "AI" : LocalReactionLabel);
-			var text = new FormattedText(label, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Microsoft YaHei UI, sans-serif"), 12, LabelBrush);
+			var text = new FormattedText(label, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(NoriTypography.System), 12, LabelBrush);
 			double labelX = Math.Clamp(rect.X, 0, Math.Max(0, Bounds.Width - text.Width - 8));
 			double labelY = Math.Clamp(rect.Y - 23, 0, Math.Max(0, Bounds.Height - 23));
 			context.DrawRectangle(Surface, null, new Rect(labelX, labelY, Math.Min(text.Width + 8, Bounds.Width), 22), 3, 3);

@@ -72,7 +72,7 @@
 
 	<ItemGroup>
 		<AvaloniaResource Include="Assets/**" Exclude="Assets/Fonts/*.txt" />
-		<!-- 内嵌字体 (Plus Jakarta Sans / Nunito, SIL OFL 1.1) 的许可证全文随发布产物分发。 -->
+		<!-- 内嵌字体 (Plus Jakarta Sans / Nunito / Fusion Pixel, SIL OFL 1.1) 的许可证全文随发布产物分发。 -->
 		<None Include="Assets/Fonts/*.OFL.txt" Link="licenses/fonts/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		<!-- 原生初始化窗口要用；与 Vue 侧同一份文件，不另存一份免得两边漂。 -->
 		<AvaloniaResource Include="../src/assets/images/logo.png" Link="Assets/logo.png" />

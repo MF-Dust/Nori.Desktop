@@ -111,7 +111,7 @@ public sealed class HomeView : Panel
 								{
 									CommunityLink("Steam", "https://store.steampowered.com/app/4996280/I_NORI/"),
 									CommunityLink("NoriOS", "https://os.inori.ai/landing"), _qq, _bilibili,
-									CommunityLink("GitHub", "https://github.com/MF-Dust/Nori-Desktop-Pet"),
+									CommunityLink("GitHub", "https://github.com/MF-Dust/Nori.Desktop"),
 								},
 							},
 							_communityError,

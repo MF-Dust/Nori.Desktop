@@ -45,6 +45,15 @@
 			"license": "OFL-1.1",
 			"licenseStatus": "verified-upstream-license",
 			"note": "对话气泡拉丁字形，与 Nori.Web conversation-panel 一致；由可变字体实例化为 400/500/600/700 静态字重并裁剪为拉丁子集，置于 Nori.Desktop/Assets/Fonts，OFL 全文随发布产物置于 licenses/fonts/Nunito.OFL.txt。"
+		},
+		{
+			"name": "Fusion Pixel Font",
+			"version": "2026.07.01",
+			"ecosystem": "font",
+			"purl": "pkg:github/TakWolf/fusion-pixel-font",
+			"license": "OFL-1.1",
+			"licenseStatus": "verified-upstream-license",
+			"note": "Copyright (c) 2022, TakWolf；窗口扫描分析芯片的像素字形（NoriTypography.Scan），使用 12px 比例宽度简体中文字体 Fusion Pixel 12px Prop zh_hans（FusionPixel12pxProportionalSC.ttf，字体内版本 2026.07.01），置于 Nori.Desktop/Assets/Fonts，OFL 全文随发布产物置于 licenses/fonts/FusionPixel.OFL.txt。"
 		}
 	]
 }

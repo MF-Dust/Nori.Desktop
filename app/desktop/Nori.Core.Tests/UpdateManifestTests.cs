@@ -20,7 +20,7 @@ public sealed class UpdateManifestTests
 			"rid": "win-x64",
 			"release_tag": "v1.2.3-codename",
 			"package_name": "nori-1.2.3-win-x64.zip",
-			"download_url": "https://github.com/MF-Dust/Nori-Desktop-Pet/releases/download/v1.2.3-codename/nori-1.2.3-win-x64.zip",
+			"download_url": "https://github.com/MF-Dust/Nori.Desktop/releases/download/v1.2.3-codename/nori-1.2.3-win-x64.zip",
 			"sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 			"size_bytes": 1048576,
 			"entrypoint": "Nori.Desktop.exe",
@@ -93,7 +93,7 @@ public sealed class UpdateManifestTests
 			"rid": "win-x64",
 			"release_tag": "v1.0.0",
 			"package_name": "nori.zip",
-			"download_url": "https://github.com/MF-Dust/Nori-Desktop-Pet/releases/download/v1.0.0/nori.zip",
+			"download_url": "https://github.com/MF-Dust/Nori.Desktop/releases/download/v1.0.0/nori.zip",
 			"sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 			"size_bytes": {{size}},
 			"entrypoint": "Nori.Desktop.exe"

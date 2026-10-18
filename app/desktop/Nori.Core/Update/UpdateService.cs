@@ -34,7 +34,7 @@ public sealed record UpdaterCheckResult(
 /// <summary>仅正式发布的 GitHub 更新服务；下载和解压可取消，原子提交不可取消。</summary>
 public sealed class UpdateService : IDisposable
 {
-	public const string DefaultRepository = "MF-Dust/Nori-Desktop-Pet";
+	public const string DefaultRepository = "MF-Dust/Nori.Desktop";
 	public const string ConfigKeyLastCheckedAt = "update_last_checked_at";
 	public const string ConfigKeyAutoCheck = "auto_check_updates";
 	private readonly AppStoragePaths _paths;

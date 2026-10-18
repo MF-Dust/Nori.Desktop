@@ -47,7 +47,7 @@ try {
 		assert.equal(MANIFEST.launcher_protocol, 1)
 		assert.equal(MANIFEST.size_bytes, Buffer.byteLength(CONTENT))
 		assert.equal(MANIFEST.sha256, crypto.createHash("sha256").update(CONTENT).digest("hex"))
-		assert.equal(MANIFEST.download_url, `https://github.com/MF-Dust/Nori-Desktop-Pet/releases/download/v1.0.4-codename/nori-1.0.4-${RID}.${EXTENSION}`)
+		assert.equal(MANIFEST.download_url, `https://github.com/MF-Dust/Nori.Desktop/releases/download/v1.0.4-codename/nori-1.0.4-${RID}.${EXTENSION}`)
 		if (RID === "win-x64") {
 			for (const EXTRA of [["--revision", "0"], ["--revision", "7bad"], ["--version", "1.0.5-other"], ["--version", "Dev"], ["--rid", "osx-x64"]]) {
 				assert.notEqual(spawnSync(process.execPath, [...ARGS, ...EXTRA], {encoding: "utf8"}).status, 0, EXTRA.join(" "))

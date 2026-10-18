@@ -185,7 +185,7 @@ public sealed class UpdateServiceTests : IDisposable
 	[InlineData("rid", "linux-x64")]
 	[InlineData("release_tag", "v-other")]
 	[InlineData("package_name", "other.zip")]
-	[InlineData("download_url", "https://github.com/MF-Dust/Nori-Desktop-Pet/releases/download/other/nori.zip")]
+	[InlineData("download_url", "https://github.com/MF-Dust/Nori.Desktop/releases/download/other/nori.zip")]
 	public async Task ManifestMustBindToSameReleaseAsset(string field, string value)
 	{
 		_manifest[field] = value;
@@ -216,10 +216,10 @@ public sealed class UpdateServiceTests : IDisposable
 	}
 
 	[Theory]
-	[InlineData("https://user@github.com/MF-Dust/Nori-Desktop-Pet/releases/asset")]
-	[InlineData("https://github.com:444/MF-Dust/Nori-Desktop-Pet/releases/asset")]
+	[InlineData("https://user@github.com/MF-Dust/Nori.Desktop/releases/asset")]
+	[InlineData("https://github.com:444/MF-Dust/Nori.Desktop/releases/asset")]
 	[InlineData("https://localhost/asset")]
-	[InlineData("http://github.com/MF-Dust/Nori-Desktop-Pet/releases/asset")]
+	[InlineData("http://github.com/MF-Dust/Nori.Desktop/releases/asset")]
 	[InlineData("https://github.com/other/repo/releases/asset")]
 	public async Task UnsafeRedirectRejectedBeforeSecondRequest(string location)
 	{

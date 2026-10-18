@@ -27,3 +27,5 @@
 - 修复公网工具请求在发送前被全局系统代理探测误拦截的问题：默认公网客户端明确禁用代理，连接时解析、校验并连接同一组 IP，保留 TLS 校验与手动重定向策略。
 - 保留显式 `allow_public_system_proxy` 配置与模型客户端行为；显式代理模式不保证代理端 DNS 解析的私网隔离。
 - 涉及 `NoriHttpClients`、`UrlAccessPolicy`、工具调用与启动配置，新增代理路由和 DNS 策略回归测试。
+- 仓库更名为 `MF-Dust/Nori.Desktop` 后，更新检查、手动下载链接、更新清单脚本的默认仓库与主页 GitHub 链接仍指向旧名称 `MF-Dust/Nori-Desktop-Pet`，请求无法通过授权仓库校验，更新检查会失败；现统一改用新名称，Issue / PR 模板与文档链接同步更新。
+- 补登 Fusion Pixel 字体 (SIL OFL 1.1) 的第三方组件声明：该字体随窗口扫描分析芯片内嵌分发，此前未写入 `third-party-components.json`，发布元数据中缺少这一条目。

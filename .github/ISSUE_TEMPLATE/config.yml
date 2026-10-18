@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: DeepWiki 知识库
-    url: https://deepwiki.ai/MF-Dust/Nori-Desktop-Pet
+    url: https://deepwiki.com/MF-Dust/Nori.Desktop
     about: 查阅 Nori Desktop Pet 架构文档、技术规范与常见问题。
   - name: GitHub 讨论区 (Discussions)
-    url: https://github.com/MF-Dust/Nori-Desktop-Pet/discussions
+    url: https://github.com/MF-Dust/Nori.Desktop/discussions
     about: 进行交流互动、模型分享、技术讨论或日常提问。

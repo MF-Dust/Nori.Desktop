@@ -2,7 +2,7 @@
 感谢您参与 Nori Desktop Pet 的贡献！
 
 提交 PR 前请确认:
-1. 已阅读开发与代码规范: https://github.com/MF-Dust/Nori-Desktop-Pet/blob/main/docs/%E8%A7%84%E8%8C%83.md
+1. 已阅读开发与代码规范: https://github.com/MF-Dust/Nori.Desktop/blob/main/docs/%E8%A7%84%E8%8C%83.md
 2. 确保在本地执行并通过质量门禁:
    - 前端: pnpm build && pnpm test
    - 宿主: dotnet test

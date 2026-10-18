@@ -21,7 +21,7 @@ const VERSION = validateProductVersion(ARGS.get("version"))
 if (VERSION === "Dev") throw new Error("开发版本不能生成更新清单")
 const RID = ARGS.get("rid")
 if (!["win-x64", "linux-x64", "osx-arm64"].includes(RID)) throw new Error("此架构未开放正式自动更新")
-const REPOSITORY = ARGS.get("repo") ?? "MF-Dust/Nori-Desktop-Pet"
+const REPOSITORY = ARGS.get("repo") ?? "MF-Dust/Nori.Desktop"
 if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(REPOSITORY)) throw new Error("GitHub 仓库名称无效")
 const PUBLISH = path.resolve(ARGS.get("publish-dir"))
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- PUBLISH是发布流程显式目录

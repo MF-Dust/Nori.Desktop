@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://deepwiki.com/MF-Dust/Nori.Desktop"><img src="https://img.shields.io/badge/DeepWiki-Documentation-0969da?style=flat-square&logo=gitbook&logoColor=white" alt="DeepWiki" /></a>
+  <a href="https://deepwiki.com/MF-Dust/Nori.Desktop"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
   <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-10.0-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 10" /></a>
   <a href="https://avaloniaui.net/"><img src="https://img.shields.io/badge/Avalonia-12.1-8C52FF?style=flat-square&logo=avalonia&logoColor=white" alt="Avalonia 12" /></a>
   <a href="./app/desktop/Live2D/README.md"><img src="https://img.shields.io/badge/Live2D-PurismCore%20%C2%B7%20MIT-FF6F61?style=flat-square" alt="Live2D: PurismCore" /></a>

@@ -47,7 +47,14 @@ public sealed class WindowsScreenCapture : IScreenCapture
 		WindowsTopLevelWindow? target = ScreenTargetPicker.Pick(_windows.EnumerateTopLevelWindows(), Environment.ProcessId);
 		if (target is null) return ScreenCaptureResult.Fail("没找到可以查看的窗口");
 
-		// 目标是被 Nori 挡住的那个窗口，按定义不是前台，所以不能要求前台。
+		return Capture(target);
+	}
+
+	/// <summary>截取用户明确选定的窗口，不改变自动读屏的选窗规则。</summary>
+	internal ScreenCaptureResult Capture(WindowsTopLevelWindow target)
+	{
+		if (!IsAvailable) return ScreenCaptureResult.Fail(_windows.Availability.Reason);
+		// 用户选定后遮罩成为前台，截图必须允许目标处于后台。
 		if (!_screenshots.TryCapture(
 			target.Handle,
 			new WindowsScreenshotRequest(WindowsScreenshotFormat.Png, RequireForeground: false),

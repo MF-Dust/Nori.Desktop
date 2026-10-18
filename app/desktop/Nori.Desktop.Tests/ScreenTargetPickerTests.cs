@@ -51,6 +51,22 @@ public sealed class ScreenTargetPickerTests
 	}
 
 	[Fact]
+	public void 显式扫描按物理坐标和遮挡顺序选择并排除自身()
+	{
+		WindowsTopLevelWindow[] windows =
+		[
+			new(1, "Nori", 100, new(-100, 0, 200, 200), 144, true),
+			new(2, "前面的应用", 200, new(-100, 0, 100, 100), 144, false),
+			new(3, "后面的应用", 300, new(-100, 0, 200, 200), 144, false),
+		];
+		Assert.Equal((nint)2, ScreenTargetPicker.PickAt(windows, -50, 50, 100)?.Handle);
+		Assert.Equal((nint)3, ScreenTargetPicker.PickAt(windows, 0, 50, 100)?.Handle);
+		Assert.Equal((nint)3, ScreenTargetPicker.PickAt(windows, -50, 100, 100)?.Handle);
+		Assert.Null(ScreenTargetPicker.PickAt(windows, 100, 50, 100));
+		Assert.Null(ScreenTargetPicker.PickAt(windows, -101, 50, 100));
+	}
+
+	[Fact]
 	public void 没有可选窗口时选不出目标()
 	{
 		Assert.Null(Pick((1, "Nori", Environment.ProcessId)));

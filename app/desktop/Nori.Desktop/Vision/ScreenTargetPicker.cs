@@ -23,6 +23,10 @@ internal static class ScreenTargetPicker
 	///
 	/// 无标题窗口跳过：多是工具提示、输入法候选框一类的浮层，截了没有意义。
 	/// </summary>
+	internal static WindowsTopLevelWindow? PickAt(IReadOnlyList<WindowsTopLevelWindow> windows, int x, int y, int selfProcessId) =>
+		windows.FirstOrDefault(window => window.ProcessId != selfProcessId && !string.IsNullOrWhiteSpace(window.Title)
+			&& window.Bounds.Contains(x, y));
+
 	internal static WindowsTopLevelWindow? Pick(IReadOnlyList<WindowsTopLevelWindow> windows, int selfProcessId)
 	{
 		ArgumentNullException.ThrowIfNull(windows);

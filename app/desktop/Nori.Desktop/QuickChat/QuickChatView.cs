@@ -18,7 +18,7 @@ using static Nori.Desktop.SnapshotJson;
 namespace Nori.Desktop.QuickChat;
 
 /// <summary>贴近桌宠显示的原生轻量对话界面；完整历史与复杂操作交给独立聊天窗口。</summary>
-public sealed class QuickChatView : UserControl, IDisposable
+public sealed partial class QuickChatView : UserControl, IDisposable
 {
 	private static readonly FontFamily ConversationFont = NoriTypography.Conversation;
 	private static readonly SplineEasing ComposerEase = new() { X1 = 0.25, Y1 = 0.1, X2 = 0.25, Y2 = 1 };
@@ -31,7 +31,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 	private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromMilliseconds(16) };
 	private readonly QuickChatState _state = new();
 	private readonly StackPanel _bubblePanel = new() { Name = "QuickChatBubbles", Spacing = 8, Margin = new Thickness(0, 0, 0, 12) };
-	private readonly Grid _content = new() { RowDefinitions = new RowDefinitions("*,Auto,Auto,Auto,Auto"), HorizontalAlignment = HorizontalAlignment.Stretch };
+	private readonly Grid _content = new() { RowDefinitions = new RowDefinitions("*,Auto,Auto,Auto,Auto,Auto"), HorizontalAlignment = HorizontalAlignment.Stretch };
 	private readonly ScrollViewer _bubbleScroll = new()
 	{
 		Name = "QuickChatBubbleScroll",
@@ -248,7 +248,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 	internal QuickChatComposer Composer => _composer;
 	internal bool HistoryLoaded => _loadedHistory;
 	internal IReadOnlyList<Control> InteractiveControls =>
-		[_composerShell, .. _bubbleViews.Values.Select(item => (Control)item.Root), _approval, _error];
+		[_composerShell, .. _bubbleViews.Values.Select(item => (Control)item.Root), _approval, _error, _scanReadout];
 	internal event Action? DesiredLayoutChanged;
 
 	/// <summary>把键盘焦点放入输入框。</summary>
@@ -432,7 +432,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		approvalBody.Children.Add(approvalActions);
 		_approval.Child = approvalBody;
 
-		var inputLayer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,28"), ColumnSpacing = 8, Margin = new Thickness(12, 8) };
+		var inputLayer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,28,28"), ColumnSpacing = 8, Margin = new Thickness(12, 8) };
 		var textLayer = new Grid { ClipToBounds = true };
 		_placeholderRow.Children.Add(_placeholder);
 		var shortcutKeys = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
@@ -449,9 +449,12 @@ public sealed class QuickChatView : UserControl, IDisposable
 		_send.Classes.Add("quick-send");
 		_send.Content = _sendIcon;
 		_send.RenderTransform = _sendScale;
-		Grid.SetColumn(_send, 1);
+		BuildScanButton();
+		Grid.SetColumn(_scanGlow, 1);
+		inputLayer.Children.Add(_scanGlow);
+		Grid.SetColumn(_send, 2);
 		_sendGlow.Child = _send;
-		Grid.SetColumn(_sendGlow, 1);
+		Grid.SetColumn(_sendGlow, 2);
 		inputLayer.Children.Add(_sendGlow);
 		_composer.Classes.Add("quick-composer");
 		// Devolutions 通过独立 AdornerLayer 绘制焦点环；只禁用该环，保留输入框自己的薄荷高亮。
@@ -468,12 +471,14 @@ public sealed class QuickChatView : UserControl, IDisposable
 
 		_bubbleScroll.Content = _bubblePanel;
 		_content.Children.Add(_bubbleScroll);
-		Grid.SetRow(_error, 1); _content.Children.Add(_error);
-		Grid.SetRow(_approval, 2); _content.Children.Add(_approval);
+		BuildScanReadout();
+		Grid.SetRow(_scanReadout, 1); _content.Children.Add(_scanReadout);
+		Grid.SetRow(_error, 2); _content.Children.Add(_error);
+		Grid.SetRow(_approval, 3); _content.Children.Add(_approval);
 		_activity.Margin = new Thickness(4, 0, 4, 6);
 		_activity.IsVisible = false;
-		Grid.SetRow(_activity, 3); _content.Children.Add(_activity);
-		Grid.SetRow(_composerShell, 4); _content.Children.Add(_composerShell);
+		Grid.SetRow(_activity, 4); _content.Children.Add(_activity);
+		Grid.SetRow(_composerShell, 5); _content.Children.Add(_composerShell);
 		Content = _content;
 		AutomationProperties.SetLiveSetting(_bubblePanel, AutomationLiveSetting.Polite);
 		AutomationProperties.SetLiveSetting(_activity, AutomationLiveSetting.Polite);
@@ -597,6 +602,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		AutomationProperties.SetName(_activity, _activity.Text);
 		AutomationProperties.SetName(_composer, T("消息输入，回车发送，Escape 退出输入", "Message. Enter to send; Escape to leave the input"));
 		AutomationProperties.SetName(_send, T("发送消息", "Send message"));
+		RenderScan(_now(), forceStyle: true);
 	}
 
 	private void OnClock()
@@ -606,6 +612,7 @@ public sealed class QuickChatView : UserControl, IDisposable
 		_state.Tick(now);
 		UpdateMotion(now);
 		RenderApproval();
+		RenderScan(now);
 	}
 
 	private void UpdateMotion(DateTimeOffset now)

@@ -136,6 +136,20 @@
 	<SolidColorBrush x:Key="NoriChatMarkdownLinkBrush" Color="{StaticResource NoriChatMarkdownLinkColor}"/>
 	<Color x:Key="NoriChatMarkdownQuoteColor">#4A7C82</Color>
 	<SolidColorBrush x:Key="NoriChatMarkdownQuoteBrush" Color="{StaticResource NoriChatMarkdownQuoteColor}"/>
+	<Color x:Key="NoriScanAccentColor">#4EE0C8</Color>
+	<SolidColorBrush x:Key="NoriScanAccentBrush" Color="{StaticResource NoriScanAccentColor}"/>
+	<Color x:Key="NoriScanAccentEndColor">#9BE8C8</Color>
+	<SolidColorBrush x:Key="NoriScanAccentEndBrush" Color="{StaticResource NoriScanAccentEndColor}"/>
+	<Color x:Key="NoriScanBackgroundColor">#02070A</Color>
+	<SolidColorBrush x:Key="NoriScanBackgroundBrush" Color="{StaticResource NoriScanBackgroundColor}"/>
+	<Color x:Key="NoriScanSurfaceColor">#0A1F1C</Color>
+	<SolidColorBrush x:Key="NoriScanSurfaceBrush" Color="{StaticResource NoriScanSurfaceColor}"/>
+	<Color x:Key="NoriScanBorderColor">#2F7E72</Color>
+	<SolidColorBrush x:Key="NoriScanBorderBrush" Color="{StaticResource NoriScanBorderColor}"/>
+	<Color x:Key="NoriScanMutedColor">#1D7A68</Color>
+	<SolidColorBrush x:Key="NoriScanMutedBrush" Color="{StaticResource NoriScanMutedColor}"/>
+	<Color x:Key="NoriScanDangerColor">#FF5D6B</Color>
+	<SolidColorBrush x:Key="NoriScanDangerBrush" Color="{StaticResource NoriScanDangerColor}"/>
 	<Color x:Key="NoriTrafficCloseColor">#D9FF5F57</Color>
 	<SolidColorBrush x:Key="NoriTrafficCloseBrush" Color="{StaticResource NoriTrafficCloseColor}"/>
 	<Color x:Key="NoriTrafficCloseHoverColor">#80FF5F57</Color>

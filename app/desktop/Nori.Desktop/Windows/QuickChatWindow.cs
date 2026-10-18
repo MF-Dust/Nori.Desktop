@@ -7,6 +7,7 @@ using Nori.Core.Platform;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
 using Nori.Desktop.QuickChat;
+using Nori.Desktop.Vision;
 
 namespace Nori.Desktop.Windows;
 
@@ -15,6 +16,7 @@ public sealed class QuickChatWindow : Window
 {
 	private readonly NativeChatService _service;
 	private readonly AppServices _services;
+	private readonly WindowScanController _scan;
 	private readonly DispatcherTimer _inputTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
 	private bool? _through;
 	private bool _closed;
@@ -38,6 +40,8 @@ public sealed class QuickChatWindow : Window
 		Height = 74;
 		_service = new NativeChatService(services, this, NativeChatSurface.QuickChat);
 		Body = new QuickChatView(_service, () => PlatformServices.Current.PrefersReducedMotion);
+		_scan = new WindowScanController(services, this, () => Body.ScanEnglish, Body.ShowScanReadout, Body.SetScanPicking);
+		Body.AttachScan(services.ScanChip, _scan.ToggleAsync);
 		Content = new Border { Padding = new Thickness(QuickChatLayout.ShadowMargin), Child = Body };
 		Body.DesiredLayoutChanged += OnDesiredLayoutChanged;
 		PropertyChanged += OnWindowPropertyChanged;
@@ -55,7 +59,7 @@ public sealed class QuickChatWindow : Window
 		{
 			Body.SetHostVisible(IsVisible);
 			if (IsVisible) { EnsureTopmost(); _inputTimer.Start(); }
-			else { _inputTimer.Stop(); FocusManager?.Focus(null); }
+			else { _scan.Cancel(); _inputTimer.Stop(); FocusManager?.Focus(null); }
 		}
 		else if (args.Property == TopmostProperty && !Topmost) Topmost = true;
 	}
@@ -123,6 +127,7 @@ public sealed class QuickChatWindow : Window
 
 	internal async Task PrepareShutdownAsync()
 	{
+		_scan.Dispose();
 		try { await Body.PrepareShutdownAsync(); }
 		finally { DisposeSurface(); }
 	}
@@ -130,7 +135,7 @@ public sealed class QuickChatWindow : Window
 	private void DisposeSurface()
 	{
 		if (_closed) return;
-		_closed = true; _inputTimer.Stop(); _inputTimer.Tick -= UpdateInputRegion;
+		_closed = true; _scan.Dispose(); _inputTimer.Stop(); _inputTimer.Tick -= UpdateInputRegion;
 		Body.DesiredLayoutChanged -= OnDesiredLayoutChanged;
 		PropertyChanged -= OnWindowPropertyChanged;
 		Body.Dispose(); _service.Dispose();

@@ -112,6 +112,9 @@ public sealed class AppServices : IAsyncDisposable
 	public Nori.Core.Chat.Images.GeneratedImageStore ImageStore =>
 		_imageStore ??= new Nori.Core.Chat.Images.GeneratedImageStore(Paths.GeneratedImagesDirectory);
 
+	/// <summary>分析芯片的进程内余量和近期读数。</summary>
+	internal Vision.ScanChipState ScanChip { get; } = new();
+
 	/// <summary>Agent 聊天/MCP 操作取消注册表</summary>
 	public required Bridge.AgentOperationRegistry AgentOperations { get; init; }
 

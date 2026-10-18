@@ -104,6 +104,15 @@ export const COLORS = {
 	"chat-markdown-link": "#0369a1",
 	"chat-markdown-quote": "#4a7c82",
 
+	// 分析芯片 (web chip-overlay)
+	"scan-accent": "#4ee0c8",
+	"scan-accent-end": "#9be8c8",
+	"scan-background": "#02070a",
+	"scan-surface": "#0a1f1c",
+	"scan-border": "#2f7e72",
+	"scan-muted": "#1d7a68",
+	"scan-danger": "#ff5d6b",
+
 	// 交通灯: web 使用 85% 填充, 悬停改为同色外发光, 不显示符号
 	"traffic-close": "rgba(255, 95, 87, 0.85)",
 	"traffic-close-hover": "rgba(255, 95, 87, 0.5)",

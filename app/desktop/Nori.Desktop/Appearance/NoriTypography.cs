@@ -13,4 +13,6 @@ internal static class NoriTypography
 
 	internal static readonly FontFamily System = new($"{Embedded}Plus Jakarta Sans, {CjkFallback}");
 	internal static readonly FontFamily Conversation = new($"{Embedded}Nunito, {CjkFallback}");
+	// 扫描芯片沿用参考项目像素字形；只转换 WOFF2 容器，不改变字形。
+	internal static readonly FontFamily Scan = new($"{Embedded}Fusion Pixel 12px Prop zh_hans, {CjkFallback}");
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nori.Core.Voice.Audio;
 
@@ -34,6 +35,13 @@ internal sealed class AlsaNativeFactory : IAlsaFactory
 		{
 			throw MissingLibrary(exception);
 		}
+		catch (AudioDeviceException exception)
+		{
+			string guidance = playback
+				? "无法初始化 ALSA 默认输出设备。请在系统声音设置中选择可用的输出设备，并检查音频服务。"
+				: "无法初始化 ALSA 默认录音设备。请连接或启用麦克风，并在系统声音设置中选择可用的默认输入设备。";
+			throw new AudioDeviceException($"{guidance} 原因：{exception.Message}", exception);
+		}
 	}
 }
 
@@ -50,9 +58,12 @@ internal sealed class AlsaPcm : IAlsaPcm
 	private const int Interrupted = -4;
 	private const int Underrun = -32;
 	private const int Suspended = -86;
+	private const int StatePrepared = 2;
+	private const int StateUnderrun = 4;
 
 	private IntPtr _handle;
 	private readonly int _channels;
+	private long? _drainTailDeadline;
 
 	internal AlsaPcm(bool playback, int sampleRate, int channels)
 	{
@@ -114,6 +125,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 		if (_handle == IntPtr.Zero || interleaved.IsEmpty) return 0;
 		int frames = interleaved.Length / _channels;
 		if (frames <= 0) return 0;
+		_drainTailDeadline = null;
 		unsafe
 		{
 			fixed (short* samples = interleaved)
@@ -163,10 +175,20 @@ internal sealed class AlsaPcm : IAlsaPcm
 	public bool TryDrain()
 	{
 		if (_handle == IntPtr.Zero) return true;
-		int code = snd_pcm_drain(_handle);
-		if (code == TryAgain) return false;
-		Check(code, "等待 ALSA 播放完成");
-		return true;
+		// PipeWire 的 drain 回调可能忽略非阻塞模式，改为查询剩余帧。
+		int code = snd_pcm_delay(_handle, out nint remainingFrames);
+		if (code == Underrun) return true;
+		Check(code, "读取 ALSA 剩余播放帧");
+		if (remainingFrames <= 0) return true;
+		int state = snd_pcm_state(_handle);
+		if (state == StatePrepared)
+			Check(snd_pcm_start(_handle), "启动 ALSA 短音频播放");
+		if (state != StateUnderrun) return false;
+
+		// PipeWire 欠载后延迟读数停止更新，但最后一包可能仍在下游播放；按报告的帧数等完尾音。
+		long now = Stopwatch.GetTimestamp();
+		_drainTailDeadline ??= now + (long)Math.Ceiling((double)remainingFrames / Format.SampleRate * Stopwatch.Frequency);
+		return now >= _drainTailDeadline.Value;
 	}
 
 	public void Dispose()
@@ -231,7 +253,13 @@ internal sealed class AlsaPcm : IAlsaPcm
 	private static extern int snd_pcm_drop(IntPtr pcm);
 
 	[DllImport(Library)]
-	private static extern int snd_pcm_drain(IntPtr pcm);
+	private static extern int snd_pcm_delay(IntPtr pcm, out nint delay);
+
+	[DllImport(Library)]
+	private static extern int snd_pcm_state(IntPtr pcm);
+
+	[DllImport(Library)]
+	private static extern int snd_pcm_start(IntPtr pcm);
 
 	[DllImport(Library)]
 	private static extern int snd_pcm_wait(IntPtr pcm, int timeout);

@@ -128,6 +128,13 @@ jobs:
         if: matrix.name != 'windows'
         run: dotnet test Nori.slnx --configuration Release --no-build --no-restore -m:1
 
+      - name: Linux ALSA 原生接口冒烟（null PCM）
+        if: matrix.name == 'linux'
+        env:
+          NORI_TEST_ALSA: "1"
+          ALSA_CONFIG_PATH: ${{ github.workspace }}/app/desktop/Nori.Desktop.Tests/Fixtures/alsa-null.conf
+        run: dotnet test Nori.Desktop.Tests/Nori.Desktop.Tests.csproj --configuration Release --no-build --no-restore -m:1 --filter 'FullyQualifiedName~AlsaNativeDeviceTests'
+
       # Windows 的其余三个测试项目由覆盖率步骤完整执行；启动器没有覆盖率收集器。
       - name: 后端门 · Windows 启动器单元测试
         if: matrix.name == 'windows'

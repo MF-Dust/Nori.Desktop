@@ -88,7 +88,6 @@ internal sealed class AlsaAudioDevice : IAudioDevice
 				if (_pcm is null || _stopped || cancellationToken.IsCancellationRequested) return;
 				if (_pcm.TryDrain()) return;
 			}
-			// snd_pcm_wait 在收尾状态可能立即返回；锁外短等，给停止和取消留出入口。
 			Thread.Sleep(10);
 		}
 	}

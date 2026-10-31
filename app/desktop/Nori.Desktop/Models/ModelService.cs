@@ -11,7 +11,7 @@ public sealed class ModelService : IDisposable
 {
 	private static readonly FrozenSet<string> AllowedCommands = new[]
 	{
-		"model_select", "model_import_local", "model_get_meta",
+		"model_select", "model_import_local", "model_download_remote", "model_get_meta",
 		"model_set_display", "model_set_behavior", "model_set_interactions",
 	}.ToFrozenSet(StringComparer.Ordinal);
 
@@ -152,7 +152,7 @@ public sealed class ModelService : IDisposable
 	}
 
 	internal static bool IsStateChangingCommand(string command) => command is
-		"model_select" or "model_import_local" or "model_set_display" or "model_set_behavior" or "model_set_interactions";
+		"model_select" or "model_import_local" or "model_download_remote" or "model_set_display" or "model_set_behavior" or "model_set_interactions";
 
 	internal static bool IsBackgroundCommand(string command) => command is "model_get_meta";
 

@@ -6,7 +6,8 @@ namespace Nori.Core.Resources;
 /// <summary>
 /// 本地 Live2D 资源管理.
 ///
-/// 负责资源的本地检查、列表、删除与从本地 ZIP/目录导入, 不包含远程下载逻辑.
+/// 负责资源的本地检查、列表、删除与从本地 ZIP/目录导入. 远程获取由
+/// <see cref="RemoteModelInstaller"/> 下载到同卷暂存目录后复用本地目录导入.
 /// 导入始终经过同卷 staging、完整校验与原子交换.
 /// </summary>
 public sealed class ResourceManager
@@ -174,11 +175,22 @@ public sealed class ResourceManager
 	}
 
 	/// <summary>创建与目标目录同卷、且不属于 live2d 枚举范围的 staging 根.</summary>
-	private string CreateStagingRoot()
+	private string CreateStagingRoot() => CreateScratchRoot(".nori-import-");
+
+	/// <summary>
+	/// 创建远程下载暂存目录. 与资源目标同卷, 位于 live2d 枚举范围之外; 调用方负责用
+	/// <see cref="DeleteScratchRoot"/> 清理.
+	/// </summary>
+	internal string CreateDownloadRoot() => CreateScratchRoot(".nori-download-");
+
+	/// <summary>尽力删除暂存目录, 清理失败不影响已完成的导入结果.</summary>
+	internal static void DeleteScratchRoot(string path) => TryDeleteDirectory(path);
+
+	private string CreateScratchRoot(string prefix)
 	{
 		Directory.CreateDirectory(ResourcesRoot);
 		ResourcePathSafety.EnsureNoReparsePointsAlongPath(ResourcesRoot, "资源根目录包含符号链接或 reparse point");
-		string root = Path.Combine(ResourcesRoot, $".nori-import-{Guid.NewGuid():N}");
+		string root = Path.Combine(ResourcesRoot, $"{prefix}{Guid.NewGuid():N}");
 		Directory.CreateDirectory(root);
 		ResourcePathSafety.EnsureNoReparsePointsAlongPath(root, "staging 目录包含符号链接或 reparse point");
 		return root;

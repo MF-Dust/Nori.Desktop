@@ -67,12 +67,18 @@ public static class Model3ReferenceValidator
 	/// <summary>
 	/// 解析并校验一个相对于 model3.json 所在目录的引用, 返回已 containment 校验的绝对路径.
 	/// </summary>
-	public static string ResolveReferencePath(string model3Path, string reference)
+	public static string ResolveReferencePath(string model3Path, string reference) =>
+		ResolveReferencePath(model3Path, reference, requireFile: true);
+
+	/// <summary>
+	/// 同上; <paramref name="requireFile"/> 为 false 时允许目标尚不存在 (远程下载前预检).
+	/// </summary>
+	internal static string ResolveReferencePath(string model3Path, string reference, bool requireFile)
 	{
 		string canonicalModelPath = ResourcePathSafety.FullPath(model3Path);
 		string referenceDir = Path.GetDirectoryName(canonicalModelPath)
 			?? throw new ResourceException($"model3.json 没有父目录: {model3Path}");
-		return ResolveReferencePath(referenceDir, canonicalModelPath, reference, "模型引用");
+		return ResolveReferencePath(referenceDir, canonicalModelPath, reference, "模型引用", requireFile);
 	}
 
 	private static void ValidateTextures(

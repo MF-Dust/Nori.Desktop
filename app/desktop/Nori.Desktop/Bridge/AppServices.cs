@@ -76,6 +76,28 @@ public sealed class AppServices : IAsyncDisposable
 		set => _publicHttp = value;
 	}
 
+	private RemoteModelInstaller? _remoteModels;
+
+	/// <summary>从 static.nori.mom 获取内置 Live2D 模型。走公网客户端；安全模式下拒绝联网。</summary>
+	public RemoteModelInstaller RemoteModels => _remoteModels ??= new RemoteModelInstaller(PublicHttp, Resources, () => !SafeMode);
+
+	/// <summary>
+	/// 在线安装模型并完成宿主侧收尾：当前形象被替换时重新加载伴侣，并让快照失效。
+	/// 启动流程、首次运行向导与模型设置共用这一入口。
+	/// </summary>
+	public async Task<string> InstallRemoteModelAsync(
+		string modelId,
+		IProgress<RemoteModelProgress>? progress,
+		CancellationToken cancellationToken)
+	{
+		string installed = await RemoteModels.InstallAsync(modelId, progress, cancellationToken).ConfigureAwait(false);
+		Logger.Write(Nori.Core.Logging.LogSource.Backend, "info", $"已从 {RemoteModels.Origin} 安装 Live2D 模型: {installed}");
+		if (!SafeMode && PetRuntime is { CurrentModel: not null } pet && pet.CurrentModelId == installed)
+			pet.RequestModelLoad(installed);
+		Runtime?.InvalidateSnapshot();
+		return installed;
+	}
+
 	private Nori.Core.Chat.Catalog.ModelsDevCatalog? _modelCatalog;
 
 	/// <summary>

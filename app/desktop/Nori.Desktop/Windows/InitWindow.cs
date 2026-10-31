@@ -11,8 +11,10 @@ using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Nori.Core.Configuration;
+using Nori.Core.Live2D;
 using Nori.Core.Logging;
 using Nori.Core.Platform;
+using Nori.Core.Resources;
 using Nori.Desktop.Account;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
@@ -137,9 +139,14 @@ public sealed class InitWindow : Window
 		try
 		{
 			if (_services.Runtime is not { } runtime) throw new InvalidOperationException("运行时尚未就绪");
+			await EnsureSelectedModelAsync();
 			// 收尾必须排在打开主界面**之前**：主界面显示后本窗口即被隐藏，排在其后不会被渲染。
 			await _view.PlayHandoffAsync();
 			await runtime.EnterMainFromInitAsync();
+		}
+		catch (OperationCanceledException) when (_services.ShutdownToken.IsCancellationRequested)
+		{
+			// 宿主正在退出，不再进入主界面。
 		}
 		catch (Exception failure)
 		{
@@ -149,6 +156,38 @@ public sealed class InitWindow : Window
 				$"初始化进入主界面失败：{failure.GetType().Name}");
 			_view.ShowTimeout(_view.EnterFailedText);
 		}
+	}
+
+	/// <summary>
+	/// 所选形象未安装时从 static.nori.mom 获取。
+	///
+	/// 失败只记日志并照常进入主界面（伴侣不召出），用户可在模型设置里重试或导入本地模型；
+	/// 安全模式不联网，直接跳过。
+	/// </summary>
+	private async Task EnsureSelectedModelAsync()
+	{
+		if (_services.SafeMode) return;
+		string? modelId = SupportedModelIds.Normalize(_services.Config.GetStringOr(ConfigStore.KeySelectedModel, ""));
+		if (modelId is null) return;
+		bool installed = await Task.Run(() =>
+		{
+			try { return _services.Resources.IsInstalled(ResourceType.Live2D, modelId); }
+			catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ResourceException) { return false; }
+		});
+		if (installed) return;
+
+		_view.ShowDownload(0, 0);
+		try
+		{
+			Progress<RemoteModelProgress> progress = new(report => _view.ShowDownload(report.CompletedFiles, report.TotalFiles));
+			await _services.InstallRemoteModelAsync(modelId, progress, _services.ShutdownToken);
+		}
+		catch (OperationCanceledException) when (_services.ShutdownToken.IsCancellationRequested) { throw; }
+		catch (Exception failure)
+		{
+			_services.Logger.Write(LogSource.Backend, "warn", $"启动时在线获取模型失败 [{modelId}]", exception: failure);
+		}
+		finally { _view.ClearDownload(); }
 	}
 
 	internal bool AnimationRunningForTests => _view.AnimationRunning;
@@ -263,6 +302,25 @@ internal sealed class InitView : Panel
 		? "Failed to open the main window, please retry"
 		: "打开主界面失败, 请重试";
 
+	private (int Completed, int Total)? _download;
+
+	/// <summary>状态行切换为下载进度。总数未知时只显示「正在下载」。</summary>
+	internal void ShowDownload(int completed, int total)
+	{
+		_download = (completed, total);
+		ApplyText();
+	}
+
+	/// <summary>下载结束，状态行回到初始化文案。</summary>
+	internal void ClearDownload()
+	{
+		_download = null;
+		ApplyText();
+	}
+
+	/// <summary>状态行文本，供测试断言。</summary>
+	internal string StatusText => _status.Text ?? "";
+
 	internal void SetLanguage(bool english)
 	{
 		if (_english == english) return;
@@ -279,7 +337,10 @@ internal sealed class InitView : Panel
 	/// </summary>
 	private void ApplyText()
 	{
-		_status.Text = _english ? "Initializing Live2D model..." : "正在初始化 Live2D 模型...";
+		string progress = _download is { Total: > 0 } download ? $" {download.Completed}/{download.Total}" : "";
+		_status.Text = _download is not null
+			? (_english ? "Downloading Live2D model..." : "正在下载 Live2D 模型...") + progress
+			: _english ? "Initializing Live2D model..." : "正在初始化 Live2D 模型...";
 		_timeoutTitle.Text = _english ? "Initialization timed out" : "初始化等待超时";
 		_timeoutBody.Text = _english
 			? "No initialization signal from the host. You can open the main window directly."

@@ -44,6 +44,26 @@ public sealed partial class BridgeCommands
 		return await ImportLocalResourceAsync(source, args, cancellationToken);
 	}
 
+	private async Task<object?> ModelDownloadRemoteAsync(
+		IBridgeSource source,
+		JsonElement args,
+		CancellationToken cancellationToken)
+	{
+		RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () => (object?)true);
+		if (source is INativeModelSource) await RequireVisibleMainVoidAsync(source);
+		string modelId = SupportedModelIds.Normalize(Str(args, "modelId"))
+			?? throw new InvalidOperationException("不支持的 Live2D 模型");
+		try
+		{
+			return await _services.InstallRemoteModelAsync(modelId, null, cancellationToken);
+		}
+		catch (ResourceException exception)
+		{
+			_services.Logger.Write(LogSource.Backend, "warn", $"在线获取模型失败 [{modelId}]", exception: exception);
+			throw new InvalidOperationException(exception.Message, exception);
+		}
+	}
+
 	/// <summary>读取已保存的模型表情选择，优先模型键并兼容旧全局键。</summary>
 	private IReadOnlyList<string> ReadSelectedExpressions(string modelId) =>
 		ReadExpressionConfig($"l2d_expression_{modelId}") ?? ReadExpressionConfig("l2d_expression") ?? [];

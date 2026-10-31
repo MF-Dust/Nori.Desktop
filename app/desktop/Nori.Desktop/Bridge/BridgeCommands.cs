@@ -334,6 +334,12 @@ public sealed partial class BridgeCommands
 		// invoke("model_import_local", {resourceType?: "live2d"})
 		"model_import_local" => await ModelImportLocalAsync(source, args, cancellationToken),
 
+		/// <summary>
+		/// 从 static.nori.mom 下载并安装内置 Live2D 模型，已安装时覆盖为远端版本。
+		/// 前端调用：invoke("model_download_remote", {modelId: "arg-nori"}) → "arg-nori"
+		/// </summary>
+		"model_download_remote" => await ModelDownloadRemoteAsync(source, args, cancellationToken),
+
 		// invoke("indextts_pick_template", {}) — 选择 IndexTTS 音频模板文件并写入配置
 		"indextts_pick_template" => await IndexTtsPickTemplateAsync(source, args, cancellationToken),
 

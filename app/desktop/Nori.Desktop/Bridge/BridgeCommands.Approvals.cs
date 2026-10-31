@@ -26,6 +26,7 @@ public sealed partial class BridgeCommands
 			or "cloud_backup"
 			or "cloud_restore"
 			or "updater_check"
+			or "model_download_remote"
 			or "updater_install"
 			or "tts_test"
 			or "stt_start"

@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using Nori.Core.Configuration;
 using Nori.Core.FirstRun;
 using Nori.Core.Live2D;
@@ -47,6 +48,9 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 
 	private AiDraft _draft = new();
 	private string _importError = "";
+	private string _downloading = "";
+	private string _downloadProgress = "";
+	private bool _autoDownloadTried;
 	private bool _telemetryInitialized;
 
 	/// <summary>选择文件或导入期间禁止重复操作和离开当前步骤。</summary>
@@ -161,27 +165,43 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		if (!installed.Contains(SelectedModel))
 			SelectedModel = installed.Contains(configured) ? configured : installed.FirstOrDefault() ?? "";
 
+		bool online = !_services.SafeMode;
+		// 一个都没装时自动在线获取默认形象，只尝试一次；失败后由用户点选重试或改用本地导入。
+		// 推到下一帧再开始 —— 在构建过程中回调重建会递归。
+		if (installed.Count == 0 && online && !_autoDownloadTried && !IsImporting)
+		{
+			_autoDownloadTried = true;
+			Dispatcher.UIThread.Post(() => _ = DownloadModelAsync(ConfigStore.DefaultModel, english));
+		}
+
 		foreach (string id in catalog)
 		{
 			bool ready = installed.Contains(id);
 			string captured = id;
 			list.Children.Add(Choice(
 				id,
-				ready ? english ? "Installed" : "已安装" : english ? "Not installed" : "未安装",
+				ready ? english ? "Installed" : "已安装"
+				: _downloading == id ? english ? "Downloading..." : "正在下载..."
+				: online ? english ? "Not installed · click to download" : "未安装 · 点击在线获取"
+				: english ? "Not installed" : "未安装",
 				id == SelectedModel,
-				ready && !IsImporting
+				IsImporting ? null
+				: ready
 					? () =>
 					{
 						SelectedModel = captured;
 						_importError = "";
 						_onRebuild();
 					}
-					: null));
+				: online ? () => _ = DownloadModelAsync(captured, english)
+				: null));
 		}
 
 		// 一个都没装就挡住：带着空配置进主界面，伴侣窗口会是一片空白。
 		// 写 Gate 而不是回调 —— 构建过程中回调会递归。
-		Gate = IsImporting
+		Gate = _downloading.Length > 0
+			? (english ? $"Downloading {_downloading} from static.nori.mom..." : $"正在从 static.nori.mom 下载 {_downloading}...") + _downloadProgress
+			: IsImporting
 			? english ? "Importing appearance..." : "正在导入形象..."
 			: _importError.Length > 0 ? _importError
 			: SelectedModel.Length > 0 ? ""
@@ -211,9 +231,44 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		return Stage(
 			Heading(english ? "Choose an appearance" : "选择形象", NoriMetrics.FontXl),
 			Muted(english
-				? "Import a local ZIP or folder, then choose an installed appearance."
-				: "导入本地 ZIP 或文件夹，再选择已安装的形象。", 340),
+				? "Download from static.nori.mom or import a local ZIP or folder, then choose an installed appearance."
+				: "从 static.nori.mom 在线获取，或导入本地 ZIP 或文件夹，再选择已安装的形象。", 340),
 			imports, list);
+	}
+
+	/// <summary>
+	/// 从 static.nori.mom 获取形象并选中。与本地导入共用 <see cref="IsImporting"/>，期间禁止离开当前步骤。
+	/// </summary>
+	internal async Task DownloadModelAsync(string modelId, bool english)
+	{
+		if (IsImporting || lifetimeToken.IsCancellationRequested || _services.SafeMode) return;
+		IsImporting = true;
+		_importError = "";
+		_downloading = modelId;
+		_downloadProgress = "";
+		_onRebuild();
+		try
+		{
+			Progress<RemoteModelProgress> progress = new(report =>
+			{
+				if (_downloading.Length == 0) return;
+				_downloadProgress = $" {report.CompletedFiles}/{report.TotalFiles}";
+				_onRebuild();
+			});
+			SelectedModel = await _services.InstallRemoteModelAsync(modelId, progress, lifetimeToken);
+		}
+		catch (OperationCanceledException) when (lifetimeToken.IsCancellationRequested) { }
+		catch (Exception failure)
+		{
+			_importError = (english ? "Download failed, retry or import locally: " : "在线获取失败，可重试或导入本地模型：") + failure.Message;
+			_services.Logger.Write(LogSource.Backend, "warn", $"首次运行在线获取模型失败 [{modelId}]", exception: failure);
+		}
+		finally
+		{
+			IsImporting = false;
+			_downloading = "";
+			_onRebuild();
+		}
 	}
 
 	/// <summary>直接复用资源服务的校验与原子导入，不借用其他窗口的桥接身份。</summary>

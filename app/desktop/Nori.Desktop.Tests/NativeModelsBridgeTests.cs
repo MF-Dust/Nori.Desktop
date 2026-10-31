@@ -55,7 +55,7 @@ public partial class BridgeCommandsTests
 	{
 		string[] allowed =
 		[
-			"model_get_meta", "model_import_local", "model_select",
+			"model_download_remote", "model_get_meta", "model_import_local", "model_select",
 			"model_set_behavior", "model_set_display", "model_set_interactions",
 		];
 		Assert.Equal(allowed, ModelService.Commands.Order(StringComparer.Ordinal));

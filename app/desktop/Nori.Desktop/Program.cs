@@ -22,6 +22,8 @@ internal static class Program
 
 	internal static bool ConsumePendingActivation() => Interlocked.Exchange(ref _activationPending, 0) == 1;
 
+	internal static void QueueActivation() => Interlocked.Exchange(ref _activationPending, 1);
+
 	internal static string RuntimeRid()
 	{
 		string rid = RuntimeInformation.RuntimeIdentifier;
@@ -70,10 +72,10 @@ internal static class Program
 	[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = CharSet.Unicode)]
 	private static extern int MessageBox(nint hWnd, string text, string caption, uint type);
 
-		private static void ActivateFirstInstance()
+	private static void ActivateFirstInstance()
 	{
 		if (Application.Current is App app) app.ActivateMainWindow();
-		else Interlocked.Exchange(ref _activationPending, 1);
+		else QueueActivation();
 	}
 
 	private static string? SafeEarlyLogDirectory()

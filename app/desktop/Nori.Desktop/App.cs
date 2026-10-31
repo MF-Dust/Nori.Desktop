@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
+using Avalonia.Threading;
 using Nori.Desktop.Appearance;
 using Nori.Desktop.Diagnostics;
 
@@ -52,5 +53,14 @@ public sealed class App : Application
 		catch (Exception exception) { CrashReporter.Report(exception, critical: true); }
 	}
 
-	internal void ActivateMainWindow() => _bootstrapper?.ActivateMainWindow();
+	internal void ActivateMainWindow()
+	{
+		if (!Dispatcher.UIThread.CheckAccess())
+		{
+			Dispatcher.UIThread.Post(ActivateMainWindow);
+			return;
+		}
+		if (_bootstrapper is { } bootstrapper) bootstrapper.ActivateMainWindow();
+		else Program.QueueActivation();
+	}
 }

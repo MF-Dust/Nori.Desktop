@@ -45,6 +45,8 @@ internal sealed class AlsaPcm : IAlsaPcm
 	private const int StreamCapture = 1;
 	private const int AccessInterleaved = 3;
 	private const int FormatS16Le = 2;
+	private const int NonBlocking = 1;
+	private const int TryAgain = -11;
 
 	private IntPtr _handle;
 	private readonly int _channels;
@@ -53,7 +55,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 	{
 		if (sampleRate < 1) throw new AudioDeviceException("采样率无效");
 		if (channels < 1) throw new AudioDeviceException("声道数无效");
-		int opened = snd_pcm_open(out _handle, "default", playback ? StreamPlayback : StreamCapture, 0);
+		int opened = snd_pcm_open(out _handle, "default", playback ? StreamPlayback : StreamCapture, NonBlocking);
 		if (opened < 0 || _handle == IntPtr.Zero)
 			throw new AudioDeviceException($"打不开 ALSA 设备 default：{ErrorText(opened)}");
 
@@ -114,6 +116,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 			fixed (short* samples = interleaved)
 			{
 				nint written = snd_pcm_writei(_handle, (IntPtr) samples, (nuint) frames);
+				if (written == TryAgain) return 0;
 				if (written < 0)
 				{
 					int recovered = snd_pcm_recover(_handle, (int) written, 1);
@@ -136,6 +139,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 			fixed (short* samples = interleaved)
 			{
 				nint read = snd_pcm_readi(_handle, (IntPtr) samples, (nuint) frames);
+				if (read == TryAgain) return 0;
 				if (read < 0)
 				{
 					int recovered = snd_pcm_recover(_handle, (int) read, 1);
@@ -153,9 +157,13 @@ internal sealed class AlsaPcm : IAlsaPcm
 		if (_handle != IntPtr.Zero) snd_pcm_drop(_handle);
 	}
 
-	public void Drain()
+	public bool TryDrain()
 	{
-		if (_handle != IntPtr.Zero) snd_pcm_drain(_handle);
+		if (_handle == IntPtr.Zero) return true;
+		int code = snd_pcm_drain(_handle);
+		if (code == TryAgain) return false;
+		Check(code, "等待 ALSA 播放完成");
+		return true;
 	}
 
 	public void Dispose()

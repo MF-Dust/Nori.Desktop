@@ -18,7 +18,8 @@ internal interface IAlsaPcm : IDisposable
 
 	void Drop();
 
-	void Drain();
+	/// <summary>非阻塞地推进播放收尾；缓冲尚未播完时返回 false。</summary>
+	bool TryDrain();
 }
 
 /// <summary>按一次播放或录音打开 ALSA 设备。</summary>

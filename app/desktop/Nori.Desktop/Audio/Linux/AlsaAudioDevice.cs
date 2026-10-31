@@ -81,10 +81,15 @@ internal sealed class AlsaAudioDevice : IAudioDevice
 
 	public void Drain(CancellationToken cancellationToken)
 	{
-		lock (_gate)
+		while (!_stopped && !cancellationToken.IsCancellationRequested)
 		{
-			if (_pcm is null || _stopped || cancellationToken.IsCancellationRequested) return;
-			_pcm.Drain();
+			lock (_gate)
+			{
+				if (_pcm is null || _stopped || cancellationToken.IsCancellationRequested) return;
+				if (_pcm.TryDrain()) return;
+			}
+			// snd_pcm_wait 在收尾状态可能立即返回；锁外短等，给停止和取消留出入口。
+			Thread.Sleep(10);
 		}
 	}
 

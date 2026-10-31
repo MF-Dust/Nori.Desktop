@@ -35,6 +35,80 @@ public sealed class AlsaAudioDeviceTests
 		Assert.True(pcm.Dropped);
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task 播放收尾可由停止或取消打断(bool cancel)
+	{
+		FakePcm pcm = new(new AudioFormat(48_000, 1)) { DrainPendingAttempts = int.MaxValue };
+		using AlsaAudioDevice device = new(new FakeFactory(pcm));
+		using CancellationTokenSource cancellation = new();
+		device.Open(48_000, 1);
+		Task pending = Task.Run(() => device.Drain(cancellation.Token));
+		await WaitUntilAsync(() => pcm.DrainAttempts > 0);
+
+		if (cancel) cancellation.Cancel();
+		else await Task.Run(device.Stop).WaitAsync(TimeSpan.FromSeconds(2));
+
+		await pending.WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.Equal(!cancel, pcm.Dropped);
+	}
+
+	[Fact]
+	public void 播放收尾等待剩余缓冲且不丢弃样本()
+	{
+		FakePcm pcm = new(new AudioFormat(48_000, 1)) { DrainPendingAttempts = 2 };
+		using AlsaAudioDevice device = new(new FakeFactory(pcm));
+		device.Open(48_000, 1);
+
+		device.Drain(CancellationToken.None);
+
+		Assert.Equal(3, pcm.DrainAttempts);
+		Assert.False(pcm.Dropped);
+	}
+
+	[Fact]
+	public void 播放收尾失败不会伪装成完成()
+	{
+		FakePcm pcm = new(new AudioFormat(48_000, 1)) { DrainError = true };
+		using AlsaAudioDevice device = new(new FakeFactory(pcm));
+		device.Open(48_000, 1);
+
+		Assert.Throws<AudioDeviceException>(() => device.Drain(CancellationToken.None));
+	}
+
+	[Fact]
+	public void 输出重试暂不可写并接续部分写入()
+	{
+		FakePcm pcm = new(new AudioFormat(48_000, 2)) { WriteRetries = 1, MaxWriteFrames = 1 };
+		using AlsaAudioDevice device = new(new FakeFactory(pcm));
+		device.Open(48_000, 2);
+
+		Assert.Equal(4, device.Write([1f, -1f, 0.5f, -0.5f], CancellationToken.None));
+		Assert.Equal(new short[] { 32767, -32767, 16384, -16384 }, pcm.Written);
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task 输入输出等待可被取消(bool capture)
+	{
+		FakePcm pcm = new(new AudioFormat(48_000, 1)) { Ready = false };
+		using AlsaAudioDevice? output = capture ? null : new(new FakeFactory(pcm));
+		using AlsaCaptureDevice? input = capture ? new(new FakeFactory(pcm)) : null;
+		using CancellationTokenSource cancellation = new();
+		if (capture) input!.Open();
+		else output!.Open(48_000, 1);
+		Task<int> pending = Task.Run(() => capture
+			? input!.Read(new float[2], cancellation.Token)
+			: output!.Write([1f, -1f], cancellation.Token));
+		await WaitUntilAsync(() => pcm.Waits > 0);
+
+		cancellation.Cancel();
+
+		Assert.Equal(0, await pending.WaitAsync(TimeSpan.FromSeconds(2)));
+	}
+
 	[Fact]
 	public void 输入把十六位样本还原成浮点()
 	{
@@ -68,7 +142,8 @@ public sealed class AlsaAudioDeviceTests
 		output.Open(48_000, 1);
 		Assert.Throws<AudioDeviceException>(() => output.Write([1f], CancellationToken.None));
 
-		using AlsaCaptureDevice input = new(new FakeFactory(pcm));
+		FakePcm inputPcm = new(new AudioFormat(48_000, 1)) { WaitError = true };
+		using AlsaCaptureDevice input = new(new FakeFactory(inputPcm));
 		input.Open();
 		Assert.Throws<AudioDeviceException>(() => input.Read(new float[1], CancellationToken.None));
 	}
@@ -116,6 +191,12 @@ public sealed class AlsaAudioDeviceTests
 		public bool WaitError { get; set; }
 		public bool Dropped { get; private set; }
 		public int Waits { get; private set; }
+		public int WriteRetries { get; set; }
+		public int MaxWriteFrames { get; set; } = int.MaxValue;
+		public int DrainPendingAttempts { get; set; }
+		public bool DrainError { get; set; }
+		private int _drainAttempts;
+		public int DrainAttempts => Volatile.Read(ref _drainAttempts);
 
 		public int Wait(int milliseconds)
 		{
@@ -129,8 +210,14 @@ public sealed class AlsaAudioDeviceTests
 
 		public int Write(ReadOnlySpan<short> interleaved)
 		{
-			Written.AddRange(interleaved.ToArray());
-			return interleaved.Length / Math.Max(1, Format.Channels);
+			if (WriteRetries > 0)
+			{
+				WriteRetries--;
+				return 0;
+			}
+			int frames = Math.Min(interleaved.Length / Format.Channels, MaxWriteFrames);
+			Written.AddRange(interleaved[..(frames * Format.Channels)].ToArray());
+			return frames;
 		}
 
 		public int Read(Span<short> interleaved)
@@ -147,7 +234,11 @@ public sealed class AlsaAudioDeviceTests
 			_stopped.Set();
 		}
 
-		public void Drain() { }
+		public bool TryDrain()
+		{
+			if (DrainError) throw new AudioDeviceException("等待 ALSA 播放完成失败");
+			return Interlocked.Increment(ref _drainAttempts) > DrainPendingAttempts;
+		}
 
 		public void Dispose() => _stopped.Dispose();
 	}

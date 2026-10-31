@@ -15,6 +15,8 @@ namespace Nori.Desktop;
 internal static class Program
 {
 	private static int _activationPending;
+	private static readonly Lock ActivationFailureGate = new();
+	private static (string Message, Exception Exception)? _pendingActivationFailure;
 
 	internal static StartupOptions? Options { get; private set; }
 	internal static AppStoragePaths? StoragePaths { get; private set; }
@@ -78,6 +80,30 @@ internal static class Program
 		else QueueActivation();
 	}
 
+	/// <summary>唤起通道失败不阻断启动；日志尚未建立时先暂存，建立后补记。</summary>
+	private static void ReportActivationFailure(string message, Exception exception)
+	{
+		lock (ActivationFailureGate)
+		{
+			if (Logger is { } logger) WriteActivationFailure(logger, message, exception);
+			else _pendingActivationFailure = (message, exception);
+		}
+	}
+
+	private static void AttachActivationFailureLog(Nori.Core.Logging.FileLogger logger)
+	{
+		lock (ActivationFailureGate)
+		{
+			Logger = logger;
+			if (_pendingActivationFailure is not { } pending) return;
+			_pendingActivationFailure = null;
+			WriteActivationFailure(logger, pending.Message, pending.Exception);
+		}
+	}
+
+	private static void WriteActivationFailure(Nori.Core.Logging.FileLogger logger, string message, Exception exception) =>
+		logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", message, "Lifecycle", "app.activation_unavailable", exception);
+
 	private static string? SafeEarlyLogDirectory()
 	{
 		if (StoragePaths is not { } paths || !File.Exists(paths.MarkerPath)) return null;
@@ -131,7 +157,7 @@ internal static class Program
 		CrashReporter.RegisterDomainHandler();
 		// 冒烟使用隔离 profile，不能被用户正在运行的正式实例互斥量拦截。
 		using SingleInstanceGuard? singleInstance = smokeTest is null
-			? SingleInstanceGuard.TryAcquire(ActivateFirstInstance, signalExisting: !safeMode)
+			? SingleInstanceGuard.TryAcquire(ActivateFirstInstance, signalExisting: !safeMode, onFailure: ReportActivationFailure)
 			: null;
 		if (smokeTest is null && singleInstance is null)
 		{
@@ -147,8 +173,9 @@ internal static class Program
 			AppStoragePaths paths = StoragePaths ?? throw new InvalidOperationException("存储路径尚未初始化");
 			StartupSplash.Report(15, "正在准备本地存储");
 			StorageBootstrapper.Bootstrap(paths, ProductVersion.Current, RuntimeRid());
-			Logger = new Nori.Core.Logging.FileLogger(paths.LogsDirectory);
-			CrashReporter.AttachLogger(Logger);
+			Nori.Core.Logging.FileLogger logger = new(paths.LogsDirectory);
+			AttachActivationFailureLog(logger);
+			CrashReporter.AttachLogger(logger);
 			BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 		}
 		catch (Exception exception)

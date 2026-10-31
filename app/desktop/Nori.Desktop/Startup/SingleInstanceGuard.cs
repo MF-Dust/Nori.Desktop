@@ -1,5 +1,7 @@
 using System.IO.Pipes;
+using System.Net.Sockets;
 using System.Runtime.Versioning;
+using System.Text;
 
 namespace Nori.Desktop.Startup;
 
@@ -8,6 +10,7 @@ namespace Nori.Desktop.Startup;
 ///
 /// 三平台都使用宿主命名 Mutex 保护启动与迁移；Windows 用命名事件，
 /// Linux/macOS 用仅同用户可连接的命名管道唤醒第一个实例的 main 窗口。
+/// 唤起通道只是便利功能：建立或监听失败时保留互斥并记录原因，不阻断启动。
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3453", Justification = "实例必须由 TryAcquire 工厂创建以保证互斥体所有权状态一致。")]
 internal sealed class SingleInstanceGuard : IDisposable
@@ -15,14 +18,17 @@ internal sealed class SingleInstanceGuard : IDisposable
 	private const string WindowsMutexName = @"Local\NoriDesktopPet.SingleInstance";
 	private const string PortableMutexName = "NoriDesktopPet.SingleInstance";
 	private const string ActivationEventName = @"Local\NoriDesktopPet.Activate";
-	private const string PortableActivationPipeName = "NoriDesktopPet.Activate";
+	private const string PortableActivationSocketName = "NoriDesktopPet.Activate";
+	private const int MaxUserNameLength = 64;
 
 	private readonly Mutex? _mutex;
 	private readonly EventWaitHandle? _activationEvent;
 	private readonly NamedPipeServerStream? _activationPipe;
 	private readonly CancellationTokenSource _listenerCts = new();
 	private readonly Action _onActivate;
+	private readonly Action<string, Exception>? _onFailure;
 	private readonly Thread? _listener;
+	private volatile bool _activationFailed;
 	private bool _ownsMutex;
 	private int _disposed;
 
@@ -31,13 +37,15 @@ internal sealed class SingleInstanceGuard : IDisposable
 		EventWaitHandle? activationEvent,
 		bool ownsMutex,
 		Action onActivate,
-		NamedPipeServerStream? activationPipe = null)
+		NamedPipeServerStream? activationPipe,
+		Action<string, Exception>? onFailure)
 	{
 		_mutex = mutex;
 		_activationEvent = activationEvent;
 		_activationPipe = activationPipe;
 		_ownsMutex = ownsMutex;
 		_onActivate = onActivate;
+		_onFailure = onFailure;
 
 		if (_activationEvent is not null || _activationPipe is not null)
 		{
@@ -50,19 +58,30 @@ internal sealed class SingleInstanceGuard : IDisposable
 		}
 	}
 
+	/// <summary>唤起通道已建立且监听仍在运行。</summary>
+	internal bool ActivationAvailable => !_activationFailed && (_activationEvent is not null || _activationPipe is not null);
+
 	/// <summary>
 	/// 尝试成为第一个实例。返回 null 表示已有实例；按 signalExisting 决定是否尝试唤起。
 	/// </summary>
-	public static SingleInstanceGuard? TryAcquire(Action onActivate, bool signalExisting = true) =>
+	public static SingleInstanceGuard? TryAcquire(Action onActivate, bool signalExisting = true, Action<string, Exception>? onFailure = null) =>
 		TryAcquire(onActivate, signalExisting,
 			OperatingSystem.IsWindows() ? WindowsMutexName : PortableMutexName,
-			OperatingSystem.IsWindows() ? ActivationEventName : PortableActivationPipeName);
+			OperatingSystem.IsWindows()
+				? ActivationEventName
+				: PortableActivationPath(Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR"), Path.GetTempPath(), Environment.UserName),
+			onFailure);
 
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "单实例获取失败后的句柄清理不能覆盖原始启动错误。")]
-	internal static SingleInstanceGuard? TryAcquire(Action onActivate, bool signalExisting, string mutexName, string activationName)
+	internal static SingleInstanceGuard? TryAcquire(
+		Action onActivate,
+		bool signalExisting,
+		string mutexName,
+		string activationName,
+		Action<string, Exception>? onFailure = null)
 	{
 		ArgumentNullException.ThrowIfNull(onActivate);
-		Mutex mutex = new(true, mutexName, out bool createdNew);
+		Mutex mutex = CreateMutex(mutexName, out bool createdNew);
 		bool ownsMutex = createdNew;
 		if (!createdNew)
 		{
@@ -91,14 +110,9 @@ internal sealed class SingleInstanceGuard : IDisposable
 		NamedPipeServerStream? activationPipe = null;
 		try
 		{
-			if (OperatingSystem.IsWindows())
-			{
-				activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, activationName);
-				return new SingleInstanceGuard(mutex, activationEvent, ownsMutex, onActivate);
-			}
-			activationPipe = new NamedPipeServerStream(activationName, PipeDirection.In, 1,
-				PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-			return new SingleInstanceGuard(mutex, null, ownsMutex, onActivate, activationPipe);
+			if (OperatingSystem.IsWindows()) activationEvent = TryCreateActivationEvent(activationName, onFailure);
+			else activationPipe = TryCreateActivationPipe(activationName, onFailure);
+			return new SingleInstanceGuard(mutex, activationEvent, ownsMutex, onActivate, activationPipe, onFailure);
 		}
 		catch
 		{
@@ -111,6 +125,76 @@ internal sealed class SingleInstanceGuard : IDisposable
 			mutex.Dispose();
 			throw;
 		}
+	}
+
+	/// <summary>
+	/// Linux/macOS 唤起 socket 的位置。
+	///
+	/// 相对管道名会落到共享临时目录（Linux 通常是 /tmp），其他用户的同名文件删不掉就会绑定失败。
+	/// 因此优先使用仅本用户可访问的 $XDG_RUNTIME_DIR；缺失时退回临时目录并按用户名区分。
+	/// </summary>
+	internal static string PortableActivationPath(string? runtimeDirectory, string tempDirectory, string userName)
+	{
+		if (!string.IsNullOrEmpty(runtimeDirectory) && Path.IsPathFullyQualified(runtimeDirectory) && Directory.Exists(runtimeDirectory))
+			return Path.Combine(runtimeDirectory, PortableActivationSocketName);
+		return Path.Combine(tempDirectory, $"{PortableActivationSocketName}.{SafeUserName(userName)}");
+	}
+
+	private static string SafeUserName(string userName)
+	{
+		StringBuilder safe = new(Math.Min(userName.Length, MaxUserNameLength));
+		foreach (char character in userName)
+		{
+			if (safe.Length == MaxUserNameLength) break;
+			safe.Append(char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-' ? character : '_');
+		}
+		return safe.Length == 0 ? "user" : safe.ToString();
+	}
+
+	private static Mutex CreateMutex(string name, out bool createdNew)
+	{
+		if (OperatingSystem.IsWindows()) return new Mutex(true, name, out createdNew);
+		// .NET 在 Unix 上默认按 getsid 隔离命名 Mutex：不同终端、登录自启与菜单启动会各自拿到锁。
+		return new Mutex(true, name, new NamedWaitHandleOptions { CurrentUserOnly = true, CurrentSessionOnly = false }, out createdNew);
+	}
+
+	[SupportedOSPlatform("windows")]
+	private static EventWaitHandle? TryCreateActivationEvent(string activationName, Action<string, Exception>? onFailure)
+	{
+		try
+		{
+			return new EventWaitHandle(false, EventResetMode.AutoReset, activationName);
+		}
+		catch (Exception exception) when (IsActivationChannelFailure(exception))
+		{
+			ReportFailure(onFailure, "无法建立再次启动唤起通道", exception);
+			return null;
+		}
+	}
+
+	private static NamedPipeServerStream? TryCreateActivationPipe(string activationName, Action<string, Exception>? onFailure)
+	{
+		try
+		{
+			return new NamedPipeServerStream(activationName, PipeDirection.In, 1,
+				PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+		}
+		catch (Exception exception) when (IsActivationChannelFailure(exception))
+		{
+			ReportFailure(onFailure, "无法建立再次启动唤起通道", exception);
+			return null;
+		}
+	}
+
+	private static bool IsActivationChannelFailure(Exception exception) =>
+		exception is IOException or SocketException or UnauthorizedAccessException or ArgumentException
+			or PlatformNotSupportedException or WaitHandleCannotBeOpenedException;
+
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "唤起失败记录本身失败时不能影响主进程。")]
+	private static void ReportFailure(Action<string, Exception>? onFailure, string message, Exception exception)
+	{
+		Console.Error.WriteLine($"{message}：{exception.GetType().Name}");
+		try { onFailure?.Invoke(message, exception); } catch { }
 	}
 
 	[SupportedOSPlatform("windows")]
@@ -148,7 +232,8 @@ internal sealed class SingleInstanceGuard : IDisposable
 			// Connect 自带有界重试，覆盖 Mutex 已创建、管道尚未建立的启动空窗。
 			pipe.Connect(500);
 		}
-		catch (Exception exception) when (exception is IOException or TimeoutException or UnauthorizedAccessException)
+		catch (Exception exception) when (exception is IOException or TimeoutException or UnauthorizedAccessException
+			or SocketException or ArgumentException or PlatformNotSupportedException)
 		{
 			Console.Error.WriteLine($"无法唤起已有 Nori 实例：{exception.GetType().Name}");
 		}
@@ -173,19 +258,15 @@ internal sealed class SingleInstanceGuard : IDisposable
 				}
 				_activationPipe.Disconnect();
 				if (_listenerCts.IsCancellationRequested) break;
-				try { _onActivate(); }
-				catch (Exception exception) { Console.Error.WriteLine($"唤起 Nori 主窗口失败：{exception.GetType().Name}"); }
+				Activate();
 			}
 		}
-		catch (OperationCanceledException) when (_listenerCts.IsCancellationRequested) { }
-		catch (ObjectDisposedException) when (_listenerCts.IsCancellationRequested) { }
-		catch (IOException exception)
+		catch (Exception exception)
 		{
-			Console.Error.WriteLine($"Nori 实例唤起监听失败：{exception.GetType().Name}");
+			StopListening(exception);
 		}
 	}
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "单实例激活监听失败不能阻断主进程。")]
 	private void Listen()
 	{
 		if (_activationEvent is null) return;
@@ -195,12 +276,28 @@ internal sealed class SingleInstanceGuard : IDisposable
 			{
 				if (!_activationEvent.WaitOne(250)) continue;
 				if (_listenerCts.IsCancellationRequested) break;
-				try { _onActivate(); } catch { }
+				Activate();
 			}
 		}
-		catch (ObjectDisposedException) when (_listenerCts.IsCancellationRequested)
+		catch (Exception exception)
 		{
+			StopListening(exception);
 		}
+	}
+
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "单实例激活回调失败不能阻断监听。")]
+	private void Activate()
+	{
+		try { _onActivate(); }
+		catch (Exception exception) { Console.Error.WriteLine($"唤起 Nori 主窗口失败：{exception.GetType().Name}"); }
+	}
+
+	/// <summary>后台线程的未处理异常会终止进程；退出时的取消与释放是正常路径，其余失败停用唤起并记录。</summary>
+	private void StopListening(Exception exception)
+	{
+		if (_listenerCts.IsCancellationRequested) return;
+		_activationFailed = true;
+		ReportFailure(_onFailure, "再次启动唤起监听已停止", exception);
 	}
 
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "单实例退出清理失败不能阻断应用退出。")]

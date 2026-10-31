@@ -15,6 +15,7 @@ public sealed class PrivateDBusFactAttribute : FactAttribute
 internal sealed class PrivateDBus : IAsyncDisposable
 {
 	private readonly Process _daemon;
+	private int _disposed;
 
 	private PrivateDBus(Process daemon, string directory, string address)
 	{
@@ -87,6 +88,7 @@ internal sealed class PrivateDBus : IAsyncDisposable
 
 	public ValueTask DisposeAsync()
 	{
+		if (Interlocked.Exchange(ref _disposed, 1) != 0) return ValueTask.CompletedTask;
 		Stop(_daemon);
 		// 被拉起的服务进程可能已脱离进程树并继承了输出管道，不能等待管道读到结尾。
 		_daemon.WaitForExit(TimeSpan.FromSeconds(5));

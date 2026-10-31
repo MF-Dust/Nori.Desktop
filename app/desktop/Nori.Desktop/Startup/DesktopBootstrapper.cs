@@ -302,7 +302,7 @@ internal sealed class DesktopBootstrapper
 		if (OperatingSystem.IsLinux() && TrayMenu.Current is not null
 			&& Nori.Core.Platform.PlatformServices.Current.Capabilities.SupportsTray)
 			_trayMonitorTask = TrayHostMonitor.RunAsync(services, Nori.Core.Platform.PlatformServices.Current,
-				TimeSpan.FromSeconds(5), cancellationToken);
+				retryDelay: TimeSpan.FromSeconds(30), cancellationToken);
 
 		// 固定窗口与插件窗口宿主都就绪后再执行第三方入口。
 		// 单个插件失败只记录状态，不阻断桌面宿主启动。

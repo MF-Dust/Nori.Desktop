@@ -75,6 +75,13 @@ public interface IPlatformServices
 	Task<bool> IsTrayAvailableAsync(CancellationToken cancellationToken = default) =>
 		Task.FromResult(Capabilities.SupportsTray);
 
+	/// <summary>
+	/// 持续报告托盘宿主是否可用：先报告当前值，之后在宿主变化时再次报告；调用涉及 IPC，不能在 UI 线程上枚举。
+	/// 不支持监听的平台只报告一次当前值。
+	/// </summary>
+	IAsyncEnumerable<bool> WatchTrayAvailabilityAsync(CancellationToken cancellationToken = default) =>
+		PlatformServices.ReportTrayOnceAsync(this, cancellationToken);
+
 	/// <summary>系统是否要求减少动画；无法可靠读取时默认返回 true。</summary>
 	bool PrefersReducedMotion { get; }
 
@@ -115,6 +122,13 @@ public static class PlatformServices
 		if (OperatingSystem.IsMacOS()) return new MacPlatformServices();
 		if (OperatingSystem.IsLinux()) return LinuxPlatformServices.Create();
 		return new UnsupportedPlatformServices();
+	}
+
+	/// <summary>不支持监听托盘宿主的平台：只报告一次当前值。</summary>
+	internal static async IAsyncEnumerable<bool> ReportTrayOnceAsync(IPlatformServices platform,
+		[System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+	{
+		yield return await platform.IsTrayAvailableAsync(cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>

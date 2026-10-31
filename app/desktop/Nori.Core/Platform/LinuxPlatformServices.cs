@@ -173,6 +173,10 @@ public sealed class LinuxPlatformServices : IPlatformServices
 		LinuxTrayAvailability.CheckAsync(cancellationToken);
 
 	/// <inheritdoc />
+	public IAsyncEnumerable<bool> WatchTrayAvailabilityAsync(CancellationToken cancellationToken = default) =>
+		LinuxTrayAvailability.WatchAsync(cancellationToken);
+
+	/// <inheritdoc />
 	public SessionType Session { get; }
 
 	/// <inheritdoc />

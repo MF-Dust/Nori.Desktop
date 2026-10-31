@@ -18,6 +18,8 @@ public sealed class WaylandPlatformServices : IPlatformServices
 
 	public Task<bool> IsTrayAvailableAsync(CancellationToken cancellationToken = default) =>
 		LinuxTrayAvailability.CheckAsync(cancellationToken);
+	public IAsyncEnumerable<bool> WatchTrayAvailabilityAsync(CancellationToken cancellationToken = default) =>
+		LinuxTrayAvailability.WatchAsync(cancellationToken);
 	public (double X, double Y) GetCursorPosition() =>
 		throw new PlatformNotSupportedException("Wayland 不提供窗口外的全局光标位置");
 	public void StartWindowDrag(nint windowHandle) =>

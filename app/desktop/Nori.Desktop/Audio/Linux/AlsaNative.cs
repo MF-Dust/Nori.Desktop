@@ -56,14 +56,14 @@ internal sealed class AlsaPcm : IAlsaPcm
 	private const int NonBlocking = 1;
 	private const int TryAgain = -11;
 	private const int Interrupted = -4;
-	private const int Underrun = -32;
-	private const int Suspended = -86;
-	private const int StatePrepared = 2;
-	private const int StateUnderrun = 4;
+	internal const int Underrun = -32;
+	internal const int Suspended = -86;
+	internal const int StatePrepared = 2;
+	internal const int StateUnderrun = 4;
 
 	private IntPtr _handle;
 	private readonly int _channels;
-	private long? _drainTailDeadline;
+	private readonly AlsaDrainTracker _drain = new();
 
 	internal AlsaPcm(bool playback, int sampleRate, int channels)
 	{
@@ -125,7 +125,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 		if (_handle == IntPtr.Zero || interleaved.IsEmpty) return 0;
 		int frames = interleaved.Length / _channels;
 		if (frames <= 0) return 0;
-		_drainTailDeadline = null;
+		_drain.Reset();
 		unsafe
 		{
 			fixed (short* samples = interleaved)
@@ -177,18 +177,24 @@ internal sealed class AlsaPcm : IAlsaPcm
 		if (_handle == IntPtr.Zero) return true;
 		// PipeWire 的 drain 回调可能忽略非阻塞模式，改为查询剩余帧。
 		int code = snd_pcm_delay(_handle, out nint remainingFrames);
-		if (code == Underrun) return true;
-		Check(code, "读取 ALSA 剩余播放帧");
-		if (remainingFrames <= 0) return true;
-		int state = snd_pcm_state(_handle);
-		if (state == StatePrepared)
-			Check(snd_pcm_start(_handle), "启动 ALSA 短音频播放");
-		if (state != StateUnderrun) return false;
-
-		// PipeWire 欠载后延迟读数停止更新，但最后一包可能仍在下游播放；按报告的帧数等完尾音。
-		long now = Stopwatch.GetTimestamp();
-		_drainTailDeadline ??= now + (long)Math.Ceiling((double)remainingFrames / Format.SampleRate * Stopwatch.Frequency);
-		return now >= _drainTailDeadline.Value;
+		int state = code < 0 ? -1 : snd_pcm_state(_handle);
+		switch (_drain.Next(code, remainingFrames, state, Format.SampleRate, Stopwatch.GetTimestamp()))
+		{
+			case AlsaDrainStep.Done:
+				return true;
+			case AlsaDrainStep.Start:
+				Check(snd_pcm_start(_handle), "启动 ALSA 短音频播放");
+				return false;
+			case AlsaDrainStep.Recover:
+				// 与读写一致：挂起只尝试一次恢复，暂不可恢复时下一轮再试，停止和取消仍可打断。
+				int recovered = Recover(code);
+				if (recovered < 0) throw new AudioDeviceException($"恢复 ALSA 播放收尾失败：{ErrorText(recovered)}");
+				return false;
+			case AlsaDrainStep.Fail:
+				throw new AudioDeviceException($"读取 ALSA 剩余播放帧失败：{ErrorText(code)}");
+			default:
+				return false;
+		}
 	}
 
 	public void Dispose()

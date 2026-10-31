@@ -166,8 +166,8 @@ public sealed class LinuxPlatformServices : IPlatformServices
 	internal static bool IsInputShapeVersionSupported(int major, int minor) => major > 1 || (major == 1 && minor >= 1);
 
 	/// <inheritdoc />
-	public Nori.Core.Notifications.INativeNotifier CreateApprovalNotifier(Func<bool> english, Action<string> activated, Action<Exception> failure) =>
-		new LinuxNativeNotifier(english, activated, failure);
+	public Nori.Core.Notifications.INativeNotifier CreateApprovalNotifier(Func<bool> english, Action<string> activated, Action<Exception> failure, string? iconPath = null) =>
+		new LinuxNativeNotifier(english, activated, failure, iconPath);
 
 	public Task<bool> IsTrayAvailableAsync(CancellationToken cancellationToken = default) =>
 		LinuxTrayAvailability.CheckAsync(cancellationToken);

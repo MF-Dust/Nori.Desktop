@@ -26,8 +26,8 @@ internal sealed class LinuxNativeNotifier : INativeNotifier, IDisposable, IAsync
 	private readonly Task _worker;
 	private bool _disposed;
 
-	internal LinuxNativeNotifier(Func<bool> english, Action<string> activated, Action<Exception> failure)
-		: this(english, activated, failure, () => new LinuxApprovalNotification()) { }
+	internal LinuxNativeNotifier(Func<bool> english, Action<string> activated, Action<Exception> failure, string? iconPath)
+		: this(english, activated, failure, () => new LinuxApprovalNotification(DBusAddress.Session, iconPath)) { }
 
 	internal LinuxNativeNotifier(Func<bool> english, Action<string> activated, Action<Exception> failure, Func<ILinuxApprovalNotification> create)
 	{

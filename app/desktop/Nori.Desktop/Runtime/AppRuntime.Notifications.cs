@@ -109,7 +109,8 @@ public sealed partial class AppRuntime
 				_notifier = Nori.Core.Platform.PlatformServices.Current.CreateApprovalNotifier(
 					() => UiLanguage.IsEnglish(Services.Config),
 					arguments => _ = OnToastActivatedAsync(arguments),
-					failure => LogNotificationFailure("Linux 系统通知失败", failure));
+					failure => LogNotificationFailure("Linux 系统通知失败", failure),
+					LinuxNotificationIcon());
 				return _notifier;
 			}
 			if (!OperatingSystem.IsWindows()) return _notifier;
@@ -125,6 +126,13 @@ public sealed partial class AppRuntime
 			}
 			return _notifier;
 		}
+	}
+
+	/// <summary>Linux 发布包根目录带 nori.png（publish.sh 写入）；开发运行时没有，交给桌面入口或通知服务决定图标。</summary>
+	private string? LinuxNotificationIcon()
+	{
+		string icon = Path.Combine(Services.Paths.PackageRoot, "nori.png");
+		return File.Exists(icon) ? icon : null;
 	}
 
 	[System.Runtime.Versioning.SupportedOSPlatform("windows")]

@@ -47,6 +47,9 @@ internal sealed class AlsaPcm : IAlsaPcm
 	private const int FormatS16Le = 2;
 	private const int NonBlocking = 1;
 	private const int TryAgain = -11;
+	private const int Interrupted = -4;
+	private const int Underrun = -32;
+	private const int Suspended = -86;
 
 	private IntPtr _handle;
 	private readonly int _channels;
@@ -101,7 +104,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 		int code = snd_pcm_wait(_handle, milliseconds);
 		if (code > 0) return 1;
 		if (code == 0) return 0;
-		int recovered = snd_pcm_recover(_handle, code, 1);
+		int recovered = Recover(code);
 		if (recovered < 0) throw new AudioDeviceException($"等待 ALSA 设备失败：{ErrorText(recovered)}");
 		return 0;
 	}
@@ -119,7 +122,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 				if (written == TryAgain) return 0;
 				if (written < 0)
 				{
-					int recovered = snd_pcm_recover(_handle, (int) written, 1);
+					int recovered = Recover((int) written);
 					if (recovered < 0)
 						throw new AudioDeviceException($"输出设备写入失败：{ErrorText((int) written)}");
 					return 0;
@@ -142,7 +145,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 				if (read == TryAgain) return 0;
 				if (read < 0)
 				{
-					int recovered = snd_pcm_recover(_handle, (int) read, 1);
+					int recovered = Recover((int) read);
 					if (recovered < 0)
 						throw new AudioDeviceException($"输入设备读取失败：{ErrorText((int) read)}");
 					return 0;
@@ -172,6 +175,27 @@ internal sealed class AlsaPcm : IAlsaPcm
 		snd_pcm_drop(_handle);
 		snd_pcm_close(_handle);
 		_handle = IntPtr.Zero;
+	}
+
+	private int Recover(int error)
+	{
+		int code = RecoverError(error, () => snd_pcm_resume(_handle), () => snd_pcm_prepare(_handle));
+		// snd_pcm_recover 会在挂起状态按秒无限重试；这里只重试一次，让外层能响应停止。
+		if (code == TryAgain)
+		{
+			Thread.Sleep(10);
+			return 0;
+		}
+		return code;
+	}
+
+	internal static int RecoverError(int error, Func<int> resume, Func<int> prepare)
+	{
+		if (error == Interrupted) return 0;
+		if (error == Underrun) return prepare();
+		if (error != Suspended) return error;
+		int code = resume();
+		return code < 0 && code != TryAgain ? prepare() : code;
 	}
 
 	private static void Check(int code, string action)
@@ -213,7 +237,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 	private static extern int snd_pcm_wait(IntPtr pcm, int timeout);
 
 	[DllImport(Library)]
-	private static extern int snd_pcm_recover(IntPtr pcm, int error, int silent);
+	private static extern int snd_pcm_resume(IntPtr pcm);
 
 	[DllImport(Library)]
 	private static extern nint snd_pcm_writei(IntPtr pcm, IntPtr buffer, nuint frames);

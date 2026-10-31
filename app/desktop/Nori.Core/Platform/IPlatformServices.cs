@@ -61,6 +61,10 @@ public interface IPlatformServices
 	/// <summary>系统主题、壁纸和通知的 UDA 接口；macOS 与缺失原生库时明确降级。</summary>
 	IDesktopIntegration DesktopIntegration => UniDesktopIntegration.Current;
 
+	/// <summary>创建系统授权通知呈现层；不支持时仍保留应用内授权卡片。</summary>
+	Nori.Core.Notifications.INativeNotifier CreateApprovalNotifier(Func<bool> english, Action<string> activated, Action<Exception> failure) =>
+		Nori.Core.Notifications.NullNativeNotifier.Instance;
+
 	/// <summary>当前会话类型</summary>
 	SessionType Session { get; }
 

@@ -13,6 +13,9 @@ public sealed class WaylandPlatformServices : IPlatformServices
 		SupportsTray = true,
 	};
 	public bool PrefersReducedMotion => true;
+	public Nori.Core.Notifications.INativeNotifier CreateApprovalNotifier(Func<bool> english, Action<string> activated, Action<Exception> failure) =>
+		new LinuxNativeNotifier(english, activated, failure);
+
 	public Task<bool> IsTrayAvailableAsync(CancellationToken cancellationToken = default) =>
 		LinuxTrayAvailability.CheckAsync(cancellationToken);
 	public (double X, double Y) GetCursorPosition() =>

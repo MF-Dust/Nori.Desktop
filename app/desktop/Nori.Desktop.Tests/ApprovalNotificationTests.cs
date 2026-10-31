@@ -30,10 +30,12 @@ public partial class BridgeCommandsTests
 		public int? HideThreadId { get; private set; }
 		public bool FailOnShow { get; init; }
 		public bool FailOnHide { get; init; }
+		public Action? BeforeShow { get; init; }
 
 		public void Show(ApprovalNotice notice)
 		{
 			if (FailOnShow) throw new InvalidOperationException("模拟通知显示失败");
+			BeforeShow?.Invoke();
 			Shown.Add(notice);
 		}
 		public void Hide(string requestId)
@@ -72,6 +74,20 @@ public partial class BridgeCommandsTests
 
 		Assert.True(_runtime.RespondApproval(source, "approval-one", true));
 		Assert.True(await decision.WaitAsync(TimeSpan.FromSeconds(2)));
+	}
+
+	[Fact]
+	public async Task 审批在通知显示期间结束仍会再次撤回迟到通知()
+	{
+		FakeBridgeSource source = new(WindowLabels.Main);
+		FakeNotifier notifier = new()
+		{
+			BeforeShow = () => Assert.True(_runtime.RespondApproval(source, "approval-one", true)),
+		};
+		_runtime.UseNotifierForTests(notifier);
+		Assert.True(await _runtime.RequestApprovalAsync(source, "session", Request(), CancellationToken.None));
+		Assert.Single(notifier.Shown);
+		Assert.Equal(new[] { "approval-one", "approval-one" }, notifier.Hidden);
 	}
 
 	/// <summary>在应用内点掉之后，屏幕上那条要收走 —— 留一张点了没反应的卡片比不弹更糟。</summary>

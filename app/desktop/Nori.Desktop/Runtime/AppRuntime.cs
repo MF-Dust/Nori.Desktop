@@ -327,7 +327,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			approval.Dispose();
 			HideApprovalNotice(approval.RequestId);
 		}
-		DisposeNotifier();
+		await DisposeNotifierAsync().ConfigureAwait(false);
 		foreach ((string _, PendingDesktopApproval approval) in _desktopApprovals)
 		{
 			approval.Tcs.TrySetResult(false);

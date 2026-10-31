@@ -58,6 +58,11 @@ public sealed partial class AppRuntime
 				PermissionLevel = request.PermissionLevel,
 				ArgumentSummary = SummarizeArguments(request),
 			});
+			// 注册或发送期间授权可能已经收尾，不能让迟到的 Show 留下失效通知。
+			lock (_approvalGate)
+			{
+				if (!_approvals.ContainsKey(request.RequestId)) notifier.Hide(request.RequestId);
+			}
 		}
 		catch (Exception failure) { LogNotificationFailure("显示系统通知失败", failure); }
 	}
@@ -101,9 +106,10 @@ public sealed partial class AppRuntime
 			_notifierTried = true;
 			if (OperatingSystem.IsLinux())
 			{
-				_notifier = new Notifications.UniDesktopNotifier(
-					Nori.Core.Platform.PlatformServices.Current.DesktopIntegration,
-					failure => LogNotificationFailure("UniDesktop 系统通知失败", failure));
+				_notifier = Nori.Core.Platform.PlatformServices.Current.CreateApprovalNotifier(
+					() => UiLanguage.IsEnglish(Services.Config),
+					arguments => _ = OnToastActivatedAsync(arguments),
+					failure => LogNotificationFailure("Linux 系统通知失败", failure));
 				return _notifier;
 			}
 			if (!OperatingSystem.IsWindows()) return _notifier;
@@ -249,9 +255,15 @@ public sealed partial class AppRuntime
 		}
 	}
 
-	private void DisposeNotifier()
+	private async ValueTask DisposeNotifierAsync()
 	{
-		lock (_notifierGate) DisposeNotifierCore();
+		INativeNotifier notifier;
+		lock (_notifierGate)
+		{
+			notifier = _notifier;
+			DisposeNotifierCore();
+		}
+		if (notifier is IAsyncDisposable asyncDisposable) await asyncDisposable.DisposeAsync().ConfigureAwait(false);
 	}
 
 	private void DisposeNotifierCore()

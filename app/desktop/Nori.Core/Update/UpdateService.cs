@@ -146,7 +146,7 @@ public sealed class UpdateService : IDisposable
 			UpdateExtractor.EnsureNoReparsePoints(_paths.UpdatesDownloadDirectory, _paths.PackageRoot);
 			Directory.CreateDirectory(_paths.UpdatesDownloadDirectory);
 			long requiredSpace = candidate.SizeBytes + UpdateExtractor.MaxTotalBytes + 64L * 1024 * 1024;
-			if (new DriveInfo(Path.GetPathRoot(_paths.PackageRoot)!).AvailableFreeSpace < requiredSpace)
+			if (new DriveInfo(_paths.PackageRoot).AvailableFreeSpace < requiredSpace)
 				throw new InvalidOperationException("磁盘可用空间不足，需同时容纳更新包与展开后的部署槽");
 			packagePath = Path.Combine(_paths.UpdatesDownloadDirectory, $"{Guid.NewGuid():N}.{candidate.ArchiveType}");
 			SetStatus(CurrentStatus with { State = UpdaterState.Downloading, Message = "正在下载更新包...", Progress = 0, DownloadedBytes = 0, TotalBytes = candidate.SizeBytes });

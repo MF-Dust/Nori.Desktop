@@ -13,6 +13,11 @@
 - 插件设置内嵌页：`IPluginPageContribution.Placement = Settings` 的页面直接出现在设置侧栏「插件设置」分组，停用或撤销时同步卸下并释放。
 - 插件应用互操作 (`applications`)：查询进程、按绝对路径启动可执行文件并等待退出；不提供终止进程，Windows 上拒绝 `.bat`/`.cmd`。
 - 插件管理：新增 `plugin_reload` 重新加载已启用插件 (可切换到已安装的新版本，旧程序集无法回收时返回待重启)；设置页支持搜索、仅显示运行中、刷新，并可展开查看、启停及手动测试插件动作 (仅 safe)。
+- Linux 原生 Wayland：没有 `DISPLAY` 时使用 Avalonia 原生 Wayland 后端，Quick Chat 与桌宠共用同一个无标题栏窗口，保留窗口内视线跟随与原生拖动；不提供窗口外全局光标、点击穿透、强制置顶或位置恢复。存在 `DISPLAY` 时仍按 X11/XWayland 处理。
+- Linux 桌面入口：发布包根附带 `linux-desktop.sh`（`install` / `uninstall` / `enable-autostart` / `disable-autostart`），按 XDG 目录为当前用户注册菜单与登录自启入口，始终运行稳定根启动器并声明 `StartupWMClass=Nori.Desktop`；包路径可含空格、引号、`$`、`%`、`=` 等字符，卸载只删除属于当前包的入口。
+- Linux 授权通知：通过会话 D-Bus 通知服务提供「允许执行 / 拒绝」，点正文只打开应用内卡片；超时、取消或应用内决定后撤回，通知不含工具参数或描述。首个请求允许总线按需启动通知服务，撤回只发给实际应答的实例；带 `desktop-entry` 提示并使用包内 `nori.png` 图标。取代原先 UniDesktop 的只读提醒。
+- Linux 启动失败时优先用系统已有的 `zenity` / `kdialog` 弹出错误（文本只作参数传递），同时保留标准错误输出。
+- Linux CI：运行桌面入口与冒烟脚本 fixture，并在 Xvfb + 独立 D-Bus 会话中以临时 profile 冒烟发布包的 first-run、initialized 与安全模式启动；D-Bus 协议单元测试自带私有 `dbus-daemon`，未安装时跳过。
 
 ### Changed
 
@@ -21,6 +26,8 @@
 - 浏览器 DOM 自动化拆分为独立插件 [Nori.Plugins.Browser](https://github.com/MF-Dust/Nori.Plugins.Browser)（`io.nori.browser`）：主程序移除 Microsoft.Playwright 依赖、`automation_browser_*` 桥接命令、`automation_browser_enabled` 配置与设置页浏览器控件；历史浏览器审计记录仍可读取。
 - 宿主 Plugin API 升至 2.3：`IPluginActionContribution.Permission` 可声明 safe/confirm/dangerous，插件动作工具按级别逐次请求授权；对应 `Nori.PluginSDK` 2.3.0 已同步页面与权限合同并移除 WebView 合同。
 - 宿主 Plugin API 升至 2.4：插件动作注册时校验 ID、描述与参数 Schema，组合工具名超长的动作单独跳过；对应 `Nori.PluginSDK` 2.4.0 新增合同，2.4.1 补充校验规则文档。
+- Linux 托盘以实际 StatusNotifier 宿主为准：启动时查询一次，之后在同一条会话 D-Bus 连接上监听宿主变化，不再轮询。没有宿主时关闭主窗口改为最小化并在主窗显示退出按钮；宿主在运行中消失时，已隐藏的主窗口恢复为不抢焦点的最小化任务栏入口，宿主恢复后重新允许隐藏。移除「系统托盘不可用」提示，没有 StatusNotifierWatcher 不再记告警。
+- 前端开发依赖升级 ESLint 10 与 Vitest 4.1.12，并把 `vite@6`、`minimatch@10` 覆盖到已修复版本，清除 `pnpm audit` 报告的 9 条告警。
 
 ### Fixed
 
@@ -29,3 +36,7 @@
 - 涉及 `NoriHttpClients`、`UrlAccessPolicy`、工具调用与启动配置，新增代理路由和 DNS 策略回归测试。
 - 仓库更名为 `MF-Dust/Nori.Desktop` 后，更新检查、手动下载链接、更新清单脚本的默认仓库与主页 GitHub 链接仍指向旧名称 `MF-Dust/Nori-Desktop-Pet`，请求无法通过授权仓库校验，更新检查会失败；现统一改用新名称，Issue / PR 模板与文档链接同步更新。
 - 补登 Fusion Pixel 字体 (SIL OFL 1.1) 的第三方组件声明：该字体随窗口扫描分析芯片内嵌分发，此前未写入 `third-party-components.json`，发布元数据中缺少这一条目。
+- X11 模型输入区域改按物理像素设置，修复分数缩放下命中区偏小；启动时检查 SHAPE 1.1+，不满足时明确声明不支持穿透，而不是调用失败后静默忽略。
+- ALSA 播放与录音遇到无法恢复的等待错误时抛出设备异常，不再伪装成正常停止。
+- 发行版 SDK 报告非便携 RID（如 `arch-x64`）时，PurismCore 与 UniDesktop 原生库改按便携 RID 选择。
+- 内嵌 Quick Chat 在桌宠关闭时由控制器完整收尾（拒绝待审批、取消会话），不再在收尾中途被提前释放聊天服务。

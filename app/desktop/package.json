@@ -16,12 +16,12 @@
 		"check:todo": "node scripts/check-first-party-todos.mjs"
 	},
 	"devDependencies": {
-		"@eslint/js": "^9.39.4",
-		"@vitest/coverage-v8": "^4.1.11",
-		"eslint": "^9.39.4",
+		"@eslint/js": "^10.0.1",
+		"@vitest/coverage-v8": "^4.1.12",
+		"eslint": "^10.13.0",
 		"globals": "^17.11.0",
 		"typescript": "~5.6.2",
 		"typescript-eslint": "^8.68.0",
-		"vitest": "^4.1.11"
+		"vitest": "^4.1.12"
 	}
 }

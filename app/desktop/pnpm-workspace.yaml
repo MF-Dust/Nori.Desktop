@@ -1,6 +1,11 @@
 packages:
   - "."
 
+# 保留 Vite 6.x；仅覆盖仍依赖旧 Minimatch 的 10.x 调用方，待上游升级后移除。
+overrides:
+  "vite@6": "^6.4.4"
+  "minimatch@10": "^11.0.1"
+
 allowBuilds:
   '@sentry/cli': true
   esbuild: true

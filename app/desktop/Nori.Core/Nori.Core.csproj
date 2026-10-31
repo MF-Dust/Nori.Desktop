@@ -35,7 +35,8 @@
 
 	<PropertyGroup>
 		<NoriUdaRid>$(RuntimeIdentifier)</NoriUdaRid>
-		<NoriUdaRid Condition="'$(NoriUdaRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</NoriUdaRid>
+		<!-- 发行版 SDK 可能报告 arch-x64；原生库使用便携 RID。 -->
+		<NoriUdaRid Condition="'$(NoriUdaRid)' == ''">$(NETCoreSdkPortableRuntimeIdentifier)</NoriUdaRid>
 		<NoriUdaPath Condition="'$(NoriUdaRid)' == 'linux-x64'">../UniDesktop/native/linux-x64/libuda_ffi.so</NoriUdaPath>
 		<NoriUdaPath Condition="'$(NoriUdaRid)' == 'win-x64'">../UniDesktop/native/win-x64/uda_ffi.dll</NoriUdaPath>
 	</PropertyGroup>

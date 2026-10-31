@@ -34,6 +34,10 @@ file(`${rootSidecarBase}.dll`);
 file(`${rootSidecarBase}.deps.json`);
 file(`${rootSidecarBase}.runtimeconfig.json`);
 file(join(root, "LICENSE"));
+if (rid.startsWith("linux-")) {
+	file(join(root, "linux-desktop.sh"), true);
+	file(join(root, "nori.png"));
+}
 file(join(root, ".current"));
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- root是显式发布目录
 const slotName = readFileSync(join(root, ".current"), "utf8").trim();

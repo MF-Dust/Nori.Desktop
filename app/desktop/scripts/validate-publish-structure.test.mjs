@@ -27,6 +27,7 @@ const createFixture = (rid) => {
 	const slotExecutable = mac ? slotBase : rid.startsWith("win-") ? `${slotBase}.exe` : slotBase
 	const native = rid.startsWith("win-") ? "Live2DCubismCore.dll" : rid.startsWith("osx-") ? "libLive2DCubismCore.dylib" : "libLive2DCubismCore.so"
 	const files = [rootExecutable, `${rootBase}.dll`, `${rootBase}.deps.json`, `${rootBase}.runtimeconfig.json`, join(root, "LICENSE"), join(root, ".current"), join(slot, "deployment.json"), slotExecutable, `${slotBase}.dll`, `${slotBase}.deps.json`, `${slotBase}.runtimeconfig.json`, mac ? join(slot, "Nori.Desktop.app", "Contents", "MacOS", native) : join(slot, native), join(slotBase, "..", "PurismCore.LICENSE.txt")]
+	if (rid.startsWith("linux-")) files.push(join(root, "linux-desktop.sh"), join(root, "nori.png"))
 	const splashBase = join(slotBase, "..", "Nori.SplashHost")
 	files.push(rid.startsWith("win-") ? `${splashBase}.exe` : splashBase, `${splashBase}.dll`, `${splashBase}.deps.json`, `${splashBase}.runtimeconfig.json`)
 	if (rid === "win-x64" || rid === "linux-x64") {
@@ -62,6 +63,18 @@ try {
 				assert.ok(missing.stderr.includes(name))
 				// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
 				writeFileSync(file, "fixture")
+			}
+		}
+		if (rid.startsWith("linux-")) {
+			for (const name of ["linux-desktop.sh", "nori.png"]) {
+				const file = join(root, name)
+				// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
+				unlinkSync(file)
+				const missing = spawnSync(process.execPath, [script, root, rid], {encoding: "utf8"})
+				assert.notEqual(missing.status, 0)
+				assert.ok(missing.stderr.includes(name))
+				// eslint-disable-next-line security/detect-non-literal-fs-filename -- 测试fixture临时文件
+				writeFileSync(file, "fixture", {mode: 0o755})
 			}
 		}
 		if (["win-x64", "linux-x64", "osx-arm64"].includes(rid)) {

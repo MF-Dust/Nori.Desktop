@@ -222,7 +222,7 @@ jobs:
           sudo apt-get update
           alsa=libasound2
           if apt-cache show libasound2t64 >/dev/null 2>&1; then alsa=libasound2t64; fi
-          sudo apt-get install -y libgtk-3-0 "$alsa"
+          sudo apt-get install -y libgtk-3-0 "$alsa" xvfb xauth dbus-x11 libgl1-mesa-dri desktop-file-utils libglib2.0-bin
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
@@ -320,6 +320,20 @@ jobs:
         run: |
           chmod +x publish.sh
           NORI_SKIP_FRONTEND=1 NORI_KEEP_SYMBOLS=1 ./publish.sh "${{ matrix.rid }}"
+      - name: Linux 桌面集成脚本 fixture
+        if: matrix.name == 'linux'
+        run: python3 scripts/linux-integration.test.py
+
+      - name: Linux 发布包启动冒烟
+        if: matrix.name == 'linux'
+        env:
+          EXPECTED_VERSION: ${{ env.NORI_PRODUCT_INFORMATIONAL_VERSION }}
+        run: |
+          for mode in first-run initialized; do
+            dbus-run-session -- xvfb-run -a python3 scripts/smoke-published.py bin/publish/linux-x64/Nori --mode "$mode" --expected-version "$EXPECTED_VERSION"
+          done
+          dbus-run-session -- xvfb-run -a python3 scripts/smoke-published.py bin/publish/linux-x64/Nori --mode initialized --safe-mode --expected-version "$EXPECTED_VERSION"
+
       - name: 上传 Linux/macOS Native Sentry 符号（可选）
         if: matrix.name != 'windows' && env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT_NATIVE != ''
         shell: bash

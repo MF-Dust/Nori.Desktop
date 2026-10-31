@@ -45,7 +45,8 @@
 	<!-- PurismCore v1.1.0 / v6 ABI；保留现有 P/Invoke 文件名，无 RID 时按 SDK 宿主架构选择。 -->
 	<PropertyGroup>
 		<NoriCoreRid>$(RuntimeIdentifier)</NoriCoreRid>
-		<NoriCoreRid Condition="'$(NoriCoreRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</NoriCoreRid>
+		<!-- 发行版 SDK 可能报告 arch-x64；原生库使用便携 RID。 -->
+		<NoriCoreRid Condition="'$(NoriCoreRid)' == ''">$(NETCoreSdkPortableRuntimeIdentifier)</NoriCoreRid>
 		<NoriCorePath Condition="'$(NoriCoreRid)' == 'win-x64'">../Live2D/native/win-x64/Live2DCubismCore.dll</NoriCorePath>
 		<NoriCorePath Condition="'$(NoriCoreRid)' == 'linux-x64' Or '$(NoriCoreRid)' == 'linux-arm64'">../Live2D/native/$(NoriCoreRid)/libLive2DCubismCore.so</NoriCorePath>
 		<NoriCorePath Condition="'$(NoriCoreRid)' == 'osx-x64' Or '$(NoriCoreRid)' == 'osx-arm64'">../Live2D/native/macos/libLive2DCubismCore.dylib</NoriCorePath>

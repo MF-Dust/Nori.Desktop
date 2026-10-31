@@ -50,7 +50,7 @@ jobs:
           sudo apt-get update
           alsa=libasound2
           if apt-cache show libasound2t64 >/dev/null 2>&1; then alsa=libasound2t64; fi
-          sudo apt-get install -y libgtk-3-0 "$alsa"
+          sudo apt-get install -y libgtk-3-0 "$alsa" xvfb xauth dbus-x11 libgl1-mesa-dri desktop-file-utils libglib2.0-bin
 
       - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0
         with:
@@ -160,6 +160,20 @@ jobs:
         run: |
           chmod +x publish.sh
           NORI_SKIP_FRONTEND=1 NORI_KEEP_SYMBOLS=0 ./publish.sh "${{ matrix.rid }}"
+
+      - name: Linux 桌面集成脚本 fixture
+        if: matrix.name == 'linux'
+        run: python3 scripts/linux-integration.test.py
+
+      - name: Linux 发布包启动冒烟
+        if: matrix.name == 'linux'
+        env:
+          EXPECTED_VERSION: Dev
+        run: |
+          for mode in first-run initialized; do
+            dbus-run-session -- xvfb-run -a python3 scripts/smoke-published.py bin/publish/linux-x64/Nori --mode "$mode" --expected-version "$EXPECTED_VERSION"
+          done
+          dbus-run-session -- xvfb-run -a python3 scripts/smoke-published.py bin/publish/linux-x64/Nori --mode initialized --safe-mode --expected-version "$EXPECTED_VERSION"
 
       - name: 上传 Linux / macOS CI 产物
         if: matrix.name != 'windows'

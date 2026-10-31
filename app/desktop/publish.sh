@@ -99,6 +99,11 @@ PLIST
 	dotnet publish Nori.AppLauncher/Nori.AppLauncher.csproj -c Release -r "$rid" --self-contained false -p:NoriProductVersion="$APP_VERSION" -p:NoriDeploymentRevision="$REVISION" -p:PublishSingleFile=false -p:PublishReadyToRun=false -o "$launcher_temp"
 	if [[ "$KEEP_SYMBOLS" != "1" && "$KEEP_SYMBOLS" != "true" ]]; then find "$launcher_temp" -name '*.pdb' -delete; fi
 	if [[ "$rid" == osx-* ]]; then make_macos_launcher "$root" "$rid"; else cp -R "$launcher_temp/." "$root/"; chmod +x "$root/Nori"; fi
+	if [[ "$rid" == linux-* ]]; then
+		cp scripts/linux-desktop.sh "$root/linux-desktop.sh"
+		cp src/assets/images/logo.png "$root/nori.png"
+		chmod +x "$root/linux-desktop.sh"
+	fi
 	cp ../../LICENSE "$root/LICENSE"
 	rm -rf "$desktop_temp" "$launcher_temp"
 	printf '%s\n' "$(basename "$slot")" > "$root/.current.tmp"; mv -f "$root/.current.tmp" "$root/.current"

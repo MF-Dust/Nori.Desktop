@@ -303,6 +303,19 @@ bin/publish/<rid>/
 - 包根必须可写，整个目录可以整体移动；直接运行槽内宿主且无法安全推断包根时，会明确报错，而不是随便找个目录落脚。
 - 产物为 framework-dependent，脚本拒绝打包 .NET 运行时；版本号取自 `NORI_PRODUCT_VERSION`（缺省 `Dev`），修订号取自 `NORI_DEPLOYMENT_REVISION`（缺省 `0`）。
 
+Linux 解压到用户可写的固定位置后，可在包根运行（不需要 sudo）：
+
+```bash
+./linux-desktop.sh install             # 注册当前用户的应用菜单入口
+./linux-desktop.sh enable-autostart    # 可选：登录桌面时启动
+./linux-desktop.sh disable-autostart   # 取消登录自启
+./linux-desktop.sh uninstall           # 移除当前包的菜单与自启入口，不删除数据
+```
+
+入口遵循 `XDG_DATA_HOME` / `XDG_CONFIG_HOME`，仅存放桌面注册文件；应用数据仍只在包根 `data/`。入口始终运行稳定根启动器，不绑定 `app-*` 槽。整体移动发布目录后，重新执行 `install`；已启用自启的还需重新执行 `enable-autostart`。
+
+Linux CI 在 Xvfb + 独立 D-Bus 会话下验证发布包的首次运行、已初始化和安全模式启动。维护者可用 `python3 scripts/smoke-published.py bin/publish/linux-x64/Nori --mode initialized --safe-mode` 在已有桌面会话中复现；脚本只使用自动创建并清理的临时 profile。
+
 ---
 
 ## 开发与贡献约定

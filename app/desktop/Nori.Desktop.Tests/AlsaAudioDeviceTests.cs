@@ -123,6 +123,22 @@ public sealed class AlsaAudioDeviceTests
 	}
 
 	[Fact]
+	public void 输入先触发采集再等待数据就绪()
+	{
+		FakePcm pcm = new(new AudioFormat(48_000, 1)) { RequireCaptureStart = true };
+		pcm.Captured.AddRange([(short)16384, (short)-16384]);
+		using AlsaCaptureDevice device = new(new FakeFactory(pcm));
+		using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(2));
+		device.Open();
+		float[] samples = new float[2];
+
+		Assert.Equal(2, device.Read(samples, cancellation.Token));
+		Assert.True(pcm.Waits > 0);
+		Assert.True(samples[0] > 0.4f);
+		Assert.True(samples[1] < -0.4f);
+	}
+
+	[Fact]
 	public async Task 输入等待被停止打断()
 	{
 		FakePcm pcm = new(new AudioFormat(48_000, 1)) {Ready = false};
@@ -188,6 +204,8 @@ public sealed class AlsaAudioDeviceTests
 		public List<short> Written { get; } = [];
 		public List<short> Captured { get; } = [];
 		public bool Ready { get; set; } = true;
+		public bool RequireCaptureStart { get; set; }
+		private bool _captureStarted;
 		public bool WaitError { get; set; }
 		public bool Dropped { get; private set; }
 		public int Waits { get; private set; }
@@ -203,7 +221,7 @@ public sealed class AlsaAudioDeviceTests
 			Waits++;
 			if (WaitError) return -1;
 			if (_stopped.IsSet) return -1;
-			if (Ready) return 1;
+			if (Ready && (!RequireCaptureStart || _captureStarted)) return 1;
 			_stopped.Wait(milliseconds);
 			return _stopped.IsSet ? -1 : 0;
 		}
@@ -222,6 +240,11 @@ public sealed class AlsaAudioDeviceTests
 
 		public int Read(Span<short> interleaved)
 		{
+			if (RequireCaptureStart && !_captureStarted)
+			{
+				_captureStarted = true;
+				return 0;
+			}
 			int take = Math.Min(interleaved.Length, Captured.Count);
 			for (int index = 0; index < take; index++) interleaved[index] = Captured[index];
 			Captured.RemoveRange(0, take);

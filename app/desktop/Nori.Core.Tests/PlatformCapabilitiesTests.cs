@@ -91,6 +91,34 @@ public class PlatformCapabilitiesTests
 	}
 
 	[Fact]
+	public async Task Wayland保留会话与原生拖动但不伪造全局能力()
+	{
+		WaylandPlatformServices platform = new();
+		Assert.Equal(SessionType.Wayland, platform.Session);
+		Assert.True(platform.Capabilities.SupportsWindowDrag);
+		Assert.True(platform.Capabilities.SupportsTray);
+		Assert.False(platform.Capabilities.SupportsHitThrough);
+		Assert.False(platform.Capabilities.SupportsGlobalCursor);
+		Assert.False(platform.Capabilities.SupportsTopmost);
+		Assert.Throws<PlatformNotSupportedException>(() => platform.GetCursorPosition());
+		platform.SetClickThrough(1234, true);
+		using CancellationTokenSource cancelled = new();
+		cancelled.Cancel();
+		await Assert.ThrowsAnyAsync<OperationCanceledException>(() => platform.IsTrayAvailableAsync(cancelled.Token));
+	}
+
+	[Theory]
+	[InlineData(1, 0, false)]
+	[InlineData(1, 1, true)]
+	[InlineData(1, 2, true)]
+	[InlineData(2, 0, true)]
+	public void X11输入穿透需要Shape版本至少11(int major, int minor, bool supported)
+	{
+		if (!OperatingSystem.IsLinux()) return;
+		Assert.Equal(supported, LinuxPlatformServices.IsInputShapeVersionSupported(major, minor));
+	}
+
+	[Fact]
 	public void Windows能力齐全()
 	{
 		if (!OperatingSystem.IsWindows()) return;

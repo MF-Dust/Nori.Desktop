@@ -100,7 +100,8 @@ internal sealed class AlsaPcm : IAlsaPcm
 		if (code > 0) return 1;
 		if (code == 0) return 0;
 		int recovered = snd_pcm_recover(_handle, code, 1);
-		return recovered < 0 ? -1 : 0;
+		if (recovered < 0) throw new AudioDeviceException($"等待 ALSA 设备失败：{ErrorText(recovered)}");
+		return 0;
 	}
 
 	public int Write(ReadOnlySpan<short> interleaved)

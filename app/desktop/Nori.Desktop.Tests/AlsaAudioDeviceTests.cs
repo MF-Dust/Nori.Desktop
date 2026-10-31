@@ -61,6 +61,19 @@ public sealed class AlsaAudioDeviceTests
 	}
 
 	[Fact]
+	public void 不可恢复的等待错误不会伪装成停止()
+	{
+		FakePcm pcm = new(new AudioFormat(48_000, 1)) { WaitError = true };
+		using AlsaAudioDevice output = new(new FakeFactory(pcm));
+		output.Open(48_000, 1);
+		Assert.Throws<AudioDeviceException>(() => output.Write([1f], CancellationToken.None));
+
+		using AlsaCaptureDevice input = new(new FakeFactory(pcm));
+		input.Open();
+		Assert.Throws<AudioDeviceException>(() => input.Read(new float[1], CancellationToken.None));
+	}
+
+	[Fact]
 	public void 非Linux进程打不开系统库时同样提示安装()
 	{
 		if (System.OperatingSystem.IsLinux()) return;
@@ -100,12 +113,14 @@ public sealed class AlsaAudioDeviceTests
 		public List<short> Written { get; } = [];
 		public List<short> Captured { get; } = [];
 		public bool Ready { get; set; } = true;
+		public bool WaitError { get; set; }
 		public bool Dropped { get; private set; }
 		public int Waits { get; private set; }
 
 		public int Wait(int milliseconds)
 		{
 			Waits++;
+			if (WaitError) return -1;
 			if (_stopped.IsSet) return -1;
 			if (Ready) return 1;
 			_stopped.Wait(milliseconds);

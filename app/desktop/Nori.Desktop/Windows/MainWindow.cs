@@ -97,7 +97,9 @@ public sealed class MainWindow : Window
 		{
 			if (AllowClose) return;
 			args.Cancel = true;
-			Hide();
+			// 没有托盘时不能藏掉最后的入口；最小化后仍可从任务栏恢复。
+			if (_services.Runtime is { TrayAvailable: false }) WindowState = WindowState.Minimized;
+			else Hide();
 		};
 		PropertyChanged += (_, args) =>
 		{
@@ -354,7 +356,7 @@ public sealed class MainWindow : Window
 		PlatformCapabilities capabilities = PlatformServices.Current.Capabilities;
 		if (_services.Runtime is {TrayAvailable: false})
 			hints.Add(english ? "System tray unavailable; use this window to reach Nori." : "系统托盘不可用，只能从这个窗口找到 Nori。");
-		if (!capabilities.SupportsHitThrough)
+		if (!capabilities.SupportsHitThrough && PlatformServices.Current.Session != SessionType.Wayland)
 			hints.Add(english ? "Click-through is unavailable on this platform." : "本平台不支持点击穿透。");
 		_hints.Text = string.Join("  ", hints);
 		_hints.IsVisible = hints.Count > 0;

@@ -140,7 +140,9 @@ public sealed class WindowManager : IWindowManager
 	}
 
 	/// <inheritdoc />
-	public bool IsWindowVisible(string label) => _visible.TryGetValue(label, out bool visible) && visible;
+	public bool IsWindowVisible(string label) => label == WindowLabels.QuickChat && _quickChat is { Enabled: true, Window: null, Body: not null }
+		? _visible.TryGetValue(WindowLabels.Pet, out bool petVisible) && petVisible
+		: _visible.TryGetValue(label, out bool visible) && visible;
 
 	/// <summary>
 	/// 按标签取窗口, 不存在返回 null

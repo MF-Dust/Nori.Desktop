@@ -110,6 +110,20 @@ public sealed class PetHitMaskTests
 		Assert.False(PetHitMask.TryGetHitRegion(bounds, 0, 100, out _));
 	}
 
+	[Theory]
+	[InlineData(1, 6, 4, 10, 8)]
+	[InlineData(1.25, 7, 5, 13, 10)]
+	[InlineData(1.5, 9, 6, 15, 12)]
+	[InlineData(2, 12, 8, 20, 16)]
+	[InlineData(0, 6, 4, 10, 8)]
+	public void X11InputRegionUsesPhysicalPixels(double scale, int x, int y, int width, int height)
+	{
+		PetHitMask.InputShapeSignature shape = new(new(3, 2, 7, 5, HasBounds: true), 192, 256, scale, false, true);
+		Assert.True(PetHitMask.TryGetPhysicalHitRegion(shape, out var region));
+		Assert.Equal((x, y, width, height), region);
+		Assert.False(PetHitMask.TryGetPhysicalHitRegion(shape with { Mask = PetHitMask.Bounds.Empty }, out _));
+	}
+
 	[Fact]
 	public void AlphaMustBeGreaterThanSixteen()
 	{

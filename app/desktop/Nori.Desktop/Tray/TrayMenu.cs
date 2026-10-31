@@ -24,7 +24,7 @@ public static class TrayMenu
 	/// 装载托盘图标
 	///
 	/// 返回是否成功: 部分 Linux 桌面环境没有 StatusNotifier/AppIndicator, 托盘会静默不出现,
-	/// 此时把 SupportsTray 置 false, 由前端在主窗内提供常驻入口与退出按钮。
+	/// 宿主另行探测 StatusNotifier 宿主，把实际结果写入 TrayAvailable，并保留任务栏入口。
 	/// </summary>
 	/// <summary>
 	/// 当前托盘图标；托盘不可用或尚未安装时为 null。
@@ -185,35 +185,37 @@ public static class TrayMenu
 			services.Windows.Shutdown();
 		};
 
-		TrayIcon tray = Current = _icon = new()
-		{
-			Icon = LoadIcon(),
-			ToolTipText = Tooltip(english),
-			Menu =
-			[
-				toggle,
-				quickChat,
-				openMain,
-				new NativeMenuItemSeparator(),
-				openSettings,
-				account,
-				sync,
-				new NativeMenuItemSeparator(),
-				quit,
-			],
-		};
-		// 左键点击直接开主界面, 不弹菜单
-		tray.Clicked += (_, _) => ShowMain(services);
-
-		// Nori 被藏起来 / 放出来之后, 菜单上那条要跟着改口
-		services.Windows.VisibilityChanged += (label, _) =>
-		{
-			if (label == WindowLabels.Pet) Refresh();
-		};
-
 		try
 		{
+			TrayIcon tray = Current = _icon = new()
+			{
+				Icon = LoadIcon(),
+				ToolTipText = Tooltip(english),
+				Menu =
+				[
+					toggle,
+					quickChat,
+					openMain,
+					new NativeMenuItemSeparator(),
+					openSettings,
+					account,
+					sync,
+					new NativeMenuItemSeparator(),
+					quit,
+				],
+			};
+			// 左键点击直接开主界面, 不弹菜单
+			tray.Clicked += (_, _) => ShowMain(services);
+
+			// Nori 被藏起来 / 放出来之后, 菜单上那条要跟着改口
+			services.Windows.VisibilityChanged += (label, _) =>
+			{
+				if (label == WindowLabels.Pet) Refresh();
+			};
+
 			TrayIcon.SetIcons(application, [tray]);
+			services.Logger.Write(LogSource.Backend, "info", "托盘菜单初始化完成");
+			return true;
 		}
 		catch (Exception exception)
 		{
@@ -223,8 +225,6 @@ public static class TrayMenu
 			_icon = null;
 			return false;
 		}
-		services.Logger.Write(LogSource.Backend, "info", "托盘菜单初始化完成");
-		return true;
 	}
 
 	/// <summary>云端同步那一条。写「同步」不写「云端存档」—— 菜单项是动词。</summary>

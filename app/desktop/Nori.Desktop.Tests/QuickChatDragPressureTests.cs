@@ -114,24 +114,24 @@ public partial class BridgeCommandsTests
 		{
 			pet.Show();
 			await controller.RefreshAsync();
-			QuickChatWindow chat = Assert.IsType<QuickChatWindow>(controller.Window);
+			QuickChatView chat = Assert.IsType<QuickChatView>(controller.Body);
 			// 安全模式没有模型命中区域；直接驱动拖动状态，验证控制器订阅和收尾。
 			SetPetDragPressure(pet, true);
 			Assert.True(pet.IsDragPressed);
-			FinishQuickChatMotion(chat.Body);
+			FinishQuickChatMotion(chat);
 			double expectedScale = PlatformServices.Current.PrefersReducedMotion ? 1 : 0.985;
-			Assert.Equal(expectedScale, Assert.IsType<ScaleTransform>(chat.Body.RenderTransform).ScaleX, 6);
+			Assert.Equal(expectedScale, Assert.IsType<ScaleTransform>(chat.RenderTransform).ScaleX, 6);
 			typeof(PetWindow).GetMethod("FinishDrag", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pet, null);
 			Assert.False(pet.IsDragPressed);
-			FinishQuickChatMotion(chat.Body);
-			Assert.Equal(1, Assert.IsType<ScaleTransform>(chat.Body.RenderTransform).ScaleX);
+			FinishQuickChatMotion(chat);
+			Assert.Equal(1, Assert.IsType<ScaleTransform>(chat.RenderTransform).ScaleX);
 
 			SetPetDragPressure(pet, true);
 			Assert.True(pet.IsDragPressed);
 			pet.Hide();
 			Assert.False(pet.IsDragPressed);
-			Assert.False(chat.IsVisible);
-			Assert.Equal(1, Assert.IsType<ScaleTransform>(chat.Body.RenderTransform).ScaleX);
+			Assert.False(chat.IsEffectivelyVisible);
+			Assert.Equal(1, Assert.IsType<ScaleTransform>(chat.RenderTransform).ScaleX);
 		}
 		finally { await controller.ShutdownAsync(); pet.AllowClose = true; pet.Close(); }
 	});

@@ -31,7 +31,7 @@ internal static class Program
 			using NamedPipeServerStream pipe = new(args[0], PipeDirection.In, 1,
 				PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 			Pipe = pipe;
-			return AppBuilder.Configure<SplashApp>().UsePlatformDetect().StartWithClassicDesktopLifetime([]);
+			return AppBuilder.Configure<SplashApp>().UsePlatformDetect().UseNoriLinuxBackend().StartWithClassicDesktopLifetime([]);
 		}
 		catch (Exception exception)
 		{

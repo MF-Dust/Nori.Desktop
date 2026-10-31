@@ -59,7 +59,8 @@ internal sealed class AlsaAudioDevice : IAudioDevice
 				{
 					if (_pcm is null || _stopped || cancellationToken.IsCancellationRequested) break;
 					int state = _pcm.Wait(10);
-					if (_stopped || cancellationToken.IsCancellationRequested || state < 0) break;
+					if (_stopped || cancellationToken.IsCancellationRequested) break;
+					if (state < 0) throw new AudioDeviceException("等待 ALSA 输出设备失败");
 					if (state > 0)
 					{
 						int available = (samples.Length - offset) / _channels;

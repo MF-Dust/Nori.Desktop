@@ -9,4 +9,9 @@
 		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 	</PropertyGroup>
 
+	<ItemGroup>
+		<Compile Include="../Nori.Startup/LinuxStartupError.cs" Link="Startup/LinuxStartupError.cs" />
+		<InternalsVisibleTo Include="Nori.AppLauncher.Tests" />
+	</ItemGroup>
+
 </Project>

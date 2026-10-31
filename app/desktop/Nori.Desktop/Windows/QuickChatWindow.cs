@@ -5,22 +5,19 @@ using Avalonia.Threading;
 using Nori.Core.Logging;
 using Nori.Core.Platform;
 using Nori.Desktop.Bridge;
-using Nori.Desktop.Chat;
 using Nori.Desktop.QuickChat;
-using Nori.Desktop.Vision;
 
 namespace Nori.Desktop.Windows;
 
 /// <summary>伴侣的独立原生输入表面；显示和接收消息均不激活窗口。</summary>
 public sealed class QuickChatWindow : Window
 {
-	private readonly NativeChatService _service;
+	private readonly QuickChatSurface _surface;
 	private readonly AppServices _services;
-	private readonly WindowScanController _scan;
 	private readonly DispatcherTimer _inputTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
 	private bool? _through;
 	private bool _closed;
-	internal QuickChatView Body { get; }
+	internal QuickChatView Body => _surface.Body;
 	internal bool AllowClose { get; set; }
 	internal event Action? DesiredLayoutChanged;
 
@@ -33,16 +30,13 @@ public sealed class QuickChatWindow : Window
 		TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
 		ShowInTaskbar = false;
 		ShowActivated = false;
-		Topmost = true;
+		Topmost = PlatformServices.Current.Capabilities.SupportsTopmost;
 		CanResize = false;
 		WindowStartupLocation = WindowStartupLocation.Manual;
 		Width = 308;
 		Height = 74;
-		_service = new NativeChatService(services, this, NativeChatSurface.QuickChat);
-		Body = new QuickChatView(_service, () => PlatformServices.Current.PrefersReducedMotion);
-		_scan = new WindowScanController(services, this, () => Body.ScanEnglish, Body.ShowScanReadout, Body.SetScanPicking);
-		Body.AttachScan(services.ScanChip, _scan.ToggleAsync);
-		Content = new Border { Padding = new Thickness(QuickChatLayout.ShadowMargin), Child = Body };
+		_surface = new QuickChatSurface(services, this);
+		Content = _surface;
 		Body.DesiredLayoutChanged += OnDesiredLayoutChanged;
 		PropertyChanged += OnWindowPropertyChanged;
 		_inputTimer.Tick += UpdateInputRegion;
@@ -57,15 +51,15 @@ public sealed class QuickChatWindow : Window
 		if (_closed) return;
 		if (args.Property == IsVisibleProperty)
 		{
-			Body.SetHostVisible(IsVisible);
 			if (IsVisible) { EnsureTopmost(); _inputTimer.Start(); }
-			else { _scan.Cancel(); _inputTimer.Stop(); FocusManager?.Focus(null); }
+			else _inputTimer.Stop();
 		}
-		else if (args.Property == TopmostProperty && !Topmost) Topmost = true;
+		else if (args.Property == TopmostProperty && !Topmost && PlatformServices.Current.Capabilities.SupportsTopmost) Topmost = true;
 	}
 
 	internal void EnsureTopmost()
 	{
+		if (!PlatformServices.Current.Capabilities.SupportsTopmost) return;
 		Topmost = true;
 		if (PlatformServices.Current.Capabilities.SupportsTopmost
 			&& OperatingSystem.IsMacOS() && PlatformServices.Current is MacPlatformServices mac)
@@ -78,14 +72,12 @@ public sealed class QuickChatWindow : Window
 		if (PlatformServices.Current.Capabilities.SupportsHitThrough)
 			PlatformServices.Current.SetClickThrough(TryGetPlatformHandle()?.Handle ?? 0, false);
 		_through = false;
-		Activate(); Body.FocusComposer();
+		_surface.FocusComposer();
 	}
 
 	internal double MeasureContentHeight(double maximumHeight)
 	{
-		Body.MaxHeight = Math.Max(46, maximumHeight - QuickChatLayout.ShadowMargin * 2);
-		Body.Measure(new Size(Math.Max(1, Width - QuickChatLayout.ShadowMargin * 2), Body.MaxHeight));
-		return Body.DesiredSize.Height + QuickChatLayout.ShadowMargin * 2;
+		return _surface.MeasureContentHeight(Width, maximumHeight);
 	}
 
 	internal Rect[] InteractiveRects() => Body.InteractiveControls
@@ -127,17 +119,16 @@ public sealed class QuickChatWindow : Window
 
 	internal async Task PrepareShutdownAsync()
 	{
-		_scan.Dispose();
-		try { await Body.PrepareShutdownAsync(); }
+		try { await _surface.PrepareShutdownAsync(); }
 		finally { DisposeSurface(); }
 	}
 
 	private void DisposeSurface()
 	{
 		if (_closed) return;
-		_closed = true; _scan.Dispose(); _inputTimer.Stop(); _inputTimer.Tick -= UpdateInputRegion;
+		_closed = true; _inputTimer.Stop(); _inputTimer.Tick -= UpdateInputRegion;
 		Body.DesiredLayoutChanged -= OnDesiredLayoutChanged;
 		PropertyChanged -= OnWindowPropertyChanged;
-		Body.Dispose(); _service.Dispose();
+		_surface.Dispose();
 	}
 }

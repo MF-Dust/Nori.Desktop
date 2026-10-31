@@ -12,6 +12,9 @@ using Nori.Core.Logging;
 using Nori.Core.Platform;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Live2D;
+using Nori.Desktop.QuickChat;
+using Avalonia.Layout;
+using ChatLayout = Nori.Desktop.QuickChat.QuickChatLayout;
 
 namespace Nori.Desktop.Windows;
 
@@ -40,6 +43,9 @@ public sealed class PetWindow : Window
 	private readonly PetRuntime _runtime;
 	private readonly PetGlControl _glControl;
 	private readonly PetSpeechOverlay _speechOverlay;
+	private readonly Grid _root = new() { RowDefinitions = new RowDefinitions("*,Auto") };
+	private readonly Grid _modelSurface = new();
+	private QuickChatSurface? _embeddedQuickChat;
 	private readonly Win32Properties.CustomWndProcHookCallback _wndProcHook;
 	private readonly DispatcherTimer _cursorTrackingTimer;
 	/// <summary>非 Windows 平台的穿透同步 (Windows 由 WM_NCHITTEST 逐点判定, 不需要)</summary>
@@ -62,6 +68,9 @@ public sealed class PetWindow : Window
 	private bool _isNativeDragPending;
 	private PixelPoint _nativeDragStartWinPos;
 	private bool _closed;
+	private PointerPressedEventArgs? _waylandDragPress;
+	private Point _waylandDragStart;
+	private bool _waylandDragStarted;
 
 	public bool AllowClose { get; set; }
 	internal bool IsDragPressed { get; private set; }
@@ -77,7 +86,7 @@ public sealed class PetWindow : Window
 		Width = definition.Width;
 		Height = definition.Height;
 		CanResize = false;
-		Topmost = true;
+		Topmost = PlatformServices.Current.Capabilities.SupportsTopmost;
 		ShowActivated = false;
 		ShowInTaskbar = false;
 		WindowDecorations = WindowDecorations.None;
@@ -88,10 +97,10 @@ public sealed class PetWindow : Window
 
 		_glControl = new PetGlControl(_runtime);
 		_speechOverlay = new PetSpeechOverlay();
-		Grid root = new();
-		root.Children.Add(_glControl);
-		root.Children.Add(_speechOverlay);
-		Content = root;
+		_modelSurface.Children.Add(_glControl);
+		_modelSurface.Children.Add(_speechOverlay);
+		_root.Children.Add(_modelSurface);
+		Content = _root;
 
 		_wndProcHook = OnWndProc;
 
@@ -158,6 +167,23 @@ public sealed class PetWindow : Window
 	public PetSpeechOverlay SpeechOverlay => _speechOverlay;
 	public PetQuickChatLayout QuickChatLayout => _runtime.QuickChatLayout;
 	public Point QuickChatComposerAnchor => new(QuickChatLayout.ComposerAnchor.X, QuickChatLayout.ComposerAnchor.Y);
+
+	/// <summary>原生 Wayland 的输入框与模型放在同一顶层窗口内，不依赖全局定位。</summary>
+	internal void SetEmbeddedQuickChat(QuickChatSurface? surface)
+	{
+		if (_embeddedQuickChat is not null) _root.Children.Remove(_embeddedQuickChat);
+		_embeddedQuickChat = surface;
+		if (surface is not null)
+		{
+			surface.HorizontalAlignment = HorizontalAlignment.Center;
+			surface.Margin = new Thickness(0, ChatLayout.PetGap - ChatLayout.ShadowMargin, 0, 0);
+			Grid.SetRow(surface, 1);
+			_root.Children.Add(surface);
+		}
+		ApplyWindowSize();
+	}
+
+	internal Size ModelViewportSize => new(_glControl.Bounds.Width, _glControl.Bounds.Height);
 
 	/// <summary>切换固定的 Quick Chat 头像视口。</summary>
 	public void SetQuickChatPresentation(bool enabled) => _runtime.SetQuickChatPresentation(enabled);
@@ -245,7 +271,7 @@ public sealed class PetWindow : Window
 					_runtime.ClickThroughEnabled,
 					IsSpecified: true);
 				if (PetHitMask.SameInputShape(_inputShape, next)) return;
-				if (next.ClickThrough || !PetHitMask.TryGetHitRegion(next.Mask, next.ClientWidth, next.ClientHeight, out (int X, int Y, int Width, int Height) region))
+				if (next.ClickThrough || !PetHitMask.TryGetPhysicalHitRegion(next, out (int X, int Y, int Width, int Height) region))
 					linux.SetInputShape(handle, EmptyHitRegions);
 				else
 				{
@@ -330,6 +356,25 @@ public sealed class PetWindow : Window
 			? PetSizing.CalculatePresentationWindowSize(_runtime.QuickChatLayout, screenDipW, screenDipH, scale)
 			: PetSizing.CalculateWindowSize(rawW, rawH, _runtime.UserScale, screenDipW, screenDipH, scale);
 
+		if (_embeddedQuickChat is { } surface)
+		{
+			double modelWidth = targetPhysW / scale;
+			double modelHeight = targetPhysH / scale;
+			_modelSurface.HorizontalAlignment = HorizontalAlignment.Center;
+			_modelSurface.Width = modelWidth;
+			_modelSurface.Height = modelHeight;
+			surface.Width = Math.Min(308, screenDipW);
+			double contentHeight = surface.MeasureContentHeight(surface.Width,
+				Math.Max(ChatLayout.ComposerHeight + ChatLayout.ShadowMargin * 2,
+					screenDipH - modelHeight - surface.Margin.Top));
+			Width = Math.Max(modelWidth, surface.Width);
+			Height = modelHeight + contentHeight + surface.Margin.Top;
+			return;
+		}
+		_modelSurface.HorizontalAlignment = HorizontalAlignment.Stretch;
+		_modelSurface.Width = double.NaN;
+		_modelSurface.Height = double.NaN;
+
 		// 首次显示时 Bounds 还是 0, 此时不做居中换算, 否则窗口会整体偏移半个身位
 		double oldPhysW = Bounds.Width > 0 ? Bounds.Width * scale : targetPhysW;
 		double oldPhysH = Bounds.Height > 0 ? Bounds.Height * scale : targetPhysH;
@@ -346,6 +391,7 @@ public sealed class PetWindow : Window
 
 	private void RestoreWindowPosition()
 	{
+		if (PlatformServices.Current.Session == SessionType.Wayland) return;
 		// ConfigValue 是 record, 直接 ToString() 会得到 "Integer { Value = 320 }", 必须走 GetStringOr
 		string posXVal = _services.Config.GetStringOr("pet_window_x", "");
 		string posYVal = _services.Config.GetStringOr("pet_window_y", "");
@@ -399,6 +445,7 @@ public sealed class PetWindow : Window
 
 	private void SaveWindowPosition()
 	{
+		if (PlatformServices.Current.Session == SessionType.Wayland) return;
 		int x = Position.X;
 		int y = Position.Y;
 		// SQLite 写入含 fsync, 拖拽收尾时别堵在 UI 线程上; Config.Set 自身有锁, 线程安全
@@ -557,9 +604,19 @@ public sealed class PetWindow : Window
 		var props = e.GetCurrentPoint(this).Properties;
 		if (props.IsLeftButtonPressed)
 		{
-			var pos = e.GetPosition(this);
+			var pos = e.GetPosition(_glControl);
 			if (!IsModelHit(pos)) return;
 			SetDragPressed(true);
+			if (PlatformServices.Current.Session == SessionType.Wayland)
+			{
+				// Wayland 不提供窗口位置，用按下事件与局部位移区分点击和原生拖动。
+				_waylandDragPress = e;
+				_waylandDragStart = e.GetPosition(this);
+				_waylandDragStarted = false;
+				e.Pointer.Capture(this);
+				e.Handled = true;
+				return;
+			}
 
 			// 伴侣视窗是原生 Avalonia 窗口, 在 Linux/macOS 上优先让窗口管理器接管移动。
 			// 这条路径也覆盖 Wayland：原生窗口仍可拖动。
@@ -596,7 +653,7 @@ public sealed class PetWindow : Window
 		{
 			// 菜单已经挂在 Window.ContextMenu 上, 由 Avalonia 自己在 PointerReleased 时打开;
 			// 这里再 Open 一次会打架 (打开后立刻被关掉)
-			var pos = e.GetPosition(this);
+			var pos = e.GetPosition(_glControl);
 			if (!IsModelHit(pos)) e.Handled = true;
 		}
 	}
@@ -605,6 +662,20 @@ public sealed class PetWindow : Window
 
 	private void OnPointerMoved(object? sender, PointerEventArgs e)
 	{
+		if (_waylandDragPress is { } press
+			&& HasExceededLocalDragThreshold(_waylandDragStart, e.GetPosition(this)))
+		{
+			_waylandDragStarted = true;
+			_waylandDragPress = null;
+			try { BeginMoveDrag(press); }
+			catch (InvalidOperationException exception)
+			{
+				FinishDrag();
+				_services.Logger.Write(LogSource.Backend, "warn", "Wayland 原生拖动失败", exception: exception);
+			}
+			e.Handled = true;
+			return;
+		}
 		if (_isDragPending && CursorScreenPosition() is { } screenPos)
 		{
 			int dx = screenPos.X - _dragStartScreenPos.X;
@@ -618,17 +689,18 @@ public sealed class PetWindow : Window
 			}
 		}
 
-		var clientPos = e.GetPosition(this);
-		_runtime.LookAt((float)clientPos.X, (float)clientPos.Y, (float)Bounds.Width, (float)Bounds.Height);
+		var clientPos = e.GetPosition(_glControl);
+		_runtime.LookAt((float)clientPos.X, (float)clientPos.Y, (float)_glControl.Bounds.Width, (float)_glControl.Bounds.Height);
 	}
 
 	private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
 	{
-		var clientPos = e.GetPosition(this);
+		var clientPos = e.GetPosition(_glControl);
 		bool wasDragging = _isDragging;
 		bool didDrag = _hasDragged;
-		bool didNativeDrag = _isNativeDragPending
-			&& HasExceededDragThreshold(_nativeDragStartWinPos, Position, RenderScaling);
+		bool didNativeDrag = _waylandDragStarted || (_isNativeDragPending
+			&& HasExceededDragThreshold(_nativeDragStartWinPos, Position, RenderScaling));
+		_waylandDragStarted = false;
 
 		if (didNativeDrag) SaveWindowPosition();
 		_isNativeDragPending = false;
@@ -639,9 +711,17 @@ public sealed class PetWindow : Window
 		{
 			if (_glControl.IsPointOnModel(clientPos.X, clientPos.Y))
 			{
-				_runtime.HandleTap((float)clientPos.X, (float)clientPos.Y, (float)Bounds.Width, (float)Bounds.Height);
+				_runtime.HandleTap((float)clientPos.X, (float)clientPos.Y, (float)_glControl.Bounds.Width, (float)_glControl.Bounds.Height);
 			}
 		}
+	}
+
+	/// <summary>Wayland 仅能获得局部逻辑坐标，阈值不再依赖不可读取的窗口位置。</summary>
+	internal static bool HasExceededLocalDragThreshold(Point start, Point end)
+	{
+		double dx = end.X - start.X;
+		double dy = end.Y - start.Y;
+		return dx * dx + dy * dy >= DragThreshold * DragThreshold;
 	}
 
 	/// <summary>判断两个物理像素坐标是否达到伴侣视窗拖动阈值。</summary>
@@ -679,6 +759,7 @@ public sealed class PetWindow : Window
 
 	private void FinishDrag()
 	{
+		_waylandDragPress = null;
 		SetDragPressed(false);
 		if (_isDragging && _hasDragged)
 		{
@@ -712,6 +793,7 @@ public sealed class PetWindow : Window
 			Position = new PixelPoint(120, 120);
 			SaveWindowPosition();
 		});
+		resetPosItem.IsEnabled = PlatformServices.Current.Session != SessionType.Wayland;
 		var hidePetItem = CreateMenuItem("隐藏 Nori", () => _services.Windows.Hide(WindowLabels.Pet));
 		var exitItem = CreateMenuItem("退出应用", () => _services.Windows.Shutdown(), isDanger: true);
 

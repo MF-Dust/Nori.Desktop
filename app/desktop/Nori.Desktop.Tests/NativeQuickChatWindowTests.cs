@@ -80,9 +80,9 @@ public partial class BridgeCommandsTests
 			window.Show();
 			Assert.False(window.ShowActivated); Assert.False(window.ShowInTaskbar);
 			Assert.Equal(WindowDecorations.None, window.WindowDecorations);
-			Assert.True(window.Topmost);
+			Assert.Equal(Nori.Core.Platform.PlatformServices.Current.Capabilities.SupportsTopmost, window.Topmost);
 			window.Topmost = false;
-			Assert.True(window.Topmost);
+			Assert.Equal(Nori.Core.Platform.PlatformServices.Current.Capabilities.SupportsTopmost, window.Topmost);
 			await window.PrepareShutdownAsync();
 		}
 		finally { window.AllowClose = true; window.Close(); }
@@ -97,22 +97,69 @@ public partial class BridgeCommandsTests
 		try
 		{
 			pet.Show(); await controller.RefreshAsync();
-			QuickChatWindow original = Assert.IsType<QuickChatWindow>(controller.Window);
-			Assert.True(original.IsVisible);
+			QuickChatView original = Assert.IsType<QuickChatView>(controller.Body);
+			Assert.True(original.IsEffectivelyVisible);
 			Assert.Equal(PetPresentationMode.QuickChat, fixture._services.PetRuntime.PresentationMode);
 			pet.Hide(); await controller.RefreshAsync();
-			Assert.False(original.IsVisible); Assert.True(controller.Enabled);
+			Assert.False(original.IsEffectivelyVisible); Assert.True(controller.Enabled);
 			pet.Show(); await controller.RefreshAsync();
-			Assert.Same(original, controller.Window); Assert.True(original.IsVisible);
-			original.Body.State.Draft = "保留草稿";
+			Assert.Same(original, controller.Body); Assert.True(original.IsEffectivelyVisible);
+			original.State.Draft = "保留草稿";
 			fixture._config.Set(ConfigStore.KeyQuickChatEnabled, new ConfigValue.Boolean(false));
 			await controller.RefreshAsync();
-			Assert.True(pet.IsVisible); Assert.Null(controller.Window);
+			Assert.True(pet.IsVisible); Assert.Null(controller.Body);
 			Assert.Equal(PetPresentationMode.Ordinary, fixture._services.PetRuntime.PresentationMode);
 			fixture._config.Set(ConfigStore.KeyQuickChatEnabled, new ConfigValue.Boolean(true));
 			await controller.RefreshAsync();
-			Assert.NotSame(original, controller.Window);
-			Assert.Equal("保留草稿", controller.Window!.Body.State.Draft);
+			Assert.NotSame(original, controller.Body);
+			Assert.Equal("保留草稿", controller.Body!.State.Draft);
+		}
+		finally { await controller.ShutdownAsync(); pet.AllowClose = true; pet.Close(); }
+	});
+
+	[Fact]
+	public Task QuickChatSurfaceFollowsPlatformWithoutAnIndependentWaylandWindow() => WithSettingsUiAsync(async () =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true); fixture.ConfigureDesktop();
+		PetWindow pet = new(WindowDefinition.All.Single(item => item.Label == WindowLabels.Pet), fixture._services);
+		int registered = 0;
+		QuickChatController controller = new(fixture._services, pet, _ => registered++, _ => registered--);
+		try
+		{
+			pet.Show(); await controller.RefreshAsync();
+			await controller.Body!.RefreshAsync();
+			controller.Reposition(); pet.UpdateLayout();
+			await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => { }, Avalonia.Threading.DispatcherPriority.Background);
+			pet.UpdateLayout();
+			Assert.Equal(WindowDecorations.None, pet.WindowDecorations);
+			if (Nori.Core.Platform.PlatformServices.Current.Session == Nori.Core.Platform.SessionType.Wayland)
+			{
+				Assert.Null(controller.Window);
+				Assert.Equal(0, registered);
+				Assert.Same(pet, TopLevel.GetTopLevel(controller.Body));
+				Assert.Equal(pet.QuickChatLayout.ViewportWidth, pet.ModelViewportSize.Width, 1);
+				Assert.Equal(pet.QuickChatLayout.ViewportHeight, pet.ModelViewportSize.Height, 1);
+				Assert.True(pet.Height > pet.ModelViewportSize.Height);
+				var composer = controller.Body.Composer.TranslatePoint(default, pet);
+				Assert.NotNull(composer);
+				Assert.True(composer.Value.Y >= pet.ModelViewportSize.Height);
+				Assert.True(controller.FocusComposer());
+				var oldViewport = pet.ModelViewportSize;
+				pet.Position = new(160, 120); pet.UpdateLayout();
+				Assert.Equal(oldViewport, pet.ModelViewportSize);
+				Assert.Same(pet, TopLevel.GetTopLevel(controller.Body));
+				CaptureUi(pet, "wayland-unified-quick-chat");
+			}
+			else
+			{
+				Assert.Equal(1, registered);
+				Assert.Same(controller.Window, TopLevel.GetTopLevel(controller.Body));
+			}
+			fixture._config.Set(ConfigStore.KeyQuickChatEnabled, new ConfigValue.Boolean(false));
+			await controller.RefreshAsync(); pet.UpdateLayout();
+			Assert.Null(controller.Body);
+			Assert.True(pet.ModelViewportSize.Width > 0);
+			Assert.Equal(pet.Bounds.Width, pet.ModelViewportSize.Width, 1);
 		}
 		finally { await controller.ShutdownAsync(); pet.AllowClose = true; pet.Close(); }
 	});

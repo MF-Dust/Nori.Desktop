@@ -243,6 +243,16 @@ internal sealed class DesktopBootstrapper
 
 		cancellationToken.ThrowIfCancellationRequested();
 		StartupSplash.Report(80, "正在准备窗口与桌面伴侣");
+		bool trayHostAvailable = false;
+		try
+		{
+			trayHostAvailable = await Nori.Core.Platform.PlatformServices.Current.IsTrayAvailableAsync(cancellationToken);
+		}
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+		catch (Exception exception)
+		{
+			logger.Write(LogSource.Backend, "warn", "无法确认系统托盘宿主，保留主窗口任务栏入口", exception: exception);
+		}
 		await Dispatcher.UIThread.InvokeAsync(() =>
 		{
 			services.Windows = new WindowManager(desktop);
@@ -260,7 +270,7 @@ internal sealed class DesktopBootstrapper
 			updateService.StartScheduler();
 
 			// 托盘失败 (常见于部分 Linux 桌面) 时前端要显示内建入口
-			runtime.TrayAvailable = TrayMenu.Install(_application, services);
+			runtime.TrayAvailable = TrayMenu.Install(_application, services) && trayHostAvailable;
 
 			// 首次启动显示向导, 否则直接进初始化窗口
 			bool firstRun = config.IsFirstRun();

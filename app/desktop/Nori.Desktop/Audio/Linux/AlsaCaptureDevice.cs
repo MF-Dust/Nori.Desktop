@@ -44,7 +44,8 @@ internal sealed class AlsaCaptureDevice : IAudioCaptureDevice
 				{
 					if (_pcm is null || _stopped || cancellationToken.IsCancellationRequested) return 0;
 					int state = _pcm.Wait(10);
-					if (_stopped || cancellationToken.IsCancellationRequested || state < 0) return 0;
+					if (_stopped || cancellationToken.IsCancellationRequested) return 0;
+					if (state < 0) throw new AudioDeviceException("等待 ALSA 输入设备失败");
 					if (state > 0) frames = _pcm.Read(rented.AsSpan(0, aligned));
 				}
 				if (frames <= 0) continue;

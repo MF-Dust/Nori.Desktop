@@ -11,8 +11,7 @@ namespace Nori.Core.Platform;
 /// - 窗口拖动: 向根窗口发 _NET_WM_MOVERESIZE ClientMessage (EWMH)
 /// - 点击穿透: XShapeCombineRectangles(ShapeInput) —— 空输入形状即整窗穿透
 ///
-/// Wayland 会话下协议不提供这些能力, 由 Create() 直接返回能力全 false 的实例,
-/// 前端据此把伴侣视窗降级为「整窗可点 + 拖动手柄 + 免打扰开关」。
+/// 纯 Wayland 返回专用实现；宿主保留原生拖动，关闭全局坐标和输入形状增强项。
 /// </summary>
 [SupportedOSPlatform("linux")]
 public sealed class LinuxPlatformServices : IPlatformServices
@@ -102,6 +101,9 @@ public sealed class LinuxPlatformServices : IPlatformServices
 	[DllImport(LibX11, EntryPoint = "XUngrabPointer")]
 	private static extern int UngrabPointer(nint display, nint time);
 
+	[DllImport(LibXext, EntryPoint = "XShapeQueryVersion")]
+	private static extern int ShapeQueryVersion(nint display, out int major, out int minor);
+
 	[DllImport(LibXext, EntryPoint = "XShapeCombineRectangles")]
 	private static extern void ShapeCombineRectangles(
 		nint display, nint window, int kind, int xOffset, int yOffset,
@@ -117,12 +119,12 @@ public sealed class LinuxPlatformServices : IPlatformServices
 	}
 
 	/// <summary>
-	/// 按会话类型创建实现; X11 不可用或 Wayland 会话下返回能力全 false 的降级实例
+	/// 按窗口后端创建实现；纯 Wayland 保留原生拖动，X11 失败则明确降级。
 	/// </summary>
 	public static IPlatformServices Create()
 	{
 		SessionType session = PlatformServices.DetectSession();
-		if (session == SessionType.Wayland) return new UnsupportedPlatformServices();
+		if (session == SessionType.Wayland) return new WaylandPlatformServices();
 
 		nint display;
 		try
@@ -140,12 +142,32 @@ public sealed class LinuxPlatformServices : IPlatformServices
 		{
 			SupportsGlobalCursor = true,
 			SupportsWindowDrag = true,
-			SupportsHitThrough = true,
+			SupportsHitThrough = SupportsInputShape(display),
 			SupportsTopmost = true,
 			// 托盘由 Avalonia 的 TrayIcon 决定, 部分桌面环境没有 StatusNotifier; 由宿主实测后覆盖
 			SupportsTray = true,
 		});
 	}
+
+	/// <summary>ShapeInput 从 SHAPE 1.1 起提供，库存在不代表扩展可用。</summary>
+	private static bool SupportsInputShape(nint display)
+	{
+		try
+		{
+			return ShapeQueryVersion(display, out int major, out int minor) != 0
+				&& IsInputShapeVersionSupported(major, minor);
+		}
+		catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException)
+		{
+			return false;
+		}
+	}
+
+	internal static bool IsInputShapeVersionSupported(int major, int minor) => major > 1 || (major == 1 && minor >= 1);
+
+	/// <inheritdoc />
+	public Task<bool> IsTrayAvailableAsync(CancellationToken cancellationToken = default) =>
+		LinuxTrayAvailability.CheckAsync(cancellationToken);
 
 	/// <inheritdoc />
 	public SessionType Session { get; }
@@ -205,15 +227,9 @@ public sealed class LinuxPlatformServices : IPlatformServices
 		XRectangle[] rectangles = through
 			? []
 			: [new XRectangle {X = 0, Y = 0, Width = ushort.MaxValue, Height = ushort.MaxValue}];
-		try
-		{
-			ShapeCombineRectangles(_display, windowHandle, ShapeInput, 0, 0, rectangles, rectangles.Length, ShapeSet, 0);
-			Flush(_display);
-		}
-		catch (DllNotFoundException)
-		{
-			// 没有 Xext: 保持整窗可点, 交由前端提示降级
-		}
+		if (!Capabilities.SupportsHitThrough) throw new PlatformNotSupportedException("当前 X11 会话不支持输入区域穿透");
+		ShapeCombineRectangles(_display, windowHandle, ShapeInput, 0, 0, rectangles, rectangles.Length, ShapeSet, 0);
+		Flush(_display);
 	}
 
 	/// <summary>
@@ -236,14 +252,8 @@ public sealed class LinuxPlatformServices : IPlatformServices
 				Height = (ushort)Math.Clamp(height, 0, ushort.MaxValue),
 			};
 		}
-		try
-		{
-			ShapeCombineRectangles(_display, windowHandle, ShapeInput, 0, 0, rectangles, rectangles.Length, ShapeSet, 0);
-			Flush(_display);
-		}
-		catch (DllNotFoundException)
-		{
-			// 没有 Xext: 忽略, 伴侣视窗保持整窗可点
-		}
+		if (!Capabilities.SupportsHitThrough) throw new PlatformNotSupportedException("当前 X11 会话不支持输入区域穿透");
+		ShapeCombineRectangles(_display, windowHandle, ShapeInput, 0, 0, rectangles, rectangles.Length, ShapeSet, 0);
+		Flush(_display);
 	}
 }

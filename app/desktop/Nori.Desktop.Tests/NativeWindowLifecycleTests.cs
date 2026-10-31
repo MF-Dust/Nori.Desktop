@@ -107,6 +107,35 @@ public partial class BridgeCommandsTests
 	});
 
 	[Fact]
+	public Task 没有托盘时关闭主窗口会最小化而不隐藏入口() => WithSettingsUiAsync(() =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		fixture.ConfigureDesktop();
+		fixture._services.Runtime!.TrayAvailable = false;
+		MainWindow main = new(WindowDefinition.All.Single(item => item.Label == WindowLabels.Main), fixture._services);
+		try
+		{
+			main.Show();
+			main.Close();
+			Assert.True(main.IsVisible);
+			Assert.True(main.ShowInTaskbar);
+			Assert.Equal(WindowState.Minimized, main.WindowState);
+		}
+		finally { main.AllowClose = true; main.Close(); }
+		return Task.CompletedTask;
+	});
+
+	[Theory]
+	[InlineData(1, 1, false)]
+	[InlineData(3.9, 0, false)]
+	[InlineData(4, 0, true)]
+	[InlineData(3, 3, true)]
+	public void Wayland拖动阈值使用局部坐标(double dx, double dy, bool dragged)
+	{
+		Assert.Equal(dragged, PetWindow.HasExceededLocalDragThreshold(new(10, 20), new(10 + dx, 20 + dy)));
+	}
+
+	[Fact]
 	public Task 退出统一放行新原生窗口且重复退出只执行一次() => WithSettingsUiAsync(async () =>
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true);

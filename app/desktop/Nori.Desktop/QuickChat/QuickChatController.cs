@@ -2,12 +2,13 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Nori.Core.Logging;
+using Nori.Core.Platform;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.QuickChat;
 
-/// <summary>将独立聊天表面锚定到伴侣窗口；配置、显隐和会话释放各有明确边界。</summary>
+/// <summary>聊天跟随桌宠；Wayland 共用原生窗口，其余平台锚定独立浮窗。</summary>
 internal sealed class QuickChatController
 {
 	private readonly AppServices _services;
@@ -16,6 +17,7 @@ internal sealed class QuickChatController
 	private readonly Action<QuickChatWindow> _unregister;
 	private readonly SemaphoreSlim _transition = new(1, 1);
 	private QuickChatWindow? _window;
+	private QuickChatSurface? _embedded;
 	private bool _disposed;
 	private bool _layoutQueued;
 	private bool _refreshQueued;
@@ -39,6 +41,7 @@ internal sealed class QuickChatController
 
 	internal bool Enabled { get; private set; }
 	internal QuickChatWindow? Window => _window;
+	internal QuickChatView? Body => _embedded?.Body ?? _window?.Body;
 
 	private void QueueRefresh()
 	{
@@ -69,6 +72,20 @@ internal sealed class QuickChatController
 			_pet.SetQuickChatPresentation(enabled);
 			if (!enabled) { await CloseSurfaceAsync(); return; }
 			if (!_pet.IsVisible) { _window?.Hide(); return; }
+			if (PlatformServices.Current.Session == SessionType.Wayland)
+			{
+				if (_embedded is null)
+				{
+					_embedded = new QuickChatSurface(_services, _pet);
+					_embedded.Body.State.Draft = _draft;
+					_embedded.Body.DesiredLayoutChanged += QueueLayout;
+					_pet.SetEmbeddedQuickChat(_embedded);
+				}
+				Reposition();
+				_embedded.Body.SetDragPressed(_pet.IsDragPressed);
+				QueueLayout();
+				return;
+			}
 			if (_window is null)
 			{
 				_window = new QuickChatWindow(_services);
@@ -86,7 +103,9 @@ internal sealed class QuickChatController
 
 	internal bool FocusComposer()
 	{
-		if (!Enabled || !_pet.IsVisible || _window is not { IsVisible: true }) return false;
+		if (!Enabled || !_pet.IsVisible) return false;
+		if (_embedded is not null) { _embedded.FocusComposer(); return true; }
+		if (_window is not { IsVisible: true }) return false;
 		_window.FocusComposer(); return true;
 	}
 
@@ -100,7 +119,7 @@ internal sealed class QuickChatController
 		else if (args.Property == Visual.BoundsProperty) QueueLayout();
 	}
 	private void OnPetPositionChanged(object? sender, PixelPointEventArgs args) => QueueLayout();
-	private void OnDragPressureChanged(bool pressed) => _window?.Body.SetDragPressed(pressed);
+	private void OnDragPressureChanged(bool pressed) => Body?.SetDragPressed(pressed);
 	private async void OnPetClosed(object? sender, EventArgs args)
 	{
 		try { await ShutdownAsync(); }
@@ -123,7 +142,9 @@ internal sealed class QuickChatController
 
 	internal void Reposition()
 	{
-		if (_window is null || !_pet.IsVisible || !Enabled) return;
+		if (!_pet.IsVisible || !Enabled) return;
+		if (_embedded is not null) { _pet.ApplyWindowSize(); return; }
+		if (_window is null) return;
 		var screen = _pet.Screens.ScreenFromWindow(_pet) ?? _pet.Screens.Primary;
 		PixelRect work = screen?.WorkingArea ?? new PixelRect(0, 0, 1920, 1080);
 		double scale = _pet.RenderScaling > 0 ? _pet.RenderScaling : 1;
@@ -149,6 +170,14 @@ internal sealed class QuickChatController
 
 	private async Task CloseSurfaceAsync()
 	{
+		if (_embedded is { } surface)
+		{
+			_embedded = null;
+			_draft = surface.Body.State.Draft;
+			surface.Body.DesiredLayoutChanged -= QueueLayout;
+			_pet.SetEmbeddedQuickChat(null);
+			await surface.PrepareShutdownAsync();
+		}
 		if (_window is not { } window) return;
 		_window = null;
 		_draft = window.Body.State.Draft;

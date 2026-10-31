@@ -124,6 +124,13 @@ internal static class PetHitMask
 			&& SameCoordinate(previous.RenderScale, next.RenderScale);
 	}
 
+	/// <summary>XShape 使用客户端物理像素；先缩放完整画布再向外取整，避免分数缩放漏边。</summary>
+	public static bool TryGetPhysicalHitRegion(InputShapeSignature shape, out (int X, int Y, int Width, int Height) region)
+	{
+		double scale = double.IsFinite(shape.RenderScale) && shape.RenderScale > 0 ? shape.RenderScale : 1;
+		return TryGetHitRegion(shape.Mask, shape.ClientWidth * scale, shape.ClientHeight * scale, out region);
+	}
+
 	/// <summary>把网格外接边界转换为单个客户端逻辑像素矩形。</summary>
 	public static bool TryGetHitRegion(
 		Bounds bounds,

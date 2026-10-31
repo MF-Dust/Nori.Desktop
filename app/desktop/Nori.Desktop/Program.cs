@@ -5,6 +5,7 @@ using Nori.Core;
 using Nori.Core.Data;
 using Nori.Desktop.Diagnostics;
 using Nori.Desktop.Startup;
+using Nori.Startup;
 
 namespace Nori.Desktop;
 
@@ -63,6 +64,7 @@ internal static class Program
 			catch { }
 		}
 		Console.Error.WriteLine($"{title}: {safe}");
+		LinuxStartupError.TryShow(title, safe);
 	}
 
 	[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -170,6 +172,7 @@ internal static class Program
 	/// </summary>
 	public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
 		.UsePlatformDetect()
+		.UseNoriLinuxBackend()
 		.LogToTrace()
 		.AfterSetup(_ =>
 		{

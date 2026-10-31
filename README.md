@@ -259,7 +259,7 @@ Nori.Desktop/
 | 操作系统 | Windows 10 / 11 x64（首要验收与发布平台）；macOS、Linux 可开发与测试 |
 | .NET | [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)（CI 使用 10.0.x）；运行发布包需要 .NET Runtime 10 |
 | Node.js 与 pnpm | Node.js 24、pnpm 11（必须使用 pnpm），只用于主题令牌检查 |
-| Linux 依赖 | `libgtk-3-0`，以及 `libasound2t64`（Ubuntu 24.04 起）或 `libasound2`；系统密钥库需要 libsecret |
+| Linux 依赖 | `libgtk-3-0`，以及 `libasound2t64`（Ubuntu 24.04 起）或 `libasound2`；系统密钥库需要 libsecret；原生 Wayland 需要 libwayland-client 与 EGL |
 | macOS 录音 | `Info.plist` 需包含 `NSMicrophoneUsageDescription`（`publish.sh` 打包时写入） |
 | Live2D 模型 | 不随仓库与发布包分发，需自备 `arg-nori` 或 `nori` 的本地 ZIP / 文件夹 |
 
@@ -373,6 +373,7 @@ NORI_TEST_LIVE2D_ASSETS=1 NORI_TEST_NATIVE_GL=1 dotnet test Nori.Desktop.Tests/N
 
 - **版本**：未注入版本时产品版本为 `Dev`。正式发布由维护者在 GitHub Actions 中手动触发并填写代号（codename）：标签为 `v<数字版本>-<代号>`，同一数字版本不会被两个标签复用；informational 版本为 `v<数字版本>-<代号>+<7 位提交 hash>`，写入 `ProductVersion.Current`，并进入快照、readiness、诊断、崩溃报告与 MCP `clientInfo`；Sentry release 为 `nori@<数字版本>`。
 - **平台**：Windows x64 是首要验收平台与发布 blocker。Release 产出 `win-x64`、`linux-x64`、`osx-arm64`，`publish.sh` 另可在本地构建 `linux-arm64`、`osx-x64`；平台能力不足时（如 Wayland 下的全局光标与点击穿透）由能力标志驱动降级。
+- **Linux 会话**：存在 `DISPLAY` 时使用 X11/XWayland，支持模型输入区域穿透（要求 XShape 1.1+）；没有 `DISPLAY` 的 Wayland 会话使用原生后端，保留窗口内视线跟随和拖动，不提供窗口外全局光标、穿透、强制置顶或位置恢复。快捷聊天与 Live2D 共用同一个无标题栏窗口，拖动桌宠时一起移动。托盘按实际 StatusNotifier 宿主探测；不可用时关闭主窗口改为最小化，保留任务栏入口。启动失败优先尝试系统已有的 `zenity` / `kdialog` 提示，同时保留标准错误输出。
 - **产物**：三平台均为 framework-dependent 的槽式归档（Windows ZIP、Linux tar.gz、macOS ZIP），附 `.sha256`、SBOM、第三方声明与发布清单。目标机需要 .NET Runtime 10，不提供自包含安装包；Linux 另需 GTK 与 ALSA。
 - **数据迁移**：迁移前以 `VACUUM INTO` 备份数据库，单文件上限 64 MiB，最多保留 3 份。
 - **模型**：只支持本地 Live2D 模型（`arg-nori`、`nori`）与本地 ZIP / 目录导入，不提供远程模型下载或 CDN。

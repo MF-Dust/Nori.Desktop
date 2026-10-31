@@ -27,6 +27,8 @@
 		<PackageReference Include="AngleSharp" Version="1.7.1"/>
 		<PackageReference Include="YamlDotNet" Version="18.1.0"/>
 		<PackageReference Include="NLog" Version="6.2.0"/>
+		<!-- 与 Avalonia.FreeDesktop 共用同一 D-Bus 实现，探测实际托盘宿主。 -->
+		<PackageReference Include="Tmds.DBus.Protocol" Version="0.94.1"/>
 		<PackageReference Include="Cronos" Version="0.13.0"/>
 		<PackageReference Include="System.Numerics.Tensors" Version="10.0.11"/>
 	</ItemGroup>

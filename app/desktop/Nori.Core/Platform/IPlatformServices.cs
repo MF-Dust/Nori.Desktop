@@ -54,7 +54,7 @@ public sealed record PlatformCapabilities
 /// - Windows: user32 (GetCursorPos / WM_NCLBUTTONDOWN / WM_NCHITTEST)
 /// - macOS:   ObjC runtime (NSEvent.mouseLocation / performWindowDragWithEvent: / setIgnoresMouseEvents:)
 /// - Linux X11: libX11 + XShape (XQueryPointer / _NET_WM_MOVERESIZE / ShapeInput)
-/// - Wayland: 协议不允许全局光标与输入形状, 相关能力标志为 false, 由界面降级
+/// - Wayland: 当前后端不公开输入形状；全局光标与强制定位不可用，拖动经 Avalonia 指针事件发起
 /// </summary>
 public interface IPlatformServices
 {
@@ -66,6 +66,10 @@ public interface IPlatformServices
 
 	/// <summary>当前平台的能力标志</summary>
 	PlatformCapabilities Capabilities { get; }
+
+	/// <summary>检查当前桌面是否提供托盘宿主；调用涉及 IPC，不能阻塞 UI 线程。</summary>
+	Task<bool> IsTrayAvailableAsync(CancellationToken cancellationToken = default) =>
+		Task.FromResult(Capabilities.SupportsTray);
 
 	/// <summary>系统是否要求减少动画；无法可靠读取时默认返回 true。</summary>
 	bool PrefersReducedMotion { get; }
@@ -121,8 +125,8 @@ public static class PlatformServices
 
 		// XWayland 下 DISPLAY 有值且 X11 API 可用, 按 X11 处理即可
 		string sessionType = Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") ?? "";
-		bool hasWayland = (Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") ?? "").Length > 0;
-		bool hasDisplay = (Environment.GetEnvironmentVariable("DISPLAY") ?? "").Length > 0;
+		bool hasWayland = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
+		bool hasDisplay = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DISPLAY"));
 		if (sessionType.Equals("wayland", StringComparison.OrdinalIgnoreCase) && !hasDisplay) return SessionType.Wayland;
 		if (hasWayland && !hasDisplay) return SessionType.Wayland;
 		return SessionType.X11;

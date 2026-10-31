@@ -151,6 +151,7 @@ internal static class Program
 			catch { /* 进程已退出或无法查询时，启动器仍需输出原始错误。 */ }
 		}
 		Console.Error.WriteLine($"{title}: {message}");
+		Nori.Startup.LinuxStartupError.TryShow(title, message);
 	}
 
 	[DllImport("user32.dll", CharSet = CharSet.Unicode)]

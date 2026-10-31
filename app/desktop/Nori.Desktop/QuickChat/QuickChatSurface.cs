@@ -7,7 +7,11 @@ using Nori.Desktop.Vision;
 
 namespace Nori.Desktop.QuickChat;
 
-/// <summary>快捷聊天的内容与来源生命周期；可放入独立浮窗，也可与桌宠共用原生窗口。</summary>
+/// <summary>
+/// 快捷聊天的内容与来源生命周期；可放入独立浮窗，也可与桌宠共用原生窗口。
+/// 释放只由创建者负责（浮窗关闭时、控制器收尾时）：宿主窗口关闭不会提前释放，
+/// 否则正在进行的收尾（拒绝待审批、取消会话）会在等待中途失去聊天服务。
+/// </summary>
 internal sealed class QuickChatSurface : Border, IDisposable
 {
 	private readonly Window _owner;
@@ -26,7 +30,6 @@ internal sealed class QuickChatSurface : Border, IDisposable
 		Padding = new Thickness(QuickChatLayout.ShadowMargin);
 		Child = Body;
 		_owner.PropertyChanged += OnOwnerPropertyChanged;
-		_owner.Closed += OnOwnerClosed;
 		Body.SetHostVisible(owner.IsVisible);
 	}
 
@@ -55,8 +58,6 @@ internal sealed class QuickChatSurface : Border, IDisposable
 		}
 	}
 
-	private void OnOwnerClosed(object? sender, EventArgs args) => Dispose();
-
 	internal async Task PrepareShutdownAsync()
 	{
 		_scan.Dispose();
@@ -69,7 +70,6 @@ internal sealed class QuickChatSurface : Border, IDisposable
 		if (_disposed) return;
 		_disposed = true;
 		_owner.PropertyChanged -= OnOwnerPropertyChanged;
-		_owner.Closed -= OnOwnerClosed;
 		_scan.Dispose();
 		Body.Dispose();
 		_service.Dispose();

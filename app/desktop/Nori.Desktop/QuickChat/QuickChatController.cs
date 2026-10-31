@@ -16,6 +16,7 @@ internal sealed class QuickChatController
 	private readonly Action<QuickChatWindow> _register;
 	private readonly Action<QuickChatWindow> _unregister;
 	private readonly SemaphoreSlim _transition = new(1, 1);
+	private readonly bool _embedInPet;
 	private QuickChatWindow? _window;
 	private QuickChatSurface? _embedded;
 	private bool _disposed;
@@ -24,9 +25,12 @@ internal sealed class QuickChatController
 	private bool _refreshAgain;
 	private string _draft = "";
 
-	internal QuickChatController(AppServices services, PetWindow pet, Action<QuickChatWindow> register, Action<QuickChatWindow> unregister)
+	/// <param name="embedInPet">聊天是否放进桌宠窗口；默认仅原生 Wayland（无法定位独立浮窗）时放入，测试可显式指定以覆盖两种布局。</param>
+	internal QuickChatController(AppServices services, PetWindow pet, Action<QuickChatWindow> register, Action<QuickChatWindow> unregister,
+		bool? embedInPet = null)
 	{
 		_services = services; _pet = pet; _register = register; _unregister = unregister;
+		_embedInPet = embedInPet ?? PlatformServices.Current.Session == SessionType.Wayland;
 		_pet.PropertyChanged += OnPetPropertyChanged;
 		_pet.PositionChanged += OnPetPositionChanged;
 		_pet.DragPressureChanged += OnDragPressureChanged;
@@ -72,7 +76,7 @@ internal sealed class QuickChatController
 			_pet.SetQuickChatPresentation(enabled);
 			if (!enabled) { await CloseSurfaceAsync(); return; }
 			if (!_pet.IsVisible) { _window?.Hide(); return; }
-			if (PlatformServices.Current.Session == SessionType.Wayland)
+			if (_embedInPet)
 			{
 				if (_embedded is null)
 				{

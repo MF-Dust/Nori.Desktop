@@ -118,12 +118,36 @@ public partial class BridgeCommandsTests
 	});
 
 	[Fact]
-	public Task QuickChatSurfaceFollowsPlatformWithoutAnIndependentWaylandWindow() => WithSettingsUiAsync(async () =>
+	public Task 宿主窗口关闭不会提前释放快捷聊天表面() => WithSettingsUiAsync(async () =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		Window owner = new();
+		QuickChatSurface surface = new(fixture._services, owner);
+		try
+		{
+			owner.Show();
+			owner.Close();
+			// 生命周期由创建者统一收尾：宿主先关闭时，表面仍须能刷新并走完正常收尾。
+			fixture._config.Set("language", new ConfigValue.Text("en-US"));
+			fixture._runtime.InvalidateSnapshot();
+			await surface.Body.RefreshAsync();
+			// 显示宿主时排队的刷新可能取代这一次，等新快照落地即可；旧实现在关闭时已释放表面，永远等不到。
+			await WaitUntilAsync(() => surface.Body.State.Language == "en-US");
+			Assert.Equal("", surface.Body.State.Chat.Error);
+		}
+		finally { await surface.PrepareShutdownAsync(); }
+	});
+
+	// 布局按控制器参数而不是测试机会话决定，CI 也能覆盖原生 Wayland 的内嵌布局。
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public Task QuickChatSurfaceFollowsPetInEmbeddedAndFloatingModes(bool embedInPet) => WithSettingsUiAsync(async () =>
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true); fixture.ConfigureDesktop();
 		PetWindow pet = new(WindowDefinition.All.Single(item => item.Label == WindowLabels.Pet), fixture._services);
 		int registered = 0;
-		QuickChatController controller = new(fixture._services, pet, _ => registered++, _ => registered--);
+		QuickChatController controller = new(fixture._services, pet, _ => registered++, _ => registered--, embedInPet);
 		try
 		{
 			pet.Show(); await controller.RefreshAsync();
@@ -132,7 +156,7 @@ public partial class BridgeCommandsTests
 			await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => { }, Avalonia.Threading.DispatcherPriority.Background);
 			pet.UpdateLayout();
 			Assert.Equal(WindowDecorations.None, pet.WindowDecorations);
-			if (Nori.Core.Platform.PlatformServices.Current.Session == Nori.Core.Platform.SessionType.Wayland)
+			if (embedInPet)
 			{
 				Assert.Null(controller.Window);
 				Assert.Equal(0, registered);

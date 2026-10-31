@@ -33,6 +33,7 @@ internal sealed class DesktopBootstrapper
 	private PluginRuntimeHost? _startupPluginRuntime;
 	private Nori.Core.Update.UpdateService? _startupUpdate;
 	private Task? _shutdownTask;
+	private Task? _trayMonitorTask;
 	private int _shutdownStarted;
 	private int _secondInstanceActivationPending;
 
@@ -297,6 +298,12 @@ internal sealed class DesktopBootstrapper
 			}
 		});
 
+		// Linux 的托盘宿主可在应用启动后出现或重启；图标自身的重注册由 Avalonia 处理。
+		if (OperatingSystem.IsLinux() && TrayMenu.Current is not null
+			&& Nori.Core.Platform.PlatformServices.Current.Capabilities.SupportsTray)
+			_trayMonitorTask = TrayHostMonitor.RunAsync(services, Nori.Core.Platform.PlatformServices.Current,
+				TimeSpan.FromSeconds(5), cancellationToken);
+
 		// 固定窗口与插件窗口宿主都就绪后再执行第三方入口。
 		// 单个插件失败只记录状态，不阻断桌面宿主启动。
 		if (!safeMode)
@@ -325,6 +332,12 @@ internal sealed class DesktopBootstrapper
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "关闭阶段逐项清理，单项失败不能阻断剩余释放。")]
 	private async Task ShutdownCoreAsync()
 	{
+		if (_trayMonitorTask is not null)
+		{
+			try { await _trayMonitorTask.ConfigureAwait(false); }
+			catch (Exception exception) { WriteShutdownFailure(exception); }
+			_trayMonitorTask = null;
+		}
 		// 服务各自负责取消并收拢启动任务；先等 MCP/插件启动反而会推迟它们收到 Dispose 取消。
 		if (_services is not null)
 		{

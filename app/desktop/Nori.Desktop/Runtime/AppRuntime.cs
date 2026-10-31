@@ -129,6 +129,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	}
 
 	private int _snapshotVersion = 1;
+	private int _trayAvailable = 1;
 	private readonly Lock _snapshotCacheGate = new();
 	private readonly PluginChatProviderController? _pluginChatProviders;
 	private object? _cachedSnapshot;
@@ -139,9 +140,17 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	/// <summary>
 	/// 托盘是否真的可用
 	///
-	/// 由 App 在装载托盘后回填; 不可用时主窗内显示常驻入口与退出按钮。
+	/// 由宿主在装载托盘后回填，并随 Linux 托盘宿主变化更新；不可用时保留任务栏入口与退出按钮。
 	/// </summary>
-	public bool TrayAvailable { get; set; } = true;
+	public bool TrayAvailable
+	{
+		get => Volatile.Read(ref _trayAvailable) != 0;
+		set
+		{
+			int available = value ? 1 : 0;
+			if (Interlocked.Exchange(ref _trayAvailable, available) != available) InvalidateSnapshot();
+		}
+	}
 
 	/// <summary>
 	/// 标记初始化窗口需要补跑开始流程。

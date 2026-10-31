@@ -354,8 +354,6 @@ public sealed class MainWindow : Window
 		_exit.IsVisible = _services.Runtime is {TrayAvailable: false};
 		List<string> hints = [];
 		PlatformCapabilities capabilities = PlatformServices.Current.Capabilities;
-		if (_services.Runtime is {TrayAvailable: false})
-			hints.Add(english ? "System tray unavailable; use this window to reach Nori." : "系统托盘不可用，只能从这个窗口找到 Nori。");
 		if (!capabilities.SupportsHitThrough && PlatformServices.Current.Session != SessionType.Wayland)
 			hints.Add(english ? "Click-through is unavailable on this platform." : "本平台不支持点击穿透。");
 		_hints.Text = string.Join("  ", hints);

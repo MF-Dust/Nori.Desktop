@@ -41,7 +41,9 @@ public partial class BridgeCommandsTests
 			Assert.False(quick.ShowInTaskbar);
 			Assert.Equal(WindowDecorations.None, quick.WindowDecorations);
 			Assert.DoesNotContain(main.GetVisualDescendants().OfType<TextBlock>(), text =>
-				text.Text?.Contains("Wayland", StringComparison.Ordinal) == true);
+				text.Text?.Contains("Wayland", StringComparison.Ordinal) == true
+				|| text.Text?.Contains("系统托盘不可用", StringComparison.Ordinal) == true
+				|| text.Text?.Contains("System tray unavailable", StringComparison.Ordinal) == true);
 			Assert.Equal(PlatformServices.Current.Capabilities.SupportsTopmost, quick.Topmost);
 			CaptureUi(main, $"linux-main-{PlatformServices.Current.Session}-{language}-{width}x{height}");
 		}

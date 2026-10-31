@@ -24,6 +24,7 @@ public static class TelemetrySanitizer
 		"host_api",
 		"exception_kind",
 		"hresult",
+		"gl_error",
 		"assembly",
 		"type_name",
 	};

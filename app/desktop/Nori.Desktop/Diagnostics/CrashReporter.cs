@@ -26,6 +26,8 @@ namespace Nori.Desktop.Diagnostics;
 ///   否则进程会在处理器返回时直接终止, 窗口一闪而过;
 /// - <c>TaskScheduler.UnobservedTaskException</c>: SetObserved + 记日志, 不弹窗 ——
 ///   这类异常在 GC 时才浮出, 多为过期的后台任务失败, 弹致命窗过于惊吓 (与 ClassIsland 的有意偏离).
+/// - GPU 设备丢失/互操作失败 (NORI-31 / NORI-32) 不弹崩溃窗: 记 warning, 每类每进程只上报一次,
+///   UI 线程上的失败再通知 OpenGL 控件暂停帧请求并重建表面.
 ///
 /// 崩溃窗用原生 Avalonia 构建, 不依赖浏览器组件来显示错误.
 /// </summary>
@@ -36,6 +38,11 @@ public static class CrashReporter
 	private static ITelemetry _telemetry = NoopTelemetry.Instance;
 	private static IClassicDesktopStyleApplicationLifetime? _lifetime;
 	private static Window? _crashWindow;
+	private static readonly Lock GpuFailureGate = new();
+	private static readonly HashSet<string> ReportedGpuFailures = new(StringComparer.Ordinal);
+
+	/// <summary>UI 线程上的 GPU 渲染失败已兜底、需要 OpenGL 控件暂停并重建时同步触发。</summary>
+	internal static event Action<GpuFailure>? GpuRenderFailureHandled;
 
 	/// <summary>
 	/// 注册域级兜底. 必须在 Avalonia 启动前调用 (Program.Main 里), 越早覆盖面越大.
@@ -261,6 +268,11 @@ public static class CrashReporter
 	{
 		try
 		{
+			if (TryHandleGpuFailure(e.Exception, "gpu_render", requestRecovery: true))
+			{
+				e.Handled = true;
+				return;
+			}
 			Report(e.Exception, critical: false);
 			e.Handled = true; // 兜底成功, 进程继续运行
 		}
@@ -274,8 +286,39 @@ public static class CrashReporter
 	private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
 	{
 		e.SetObserved(); // 已记录即视为已观察, 避免反复触发
+		// 合成器释放交换链等后台任务在设备丢失后才失败, 控件已由 Avalonia 的丢失检测重建, 这里只降级上报。
+		if (TryHandleGpuFailure(e.Exception, "gpu_unobserved_task", requestRecovery: false)) return;
 		_telemetry.CaptureException(e.Exception, "unobserved_task");
 		WriteLogSafe($"未观察的任务异常 (延迟至 GC 才暴露): {SensitiveDataRedactor.ExceptionSummary(e.Exception)}");
+	}
+
+	/// <summary>
+	/// GPU 设备丢失与互操作失败按可恢复故障处理: 不弹崩溃窗, 本地记 warning,
+	/// Sentry 每个类别每进程只发一次 warning (带 exception_kind / hresult / gl_error 标签)。
+	/// </summary>
+	/// <param name="exception">兜底收到的异常</param>
+	/// <param name="operation">固定遥测操作名</param>
+	/// <param name="requestRecovery">是否通知 OpenGL 控件暂停并重建 (仅 UI 线程调用)</param>
+	/// <returns>是 GPU 失败并已处理时为 true</returns>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "恢复通知失败只记录，不能把兜底本身变成新的崩溃。")]
+	internal static bool TryHandleGpuFailure(Exception exception, string operation, bool requestRecovery)
+	{
+		if (GpuFailureClassifier.Classify(exception) is not { } failure) return false;
+		bool firstOfKind;
+		lock (GpuFailureGate) firstOfKind = ReportedGpuFailures.Add(failure.Kind);
+		if (firstOfKind) _telemetry.CaptureWarning(exception, operation, failure.Tags());
+		string code = failure.HResult is { } hresult ? $" 0x{hresult:X8}" : failure.GlError is { } glError ? $" GL 0x{glError:X4}" : "";
+		WriteWarningSafe($"GPU 渲染失败, 已降级并等待重建: {failure.Kind}{code}", "gpu.render_failure");
+		if (!requestRecovery) return true;
+		try { GpuRenderFailureHandled?.Invoke(failure); }
+		catch (Exception recoveryFailure) { WriteWarningSafe($"GPU 渲染恢复通知失败: {SensitiveDataRedactor.ExceptionType(recoveryFailure)}", "gpu.recovery_failed"); }
+		return true;
+	}
+
+	/// <summary>测试隔离: 清空每进程一次的 GPU 上报记录。</summary>
+	internal static void ResetGpuFailureReports()
+	{
+		lock (GpuFailureGate) ReportedGpuFailures.Clear();
 	}
 
 	/// <summary>
@@ -592,6 +635,14 @@ public static class CrashReporter
 	{
 		try { _lifetime?.Shutdown(code); }
 		catch (InvalidOperationException) { }
+	}
+
+	/// <summary>可恢复故障只写进程日志器; 日志器尚未挂接时不落应急文件, 也不覆盖崩溃摘要。</summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "告警日志失败不能影响兜底流程。")]
+	private static void WriteWarningSafe(string message, string eventId)
+	{
+		try { _logger?.Write(LogSource.Backend, "warn", SensitiveDataRedactor.Redact(message), "Crash", eventId); }
+		catch { }
 	}
 
 	private static void WriteLogSafe(string message)

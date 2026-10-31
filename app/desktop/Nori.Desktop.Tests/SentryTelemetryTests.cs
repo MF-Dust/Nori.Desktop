@@ -155,6 +155,34 @@ public sealed class SentryTelemetryTests
 	}
 
 	[Fact]
+	public void CaptureWarning以已处理warning级别发送并保留GPU标签()
+	{
+		List<SentryEvent> captured = [];
+		using SentryTelemetry telemetry = new("https://publickey@sentry.invalid/1", "nori@test", "test");
+		telemetry.Configure(true);
+		telemetry.TestBeforeSend = capturedEvent =>
+		{
+			captured.Add(capturedEvent);
+			return null;
+		};
+
+		telemetry.CaptureWarning(new InvalidOperationException("设备细节"), "gpu_render", new Dictionary<string, string>
+		{
+			["exception_kind"] = "gpu_device_lost",
+			["hresult"] = "0x887A0005",
+			["gl_error"] = "0x300E",
+		});
+
+		SentryEvent sentryEvent = Assert.Single(captured);
+		Assert.Equal(SentryLevel.Warning, sentryEvent.Level);
+		Assert.NotEqual(false, sentryEvent.SentryExceptions?.Single().Mechanism?.Handled);
+		Assert.Equal("gpu_render", sentryEvent.Tags?["operation"]);
+		Assert.Equal("gpu_device_lost", sentryEvent.Tags?["exception_kind"]);
+		Assert.Equal("0x887a0005", sentryEvent.Tags?["hresult"]);
+		Assert.Equal("0x300e", sentryEvent.Tags?["gl_error"]);
+	}
+
+	[Fact]
 	public void 白名单外的标签与值会被丢弃或归一化()
 	{
 		List<SentryEvent> captured = [];

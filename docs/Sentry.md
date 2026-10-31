@@ -10,6 +10,15 @@ Nori 仅在原生 .NET/Avalonia 宿主中集成 Sentry，不上传页面 source 
 
 原生界面与音频等模块通过宿主共用日志器记录固定安全事件，不接受通过桥接提交任意日志正文或来源。真实异常继续由现有异常处理和遥测链路捕获；本地诊断页不制造测试崩溃或合成日志，也不会上传本地日志文件。
 
+## GPU 渲染故障
+
+伴侣 OpenGL 控件在合成时向 ANGLE/DXGI 借交换链纹理。驱动重置、睡眠唤醒、远程桌面、切换显卡或显存不足都可能导致 `CreateTexture2D` 失败或图形上下文丢失（NORI-31 / NORI-32）。这类异常不弹崩溃窗，按以下方式处理：
+
+- 只按异常类型、HRESULT、GL 错误码和抛出栈帧所在命名空间分类，不读取异常正文。`PlatformGraphicsContextLostException`、DXGI 设备移除类 HRESULT 与 `EGL_CONTEXT_LOST` 归为 `gpu_device_lost`；Avalonia GPU 互操作栈帧抛出的其他 `COMException`/`OpenGlException` 归为 `gpu_interop_failure`。
+- 每个类别每个进程只向 Sentry 发送一次 warning 级别的已处理事件，带 `exception_kind`、`hresult` 或 `gl_error` 标签；之后只写本地 warn 日志。
+- UI 线程上的失败会让伴侣与预览控件暂停帧请求，按 1/2/5/10/30 秒退避原位重建渲染表面；连续稳定 1 分钟后退避复位。上下文已丢失时只丢弃失效 GL 句柄，不再调用删除，重建后重新加载模型。
+- 未观察任务里的同类异常（合成器释放交换链等）同样降级为 warning，不另行触发重建。
+
 ## 应用会话跟踪（Release Health）
 
 配置 Native DSN 且用户明确同意遥测后，SDK 自动开始一次应用会话。重复启用不会另开会话；关闭遥测或正常退出时先结束会话，再由 SDK 在现有关闭超时内刷新。重新开启遥测会开始新会话。隐藏窗口或驻留托盘不会结束会话。

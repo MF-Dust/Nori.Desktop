@@ -81,6 +81,15 @@ public sealed class NativeModelHost : IDisposable
 
 	public void Draw(Matrix4x4 projection) => Renderer.Draw(ModelMatrix * projection);
 
+	/// <summary>上下文已丢失：释放 CPU 侧动画数据，放弃 GL 句柄而不调用删除。</summary>
+	public void Abandon()
+	{
+		if (_disposed) return;
+		_disposed = true;
+		try { Renderer.Abandon(); }
+		finally { Animation.Dispose(); }
+	}
+
 	public void Dispose()
 	{
 		if (_disposed) return;

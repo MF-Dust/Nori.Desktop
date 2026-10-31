@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.OpenGL.Controls;
 using Avalonia.OpenGL;
 using Avalonia.Threading;
+using Nori.Desktop.Diagnostics;
 using Nori.Desktop.Live2D.Gl;
 using Nori.Core.Live2D;
 
@@ -16,6 +18,7 @@ namespace Nori.Desktop.Live2D;
 /// - 开启 2048x2048 裁剪蒙版缓冲与各向异性过滤
 /// - 后台定时驱动 RequestNextFrameRendering，按 l2d_max_fps 限帧
 /// - 约 10Hz 采样全视口 alpha 缓冲，生成贴近可见模型尺寸的连续交互矩形
+/// - GPU 设备丢失或交换链纹理创建失败时暂停帧请求，按退避重建渲染表面
 /// </summary>
 public sealed class PetGlControl : OpenGlControlBase
 {
@@ -49,11 +52,43 @@ public sealed class PetGlControl : OpenGlControlBase
 	/// <summary>已排队但尚未渲染的帧请求, 用于避免 Dispatcher 队列堆积</summary>
 	private int _framePending;
 	private volatile bool _renderActive;
+	private readonly Action _requestFrameFromLoop;
+
+	// GPU 故障恢复 (NORI-31 / NORI-32)
+	private readonly GpuRecoveryBackoff _gpuBackoff = new();
+	private IDisposable? _gpuRecovery;
+	/// <summary>GPU 故障后到重建表面前不再请求帧，避免反复撞上失败的交换链纹理创建。</summary>
+	private volatile bool _gpuSuspended;
+	/// <summary>正在为 GPU 恢复摘下并放回控件；此时的 Deinit 需要在重建后恢复模型。</summary>
+	private bool _rebuildingSurface;
+	private bool _attached;
 
 	public PetGlControl(PetRuntime runtime)
 	{
 		_runtime = runtime;
 		_renderFrame = RenderFrame;
+		_requestFrameFromLoop = RequestFrameFromLoop;
+	}
+
+	protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+	{
+		base.OnAttachedToVisualTree(e);
+		if (_attached) return;
+		_attached = true;
+		CrashReporter.GpuRenderFailureHandled += OnGpuRenderFailure;
+	}
+
+	protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+	{
+		// 基类在这里释放 Avalonia 的 GL 资源，并在上下文可用时回调 OnOpenGlDeinit。
+		base.OnDetachedFromVisualTree(e);
+		if (!_attached) return;
+		_attached = false;
+		CrashReporter.GpuRenderFailureHandled -= OnGpuRenderFailure;
+		if (_rebuildingSurface) return;
+		_gpuRecovery?.Dispose();
+		_gpuRecovery = null;
+		_gpuSuspended = false;
 	}
 
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "GL 初始化失败后的资源回滚不能覆盖原始异常。")]
@@ -63,6 +98,8 @@ public sealed class PetGlControl : OpenGlControlBase
 
 		_runtime.RunSynchronized(() =>
 		{
+			// 上下文丢失后 Avalonia 可能跳过 Deinit；旧句柄属于已失效的上下文，只能丢弃。
+			if (_glApi is not null) AbandonGlState();
 			try
 			{
 				_glApi = new AvaloniaGlApi(gl);
@@ -80,9 +117,34 @@ public sealed class PetGlControl : OpenGlControlBase
 				try { _textureQuad?.Dispose(); } catch { }
 				_textureQuad = null;
 				_glApi = null;
+				// 初始化失败后 Avalonia 不会再请求帧；设备刚出过故障时按退避重建，否则保持原有失败语义。
+				if (_gpuBackoff.IsRecovering(Now())) Dispatcher.UIThread.Post(() => ScheduleGpuRecovery("gpu.init_failed"));
 				throw;
 			}
 		});
+	}
+
+	/// <summary>Avalonia 检测到上下文丢失后、重新初始化前调用；此时不能再发出 GL 调用。</summary>
+	protected override void OnOpenGlLost()
+	{
+		StopRenderLoop();
+		_runtime.RunSynchronized(AbandonGlState);
+		_runtime.WriteRenderSurfaceLog("warn", "伴侣 OpenGL 上下文丢失, 已丢弃失效资源并等待重建", "gl.context_lost");
+		base.OnOpenGlLost();
+	}
+
+	/// <summary>放弃属于已丢失上下文的全部 GL 句柄，不调用任何 GL 删除。</summary>
+	private void AbandonGlState()
+	{
+		try { _runtime.OnGlLost(); }
+		catch (Exception exception) { _runtime.WriteLive2DLog($"丢弃失效 Live2D 资源失败: {exception.Message}"); }
+		_sceneSurface = null;
+		_hitMaskSurface = null;
+		_sceneWidth = 0;
+		_sceneHeight = 0;
+		_offscreenAvailable = false;
+		_textureQuad = null;
+		_glApi = null;
 	}
 
 	protected override void OnOpenGlDeinit(GlInterface gl)
@@ -90,9 +152,10 @@ public sealed class PetGlControl : OpenGlControlBase
 		StopRenderLoop();
 		try
 		{
+			bool restoreModel = _rebuildingSurface;
 			_runtime.RunSynchronized(() =>
 			{
-				try { _runtime.OnGlDeinit(); }
+				try { _runtime.OnGlDeinit(restoreModel); }
 				catch (Exception exception) { _runtime.WriteLive2DLog($"释放 Live2D 运行时失败: {exception.Message}"); }
 				DisposeRenderTargets();
 				try { _textureQuad?.Dispose(); }
@@ -417,7 +480,7 @@ public sealed class PetGlControl : OpenGlControlBase
 
 	private void StartRenderLoop()
 	{
-		if (_renderLoopRunning || !_renderActive) return;
+		if (_renderLoopRunning || !_renderActive || _gpuSuspended) return;
 		_fpsCts = new CancellationTokenSource();
 		_renderLoopRunning = true;
 		CancellationToken token = _fpsCts.Token;
@@ -452,7 +515,7 @@ public sealed class PetGlControl : OpenGlControlBase
 				if (!_renderActive) break;
 				if (Interlocked.CompareExchange(ref _framePending, 1, 0) == 0)
 				{
-					Dispatcher.UIThread.Post(RequestNextFrameRendering, DispatcherPriority.Render);
+					Dispatcher.UIThread.Post(_requestFrameFromLoop, DispatcherPriority.Render);
 				}
 				else
 				{
@@ -516,6 +579,96 @@ public sealed class PetGlControl : OpenGlControlBase
 		// 清掉可能滞留的旧帧请求标记, 最坏情况多画一帧
 		Interlocked.Exchange(ref _framePending, 0);
 		StartRenderLoop();
+	}
+
+	/// <summary>帧循环投递到 UI 线程的请求；GPU 故障挂起期间丢弃，已排队的旧请求也不再触发合成更新。</summary>
+	private void RequestFrameFromLoop()
+	{
+		if (_gpuSuspended)
+		{
+			Interlocked.Exchange(ref _framePending, 0);
+			return;
+		}
+		RequestNextFrameRendering();
+	}
+
+	private static TimeSpan Now() => Stopwatch.GetElapsedTime(0);
+
+	/// <summary>
+	/// GPU 渲染失败已由崩溃兜底处理 (UI 线程)。
+	///
+	/// 失败发生在 Avalonia 合成提交里 (OpenGlControlBase 借交换链纹理)，每次帧请求都会再撞一次，
+	/// 并让同一批合成提交中断；先停掉帧请求，再按退避重建。失败来源未必是本控件，
+	/// 所有已挂到界面的 OpenGL 控件都会重建一次。
+	/// </summary>
+	private void OnGpuRenderFailure(GpuFailure failure)
+	{
+		if (!_attached) return;
+		ScheduleGpuRecovery(failure.Kind == GpuFailure.DeviceLost ? "gpu.device_lost" : "gpu.interop_failure");
+	}
+
+	private void ScheduleGpuRecovery(string eventId)
+	{
+		if (!_attached) return;
+		_gpuSuspended = true;
+		Interlocked.Exchange(ref _framePending, 0);
+		StopRenderLoop();
+		if (_gpuRecovery is not null) return;
+		TimeSpan delay = _gpuBackoff.NextDelay(Now());
+		_runtime.WriteRenderSurfaceLog("warn", $"伴侣渲染表面暂停, {delay.TotalSeconds:0} 秒后重建", eventId);
+		_gpuRecovery = DispatcherTimer.RunOnce(RecoverFromGpuFailure, delay, DispatcherPriority.Background);
+	}
+
+	/// <summary>测试观测缝：是否已安排 GPU 故障后的表面重建。</summary>
+	internal bool GpuRecoveryPending => _gpuRecovery is not null;
+
+	/// <summary>测试观测缝：不等待退避计时，立即执行已安排的表面重建。</summary>
+	internal void RecoverFromGpuFailureNow()
+	{
+		if (_gpuRecovery is null) return;
+		_gpuRecovery.Dispose();
+		RecoverFromGpuFailure();
+	}
+
+	private void RecoverFromGpuFailure()
+	{
+		_gpuRecovery = null;
+		if (!_attached) return;
+		_gpuSuspended = false;
+		_runtime.WriteRenderSurfaceLog("info", "重建伴侣渲染表面", "gl.surface_rebuild");
+		if (RebuildSurface()) return;
+		// 无法重挂时交给 Avalonia 的丢失检测：恢复帧请求，上下文已丢失会在下一帧自动重建。
+		if (_glApi is not null) StartRenderLoop();
+		RequestNextFrameRendering();
+	}
+
+	/// <summary>
+	/// 从父容器摘下再原位放回，强制 Avalonia 释放并重新创建 OpenGL 上下文、交换链与 FBO。
+	/// 摘下与放回在同一次 UI 调度内完成，宿主不会观察到控件缺席。
+	/// </summary>
+	private bool RebuildSurface()
+	{
+		_rebuildingSurface = true;
+		try
+		{
+			switch (Parent)
+			{
+				case Panel panel when panel.Children.IndexOf(this) is var index and >= 0:
+					panel.Children.RemoveAt(index);
+					panel.Children.Insert(index, this);
+					return true;
+				case Decorator decorator when ReferenceEquals(decorator.Child, this):
+					decorator.Child = null;
+					decorator.Child = this;
+					return true;
+				default:
+					return false;
+			}
+		}
+		finally
+		{
+			_rebuildingSurface = false;
+		}
 	}
 
 	/// <summary>由窗口显隐驱动渲染；隐藏状态不产生调度请求，也不采样命中掩码。</summary>

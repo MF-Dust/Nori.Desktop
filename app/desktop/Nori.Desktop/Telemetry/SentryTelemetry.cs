@@ -97,7 +97,15 @@ public sealed class SentryTelemetry : ITelemetry
 	/// <summary>测试传输替身: 接收包括会话在内的信封, 不访问网络。</summary>
 	internal Sentry.Extensibility.ITransport? TestTransport { get; set; }
 
-	public void CaptureException(Exception exception, string operation, bool handled = true, bool terminal = false, IReadOnlyDictionary<string, string>? tags = null)
+	public void CaptureException(Exception exception, string operation, bool handled = true, bool terminal = false, IReadOnlyDictionary<string, string>? tags = null) =>
+		Capture(exception, operation, handled, terminal, tags, level: null);
+
+	/// <inheritdoc />
+	public void CaptureWarning(Exception exception, string operation, IReadOnlyDictionary<string, string>? tags = null) =>
+		Capture(exception, operation, handled: true, terminal: false, tags, SentryLevel.Warning);
+
+	private void Capture(Exception exception, string operation, bool handled, bool terminal,
+		IReadOnlyDictionary<string, string>? tags, SentryLevel? level)
 	{
 		if (exception is null) return;
 		lock (_gate)
@@ -109,6 +117,7 @@ public sealed class SentryTelemetry : ITelemetry
 			{
 				SentrySdk.CaptureException(exception, handled, terminal, scope =>
 				{
+					if (level is { } eventLevel) scope.Level = eventLevel;
 					scope.SetTag("operation", normalizedOperation);
 					foreach ((string key, string value) in safeTags) scope.SetTag(key, value);
 				});

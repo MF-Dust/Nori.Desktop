@@ -54,6 +54,8 @@ public sealed class PetRuntime
 
 	private readonly Lock _modelGate = new();
 	private AvaloniaGlApi? _gl;
+	/// <summary>GPU 故障重建表面后需要重新加载的模型；仅在模型锁内读写。</summary>
+	private string? _restoreModelOnGlInit;
 	private NativeModelHost? _currentModel;
 	private string _currentModelId = "arg-nori";
 	private string _currentModelDir = "";
@@ -238,6 +240,14 @@ public sealed class PetRuntime
 		}
 	}
 
+	/// <summary>渲染表面故障与恢复的固定事件日志；消息不含模型或用户内容。</summary>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "渲染恢复日志失败不能带回 UI 或渲染线程。")]
+	internal void WriteRenderSurfaceLog(string level, string message, string eventId)
+	{
+		try { _services.Logger.Write(LogSource.Backend, level, message, "Live2D", eventId); }
+		catch { }
+	}
+
 	/// <summary>记录渲染线程的帧耗时与命中掩码耗时。</summary>
 	public void RecordRenderMetrics(double frameTimeMs, double maskCostMs)
 	{
@@ -286,9 +296,16 @@ public sealed class PetRuntime
 	public void OnGlInit(AvaloniaGlApi gl)
 	{
 		_gl = gl;
+		string? restoreModel = _restoreModelOnGlInit;
+		_restoreModelOnGlInit = null;
 		_services.Logger.Write(LogSource.Backend, "info", "Live2D OpenGL 初始化完成");
-		// 预览实例只响应显式 LoadModelAsync，不读取或改写全局模型选择。
-		if (_previewMode) return;
+		// 预览实例只响应显式 LoadModelAsync，不读取或改写全局模型选择；
+		// GPU 故障重建表面时恢复故障前已显示的预览模型。
+		if (_previewMode)
+		{
+			if (restoreModel is not null) ObserveCompletionTask(RequestModelLoad(restoreModel, reloadCurrent: true));
+			return;
+		}
 
 		string savedModel = _services.Config.GetStringOr("selected_model", "arg-nori");
 		if (!string.IsNullOrWhiteSpace(savedModel)) _currentModelId = savedModel.Trim();
@@ -301,17 +318,30 @@ public sealed class PetRuntime
 		RequestModelLoad(_currentModelId);
 	}
 
-	public void OnGlDeinit()
+	public void OnGlDeinit() => ReleaseGlState(contextLost: false, restoreModelOnInit: false);
+
+	/// <param name="restoreModelOnInit">GPU 故障后重建表面时为 true：下次 <see cref="OnGlInit"/> 重新加载当前模型。</param>
+	public void OnGlDeinit(bool restoreModelOnInit) => ReleaseGlState(contextLost: false, restoreModelOnInit);
+
+	/// <summary>
+	/// OpenGL 上下文已丢失（设备移除、驱动重置等）：不再调用 GL 删除，只丢弃失效句柄。
+	/// 记住当前模型，上下文重建后由 <see cref="OnGlInit"/> 重新加载。
+	/// </summary>
+	public void OnGlLost() => ReleaseGlState(contextLost: true, restoreModelOnInit: true);
+
+	private void ReleaseGlState(bool contextLost, bool restoreModelOnInit)
 	{
 		lock (_prepareGate) CancelPendingModelLoadLocked();
 		NativeModelHost? previous = _currentModel;
+		if (restoreModelOnInit && previous is not null) _restoreModelOnGlInit = _currentModelId;
 		_currentModel = null;
 		BindFixedBehaviorParameters(null);
 		_expressionBehavior.UnbindModel();
 		_presentationGeometry = null;
 		lock (_interactionGate) _viewportMapping = null;
-		previous?.Dispose();
 		_gl = null;
+		if (contextLost) previous?.Abandon();
+		else previous?.Dispose();
 	}
 
 	/// <summary>在当前模型绑定时缓存行为和视线动画使用的固定参数索引。</summary>

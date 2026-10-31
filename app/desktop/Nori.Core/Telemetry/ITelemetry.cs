@@ -24,6 +24,13 @@ public interface ITelemetry : IDisposable
 	/// </summary>
 	void CaptureException(Exception exception, string operation, bool handled = true, bool terminal = false, IReadOnlyDictionary<string, string>? tags = null);
 
+	/// <summary>
+	/// 以 warning 级别捕获已处理且可恢复的异常，例如 GPU 设备丢失后的自动重建。
+	/// 默认实现退回普通的已处理异常，未区分级别的遥测实现无需改动。
+	/// </summary>
+	void CaptureWarning(Exception exception, string operation, IReadOnlyDictionary<string, string>? tags = null) =>
+		CaptureException(exception, operation, handled: true, terminal: false, tags);
+
 	/// <summary>开始一个只包含固定操作名的性能事务。</summary>
 	ITelemetryTransaction StartTransaction(string operation);
 

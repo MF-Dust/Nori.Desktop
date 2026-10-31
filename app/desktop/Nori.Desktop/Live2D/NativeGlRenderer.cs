@@ -292,6 +292,21 @@ public sealed class NativeGlRenderer : IModelMeshTarget, IDisposable
 		bound = texture;
 	}
 
+	/// <summary>
+	/// 上下文已丢失时放弃全部 GL 句柄而不调用删除。
+	///
+	/// 句柄编号只在原上下文内有效；丢失后重建的上下文会重新从小编号分配，
+	/// 用旧编号删除会误删新模型的纹理和缓冲。
+	/// </summary>
+	public void Abandon()
+	{
+		if (_disposed) return;
+		_disposed = true;
+		InvalidateState();
+		_targets = [];
+		_vao = _vertices = _uvs = _indices = 0;
+	}
+
 	public void Dispose()
 	{
 		if (_disposed) return;

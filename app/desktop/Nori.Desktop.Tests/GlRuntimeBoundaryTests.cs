@@ -146,6 +146,33 @@ public sealed class GlRuntimeBoundaryTests
 		Assert.Single(gl.DeletedPrograms);
 	}
 
+	[Fact]
+	public void 上下文丢失时放弃句柄且不调用任何GL删除()
+	{
+		var gl = new RecordingGlApi();
+		var renderer = RendererWithoutNativeModel(gl);
+		((MeshProgram)GetField(renderer, "_program")).EnsureProgram();
+		SetField(renderer, "_vertices", 18);
+		SetField(renderer, "_indices", 19);
+		SetField(renderer, "_uvs", 20);
+		SetField(renderer, "_targets", new[] { SurfaceWithHandle(gl, 51) });
+
+		// 丢失后重建的上下文会复用小编号；用旧编号删除会误删新模型资源。
+		renderer.Abandon();
+		renderer.Dispose();
+
+		Assert.Equal(0, GetField(renderer, "_vao"));
+		Assert.Equal(0, GetField(renderer, "_vertices"));
+		Assert.Equal(0, GetField(renderer, "_indices"));
+		Assert.Equal(0, GetField(renderer, "_uvs"));
+		Assert.Empty((NativeGlSurface[])GetField(renderer, "_targets"));
+		Assert.Empty(gl.DeletedBuffers);
+		Assert.Empty(gl.DeletedPrograms);
+		Assert.Empty(gl.DeletedTextures);
+		Assert.Empty(gl.DeletedFramebuffers);
+		Assert.Empty(gl.DeletedVertexArrays);
+	}
+
 	// 现有替身不生成资源句柄；只注入托管状态，不依赖本机原生模型或 GPU。
 	private static NativeGlRenderer RendererWithoutNativeModel(RecordingGlApi gl)
 	{

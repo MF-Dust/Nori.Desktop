@@ -110,22 +110,28 @@ public partial class BridgeCommandsTests
 		var pet = new PetRuntime(fixture._services);
 		var preview = new PetRuntime(fixture._services, previewMode: true);
 		using ManualResetEventSlim entered = new(), release = new(), sameEntered = new(), previewEntered = new();
-		Task first = Task.Run(() => pet.RunSynchronized(() =>
+		// 阻塞锁测试使用独立线程，避免线程池饥饿被误判为运行时共享全局锁。
+		Task first = Task.Factory.StartNew(() => pet.RunSynchronized(() =>
 		{
 			entered.Set();
 			release.Wait();
-		}));
+		}), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+		Task same = Task.CompletedTask, other = Task.CompletedTask;
 		try
 		{
 			Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
-			Task same = Task.Run(() => pet.RunSynchronized(sameEntered.Set));
-			Task other = Task.Run(() => preview.RunSynchronized(previewEntered.Set));
+			same = Task.Factory.StartNew(() => pet.RunSynchronized(sameEntered.Set),
+				CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+			other = Task.Factory.StartNew(() => preview.RunSynchronized(previewEntered.Set),
+				CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 			Assert.True(previewEntered.Wait(TimeSpan.FromSeconds(2)));
 			Assert.False(sameEntered.Wait(TimeSpan.FromMilliseconds(100)));
+		}
+		finally
+		{
 			release.Set();
 			await Task.WhenAll(first, same, other).WaitAsync(TimeSpan.FromSeconds(2));
 		}
-		finally { release.Set(); }
 	}
 
 	[Fact]

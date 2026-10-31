@@ -45,11 +45,13 @@ write_entry() {
 	temporary="$(mktemp "$destination.XXXXXX")"
 	{
 		printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Version=1.0' 'Name=Nori Desktop Pet' 'Name[zh_CN]=Nori 桌面伴侣'
-		# GIO 在展开 %% 前检查首个可执行文件；用 env 避免含百分号的包路径被误判不存在。
-		printf 'Exec=/usr/bin/env %s\n' "$(exec_arg "$root/Nori")"
+		# GIO 在展开 %% 前检查首个可执行文件，含百分号的包路径不能放在首位；env 又会把含 = 的参数
+		# 当成环境变量赋值而不启动。改由 sh 把包路径作为 $0 原样 exec，路径本身不经过 shell 解释。
+		printf 'Exec=%s %s\n' '/bin/sh -c "exec \\"\\$0\\""' "$(exec_arg "$root/Nori")"
 		printf 'Path=%s\n' "$(escape_value "$root")"
 		printf 'Icon=%s\n' "$(escape_value "$root/nori.png")"
-		printf '%s\n' 'Terminal=false' 'Categories=Utility;' "$owner"
+		# 宿主窗口的 WM_CLASS 取自入口程序集名（Avalonia 默认），桌面据此把运行中的窗口归到本入口。
+		printf '%s\n' 'Terminal=false' 'Categories=Utility;' 'StartupWMClass=Nori.Desktop' "$owner"
 	} > "$temporary"
 	chmod 644 "$temporary"
 	mv -f -- "$temporary" "$destination"

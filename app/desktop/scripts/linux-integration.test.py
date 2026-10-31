@@ -21,7 +21,7 @@ class DesktopTests(unittest.TestCase):
 		self.temporary = tempfile.TemporaryDirectory(prefix="nori-integration-")
 		self.addCleanup(self.temporary.cleanup)
 		self.base = Path(self.temporary.name)
-		self.root = self.base / '包 空格 "引号" $美元 `反引号` %百分号 \\斜线'
+		self.root = self.base / '包 空格 "引号" $美元 `反引号` %百分号 \\斜线 a=等号'
 		self.root.mkdir()
 		shutil.copyfile(SCRIPTS / "linux-desktop.sh", self.root / "linux-desktop.sh")
 		(self.root / "Nori").write_text("#!/bin/sh\nexit 0\n")
@@ -42,6 +42,9 @@ class DesktopTests(unittest.TestCase):
 		entry = self.menu.read_text()
 		self.assertIn("%%百分号", entry)
 		self.assertNotIn("app-0.0.0", entry)
+		# env 会把含 = 的路径当作变量赋值，入口必须让 sh 原样 exec 包路径。
+		self.assertIn('Exec=/bin/sh -c "exec \\\\"\\\\$0\\\\"" ', entry)
+		self.assertIn("\nStartupWMClass=Nori.Desktop\n", entry)
 		self.assertFalse((self.root / "data").exists())
 		if shutil.which("desktop-file-validate"):
 			subprocess.run(["desktop-file-validate", str(self.menu)], check=True)

@@ -3,7 +3,6 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -15,21 +14,27 @@ using Nori.Core.Resources;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
 using Nori.Desktop.Appearance;
+using Nori.Desktop.Models;
 
 namespace Nori.Desktop.FirstRun;
 
 /// <summary>
-/// 向导五步各自的样子和各自要调的服务。
+/// 向导六步各自的样子和各自要调的服务。
 ///
 /// 壳（<c>FirstRunWindow</c>）只管步进和导航，不知道每一步在做什么；步进规则在
 /// <see cref="FirstRunWizard"/>。三层分开是为了让规则能脱离 UI 单测。
 ///
 /// 每一步通过 <c>onStepChanged</c> 把「我这一步现在能不能过」抬给壳：给一句话就是
 /// 挡住并显示它，给空串就是解除。选形象那一步靠它挡住「一个形象都没有就往下走」。
+///
+/// 模型服务一步在 <c>FirstRunSteps.Ai.cs</c>，使用方法一步在 <c>FirstRunSteps.Guide.cs</c>。
 /// </summary>
-public sealed class FirstRunSteps(AppServices services, Action<string> onGate, Action onRebuild,
-	Func<string, Task<string?>> pickModel, CancellationToken lifetimeToken)
+public sealed partial class FirstRunSteps(AppServices services, Action<string> onGate, Action onRebuild,
+	Func<string, Task<string?>> pickModel, CancellationToken lifetimeToken) : IDisposable
 {
+	/// <summary>舞台滚动容器的名字。布局测试据此检查每一步在默认窗口里放得下。</summary>
+	internal const string StageName = "FirstRunStage";
+
 	private readonly AppServices _services = services;
 
 	/// <summary>报一句阻断原因（空串=解除）。**只刷底部**，不重建舞台。</summary>
@@ -53,6 +58,13 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 	private bool _autoDownloadTried;
 	private bool _telemetryInitialized;
 
+	/// <summary>
+	/// 形象立绘。下载进度每跳一次都会重建舞台，按 ID 缓存，避免反复解码；
+	/// 窗口关闭时由 <see cref="Dispose"/> 释放。
+	/// </summary>
+	private readonly Dictionary<string, Bitmap?> _thumbnails = [];
+	private bool _disposed;
+
 	/// <summary>选择文件或导入期间禁止重复操作和离开当前步骤。</summary>
 	public bool IsImporting { get; private set; }
 
@@ -65,13 +77,14 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 	/// <summary>AI 那一步实际存进去了没有。末步的摘要据此说话。</summary>
 	public bool AiSaved { get; private set; }
 
-	/// <summary>步骤标题，画在顶部指示条旁边。</summary>
+	/// <summary>步骤标题，画在顶部指示条旁边，也用作欢迎页的路线图。</summary>
 	public static string Title(WizardStep step, bool english) => step switch
 	{
 		WizardStep.Welcome => english ? "Welcome" : "欢迎",
 		WizardStep.Language => english ? "Language" : "语言",
 		WizardStep.Model => english ? "Appearance" : "形象",
 		WizardStep.Ai => english ? "Model provider" : "模型服务",
+		WizardStep.Guide => english ? "How to use" : "使用方法",
 		_ => english ? "Ready" : "就绪",
 	};
 
@@ -88,42 +101,87 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		WizardStep.Language => BuildLanguage(english),
 		WizardStep.Model => BuildModel(english),
 		WizardStep.Ai => BuildAi(english),
+		WizardStep.Guide => BuildGuide(english),
 		_ => BuildReady(english),
 	};
+
+	/// <summary>释放形象立绘。之后再构建形象页只画空白占位。</summary>
+	public void Dispose()
+	{
+		if (_disposed) return;
+		_disposed = true;
+		foreach (Bitmap? bitmap in _thumbnails.Values) bitmap?.Dispose();
+		_thumbnails.Clear();
+	}
 
 	// ── 欢迎 ───────────────────────────────────────────────────────────────
 
 	private Control BuildWelcome(bool english)
 	{
 		string version = _services.Config.GetStringOr("app_version", "Dev");
-		StackPanel body = new()
+
+		// 路线图直接取步骤标题：以后增删步骤，这里不会和顶部指示条说两套话。
+		StackPanel route = new()
 		{
-			Spacing = 14,
+			Orientation = Orientation.Horizontal, Spacing = 8,
 			HorizontalAlignment = HorizontalAlignment.Center,
-			VerticalAlignment = VerticalAlignment.Center,
+		};
+		int number = 1;
+		foreach (WizardStep step in FirstRunWizard.Order)
+		{
+			if (step is WizardStep.Welcome or WizardStep.Ready) continue;
+			route.Children.Add(RouteChip(number++, Title(step, english)));
+		}
+
+		return Stage(
+			/*
+			 * 使用 NoriHalo 而非静态标志位图。
+			 *
+			 * 本页紧接初始化窗口，后者刚完成 Dormant → Connected 的档位序列；
+			 * 此处换成静态图会中断视觉连续性。取 Waking 档：已就绪但无进行中的任务，
+			 * 与本步骤的语义一致。
+			 */
+			new Ui.NoriHalo(96) {Mood = Ui.HaloMood.Waking, HorizontalAlignment = HorizontalAlignment.Center},
+			Heading(english ? "Nori Desktop Companion" : "Nori 桌面伴侣", NoriMetrics.Font2xl),
+			Muted(english
+				? "An AI companion on your desktop: she chats with you, remembers what you share, and can lend a hand once you allow it."
+				: "住在桌面上的 AI 伙伴：陪你聊天，记得你说过的事，也能在你允许后帮你动手做事。", 400),
+			new Panel {Height = 4},
+			Faint(english ? "About a minute to get started:" : "接下来大约 1 分钟："),
+			route,
+			Faint(english ? "Every choice can be changed later in Settings." : "这里的选择之后都能在设置中修改。"),
+			Faint(version));
+	}
+
+	/// <summary>欢迎页路线图上的一站：序号加步骤名。</summary>
+	private static Control RouteChip(int number, string label) => new Border
+	{
+		Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(1),
+		CornerRadius = new CornerRadius(NoriMetrics.RadiusPill), Padding = new Thickness(6, 4, 12, 4),
+		Child = new StackPanel
+		{
+			Orientation = Orientation.Horizontal, Spacing = 6,
 			Children =
 			{
-				/*
-				 * 使用 NoriHalo 而非静态标志位图。
-				 *
-				 * 本页紧接初始化窗口，后者刚完成 Dormant → Connected 的档位序列；
-				 * 此处换成静态图会中断视觉连续性。取 Waking 档：已就绪但无进行中的任务，
-				 * 与本步骤的语义一致。
-				 */
-				new Ui.NoriHalo(104) {Mood = Ui.HaloMood.Waking, HorizontalAlignment = HorizontalAlignment.Center},
-				Heading(english ? "Nori Desktop Companion" : "Nori 桌面伴侣", NoriMetrics.Font2xl),
-				Muted(english
-					? "A desktop companion with conversation, long-term memory and tool use."
-					: "支持对话、长期记忆与工具调用的桌面伴侣。", 340),
+				new Border
+				{
+					Width = 18, Height = 18, CornerRadius = new CornerRadius(NoriMetrics.RadiusPill),
+					Background = ChatPalette.Overlay,
+					Child = new TextBlock
+					{
+						Text = number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+						FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Teal,
+						HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+					},
+				},
 				new TextBlock
 				{
-					Text = version, Foreground = ChatPalette.Faint, FontSize = NoriMetrics.FontXs,
-					HorizontalAlignment = HorizontalAlignment.Center,
+					Text = label, FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Body,
+					VerticalAlignment = VerticalAlignment.Center,
 				},
 			},
-		};
-		return body;
-	}
+		},
+	};
 
 	// ── 语言 ───────────────────────────────────────────────────────────────
 
@@ -149,7 +207,9 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 
 		return Stage(
 			Heading(english ? "Choose a language" : "选择语言", NoriMetrics.FontXl),
-			Muted(english ? "Can be changed in Settings." : "可在设置中修改。", 320),
+			Muted(english
+				? "Used for the text in every Nori window. You can change it later in Settings → General."
+				: "用于 Nori 所有窗口的界面文字，之后可在 设置 → 常规 中修改。", 360),
 			list);
 	}
 
@@ -157,7 +217,11 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 
 	private Control BuildModel(bool english)
 	{
-		StackPanel list = new() {Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center};
+		StackPanel list = new()
+		{
+			Orientation = Orientation.Horizontal, Spacing = 12,
+			HorizontalAlignment = HorizontalAlignment.Center,
+		};
 		string[] catalog = [.. SupportedModelIds.All];
 		string configured = _services.Config.GetStringOr(ConfigStore.KeySelectedModel, "");
 
@@ -179,7 +243,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 			bool ready = installed.Contains(id);
 			string captured = id;
 			list.Children.Add(Choice(
-				id,
+				BuiltInModels.Name(id),
 				ready ? english ? "Installed" : "已安装"
 				: _downloading == id ? english ? "Downloading..." : "正在下载..."
 				: online ? english ? "Not installed · click to download" : "未安装 · 点击在线获取"
@@ -194,7 +258,8 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 						_onRebuild();
 					}
 				: online ? () => _ = DownloadModelAsync(captured, english)
-				: null));
+				: null,
+				Thumbnail(id), 250));
 		}
 
 		// 一个都没装就挡住：带着空配置进主界面，伴侣窗口会是一片空白。
@@ -230,10 +295,33 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 
 		return Stage(
 			Heading(english ? "Choose an appearance" : "选择形象", NoriMetrics.FontXl),
-			Muted(english
-				? "Download from static.nori.mom or import a local ZIP or folder, then choose an installed appearance."
-				: "从 static.nori.mom 在线获取，或导入本地 ZIP 或文件夹，再选择已安装的形象。", 340),
-			imports, list);
+			Muted(online
+				? english
+					? "This is how Nori looks on your desktop. Appearances that aren't installed are downloaded from static.nori.mom; you can also import your own."
+					: "这是 Nori 在桌面上的样子。未安装的形象会从 static.nori.mom 在线获取，也可以导入自己的模型。"
+				: english
+					? "Downloads are off in safe mode. Import a local Live2D model instead."
+					: "安全模式下不在线获取，请导入本地 Live2D 模型。", 400),
+			list,
+			new Panel {Height = 2},
+			imports,
+			Faint(english
+				? "Local import: a Live2D ZIP or folder that contains a .model3.json file."
+				: "本地导入：选择包含 .model3.json 的 Live2D 模型 ZIP 或文件夹。"));
+	}
+
+	/// <summary>形象卡片左侧的立绘；取不到就留一块同尺寸的底色，卡片不跳动。</summary>
+	private Control Thumbnail(string id)
+	{
+		if (!_thumbnails.TryGetValue(id, out Bitmap? bitmap) && !_disposed)
+			_thumbnails[id] = bitmap = BuiltInModels.OpenThumbnail(id);
+		return new Border
+		{
+			Width = 56, Height = 78, ClipToBounds = true,
+			CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
+			Background = ChatPalette.Overlay,
+			Child = bitmap is null ? null : new Image {Source = bitmap, Stretch = Stretch.UniformToFill},
+		};
 	}
 
 	/// <summary>
@@ -318,163 +406,6 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		}
 	}
 
-	// ── 模型服务 ───────────────────────────────────────────────────────────
-
-	private Control BuildAi(bool english)
-	{
-		ComboBox provider = new()
-		{
-			Width = 320,
-			ItemsSource = AiDraftDefaults.Providers,
-			SelectedItem = _draft.Provider,
-			HorizontalAlignment = HorizontalAlignment.Center,
-		};
-		TextBox baseUrl = new()
-		{
-			Width = 320, Text = _draft.BaseUrl,
-			PlaceholderText = AiDraftDefaults.DefaultBaseUrl(_draft.Provider),
-		};
-		TextBox apiKey = new()
-		{
-			Width = 320, Text = _draft.ApiKey,
-			PasswordChar = '•',
-			PlaceholderText = AiDraftDefaults.ApiKeyHint(_draft.Provider),
-		};
-		TextBox model = new()
-		{
-			Width = 320, Text = _draft.Model,
-			PlaceholderText = english ? "Model name" : "模型名",
-		};
-		TextBlock result = new()
-		{
-			Foreground = ChatPalette.Muted, FontSize = NoriMetrics.FontXs,
-			HorizontalAlignment = HorizontalAlignment.Center, IsVisible = false,
-			TextWrapping = TextWrapping.Wrap, MaxWidth = 340,
-		};
-
-		void Sync()
-		{
-			_draft = new AiDraft
-			{
-				Provider = provider.SelectedItem as string ?? AiDraftDefaults.OpenAi,
-				BaseUrl = baseUrl.Text ?? "",
-				ApiKey = apiKey.Text ?? "",
-				Model = model.Text ?? "",
-			};
-			// 只刷底部，**不能重建舞台** —— 重建会把输入框换掉，焦点和光标当场丢。
-			_onGate("");
-		}
-
-		provider.SelectionChanged += (_, _) =>
-		{
-			baseUrl.PlaceholderText = AiDraftDefaults.DefaultBaseUrl(provider.SelectedItem as string ?? AiDraftDefaults.OpenAi);
-			apiKey.PlaceholderText = AiDraftDefaults.ApiKeyHint(provider.SelectedItem as string ?? AiDraftDefaults.OpenAi);
-			Sync();
-		};
-		baseUrl.TextChanged += (_, _) => Sync();
-		apiKey.TextChanged += (_, _) => Sync();
-		model.TextChanged += (_, _) => Sync();
-
-		Button fetch = new()
-		{
-			Content = english ? "Fetch models" : "获取模型",
-			Padding = new Thickness(16, 6), CornerRadius = new CornerRadius(NoriMetrics.RadiusSm),
-			Background = ChatPalette.Panel, Foreground = ChatPalette.Body,
-			BorderThickness = default,
-			HorizontalAlignment = HorizontalAlignment.Center,
-		};
-		fetch.Click += async (_, _) =>
-		{
-			// 这一步用「获取模型」验证地址与密钥：拉得到列表就说明这套凭据是通的。
-			// 不用连接测试 —— 那条命令的授权面只给主窗口。
-			fetch.IsEnabled = false;
-			result.IsVisible = true;
-			result.Foreground = ChatPalette.Muted;
-			result.Text = english ? "Fetching…" : "正在获取…";
-			try
-			{
-				IReadOnlyList<string> names = await _services.Llm.FetchModelsAsync(
-					_draft.Provider, AiDraftDefaults.EffectiveBaseUrl(_draft), _draft.ApiKey.Trim());
-				result.Foreground = ChatPalette.Teal;
-				result.Text = english
-					? $"{names.Count} models available"
-					: $"已获取 {names.Count} 个模型";
-				if (model.Text is null or "" && names.Count > 0) model.Text = names[0];
-			}
-			catch (Exception failure)
-			{
-				result.Foreground = ChatPalette.Danger;
-				result.Text = failure.Message;
-			}
-			finally
-			{
-				fetch.IsEnabled = true;
-			}
-		};
-
-		Button skip = new()
-		{
-			Content = english ? "Skip" : "跳过",
-			Background = Brushes.Transparent, Foreground = ChatPalette.Faint,
-			BorderThickness = default, FontSize = NoriMetrics.FontXs,
-			HorizontalAlignment = HorizontalAlignment.Center,
-		};
-		skip.Click += (_, _) =>
-		{
-			// 清空草稿再让壳前进：跳过就是真的什么都不存。
-			_draft = new AiDraft();
-			AiSaved = false;
-			baseUrl.Text = apiKey.Text = model.Text = "";
-			_onGate("");
-		};
-
-		return Stage(
-			Heading(english ? "Configure a model provider" : "配置模型服务", NoriMetrics.FontXl),
-			Muted(english
-				? "Optional. Can be configured in Settings."
-				: "此步骤可跳过，可在设置中配置。", 340),
-			Field(english ? "Protocol" : "协议", provider),
-			Field(english ? "API base URL" : "接口地址", baseUrl),
-			Field(english ? "API key" : "密钥", apiKey),
-			Field(english ? "Model" : "模型", model),
-			new StackPanel
-			{
-				Orientation = Orientation.Horizontal, Spacing = 12,
-				HorizontalAlignment = HorizontalAlignment.Center,
-				Children = {fetch, skip},
-			},
-			result);
-	}
-
-	/// <summary>
-	/// 离开 AI 那一步时落盘。
-	///
-	/// 没填东西就什么都不做并返回成功 —— 这一步本来就可以跳过。填了就存，存失败
-	/// 返回 false，由壳挡在原地。
-	/// </summary>
-	public async Task<bool> SaveAiDraftAsync()
-	{
-		AiSaved = false;
-		if (AiDraftDefaults.BuildPatch(_draft) is not { } patch) return true;
-		try
-		{
-			_services.AiSettings.UpdateChat(new AiChatSettingsPatch(
-				Provider: patch.Provider,
-				BaseUrl: patch.BaseUrl,
-				ApiKey: patch.ApiKey,
-				Model: patch.Model,
-				ApiKeySpecified: patch.ApiKey is not null));
-			_services.Runtime?.InvalidateSnapshot();
-			AiSaved = true;
-			return true;
-		}
-		catch (Exception failure)
-		{
-			_services.Logger.Write(LogSource.Backend, "warn", "首次运行保存模型服务失败", exception: failure);
-			return false;
-		}
-	}
-
 	// ── 就绪 ───────────────────────────────────────────────────────────────
 
 	private Control BuildReady(bool english)
@@ -497,27 +428,78 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		};
 		telemetry.IsCheckedChanged += (_, _) => TelemetryEnabled = telemetry.IsChecked == true;
 
-		string aiLine = AiSaved
-			? english ? "Model provider: configured" : "模型服务：已配置"
-			: english ? "Model provider: not configured" : "模型服务：未配置";
-		string modelLine = SelectedModel.Length > 0
-			? (english ? "Appearance: " : "形象：") + SelectedModel
-			: english ? "Appearance: not selected" : "形象：未选择";
+		string model = _draft.Model.Trim();
+		Grid summary = new()
+		{
+			ColumnDefinitions = new ColumnDefinitions("Auto,*"),
+			RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+			ColumnSpacing = 16, RowSpacing = 8,
+		};
+		SummaryRow(summary, 0, english ? "Language" : "界面语言", english ? "English" : "简体中文");
+		SummaryRow(summary, 1, english ? "Appearance" : "形象", SelectedModel.Length > 0
+			? BuiltInModels.Name(SelectedModel)
+			: english ? "Not selected" : "未选择");
+		SummaryRow(summary, 2, english ? "Model provider" : "模型服务", AiSaved
+			? AiDraftDefaults.DisplayName(_draft.Provider) + (model.Length > 0 ? " · " + model : "")
+			: english ? "Not configured" : "未配置");
 
-		return Stage(
-			Logo(64),
-			Heading(english ? "Configuration summary" : "配置摘要", NoriMetrics.FontXl),
-			Muted(modelLine, 340),
-			Muted(aiLine, 340),
-			telemetry,
-			new TextBlock
+		List<Control> children =
+		[
+			Logo(56),
+			Heading(english ? "You're all set" : "准备好了", NoriMetrics.FontXl),
+			new Border
 			{
-				Text = available
-					? english ? "Can be changed in Settings." : "可在设置中修改。"
-					: english ? "Diagnostics are unavailable in this build." : "此版本不提供诊断上报。",
-				Foreground = ChatPalette.Faint, FontSize = NoriMetrics.FontXs,
-				HorizontalAlignment = HorizontalAlignment.Center,
+				Width = 380, Background = ChatPalette.Deep, BorderBrush = ChatPalette.Line,
+				BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(NoriMetrics.RadiusLg),
+				Padding = new Thickness(16, 12), HorizontalAlignment = HorizontalAlignment.Center,
+				Child = summary,
+			},
+		];
+		// 没配模型服务时，进主界面后快捷聊天只会显示「请先配置 AI」。在这里先说清楚
+		// 后果和去哪配，不要等用户发出第一句话才发现。
+		if (!AiSaved)
+		{
+			children.Add(new TextBlock
+			{
+				Name = "FirstRunAiMissing",
+				Text = english
+					? "Without a model provider Nori can't reply yet. Go Back to add one, or set it up later in Settings → Model providers."
+					: "还没有配置模型服务，Nori 暂时不能回复你。可以点「上一步」回去填写，也可以之后在 设置 → 模型服务 中配置。",
+				FontSize = NoriMetrics.FontXs, Foreground = NoriThemeTokens.Brush("warning"),
+				TextWrapping = TextWrapping.Wrap, MaxWidth = 400,
+				TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
 			});
+		}
+		children.Add(telemetry);
+		children.Add(Faint(available
+			? english
+				? "Only redacted crash and performance data is sent — never chats, memories, voice, API keys or identity. Change it in Settings → General."
+				: "只发送脱敏后的崩溃与性能信息，不含聊天内容、记忆、语音、API 密钥或身份信息。可在 设置 → 常规 中修改。"
+			: english ? "Diagnostics are unavailable in this build." : "此版本不提供诊断上报。", 400));
+		children.Add(Muted(_services.SafeMode
+			? english
+				? "Start opens the main window. Nori isn't summoned automatically in safe mode."
+				: "点「开始使用」后会打开主界面。安全模式下不会自动唤出 Nori。"
+			: english
+				? "Start opens the main window and brings Nori to your desktop."
+				: "点「开始使用」后会打开主界面，Nori 也会出现在桌面上。", 400));
+		return Stage([.. children]);
+	}
+
+	private static void SummaryRow(Grid grid, int row, string label, string value)
+	{
+		TextBlock name = new() {Text = label, FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Faint, VerticalAlignment = VerticalAlignment.Center};
+		TextBlock content = new()
+		{
+			Text = value, FontSize = NoriMetrics.FontSm, Foreground = ChatPalette.Primary,
+			TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+		};
+		ToolTip.SetTip(content, value);
+		Grid.SetRow(name, row);
+		Grid.SetRow(content, row);
+		Grid.SetColumn(content, 1);
+		grid.Children.Add(name);
+		grid.Children.Add(content);
 	}
 
 	// ── 小构件 ─────────────────────────────────────────────────────────────
@@ -534,6 +516,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		// 内容比舞台高时要能滚，别把「下一步」需要看到的东西顶出可视区域。
 		return new ScrollViewer
 		{
+			Name = StageName,
 			HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
 			Content = body,
 		};
@@ -554,6 +537,15 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		HorizontalAlignment = HorizontalAlignment.Center,
 	};
 
+	/// <summary>次要说明：比 <see cref="Muted"/> 再淡一档，用于补充和提示。</summary>
+	private static TextBlock Faint(string text, double maxWidth = 400) => new()
+	{
+		Text = text, FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Faint,
+		TextWrapping = TextWrapping.Wrap, MaxWidth = maxWidth,
+		TextAlignment = TextAlignment.Center,
+		HorizontalAlignment = HorizontalAlignment.Center,
+	};
+
 	private static Control Field(string label, Control editor)
 	{
 		AutomationProperties.SetName(editor, label);
@@ -568,12 +560,35 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 		};
 	}
 
-	/// <summary>一张可选卡片。<paramref name="onPick"/> 为 null 表示这一项不可选。</summary>
-	private static Control Choice(string title, string subtitle, bool selected, Action? onPick)
+	/// <summary>
+	/// 一张可选卡片。<paramref name="onPick"/> 为 null 表示这一项不可选；
+	/// <paramref name="leading"/> 画在文字左侧（形象立绘）。
+	/// </summary>
+	private static Control Choice(string title, string subtitle, bool selected, Action? onPick,
+		Control? leading = null, double width = 320)
 	{
+		StackPanel text = new()
+		{
+			Spacing = 2, VerticalAlignment = VerticalAlignment.Center,
+			Children =
+			{
+				new TextBlock {Text = title, FontSize = NoriMetrics.FontBase, FontWeight = FontWeight.SemiBold, Foreground = ChatPalette.Primary},
+				new TextBlock {Text = subtitle, FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Faint, TextWrapping = TextWrapping.Wrap},
+			},
+		};
+		Control content = text;
+		if (leading is not null)
+		{
+			Grid row = new() {ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12};
+			Grid.SetColumn(text, 1);
+			row.Children.Add(leading);
+			row.Children.Add(text);
+			content = row;
+		}
+
 		Button card = new()
 		{
-			Width = 320,
+			Width = width,
 			Padding = new Thickness(14, 10),
 			CornerRadius = new CornerRadius(NoriMetrics.RadiusLg),
 			Background = selected ? ChatPalette.Panel : ChatPalette.Deep,
@@ -582,15 +597,7 @@ public sealed class FirstRunSteps(AppServices services, Action<string> onGate, A
 			Opacity = onPick is null ? 0.45 : 1,
 			IsEnabled = onPick is not null,
 			HorizontalContentAlignment = HorizontalAlignment.Stretch,
-			Content = new StackPanel
-			{
-				Spacing = 2,
-				Children =
-				{
-					new TextBlock {Text = title, FontSize = NoriMetrics.FontBase, FontWeight = FontWeight.SemiBold, Foreground = ChatPalette.Primary},
-					new TextBlock {Text = subtitle, FontSize = NoriMetrics.FontXs, Foreground = ChatPalette.Faint},
-				},
-			},
+			Content = content,
 		};
 		AutomationProperties.SetName(card, $"{title}. {subtitle}");
 		if (onPick is not null) card.Click += (_, _) => onPick();

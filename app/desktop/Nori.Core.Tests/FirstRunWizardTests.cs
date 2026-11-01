@@ -29,12 +29,29 @@ public sealed class FirstRunWizardTests
 		Assert.False(state.CanPrev);
 	}
 
+	/// <summary>
+	/// 前四步与 Vue 版一致；使用方法一步插在完成页之前：用户反馈装好后不知道怎么用，
+	/// 要在点「开始使用」之前把入口讲清楚。
+	/// </summary>
 	[Fact]
-	public void 五步顺序与Vue版一致()
+	public void 六步顺序中使用方法紧挨完成页()
 	{
 		Assert.Equal(
-			[WizardStep.Welcome, WizardStep.Language, WizardStep.Model, WizardStep.Ai, WizardStep.Ready],
+			[WizardStep.Welcome, WizardStep.Language, WizardStep.Model, WizardStep.Ai, WizardStep.Guide, WizardStep.Ready],
 			FirstRunWizard.Order);
+	}
+
+	/// <summary>使用方法一步只是说明，没有门：一路前进就能走到完成页。</summary>
+	[Fact]
+	public void 使用方法一步不挡前进()
+	{
+		FirstRunWizard wizard = Ok();
+		while (wizard.Snapshot().Step != WizardStep.Guide) Assert.True(wizard.Next());
+
+		Assert.True(wizard.Snapshot().CanNext);
+		Assert.True(wizard.Next());
+		Assert.Equal(WizardStep.Ready, wizard.Snapshot().Step);
+		Assert.True(wizard.Snapshot().IsLast);
 	}
 
 	[Fact]
@@ -241,6 +258,16 @@ public sealed class FirstRunWizardTests
 			new AiDraft {BaseUrl = "  https://proxy.test/v1  ", ApiKey = "sk-x"}));
 
 		Assert.Equal("https://proxy.test/v1", patch.BaseUrl);
+	}
+
+	/// <summary>向导下拉框显示协议名而不是 openai_responses 这种内部值，叫法跟设置页保持一致。</summary>
+	[Fact]
+	public void 协议显示名与设置页一致且未知协议原样显示()
+	{
+		Assert.Equal(
+			["OpenAI Chat Completions", "OpenAI Responses", "Anthropic", "Google Gemini"],
+			AiDraftDefaults.Providers.Select(AiDraftDefaults.DisplayName));
+		Assert.Equal("custom-x", AiDraftDefaults.DisplayName("custom-x"));
 	}
 
 	[Fact]

@@ -35,6 +35,16 @@ public static class AiDraftDefaults
 	/// <summary>协议顺序。下拉框按它排。</summary>
 	public static IReadOnlyList<string> Providers => [OpenAi, OpenAiResponses, Anthropic, Google];
 
+	/// <summary>协议在界面上的名字。与设置页「模型服务」的下拉项一致，未知协议原样显示。</summary>
+	public static string DisplayName(string provider) => provider switch
+	{
+		OpenAi => "OpenAI Chat Completions",
+		OpenAiResponses => "OpenAI Responses",
+		Anthropic => "Anthropic",
+		Google => "Google Gemini",
+		_ => provider,
+	};
+
 	/// <summary>各协议的默认 API 地址。</summary>
 	public static string DefaultBaseUrl(string provider) => provider switch
 	{

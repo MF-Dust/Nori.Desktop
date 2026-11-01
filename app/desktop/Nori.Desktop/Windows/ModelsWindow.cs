@@ -20,7 +20,7 @@ namespace Nori.Desktop.Windows;
 /// <summary>独立深色模型管理窗口；预览不改变桌宠当前模型，隐藏前可靠保存草稿。</summary>
 public sealed partial class ModelsWindow : Window
 {
-	private static readonly (string Id, string Name, string Image)[] Models = [("arg-nori", "ARG Nori", "ARGNori.webp"), ("nori", "Nori", "Nori.webp")];
+	private static readonly (string Id, string Name, string Image)[] Models = BuiltInModels.All;
 	private readonly ModelService _service;
 	private readonly CancellationTokenSource _lifetime = new();
 	private readonly Dictionary<string, MemorySettingDraft> _drafts = [];

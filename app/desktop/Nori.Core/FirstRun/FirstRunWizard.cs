@@ -1,6 +1,6 @@
 namespace Nori.Core.FirstRun;
 
-/// <summary>向导的五步。</summary>
+/// <summary>向导的六步。</summary>
 public enum WizardStep
 {
 	Welcome,
@@ -9,6 +9,13 @@ public enum WizardStep
 
 	/// <summary>可跳过的一步：不填也能继续，只有填了内容才在离开时落盘。</summary>
 	Ai,
+
+	/// <summary>
+	/// 纯说明的一步：介绍完成后怎么和 Nori 相处，没有输入、不落盘。
+	///
+	/// 用户反馈「装好了不知道怎么用」—— 聊天入口、拖动、右键菜单和托盘都没人告诉过他们。
+	/// </summary>
+	Guide,
 
 	Ready,
 }
@@ -58,7 +65,7 @@ public sealed record WizardState
 public sealed class FirstRunWizard
 {
 	private static readonly WizardStep[] Steps =
-		[WizardStep.Welcome, WizardStep.Language, WizardStep.Model, WizardStep.Ai, WizardStep.Ready];
+		[WizardStep.Welcome, WizardStep.Language, WizardStep.Model, WizardStep.Ai, WizardStep.Guide, WizardStep.Ready];
 
 	/// <summary>步骤顺序。窗口按它渲染步骤指示条。</summary>
 	public static IReadOnlyList<WizardStep> Order => Steps;

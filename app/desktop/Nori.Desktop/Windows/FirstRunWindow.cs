@@ -52,8 +52,8 @@ public sealed class FirstRunWindow : Window
 		VerticalAlignment = VerticalAlignment.Center,
 	};
 	private readonly ContentControl _stage = new() {Margin = new Thickness(28, 18)};
-	private readonly Button _back = new();
-	private readonly Button _forward = new();
+	private readonly Button _back = new() {Name = "FirstRunBack"};
+	private readonly Button _forward = new() {Name = "FirstRunNext"};
 	private readonly TextBlock _error = new()
 	{
 		Foreground = ChatPalette.Danger, FontSize = NoriMetrics.FontXs,
@@ -99,6 +99,7 @@ public sealed class FirstRunWindow : Window
 			// 关闭窗口立即终止导入等待，不依赖应用稍后才触发的全局退出信号。
 			_lifetime.Cancel();
 			_lifetime.Dispose();
+			_steps.Dispose();
 		};
 
 		Closing += (_, args) =>

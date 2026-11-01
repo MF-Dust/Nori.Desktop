@@ -64,8 +64,12 @@ public partial class BridgeCommandsTests
 	[InlineData(3)]
 	public async Task 切换模型清除旧眨眼和指针来源(int version)
 	{
-		PreparedModel prepared = await Task.Run(() => ModelPreparation.PrepareAsync("arg-nori",
-			Path.GetDirectoryName(PreparedModelAssetsTests.FindFixture("arg-nori", "ARGNori.model3.json"))!, 1, CancellationToken.None));
+		PreparedModel? prepared = null;
+		await WithSettingsUiAsync(async () =>
+		{
+			prepared = await Task.Run(() => ModelPreparation.PrepareAsync("arg-nori",
+				Path.GetDirectoryName(PreparedModelAssetsTests.FindFixture("arg-nori", "ARGNori.model3.json"))!, 1, CancellationToken.None));
+		});
 		using var fixture = new BridgeCommandsTests(safeMode: true);
 		var runtime = new PetRuntime(fixture._services, previewMode: true) { IdleAnimationEnabled = false };
 		using var context = new EglTestContext(version);
@@ -73,7 +77,7 @@ public partial class BridgeCommandsTests
 		try
 		{
 			runtime.OnGlInit(context.CreateApi());
-			InstallOperation(runtime, prepared);
+			InstallOperation(runtime, prepared!);
 			runtime.RunSynchronized(() => runtime.RenderFrame(0.016f, 720, 480));
 			NativeModelHost original = Assert.IsType<NativeModelHost>(runtime.CurrentModel);
 			runtime.LookAt(360, 240, 720, 480);
@@ -98,7 +102,7 @@ public partial class BridgeCommandsTests
 				.GetField("_phase", BindingFlags.Instance | BindingFlags.NonPublic)!;
 			Assert.Equal("Closing", phase.GetValue(blink)!.ToString());
 
-			InstallOperation(runtime, prepared with { Generation = 2 });
+			InstallOperation(runtime, prepared! with { Generation = 2 });
 			runtime.RunSynchronized(() => runtime.RenderFrame(0.016f, 720, 480));
 			NativeModelHost replacement = Assert.IsType<NativeModelHost>(runtime.CurrentModel);
 			Assert.NotSame(original, replacement);

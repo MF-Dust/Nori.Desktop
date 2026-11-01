@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Avalonia.OpenGL;
 using Nori.Core.Live2D;
 using Nori.Desktop.Live2D;
+using Xunit.Abstractions;
 
 namespace Nori.Desktop.Tests;
 
@@ -19,7 +20,7 @@ public sealed class NativeGlAssetsTheoryAttribute : TheoryAttribute
 }
 
 [Collection("Native settings")]
-public sealed class NativeGlHarnessTests
+public sealed class NativeGlHarnessTests(ITestOutputHelper output)
 {
 	[NativeGlAssetsTheory]
 	[InlineData(2)]
@@ -37,6 +38,7 @@ public sealed class NativeGlHarnessTests
 		// 后续不 await，所有创建、绘制、回读和释放均留在当前 EGL 线程。
 		using var context = new EglTestContext(version);
 		context.MakeCurrent(0);
+		output.WriteLine($"GLES {version} 渲染器：{context.Renderer}");
 		var petGl = context.CreateApi();
 		using var first = new NativeModelHost(petGl, pet!.Assets);
 		first.Animation.RandomMotion = false;

@@ -57,12 +57,15 @@ internal sealed class AlsaDrainTracker
 		// hw/dmix 欠载时缓冲已经播空。
 		if (delayCode == AlsaPcm.Underrun) return AlsaDrainStep.Done;
 		bool suspended = delayCode == AlsaPcm.Suspended;
-		if (delayCode < 0 && !suspended) return AlsaDrainStep.Fail;
-		long remaining = suspended ? 0 : Math.Max(0, remainingFrames);
-		if (!suspended && remaining == 0) return AlsaDrainStep.Done;
+		bool interrupted = delayCode == AlsaPcm.Interrupted;
+		if (delayCode < 0 && !suspended && !interrupted) return AlsaDrainStep.Fail;
+		long remaining = delayCode < 0 ? 0 : Math.Max(0, remainingFrames);
+		if (delayCode >= 0 && remaining == 0) return AlsaDrainStep.Done;
 
 		_deadline ??= timestamp + Ticks(remaining, sampleRate) + (long) Math.Ceiling(Slack.TotalSeconds * Stopwatch.Frequency);
 		if (timestamp >= _deadline.Value) return AlsaDrainStep.Done;
+		// 信号中断没有有效延迟读数；留到下一轮重试，不准备设备或重置期限。
+		if (interrupted) return AlsaDrainStep.Pending;
 		if (suspended) return AlsaDrainStep.Recover;
 		if (state == AlsaPcm.StatePrepared) return AlsaDrainStep.Start;
 		if (state != AlsaPcm.StateUnderrun) return AlsaDrainStep.Pending;

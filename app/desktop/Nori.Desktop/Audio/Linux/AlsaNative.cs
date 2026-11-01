@@ -55,7 +55,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 	private const int FormatS16Le = 2;
 	private const int NonBlocking = 1;
 	private const int TryAgain = -11;
-	private const int Interrupted = -4;
+	internal const int Interrupted = -4;
 	internal const int Underrun = -32;
 	internal const int Suspended = -86;
 	internal const int StatePrepared = 2;

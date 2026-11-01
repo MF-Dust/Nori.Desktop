@@ -73,6 +73,36 @@ public sealed class AlsaDrainTrackerTests
 		Assert.Equal(AlsaDrainStep.Done, tracker.Next(AlsaPcm.Suspended, 0, -1, Rate, At(AlsaDrainTracker.Slack.TotalSeconds + Epsilon)));
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void 信号中断可重试但不能延长总等待期限(bool alreadyPlaying)
+	{
+		AlsaDrainTracker tracker = new();
+		double limit = AlsaDrainTracker.Slack.TotalSeconds;
+		if (alreadyPlaying)
+		{
+			Assert.Equal(AlsaDrainStep.Pending, tracker.Next(0, 4_800, Running, Rate, At(0)));
+			limit += 0.1;
+		}
+
+		// 失败的查询没有有效剩余帧，不能据此判断播完或延长等待。
+		Assert.Equal(AlsaDrainStep.Pending, tracker.Next(-4, long.MaxValue, -1, Rate, At(0)));
+		Assert.Equal(AlsaDrainStep.Pending, tracker.Next(-4, 0, -1, Rate, At(limit - 0.01)));
+		Assert.Equal(AlsaDrainStep.Done, tracker.Next(-4, 0, -1, Rate, At(limit + Epsilon)));
+	}
+
+	[Fact]
+	public void 信号中断后继续查询并启动短音频()
+	{
+		AlsaDrainTracker tracker = new();
+
+		Assert.Equal(AlsaDrainStep.Pending, tracker.Next(-4, 0, -1, Rate, At(0)));
+		Assert.Equal(AlsaDrainStep.Start, tracker.Next(0, 480, AlsaPcm.StatePrepared, Rate, At(0.01)));
+		Assert.Equal(AlsaDrainStep.Pending, tracker.Next(0, 480, Running, Rate, At(0.02)));
+		Assert.Equal(AlsaDrainStep.Done, tracker.Next(0, 0, Running, Rate, At(0.03)));
+	}
+
 	[Fact]
 	public void 写入新样本后重新计算期限()
 	{

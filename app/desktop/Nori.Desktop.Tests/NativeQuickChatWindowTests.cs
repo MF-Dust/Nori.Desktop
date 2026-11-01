@@ -60,6 +60,25 @@ public partial class BridgeCommandsTests
 		Assert.True(edge.Position.Y + Math.Ceiling(edge.Height * scale) <= work.Bottom);
 	}
 
+	[Theory]
+	[InlineData(14, 14, 280, 46, 1, 14, 14, 280, 46)]
+	[InlineData(14, 14, 280, 46, 1.25, 17, 17, 351, 58)]
+	[InlineData(14, 14, 280, 46, 1.5, 21, 21, 420, 69)]
+	[InlineData(14, 14, 280, 46, 2, 28, 28, 560, 92)]
+	[InlineData(0.2, 0.4, 10.4, 8.2, 1, 0, 0, 11, 9)]
+	[InlineData(-0.25, -0.75, 10.5, 8.25, 1, -1, -1, 12, 9)]
+	public void QuickChatPhysicalInputRegionIncludesEveryVisibleEdge(double x, double y, double width, double height,
+		double scale, int expectedX, int expectedY, int expectedWidth, int expectedHeight)
+	{
+		Rect logical = new(x, y, width, height);
+		var region = QuickChatWindow.PhysicalInputRegion(logical, scale);
+		Assert.Equal((expectedX, expectedY, expectedWidth, expectedHeight), region);
+		Assert.True(region.X <= logical.Left * scale);
+		Assert.True(region.Y <= logical.Top * scale);
+		Assert.True(region.X + region.Width >= logical.Right * scale);
+		Assert.True(region.Y + region.Height >= logical.Bottom * scale);
+	}
+
 	[Fact]
 	public void QuickChatGrowingBubblesStayBelowPetAndGrowDownward()
 	{

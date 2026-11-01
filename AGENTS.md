@@ -215,6 +215,10 @@ NORI_TEST_LIVE2D_ASSETS=1 NORI_TEST_NATIVE_GL=1 dotnet test Nori.Desktop.Tests/N
 
 ---
 
+### Gated X11 Input Tests
+
+`[NativeX11Fact]` requires `NORI_TEST_X11=1` and a Linux X11/XWayland session with SHAPE 1.1+. `LinuxInputShapeTests` round-trips the production input-shape calls through an unmapped native window; it does not move the real pointer or prove visible-window click delivery. Run with `--filter FullyQualifiedName~LinuxInputShapeTests`.
+
 ## 6. Commit & Pull Request Guidelines
 
 ### Commit Format

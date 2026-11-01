@@ -87,6 +87,16 @@ public sealed class QuickChatWindow : Window
 			? new Rect(origin, end) : default)
 		.Where(rect => rect.Width > 0).ToArray();
 
+	/// <summary>四边向外取整；分数缩放时不能分别取整起点与尺寸，否则控件边缘会穿透。</summary>
+	internal static (int X, int Y, int Width, int Height) PhysicalInputRegion(Rect rect, double scale)
+	{
+		int left = (int)Math.Floor(rect.Left * scale);
+		int top = (int)Math.Floor(rect.Top * scale);
+		int right = (int)Math.Ceiling(rect.Right * scale);
+		int bottom = (int)Math.Ceiling(rect.Bottom * scale);
+		return (left, top, right - left, bottom - top);
+	}
+
 	private void UpdateInputRegion(object? sender, EventArgs args)
 	{
 		IPlatformServices platform = PlatformServices.Current;
@@ -99,8 +109,7 @@ public sealed class QuickChatWindow : Window
 			Rect[] regions = InteractiveRects();
 			if (OperatingSystem.IsLinux() && platform is LinuxPlatformServices linux)
 			{
-				linux.SetInputShape(handle, regions.Select(rect => ((int)(rect.X * scale), (int)(rect.Y * scale),
-					(int)Math.Ceiling(rect.Width * scale), (int)Math.Ceiling(rect.Height * scale))).ToArray());
+				linux.SetInputShape(handle, regions.Select(rect => PhysicalInputRegion(rect, scale)).ToArray());
 				return;
 			}
 			if (!platform.Capabilities.SupportsGlobalCursor) return;

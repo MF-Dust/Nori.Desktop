@@ -168,6 +168,7 @@ public class SecretKeyStoreTests : IDisposable
 		long now = 0;
 		int reads = 0;
 		int writes = 0;
+		List<Action> probes = [];
 		SecretKeyStore store = new(_dir, () =>
 		{
 			reads++;
@@ -178,7 +179,7 @@ public class SecretKeyStoreTests : IDisposable
 		{
 			writes++;
 			return SecretKeyStore.PlatformKeyWriteStatus.Failed;
-		}, () => now);
+		}, () => now, probes.Add);
 
 		SecretKeyStoreException unavailable = Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
 		Assert.False(File.Exists(Path.Combine(_dir, "secret.key")));
@@ -186,8 +187,12 @@ public class SecretKeyStoreTests : IDisposable
 		now = 29_999;
 		Assert.Same(unavailable, Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate()));
 		Assert.Equal(1, reads);
+		Assert.Empty(probes);
 
 		now = 30_000;
+		Assert.Same(unavailable, Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate()));
+		Assert.Equal(1, reads);
+		Assert.Single(probes)();
 		Assert.Equal(original, store.LoadOrCreate());
 		Assert.Equal(original, store.LoadOrCreate());
 		Assert.Equal(2, reads);
@@ -196,11 +201,12 @@ public class SecretKeyStoreTests : IDisposable
 	}
 
 	[Fact]
-	public void 系统密钥环写入暂不可用时不得回退文件且会冷却()
+	public void 系统密钥环写入暂不可用时不得回退文件且会后台重试()
 	{
 		long now = 0;
 		int reads = 0;
 		int writes = 0;
+		List<Action> probes = [];
 		SecretKeyStore store = new(_dir, () =>
 		{
 			reads++;
@@ -209,14 +215,220 @@ public class SecretKeyStoreTests : IDisposable
 		{
 			writes++;
 			return SecretKeyStore.PlatformKeyWriteStatus.Unavailable;
-		}, () => now);
+		}, () => now, probes.Add);
 
-		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		SecretKeyStoreException unavailable = Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
 		now = 29_999;
-		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		Assert.Same(unavailable, Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate()));
+		Assert.Empty(probes);
+		now = 30_000;
+		Assert.Same(unavailable, Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate()));
 		Assert.Equal(1, reads);
 		Assert.Equal(1, writes);
+		Assert.Single(probes)();
+		Assert.Equal(2, reads);
+		Assert.Equal(2, writes);
+		Assert.Same(unavailable, Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate()));
 		Assert.False(File.Exists(Path.Combine(_dir, "secret.key")));
+	}
+
+	[Fact]
+	public void 不可用期间调用方不读取平台且冷却后探测单飞()
+	{
+		long now = 0;
+		int reads = 0;
+		List<Action> probes = [];
+		SecretKeyStore store = new(_dir, () =>
+		{
+			reads++;
+			return new(SecretKeyStore.PlatformKeyStatus.Unavailable);
+		}, _ => throw new InvalidOperationException("不得生成新密钥"), () => now, probes.Add);
+
+		SecretKeyStoreException unavailable = Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		foreach (long timestamp in new long[] { 1, 29_999, 30_000, 60_000, 300_000 })
+		{
+			now = timestamp;
+			Assert.Same(unavailable, Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate()));
+			Assert.Equal(1, reads);
+		}
+		Assert.Single(probes)();
+		Assert.Equal(2, reads);
+		Assert.Same(unavailable, Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate()));
+		Assert.Single(probes);
+		Assert.False(File.Exists(Path.Combine(_dir, "secret.key")));
+	}
+
+	[Fact]
+	public async Task 探测读取挂起时调用方不等待加载锁且不重复提交探测()
+	{
+		long now = 0;
+		int reads = 0;
+		List<Action> probes = [];
+		using ManualResetEventSlim entered = new(false);
+		using ManualResetEventSlim release = new(false);
+		SecretKeyStore store = new(_dir, () =>
+		{
+			if (Interlocked.Increment(ref reads) > 1)
+			{
+				entered.Set();
+				if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("测试探测未被释放");
+			}
+			return new(SecretKeyStore.PlatformKeyStatus.Unavailable);
+		}, _ => throw new InvalidOperationException("不得生成新密钥"), () => now, probes.Add);
+
+		SecretKeyStoreException unavailable = Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		now = 30_000;
+		Assert.Same(unavailable, Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate()));
+		Task probe = Task.Run(Assert.Single(probes));
+		try
+		{
+			Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+			now = 300_000;
+			await Task.Run(() =>
+			{
+				for (int i = 0; i < 10; i++)
+					Assert.Same(unavailable, Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate()));
+			}).WaitAsync(TimeSpan.FromSeconds(5));
+			Assert.Single(probes);
+			Assert.Equal(2, reads);
+		}
+		finally
+		{
+			release.Set();
+			await probe;
+		}
+	}
+
+	[Fact]
+	public void 连续不可用按指数退避并封顶且成功后清零()
+	{
+		long now = 0;
+		int reads = 0;
+		bool recover = false;
+		byte[] original = new byte[SecretKeyStore.KeySize];
+		List<Action> probes = [];
+		SecretKeyStore store = new(_dir, () =>
+		{
+			reads++;
+			return recover
+				? new(SecretKeyStore.PlatformKeyStatus.Found, original)
+				: new(SecretKeyStore.PlatformKeyStatus.Unavailable);
+		}, _ => throw new InvalidOperationException("不得生成新密钥"), () => now, probes.Add);
+
+		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		foreach (long cooldown in new long[] { 30_000, 60_000, 120_000, 240_000, 300_000, 300_000 })
+		{
+			int submitted = probes.Count;
+			now += cooldown - 1;
+			Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+			Assert.Equal(submitted, probes.Count);
+			now++;
+			Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+			Assert.Equal(submitted + 1, probes.Count);
+			Assert.Equal(submitted + 1, reads);
+			probes[^1]();
+			Assert.Equal(submitted + 2, reads);
+		}
+		recover = true;
+		now += 300_000;
+		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		probes[^1]();
+		Assert.Equal(original, store.LoadOrCreate());
+		// 成功后永久缓存，后续调用不再进入退避；直接核对内部计数已清零。
+		Assert.Equal(0, typeof(SecretKeyStore).GetField("_consecutiveUnavailable",
+			System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(store));
+		Assert.False(File.Exists(Path.Combine(_dir, "secret.key")));
+	}
+
+	[Fact]
+	public void 探测非不可用异常被吞掉并恢复前台加载及初始冷却()
+	{
+		long now = 0;
+		int reads = 0;
+		List<Action> probes = [];
+		byte[] original = new byte[SecretKeyStore.KeySize];
+		SecretKeyStore store = new(_dir, () =>
+		{
+			reads++;
+			return reads switch
+			{
+				1 or 2 or 4 => new(SecretKeyStore.PlatformKeyStatus.Unavailable),
+				3 or 5 => throw new IOException("测试读取失败"),
+				_ => new(SecretKeyStore.PlatformKeyStatus.Found, original),
+			};
+		}, _ => throw new InvalidOperationException("不得生成新密钥"), () => now, probes.Add);
+
+		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		now = 30_000;
+		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		probes[^1]();
+		now += 60_000;
+		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		Assert.Null(Record.Exception(probes[^1]));
+		Assert.Equal(3, reads);
+
+		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		Assert.Equal(4, reads);
+		now += 29_999;
+		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		Assert.Equal(2, probes.Count);
+		now++;
+		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		Assert.Equal(3, probes.Count);
+		Assert.Null(Record.Exception(probes[^1]));
+		Assert.Equal(original, store.LoadOrCreate());
+		Assert.Equal(6, reads);
+		Assert.False(File.Exists(Path.Combine(_dir, "secret.key")));
+	}
+
+	[Fact]
+	public void SecretTool读取成功超时或启动失败时不搜索()
+	{
+		byte[] original = Enumerable.Repeat((byte)0x42, SecretKeyStore.KeySize).ToArray();
+		(SecretKeyStore.ToolRun Lookup, SecretKeyStore.PlatformKeyStatus Expected)[] cases =
+		[
+			(new(SecretKeyStore.ToolRunStatus.StartFailed), SecretKeyStore.PlatformKeyStatus.NotFound),
+			(new(SecretKeyStore.ToolRunStatus.TimedOut), SecretKeyStore.PlatformKeyStatus.Unavailable),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 0, Convert.ToHexString(original)), SecretKeyStore.PlatformKeyStatus.Found),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 0, " \n" + Convert.ToHexString(original) + "\n"), SecretKeyStore.PlatformKeyStatus.Found),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 0, null), SecretKeyStore.PlatformKeyStatus.NotFound),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 0, " \n"), SecretKeyStore.PlatformKeyStatus.NotFound),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 0, "42"), SecretKeyStore.PlatformKeyStatus.NotFound),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 0, new string('z', 64)), SecretKeyStore.PlatformKeyStatus.NotFound),
+		];
+		foreach (var (lookup, expected) in cases)
+		{
+			SecretKeyStore.PlatformKeyResult result = SecretKeyStore.ClassifySecretToolRead(lookup,
+				() => throw new InvalidOperationException("此分支不得执行搜索"));
+			Assert.Equal(expected, result.Status);
+			if (expected == SecretKeyStore.PlatformKeyStatus.Found) Assert.Equal(original, result.Key);
+			else Assert.Null(result.Key);
+		}
+	}
+
+	[Fact]
+	public void SecretTool读取非零退出时搜索一次以区分锁定无条目及服务不可达()
+	{
+		(SecretKeyStore.ToolRun Search, SecretKeyStore.PlatformKeyStatus Expected)[] cases =
+		[
+			(new(SecretKeyStore.ToolRunStatus.TimedOut), SecretKeyStore.PlatformKeyStatus.Unavailable),
+			(new(SecretKeyStore.ToolRunStatus.StartFailed), SecretKeyStore.PlatformKeyStatus.Unavailable),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 0, null), SecretKeyStore.PlatformKeyStatus.NotFound),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 0, ""), SecretKeyStore.PlatformKeyStatus.NotFound),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 0, " \t\n"), SecretKeyStore.PlatformKeyStatus.NotFound),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 0, "[/locked/item]\nlabel = Nori"), SecretKeyStore.PlatformKeyStatus.Unavailable),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 1, null), SecretKeyStore.PlatformKeyStatus.NotFound),
+			(new(SecretKeyStore.ToolRunStatus.Exited, 2, "service error"), SecretKeyStore.PlatformKeyStatus.NotFound),
+		];
+		foreach (var (search, expected) in cases)
+		{
+			int searches = 0;
+			SecretKeyStore.PlatformKeyResult result = SecretKeyStore.ClassifySecretToolRead(
+				new(SecretKeyStore.ToolRunStatus.Exited, 1), () => { searches++; return search; });
+			Assert.Equal(expected, result.Status);
+			Assert.Null(result.Key);
+			Assert.Equal(1, searches);
+		}
 	}
 
 	[Fact]
@@ -252,9 +464,9 @@ public class SecretKeyStoreTests : IDisposable
 		// macOS/Linux 会优先走系统密钥库 (CI 容器里通常没有), 这里只锁定 Windows 的文件路径行为
 		if (!OperatingSystem.IsWindows()) return;
 
-		byte[] created = new SecretKeyStore(_dir).LoadOrCreate();
+		byte[] created = new SecretKeyStore(_dir, () => new(SecretKeyStore.PlatformKeyStatus.NotFound), _ => SecretKeyStore.PlatformKeyWriteStatus.Failed).LoadOrCreate();
 		Assert.True(File.Exists(Path.Combine(_dir, "secret.key")));
-		Assert.Equal(created, new SecretKeyStore(_dir).LoadOrCreate());
+		Assert.Equal(created, new SecretKeyStore(_dir, () => new(SecretKeyStore.PlatformKeyStatus.NotFound), _ => SecretKeyStore.PlatformKeyWriteStatus.Failed).LoadOrCreate());
 	}
 
 	[Fact]

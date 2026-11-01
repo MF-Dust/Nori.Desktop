@@ -31,7 +31,8 @@ public sealed class SecretKeyStoreException(string message, Exception? innerExce
 }
 
 /// <summary>
-/// 默认实现: 按平台挑选保管方式
+/// 默认实现: 按平台挑选保管方式；暂时不可用时拒绝换钥，调用方立即失败，由后台按需单飞探测恢复。
+/// 连续不可用的冷却从 30 秒指数退避至 5 分钟，成功后重置。
 /// </summary>
 public sealed class SecretKeyStore : ISecretKeyStore
 {
@@ -47,8 +48,14 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	internal enum PlatformKeyStatus { Found, NotFound, Unavailable }
 	internal readonly record struct PlatformKeyResult(PlatformKeyStatus Status, byte[]? Key = null);
 	internal enum PlatformKeyWriteStatus { Stored, Failed, Unavailable }
+	internal enum ToolRunStatus { Exited, TimedOut, StartFailed }
+	internal readonly record struct ToolRun(ToolRunStatus Status, int ExitCode = 0, string? Output = null);
+
+	private sealed class PlatformUnavailableSignal : Exception { }
 
 	private const long UnavailableCooldownMilliseconds = 30_000;
+	private const long MaximumUnavailableCooldownMilliseconds = 300_000;
+	private const int ToolTimeoutMilliseconds = 5_000;
 	private const string KeychainService = "cn.erhio.noriDesktopPet";
 	private const string KeychainAccount = "config-master-key";
 
@@ -56,9 +63,13 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	private readonly Func<PlatformKeyResult> _readPlatformKey = ReadPlatformKey;
 	private readonly Func<byte[], PlatformKeyWriteStatus> _writePlatformKey = WritePlatformKey;
 	private readonly Func<long> _getTimestampMilliseconds = () => Environment.TickCount64;
+	private readonly Action<Action> _startBackground = work => _ = Task.Run(work);
 	private SecretKeyStoreException? _unavailableException;
 	private long _unavailableAt;
+	private int _consecutiveUnavailable;
+	private bool _probeRunning;
 	private readonly Lock _gate = new();
+	private readonly Lock _loadGate = new();
 	private byte[]? _cached;
 
 	/// <summary>生产构造必须使用宿主已经解析并校验过的 secret.key 路径。</summary>
@@ -82,11 +93,13 @@ public sealed class SecretKeyStore : ISecretKeyStore
 
 	/// <summary>测试替换外部密钥库，避免读写开发机的真实主密钥。</summary>
 	internal SecretKeyStore(string directory, Func<PlatformKeyResult> readPlatformKey,
-		Func<byte[], PlatformKeyWriteStatus> writePlatformKey, Func<long>? getTimestampMilliseconds = null) : this(directory)
+		Func<byte[], PlatformKeyWriteStatus> writePlatformKey, Func<long>? getTimestampMilliseconds = null,
+		Action<Action>? startBackground = null) : this(directory)
 	{
 		_readPlatformKey = readPlatformKey;
 		_writePlatformKey = writePlatformKey;
 		if (getTimestampMilliseconds is not null) _getTimestampMilliseconds = getTimestampMilliseconds;
+		if (startBackground is not null) _startBackground = startBackground;
 	}
 
 	/// <inheritdoc />
@@ -95,31 +108,113 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	/// <inheritdoc />
 	public byte[] LoadOrCreate()
 	{
-		// 首次读取会访问外部密钥库/文件；串行化避免多个设置字段同时首次写入时互相覆盖主密钥。
 		lock (_gate)
 		{
-			if (_cached is not null) return _cached;
-			if (_unavailableException is not null
-				&& _getTimestampMilliseconds() - _unavailableAt < UnavailableCooldownMilliseconds)
-				throw _unavailableException;
-
-			using FileStream processLock = AcquireProcessLock();
-			byte[]? existing = TryLoad();
-			if (existing is not null)
-			{
-				if (existing.Length != KeySize)
-				{
-					throw new SecretKeyStoreException("平台主密钥长度无效, 为避免使已有密文全部失效而拒绝覆盖");
-				}
-				_cached = existing;
-				return existing;
-			}
-
-			byte[] created = RandomNumberGenerator.GetBytes(KeySize);
-			Save(created);
-			_cached = created;
-			return created;
+			byte[]? cached = GetCachedOrThrowUnavailable();
+			if (cached is not null) return cached;
 		}
+
+		// 实际加载单独串行化，不可用期间的调用方只访问上面的短状态锁。
+		lock (_loadGate)
+		{
+			lock (_gate)
+			{
+				byte[]? cached = GetCachedOrThrowUnavailable();
+				if (cached is not null) return cached;
+			}
+			try
+			{
+				byte[] key = LoadKey();
+				lock (_gate)
+				{
+					_cached = key;
+					ClearUnavailable();
+				}
+				return key;
+			}
+			catch (PlatformUnavailableSignal)
+			{
+				lock (_gate) throw RecordUnavailable();
+			}
+		}
+	}
+
+	// 仅在持有 _gate 时调用；冷却结束的调用仍抛出原异常，不等待后台探测。
+	private byte[]? GetCachedOrThrowUnavailable()
+	{
+		if (_cached is not null) return _cached;
+		if (_unavailableException is null) return null;
+		SecretKeyStoreException exception = _unavailableException;
+		long cooldown = Math.Min(MaximumUnavailableCooldownMilliseconds,
+			UnavailableCooldownMilliseconds << (_consecutiveUnavailable - 1));
+		if (!_probeRunning && _getTimestampMilliseconds() - _unavailableAt >= cooldown)
+		{
+			_probeRunning = true;
+			_startBackground(Probe);
+		}
+		throw exception;
+	}
+
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "后台探测不能向线程池泄漏异常；非暂时不可用错误交由下一次前台加载暴露。")]
+	private void Probe()
+	{
+		try
+		{
+			lock (_loadGate)
+			{
+				byte[] key = LoadKey();
+				lock (_gate)
+				{
+					_cached = key;
+					ClearUnavailable();
+				}
+			}
+		}
+		catch (PlatformUnavailableSignal)
+		{
+			lock (_gate) RecordUnavailable();
+		}
+		catch
+		{
+			lock (_gate) ClearUnavailable();
+		}
+		finally
+		{
+			lock (_gate) _probeRunning = false;
+		}
+	}
+
+	private byte[] LoadKey()
+	{
+		using FileStream processLock = AcquireProcessLock();
+		byte[]? existing = TryLoad();
+		if (existing is not null)
+		{
+			if (existing.Length != KeySize)
+				throw new SecretKeyStoreException("平台主密钥长度无效, 为避免使已有密文全部失效而拒绝覆盖");
+			return existing;
+		}
+
+		byte[] created = RandomNumberGenerator.GetBytes(KeySize);
+		Save(created);
+		return created;
+	}
+
+	// 以下状态变更均由持有 _gate 的前台加载或后台探测负责。
+	private SecretKeyStoreException RecordUnavailable()
+	{
+		// 第五次失败已达到冷却上限，饱和计数避免移位溢出。
+		_consecutiveUnavailable = Math.Min(_consecutiveUnavailable + 1, 5);
+		_unavailableAt = _getTimestampMilliseconds();
+		_unavailableException ??= new SecretKeyStoreException("平台密钥库暂时不可用（可能已锁定、取消了解锁或无响应）, 为避免更换主密钥已拒绝读写敏感配置; 请解锁系统密钥环, 稍后会自动重试");
+		return _unavailableException;
+	}
+
+	private void ClearUnavailable()
+	{
+		_unavailableException = null;
+		_consecutiveUnavailable = 0;
+		_unavailableAt = 0;
 	}
 
 	private FileStream AcquireProcessLock()
@@ -160,7 +255,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 		if (!File.Exists(_keyPath))
 		{
 			PlatformKeyResult result = _readPlatformKey();
-			if (result.Status == PlatformKeyStatus.Unavailable) throw PlatformUnavailable();
+			if (result.Status == PlatformKeyStatus.Unavailable) throw new PlatformUnavailableSignal();
 			return result.Status == PlatformKeyStatus.Found ? result.Key : null;
 		}
 		try
@@ -193,7 +288,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	private void Save(byte[] key)
 	{
 		PlatformKeyWriteStatus result = _writePlatformKey(key);
-		if (result == PlatformKeyWriteStatus.Unavailable) throw PlatformUnavailable();
+		if (result == PlatformKeyWriteStatus.Unavailable) throw new PlatformUnavailableSignal();
 		if (result == PlatformKeyWriteStatus.Stored) return;
 
 		try
@@ -233,13 +328,6 @@ public sealed class SecretKeyStore : ISecretKeyStore
 		if (!OperatingSystem.IsWindows()) IsFileFallback = true;
 	}
 
-	private SecretKeyStoreException PlatformUnavailable()
-	{
-		_unavailableAt = _getTimestampMilliseconds();
-		_unavailableException = new SecretKeyStoreException("平台密钥库暂时不可用, 为避免静默更换密钥而拒绝读写敏感配置, 请稍后重试");
-		return _unavailableException;
-	}
-
 	private static PlatformKeyResult ReadPlatformKey()
 	{
 		if (OperatingSystem.IsMacOS())
@@ -269,7 +357,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 
 	private static PlatformKeyResult TryKeychainRead()
 	{
-		ToolResult result = RunTool(KeyStoreTool.MacOsSecurity,
+		ToolRun result = RunTool(KeyStoreTool.MacOsSecurity,
 			["find-generic-password", "-s", KeychainService, "-a", KeychainAccount, "-w"]);
 		return DecodeToolKey(result);
 	}
@@ -286,25 +374,39 @@ public sealed class SecretKeyStore : ISecretKeyStore
 
 	private static PlatformKeyResult TrySecretToolRead()
 	{
-		ToolResult result = RunTool(KeyStoreTool.LinuxSecretTool,
+		ToolRun result = RunTool(KeyStoreTool.LinuxSecretTool,
 			["lookup", "service", KeychainService, "account", KeychainAccount]);
-		return DecodeToolKey(result);
+		return ClassifySecretToolRead(result, () => RunTool(KeyStoreTool.LinuxSecretTool,
+			["search", "service", KeychainService, "account", KeychainAccount]));
+	}
+
+	internal static PlatformKeyResult ClassifySecretToolRead(ToolRun lookup, Func<ToolRun> search)
+	{
+		if (lookup.Status != ToolRunStatus.Exited || lookup.ExitCode == 0) return DecodeToolKey(lookup);
+
+		// 不解锁地确认条目是否存在；输出可能含秘密，只判断空白，不记录或保存内容。
+		ToolRun result = search();
+		if (result.Status != ToolRunStatus.Exited) return new(PlatformKeyStatus.Unavailable);
+		return result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.Output)
+			? new(PlatformKeyStatus.Unavailable)
+			: new(PlatformKeyStatus.NotFound);
 	}
 
 	private static PlatformKeyWriteStatus TrySecretToolWrite(byte[] key)
 	{
 		string hex = Convert.ToHexString(key);
-		ToolResult result = RunTool(KeyStoreTool.LinuxSecretTool,
+		ToolRun result = RunTool(KeyStoreTool.LinuxSecretTool,
 			["store", "--label=Nori Desktop Pet", "service", KeychainService, "account", KeychainAccount],
 			stdin: hex);
-		if (result.IsUnavailable) return PlatformKeyWriteStatus.Unavailable;
-		return result.Output is not null ? PlatformKeyWriteStatus.Stored : PlatformKeyWriteStatus.Failed;
+		if (result.Status == ToolRunStatus.TimedOut) return PlatformKeyWriteStatus.Unavailable;
+		return result.Status == ToolRunStatus.Exited && result.ExitCode == 0
+			? PlatformKeyWriteStatus.Stored : PlatformKeyWriteStatus.Failed;
 	}
 
-	private static PlatformKeyResult DecodeToolKey(ToolResult result)
+	private static PlatformKeyResult DecodeToolKey(ToolRun result)
 	{
-		if (result.IsUnavailable) return new(PlatformKeyStatus.Unavailable);
-		byte[]? key = DecodeHex(result.Output);
+		if (result.Status == ToolRunStatus.TimedOut) return new(PlatformKeyStatus.Unavailable);
+		byte[]? key = result.Status == ToolRunStatus.Exited && result.ExitCode == 0 ? DecodeHex(result.Output) : null;
 		return key is null ? new(PlatformKeyStatus.NotFound) : new(PlatformKeyStatus.Found, key);
 	}
 
@@ -323,13 +425,13 @@ public sealed class SecretKeyStore : ISecretKeyStore
 		}
 	}
 
-	private readonly record struct ToolResult(string? Output = null, bool IsUnavailable = false);
-
 	/// <summary>
-	/// 跑一个外部密钥库命令；超时表示暂时不可用，命令不存在或快速非 0 退出仍允许文件回退。
+	/// 固定路径执行外部密钥库命令，输入、双流读取和退出共用 5 秒预算；超时终止进程树。
+	/// 丢弃标准错误，不记录秘密；返回启动、超时或退出状态，由平台逻辑分类是否允许回退。
 	/// </summary>
-	private static ToolResult RunTool(KeyStoreTool tool, string[] arguments, string? stdin = null)
+	private static ToolRun RunTool(KeyStoreTool tool, string[] arguments, string? stdin = null)
 	{
+		Stopwatch budget = Stopwatch.StartNew();
 		try
 		{
 			ProcessStartInfo info = new()
@@ -342,7 +444,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 					_ => throw new ArgumentOutOfRangeException(nameof(tool)),
 				},
 				RedirectStandardOutput = true,
-				RedirectStandardError = false,
+				RedirectStandardError = true,
 				RedirectStandardInput = stdin is not null,
 				UseShellExecute = false,
 				CreateNoWindow = true,
@@ -350,35 +452,39 @@ public sealed class SecretKeyStore : ISecretKeyStore
 			foreach (string argument in arguments) info.ArgumentList.Add(argument);
 
 			using Process? process = Process.Start(info); // nosemgrep
-			if (process is null) return new();
-			if (stdin is not null)
-			{
-				process.StandardInput.Write(stdin);
-				process.StandardInput.Close();
-			}
+			if (process is null) return new(ToolRunStatus.StartFailed);
 
 			Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-			if (!outputTask.Wait(TimeSpan.FromSeconds(5)))
+			Task errorTask = process.StandardError.BaseStream.CopyToAsync(Stream.Null);
+			Task inputTask = stdin is null ? Task.CompletedTask : WriteToolInputAsync(process, stdin);
+			Task ioTask = Task.WhenAll(outputTask, errorTask, inputTask);
+			// 超时后流任务仍可能失败，提前注册观察，避免未观察异常。
+			_ = ioTask.ContinueWith(
+				static task => _ = task.Exception,
+				CancellationToken.None,
+				TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+				TaskScheduler.Default);
+			if (!ioTask.Wait(RemainingToolMilliseconds(budget))
+				|| !process.WaitForExit(RemainingToolMilliseconds(budget)))
 			{
-				_ = outputTask.ContinueWith(
-					static task => _ = task.Exception,
-					CancellationToken.None,
-					TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-					TaskScheduler.Default);
 				TryTerminate(process);
-				return new(IsUnavailable: true);
+				return new(ToolRunStatus.TimedOut);
 			}
-			if (!process.WaitForExit(5000))
-			{
-				TryTerminate(process);
-				return new(IsUnavailable: true);
-			}
-			return new(process.ExitCode == 0 ? outputTask.GetAwaiter().GetResult() : null);
+			return new(ToolRunStatus.Exited, process.ExitCode, outputTask.GetAwaiter().GetResult());
 		}
 		catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or AggregateException)
 		{
-			return new();
+			return new(ToolRunStatus.StartFailed);
 		}
+	}
+
+	private static int RemainingToolMilliseconds(Stopwatch budget)
+		=> (int)Math.Clamp(ToolTimeoutMilliseconds - budget.ElapsedMilliseconds, 0, ToolTimeoutMilliseconds);
+
+	private static async Task WriteToolInputAsync(Process process, string stdin)
+	{
+		await process.StandardInput.WriteAsync(stdin).ConfigureAwait(false);
+		process.StandardInput.Close();
 	}
 
 	private static void TryTerminate(Process process)

@@ -20,6 +20,14 @@ public partial class BridgeCommandsTests
 	public void Linux窗口后端与可用显示服务器一致(string? display, string? wayland, string? session, bool nativeWayland) =>
 		Assert.Equal(nativeWayland, LinuxWindowing.UsesWayland(display, wayland, session));
 
+	[Fact]
+	public void 原生Wayland禁用服务端装饰以保持重显后无边框()
+	{
+#pragma warning disable AVALONIA_WAYLAND_FORCE_CSD
+		Assert.True(LinuxWindowing.CreateWaylandOptions().ForceDrawnDecorations);
+#pragma warning restore AVALONIA_WAYLAND_FORCE_CSD
+	}
+
 	[Theory]
 	[InlineData("zh-CN", 720, 480)]
 	[InlineData("en-US", 720, 480)]

@@ -9,8 +9,16 @@ internal static class LinuxWindowing
 	{
 		if (OperatingSystem.IsLinux() && UsesWayland(Environment.GetEnvironmentVariable("DISPLAY"),
 			Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"), Environment.GetEnvironmentVariable("XDG_SESSION_TYPE")))
-			return builder.UseWayland();
+			return builder.With(CreateWaylandOptions()).UseWayland();
 		return builder;
+	}
+
+	/// <summary>宿主自带窗口外观，禁止重建 Wayland 表面后重新协商出系统标题栏。</summary>
+	internal static WaylandPlatformOptions CreateWaylandOptions()
+	{
+#pragma warning disable AVALONIA_WAYLAND_FORCE_CSD
+		return new WaylandPlatformOptions { ForceDrawnDecorations = true };
+#pragma warning restore AVALONIA_WAYLAND_FORCE_CSD
 	}
 
 	internal static bool UsesWayland(string? display, string? waylandDisplay, string? sessionType) =>

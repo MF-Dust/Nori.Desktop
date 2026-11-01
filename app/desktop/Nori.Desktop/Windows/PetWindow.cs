@@ -618,9 +618,9 @@ public sealed class PetWindow : Window
 				return;
 			}
 
-			// 伴侣视窗是原生 Avalonia 窗口, 在 Linux/macOS 上优先让窗口管理器接管移动。
-			// 这条路径也覆盖 Wayland：原生窗口仍可拖动。
-			if (!OperatingSystem.IsWindows())
+			// X11 的原生移动会交出指针抓取，窗口管理器可能吃掉松键事件；
+			// 复用屏幕坐标拖动，保留点击阈值、拖动压感和位置保存。
+			if (!OperatingSystem.IsWindows() && PlatformServices.Current.Session != SessionType.X11)
 			{
 				_isNativeDragPending = true;
 				_nativeDragStartWinPos = Position;
@@ -735,7 +735,7 @@ public sealed class PetWindow : Window
 	}
 
 	/// <summary>
-	/// 当前光标的屏幕坐标 (物理像素), 非 Windows 平台返回 null
+	/// 当前光标的屏幕坐标 (物理像素), 不支持全局光标的平台返回 null
 	/// </summary>
 	private static PixelPoint? CursorScreenPosition()
 	{

@@ -106,6 +106,32 @@ public partial class BridgeCommandsTests
 		return Task.CompletedTask;
 	});
 
+	[Theory]
+	[InlineData(WindowState.Minimized, false, WindowState.Normal)]
+	[InlineData(WindowState.Minimized, true, WindowState.Normal)]
+	[InlineData(WindowState.Maximized, false, WindowState.Maximized)]
+	public Task 主窗口唤起恢复最小化但保留最大化(WindowState initial, bool hidden, WindowState expected) => WithSettingsUiAsync(() =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		WindowManager manager = new(_ => { });
+		fixture._services.Windows = manager;
+		MainWindow main = new(WindowDefinition.All.Single(item => item.Label == WindowLabels.Main), fixture._services);
+		RegisterNativeTestWindow(manager, WindowLabels.Main, main);
+		try
+		{
+			main.Show();
+			main.WindowState = initial;
+			if (hidden) main.Hide();
+
+			manager.Show(WindowLabels.Main);
+
+			Assert.True(manager.IsWindowVisible(WindowLabels.Main));
+			Assert.Equal(expected, main.WindowState);
+		}
+		finally { main.AllowClose = true; main.Close(); }
+		return Task.CompletedTask;
+	});
+
 	[Fact]
 	public Task 没有托盘时关闭主窗口会最小化而不隐藏入口() => WithSettingsUiAsync(() =>
 	{

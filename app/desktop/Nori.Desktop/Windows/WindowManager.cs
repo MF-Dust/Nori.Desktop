@@ -206,6 +206,7 @@ public sealed class WindowManager : IWindowManager
 			return;
 		}
 		if (Get(label) is not { } window) return;
+		if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
 		window.Show();
 		if (window is QuickChatWindow) return;
 		if (window is PetWindow pet)

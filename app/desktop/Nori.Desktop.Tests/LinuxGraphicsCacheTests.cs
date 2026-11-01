@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nori.Core.Data;
 
@@ -20,10 +21,19 @@ public sealed class LinuxGraphicsCacheTests
 			Environment.SetEnvironmentVariable(Variable, inherited);
 			Program.ConfigureGraphicsCache(paths);
 
-			Assert.Equal(System.OperatingSystem.IsLinux() ? paths.ResourcesCacheDirectory : inherited,
-				Environment.GetEnvironmentVariable(Variable));
+			Assert.Equal(inherited, Environment.GetEnvironmentVariable(Variable));
 			if (System.OperatingSystem.IsLinux())
+			{
 				Assert.Equal(paths.ResourcesCacheDirectory, Marshal.PtrToStringUTF8(GetEnvironment(Variable)));
+				ProcessStartInfo info = new("/bin/sh") { RedirectStandardOutput = true, UseShellExecute = false };
+				info.ArgumentList.Add("-c");
+				info.ArgumentList.Add("printf '%s' \"$MESA_SHADER_CACHE_DIR\"");
+				using Process child = Process.Start(info)!;
+				string childValue = child.StandardOutput.ReadToEnd();
+				Assert.True(child.WaitForExit(5000));
+				Assert.Equal(0, child.ExitCode);
+				Assert.Equal(inherited, childValue);
+			}
 			Assert.True(AppStoragePaths.IsContained(paths.ResourcesCacheDirectory, paths.DataRoot));
 			// 初始化目录仍由存储引导负责；配置环境变量不会触碰旧缓存或创建包外文件。
 			Assert.False(Directory.Exists(packageRoot));

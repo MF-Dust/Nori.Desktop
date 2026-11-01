@@ -6,15 +6,15 @@ using Nori.Desktop.Live2D;
 
 namespace Nori.Desktop.Tests;
 
-/// <summary>显式启用的 Windows ANGLE 双上下文真实光栅化验证，不把替身当作 GPU 证据。</summary>
+/// <summary>显式启用的 Windows ANGLE / Linux EGL 双上下文真实光栅化验证。</summary>
 public sealed class NativeGlAssetsTheoryAttribute : TheoryAttribute
 {
 	public NativeGlAssetsTheoryAttribute()
 	{
-		if (!OperatingSystem.IsWindows() || !Environment.Is64BitProcess
+		if ((!System.OperatingSystem.IsWindows() && !System.OperatingSystem.IsLinux()) || !Environment.Is64BitProcess
 			|| Environment.GetEnvironmentVariable("NORI_TEST_NATIVE_GL") != "1"
 			|| Environment.GetEnvironmentVariable("NORI_TEST_LIVE2D_ASSETS") != "1")
-			Skip = "Windows x64 下设置 NORI_TEST_NATIVE_GL=1 与 NORI_TEST_LIVE2D_ASSETS=1，并提供 NORI_LIVE2D_FIXTURES。";
+			Skip = "Windows x64 或 Linux EGL 下设置 NORI_TEST_NATIVE_GL=1 与 NORI_TEST_LIVE2D_ASSETS=1，并提供 NORI_LIVE2D_FIXTURES。";
 	}
 }
 
@@ -35,7 +35,7 @@ public sealed class NativeGlHarnessTests
 				Path.GetDirectoryName(PreparedModelAssetsTests.FindFixture("nori", "Nori.model3.json"))!, 1, CancellationToken.None));
 		});
 		// 后续不 await，所有创建、绘制、回读和释放均留在当前 EGL 线程。
-		using var context = new AngleTestContext(version);
+		using var context = new EglTestContext(version);
 		context.MakeCurrent(0);
 		var petGl = context.CreateApi();
 		using var first = new NativeModelHost(petGl, pet!.Assets);
@@ -136,8 +136,8 @@ public sealed class NativeGlHarnessTests
 	}
 }
 
-/// <summary>复用 Avalonia 已安装的 ANGLE，两个不共享资源的 GLES 上下文共用一个 EGL display。</summary>
-internal sealed unsafe class AngleTestContext : IDisposable
+/// <summary>Windows 复用 Avalonia ANGLE，Linux 使用系统 EGL；两个 GLES 上下文不共享资源。</summary>
+internal sealed unsafe class EglTestContext : IDisposable
 {
 	private readonly nint _library;
 	private nint _display;
@@ -145,15 +145,21 @@ internal sealed unsafe class AngleTestContext : IDisposable
 	private readonly nint[] _surfaces = new nint[2];
 	private readonly int _version;
 
-	public AngleTestContext(int version)
+	public EglTestContext(int version)
 	{
 		_version = version;
-		_library = NativeLibrary.Load(Path.Combine(AppContext.BaseDirectory, "runtimes", "win-x64", "native", "av_libglesv2.dll"));
+		_library = NativeLibrary.Load(System.OperatingSystem.IsLinux() ? "libEGL.so.1"
+			: Path.Combine(AppContext.BaseDirectory, "runtimes", "win-x64", "native", "av_libglesv2.dll"));
 		try
 		{
-			int[] displayAttributes = [0x3203, 0x3208, 0x3038]; // ANGLE D3D11
-			fixed (int* attributes = displayAttributes)
-				_display = ((delegate* unmanaged[Stdcall]<int, nint, int*, nint>)Export("EGL_GetPlatformDisplayEXT"))(0x3202, 0, attributes);
+			if (System.OperatingSystem.IsLinux())
+				_display = ((delegate* unmanaged[Stdcall]<nint, nint>)Export("EGL_GetDisplay"))(0);
+			else
+			{
+				int[] displayAttributes = [0x3203, 0x3208, 0x3038]; // ANGLE D3D11
+				fixed (int* attributes = displayAttributes)
+					_display = ((delegate* unmanaged[Stdcall]<int, nint, int*, nint>)Export("EGL_GetPlatformDisplayEXT"))(0x3202, 0, attributes);
+			}
 			Assert.NotEqual(0, _display);
 			int major, minor;
 			Assert.NotEqual(0, ((delegate* unmanaged[Stdcall]<nint, int*, int*, int>)Export("EGL_Initialize"))(_display, &major, &minor));
@@ -183,12 +189,21 @@ internal sealed unsafe class AngleTestContext : IDisposable
 		}
 	}
 
-	private nint Export(string name) => NativeLibrary.GetExport(_library, name);
+	private nint Export(string name) => NativeLibrary.GetExport(_library,
+		System.OperatingSystem.IsLinux() ? "egl" + name[4..] : name);
 	public void MakeCurrent(int index) => Assert.NotEqual(0,
 		((delegate* unmanaged[Stdcall]<nint, nint, nint, nint, int>)Export("EGL_MakeCurrent"))(_display, _surfaces[index], _surfaces[index], _contexts[index]));
-	public int GetError() => ((delegate* unmanaged[Stdcall]<int>)Export("glGetError"))();
+	public int GetError() => ((delegate* unmanaged[Stdcall]<int>)Resolve("glGetError"))();
+	public string Renderer => Marshal.PtrToStringAnsi(((delegate* unmanaged[Stdcall]<int, nint>)Resolve("glGetString"))(0x1F01)) ?? "";
 	public AvaloniaGlApi CreateApi() => new(new GlInterface(new GlVersion(GlProfileType.OpenGLES, _version, 0), Resolve));
-	private nint Resolve(string name) => NativeLibrary.TryGetExport(_library, name, out nint address) ? address : 0;
+	private nint Resolve(string name)
+	{
+		if (!System.OperatingSystem.IsLinux())
+			return NativeLibrary.TryGetExport(_library, name, out nint address) ? address : 0;
+		nint symbol = Marshal.StringToCoTaskMemUTF8(name);
+		try { return ((delegate* unmanaged[Stdcall]<nint, nint>)Export("EGL_GetProcAddress"))(symbol); }
+		finally { Marshal.FreeCoTaskMem(symbol); }
+	}
 
 	public void Dispose()
 	{

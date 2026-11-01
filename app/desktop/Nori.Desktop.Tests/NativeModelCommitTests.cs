@@ -18,7 +18,7 @@ public partial class BridgeCommandsTests
 		});
 		using var fixture = new BridgeCommandsTests(safeMode: true);
 		var runtime = new PetRuntime(fixture._services, previewMode: true) { IdleAnimationEnabled = false };
-		using var context = new AngleTestContext(version);
+		using var context = new EglTestContext(version);
 		context.MakeCurrent(0);
 		var gl = context.CreateApi();
 		try
@@ -68,7 +68,7 @@ public partial class BridgeCommandsTests
 			Path.GetDirectoryName(PreparedModelAssetsTests.FindFixture("arg-nori", "ARGNori.model3.json"))!, 1, CancellationToken.None));
 		using var fixture = new BridgeCommandsTests(safeMode: true);
 		var runtime = new PetRuntime(fixture._services, previewMode: true) { IdleAnimationEnabled = false };
-		using var context = new AngleTestContext(version);
+		using var context = new EglTestContext(version);
 		context.MakeCurrent(0);
 		try
 		{

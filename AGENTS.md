@@ -205,8 +205,8 @@ publish.bat
 ### Gated Live2D / GL Tests
 Real-model and real-GL tests in `Nori.Desktop.Tests` are skipped unless enabled explicitly. CI sets none of these variables and the models are not in git, so these tests never run in CI; run them locally after changing `Nori.Live2D` or `Nori.Desktop/Live2D`.
 - `[Live2DAssetsFact]`: `NORI_TEST_LIVE2D_ASSETS=1`. Models load from `NORI_LIVE2D_FIXTURES/<modelId>/` when set, otherwise from the nearest `data/resources/installed/live2d/<modelId>/` above the test output directory (`arg-nori`, `nori`).
-- `[NativeGlAssetsTheory]`: Windows x64 with `NORI_TEST_NATIVE_GL=1` and `NORI_TEST_LIVE2D_ASSETS=1`.
-- `[TextureQuadGlTheory]`: Windows x64 with `NORI_TEST_NATIVE_GL=1`.
+- `[NativeGlAssetsTheory]`: Windows x64 (ANGLE) or Linux (system EGL with an available display), with `NORI_TEST_NATIVE_GL=1` and `NORI_TEST_LIVE2D_ASSETS=1`.
+- `[TextureQuadGlTheory]`: Windows x64 or Linux EGL with `NORI_TEST_NATIVE_GL=1`; no model assets required. Test output identifies the actual GL renderer (hardware or software).
 - `NORI_TEST_NATIVE_GL=1` also switches the shared headless fixture (`BridgeCommandsTests.BuildAvaloniaApp`) to real Skia drawing.
 
 ```bash

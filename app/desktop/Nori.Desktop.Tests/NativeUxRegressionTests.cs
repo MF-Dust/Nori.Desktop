@@ -117,7 +117,7 @@ public partial class BridgeCommandsTests
 			PetRuntime pet = new(fixture._services, previewMode: true);
 			fixture._services.PetRuntime = pet;
 			// EGL 上下文创建后保持同一线程；命令后台导入，不在 UI 线程阻塞等待。
-			using AngleTestContext context = new(2);
+			using EglTestContext context = new(2);
 			context.MakeCurrent(0);
 			try
 			{

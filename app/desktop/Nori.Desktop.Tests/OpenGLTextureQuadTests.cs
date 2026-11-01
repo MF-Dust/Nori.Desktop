@@ -1,20 +1,23 @@
 using Nori.Desktop.Live2D;
 using Nori.Desktop.Live2D.Gl;
+using Xunit.Abstractions;
 
 namespace Nori.Desktop.Tests;
 
-/// <summary>无需模型资源的 ANGLE 合成回归测试，与真实模型测试共用上下文。</summary>
+/// <summary>无需模型资源的 GLES 合成回归测试，与真实模型测试共用 EGL 上下文。</summary>
 public sealed class TextureQuadGlTheoryAttribute : TheoryAttribute
 {
 	public TextureQuadGlTheoryAttribute()
 	{
-		if (!OperatingSystem.IsWindows() || !Environment.Is64BitProcess
+		if ((!System.OperatingSystem.IsWindows() && !System.OperatingSystem.IsLinux()) || !Environment.Is64BitProcess
 			|| Environment.GetEnvironmentVariable("NORI_TEST_NATIVE_GL") != "1")
-			Skip = "Windows x64 下设置 NORI_TEST_NATIVE_GL=1。";
+			Skip = "Windows x64 或 Linux EGL 下设置 NORI_TEST_NATIVE_GL=1。";
 	}
 }
 
-public sealed class OpenGLTextureQuadTests
+// 同一 EGL display 的初始化/释放不能与模型测试交错。
+[Collection("Native settings")]
+public sealed class OpenGLTextureQuadTests(ITestOutputHelper output)
 {
 	[TextureQuadGlTheory]
 	[InlineData(2, "compose")]
@@ -25,8 +28,9 @@ public sealed class OpenGLTextureQuadTests
 	[InlineData(3, "hit")]
 	public unsafe void NonDefaultEntryStateDoesNotChangePixelsAndIsRestored(int version, string drawKind)
 	{
-		using var context = new AngleTestContext(version);
+		using var context = new EglTestContext(version);
 		context.MakeCurrent(0);
+		output.WriteLine($"GLES {version} 渲染器：{context.Renderer}");
 		var gl = context.CreateApi();
 		using var source = new NativeGlSurface(gl);
 		using var target = new NativeGlSurface(gl);

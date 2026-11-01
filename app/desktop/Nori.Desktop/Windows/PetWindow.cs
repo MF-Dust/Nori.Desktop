@@ -662,6 +662,14 @@ public sealed class PetWindow : Window
 
 	private void OnPointerMoved(object? sender, PointerEventArgs e)
 	{
+		// 仍有其他鼠标键按住时，Avalonia 将左键松开转换成移动事件。
+		if (IsDragPressed && e.Pointer.Type == PointerType.Mouse
+			&& !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+		{
+			FinishDrag();
+			e.Pointer.Capture(null);
+			return;
+		}
 		if (_waylandDragPress is { } press
 			&& HasExceededLocalDragThreshold(_waylandDragStart, e.GetPosition(this)))
 		{
@@ -707,7 +715,9 @@ public sealed class PetWindow : Window
 		FinishDrag();
 		e.Pointer.Capture(null);
 
-		if (!wasDragging && !didDrag && !didNativeDrag && e.InitialPressMouseButton == MouseButton.Left)
+		bool leftReleased = e.Pointer.Type != PointerType.Mouse
+			|| e.GetCurrentPoint(this).Properties.PointerUpdateKind == PointerUpdateKind.LeftButtonReleased;
+		if (!wasDragging && !didDrag && !didNativeDrag && leftReleased && e.InitialPressMouseButton == MouseButton.Left)
 		{
 			if (_glControl.IsPointOnModel(clientPos.X, clientPos.Y))
 			{

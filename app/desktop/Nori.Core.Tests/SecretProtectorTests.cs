@@ -122,22 +122,23 @@ public class SecretKeyStoreTests : IDisposable
 	[Fact]
 	public void 生成的密钥长度正确且同实例稳定()
 	{
-		SecretKeyStore store = new(_dir, () => null, _ => false);
+		SecretKeyStore store = new(_dir, () => new(SecretKeyStore.PlatformKeyStatus.NotFound), _ => SecretKeyStore.PlatformKeyWriteStatus.Failed);
 		byte[] first = store.LoadOrCreate();
 		byte[] second = store.LoadOrCreate();
 
 		Assert.Equal(SecretKeyStore.KeySize, first.Length);
 		Assert.Equal(first, second);
 		Assert.NotEqual(new byte[SecretKeyStore.KeySize], first);
+		Assert.True(File.Exists(Path.Combine(_dir, "secret.key")));
 	}
 
 	[Fact]
 	public void 已有本地密钥不会被恢复的系统密钥环替换()
 	{
-		byte[] local = new SecretKeyStore(_dir, () => null, _ => false).LoadOrCreate();
+		byte[] local = new SecretKeyStore(_dir, () => new(SecretKeyStore.PlatformKeyStatus.NotFound), _ => SecretKeyStore.PlatformKeyWriteStatus.Failed).LoadOrCreate();
 		string cipher = SecretProtector.ProtectV2(local, "llm_api_key", "existing-secret");
 		int platformReads = 0;
-		SecretKeyStore reopened = new(_dir, () => { platformReads++; return new byte[SecretKeyStore.KeySize]; },
+		SecretKeyStore reopened = new(_dir, () => { platformReads++; return new(SecretKeyStore.PlatformKeyStatus.Found, new byte[SecretKeyStore.KeySize]); },
 			_ => throw new InvalidOperationException("不得覆盖主密钥"));
 
 		byte[] loaded = reopened.LoadOrCreate();
@@ -153,10 +154,68 @@ public class SecretKeyStoreTests : IDisposable
 	public void 无本地文件时仍复用系统密钥环()
 	{
 		byte[] platform = Enumerable.Repeat((byte)0x42, SecretKeyStore.KeySize).ToArray();
-		SecretKeyStore store = new(_dir, () => platform, _ => throw new InvalidOperationException("不得重建系统密钥"));
+		SecretKeyStore store = new(_dir, () => new(SecretKeyStore.PlatformKeyStatus.Found, platform), _ => throw new InvalidOperationException("不得重建系统密钥"));
 
 		Assert.Equal(platform, store.LoadOrCreate());
 		Assert.False(store.IsFileFallback);
+		Assert.False(File.Exists(Path.Combine(_dir, "secret.key")));
+	}
+
+	[Fact]
+	public void 系统密钥环暂不可用时拒绝换钥且冷却后可恢复原密钥()
+	{
+		byte[] original = Enumerable.Repeat((byte)0x42, SecretKeyStore.KeySize).ToArray();
+		long now = 0;
+		int reads = 0;
+		int writes = 0;
+		SecretKeyStore store = new(_dir, () =>
+		{
+			reads++;
+			return reads == 1
+				? new(SecretKeyStore.PlatformKeyStatus.Unavailable)
+				: new(SecretKeyStore.PlatformKeyStatus.Found, original);
+		}, _ =>
+		{
+			writes++;
+			return SecretKeyStore.PlatformKeyWriteStatus.Failed;
+		}, () => now);
+
+		SecretKeyStoreException unavailable = Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		Assert.False(File.Exists(Path.Combine(_dir, "secret.key")));
+		Assert.Equal(0, writes);
+		now = 29_999;
+		Assert.Same(unavailable, Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate()));
+		Assert.Equal(1, reads);
+
+		now = 30_000;
+		Assert.Equal(original, store.LoadOrCreate());
+		Assert.Equal(original, store.LoadOrCreate());
+		Assert.Equal(2, reads);
+		Assert.Equal(0, writes);
+		Assert.False(File.Exists(Path.Combine(_dir, "secret.key")));
+	}
+
+	[Fact]
+	public void 系统密钥环写入暂不可用时不得回退文件且会冷却()
+	{
+		long now = 0;
+		int reads = 0;
+		int writes = 0;
+		SecretKeyStore store = new(_dir, () =>
+		{
+			reads++;
+			return new(SecretKeyStore.PlatformKeyStatus.NotFound);
+		}, _ =>
+		{
+			writes++;
+			return SecretKeyStore.PlatformKeyWriteStatus.Unavailable;
+		}, () => now);
+
+		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		now = 29_999;
+		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		Assert.Equal(1, reads);
+		Assert.Equal(1, writes);
 		Assert.False(File.Exists(Path.Combine(_dir, "secret.key")));
 	}
 
@@ -166,7 +225,7 @@ public class SecretKeyStoreTests : IDisposable
 		string path = Path.Combine(_dir, "secret.key");
 		File.WriteAllBytes(path, [1, 2, 3]);
 		if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-		SecretKeyStore store = new(_dir, () => new byte[SecretKeyStore.KeySize], _ => true);
+		SecretKeyStore store = new(_dir, () => new(SecretKeyStore.PlatformKeyStatus.Found, new byte[SecretKeyStore.KeySize]), _ => SecretKeyStore.PlatformKeyWriteStatus.Stored);
 
 		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
 		Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(path));
@@ -176,14 +235,14 @@ public class SecretKeyStoreTests : IDisposable
 	public void Unix回退文件权限仅允许当前用户读写()
 	{
 		if (OperatingSystem.IsWindows()) return;
-		SecretKeyStore store = new(_dir, () => null, _ => false);
+		SecretKeyStore store = new(_dir, () => new(SecretKeyStore.PlatformKeyStatus.NotFound), _ => SecretKeyStore.PlatformKeyWriteStatus.Failed);
 		store.LoadOrCreate();
 		string path = Path.Combine(_dir, "secret.key");
 
 		Assert.True(store.IsFileFallback);
 		Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
 		File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.OtherRead);
-		SecretKeyStore reopened = new(_dir, () => new byte[SecretKeyStore.KeySize], _ => true);
+		SecretKeyStore reopened = new(_dir, () => new(SecretKeyStore.PlatformKeyStatus.Found, new byte[SecretKeyStore.KeySize]), _ => SecretKeyStore.PlatformKeyWriteStatus.Stored);
 		Assert.Throws<SecretKeyStoreException>(() => reopened.LoadOrCreate());
 	}
 
@@ -207,7 +266,7 @@ public class SecretKeyStoreTests : IDisposable
 			.Select(_ => Task.Run(() =>
 			{
 				gate.Wait();
-				return new SecretKeyStore(_dir, () => null, _ => false).LoadOrCreate();
+				return new SecretKeyStore(_dir, () => new(SecretKeyStore.PlatformKeyStatus.NotFound), _ => SecretKeyStore.PlatformKeyWriteStatus.Failed).LoadOrCreate();
 			}))
 			.ToArray();
 
@@ -219,7 +278,7 @@ public class SecretKeyStoreTests : IDisposable
 	[Fact]
 	public async Task 同实例并发首次读取只生成一个主密钥()
 	{
-		SecretKeyStore store = new(_dir, () => null, _ => false);
+		SecretKeyStore store = new(_dir, () => new(SecretKeyStore.PlatformKeyStatus.NotFound), _ => SecretKeyStore.PlatformKeyWriteStatus.Failed);
 		using ManualResetEventSlim gate = new(false);
 		Task<byte[]>[] tasks = Enumerable.Range(0, 16)
 			.Select(_ => Task.Run(() =>

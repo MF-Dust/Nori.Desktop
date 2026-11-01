@@ -44,12 +44,20 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	/// <summary>主密钥长度 (AES-256)</summary>
 	public const int KeySize = 32;
 
+	internal enum PlatformKeyStatus { Found, NotFound, Unavailable }
+	internal readonly record struct PlatformKeyResult(PlatformKeyStatus Status, byte[]? Key = null);
+	internal enum PlatformKeyWriteStatus { Stored, Failed, Unavailable }
+
+	private const long UnavailableCooldownMilliseconds = 30_000;
 	private const string KeychainService = "cn.erhio.noriDesktopPet";
 	private const string KeychainAccount = "config-master-key";
 
 	private readonly string _keyPath;
-	private readonly Func<byte[]?> _readPlatformKey = ReadPlatformKey;
-	private readonly Func<byte[], bool> _writePlatformKey = WritePlatformKey;
+	private readonly Func<PlatformKeyResult> _readPlatformKey = ReadPlatformKey;
+	private readonly Func<byte[], PlatformKeyWriteStatus> _writePlatformKey = WritePlatformKey;
+	private readonly Func<long> _getTimestampMilliseconds = () => Environment.TickCount64;
+	private SecretKeyStoreException? _unavailableException;
+	private long _unavailableAt;
 	private readonly Lock _gate = new();
 	private byte[]? _cached;
 
@@ -73,10 +81,12 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	}
 
 	/// <summary>测试替换外部密钥库，避免读写开发机的真实主密钥。</summary>
-	internal SecretKeyStore(string directory, Func<byte[]?> readPlatformKey, Func<byte[], bool> writePlatformKey) : this(directory)
+	internal SecretKeyStore(string directory, Func<PlatformKeyResult> readPlatformKey,
+		Func<byte[], PlatformKeyWriteStatus> writePlatformKey, Func<long>? getTimestampMilliseconds = null) : this(directory)
 	{
 		_readPlatformKey = readPlatformKey;
 		_writePlatformKey = writePlatformKey;
+		if (getTimestampMilliseconds is not null) _getTimestampMilliseconds = getTimestampMilliseconds;
 	}
 
 	/// <inheritdoc />
@@ -89,6 +99,9 @@ public sealed class SecretKeyStore : ISecretKeyStore
 		lock (_gate)
 		{
 			if (_cached is not null) return _cached;
+			if (_unavailableException is not null
+				&& _getTimestampMilliseconds() - _unavailableAt < UnavailableCooldownMilliseconds)
+				throw _unavailableException;
 
 			using FileStream processLock = AcquireProcessLock();
 			byte[]? existing = TryLoad();
@@ -144,7 +157,12 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	private byte[]? TryLoad()
 	{
 		// 文件回退一旦承载了已有密文，就不能因系统密钥环恢复而切换到另一把密钥。
-		if (!File.Exists(_keyPath)) return _readPlatformKey();
+		if (!File.Exists(_keyPath))
+		{
+			PlatformKeyResult result = _readPlatformKey();
+			if (result.Status == PlatformKeyStatus.Unavailable) throw PlatformUnavailable();
+			return result.Status == PlatformKeyStatus.Found ? result.Key : null;
+		}
 		try
 		{
 			if (!OperatingSystem.IsWindows())
@@ -174,7 +192,9 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "密钥保存失败时的回滚清理不能覆盖原始异常。")]
 	private void Save(byte[] key)
 	{
-		if (_writePlatformKey(key)) return;
+		PlatformKeyWriteStatus result = _writePlatformKey(key);
+		if (result == PlatformKeyWriteStatus.Unavailable) throw PlatformUnavailable();
+		if (result == PlatformKeyWriteStatus.Stored) return;
 
 		try
 		{
@@ -213,15 +233,29 @@ public sealed class SecretKeyStore : ISecretKeyStore
 		if (!OperatingSystem.IsWindows()) IsFileFallback = true;
 	}
 
-	private static byte[]? ReadPlatformKey()
+	private SecretKeyStoreException PlatformUnavailable()
 	{
-		if (OperatingSystem.IsMacOS())
-			return TryFrameworkKeychainRead() ?? TryKeychainRead();
-		return OperatingSystem.IsLinux() ? TrySecretToolRead() : null;
+		_unavailableAt = _getTimestampMilliseconds();
+		_unavailableException = new SecretKeyStoreException("平台密钥库暂时不可用, 为避免静默更换密钥而拒绝读写敏感配置, 请稍后重试");
+		return _unavailableException;
 	}
 
-	private static bool WritePlatformKey(byte[] key) =>
-		(OperatingSystem.IsMacOS() && TryKeychainWrite(key)) || (OperatingSystem.IsLinux() && TrySecretToolWrite(key));
+	private static PlatformKeyResult ReadPlatformKey()
+	{
+		if (OperatingSystem.IsMacOS())
+		{
+			byte[]? key = TryFrameworkKeychainRead();
+			return key is not null ? new(PlatformKeyStatus.Found, key) : TryKeychainRead();
+		}
+		return OperatingSystem.IsLinux() ? TrySecretToolRead() : new(PlatformKeyStatus.NotFound);
+	}
+
+	private static PlatformKeyWriteStatus WritePlatformKey(byte[] key)
+	{
+		if (OperatingSystem.IsMacOS())
+			return TryKeychainWrite(key) ? PlatformKeyWriteStatus.Stored : PlatformKeyWriteStatus.Failed;
+		return OperatingSystem.IsLinux() ? TrySecretToolWrite(key) : PlatformKeyWriteStatus.Failed;
+	}
 
 	// ---- macOS 钥匙串 (Keychain) ----
 
@@ -233,11 +267,11 @@ public sealed class SecretKeyStore : ISecretKeyStore
 		return DecodeHex(Encoding.ASCII.GetString(payload));
 	}
 
-	private static byte[]? TryKeychainRead()
+	private static PlatformKeyResult TryKeychainRead()
 	{
-		string? output = RunTool(KeyStoreTool.MacOsSecurity,
+		ToolResult result = RunTool(KeyStoreTool.MacOsSecurity,
 			["find-generic-password", "-s", KeychainService, "-a", KeychainAccount, "-w"]);
-		return DecodeHex(output);
+		return DecodeToolKey(result);
 	}
 
 	private static bool TryKeychainWrite(byte[] key)
@@ -250,19 +284,28 @@ public sealed class SecretKeyStore : ISecretKeyStore
 
 	// ---- Linux 密钥环 (libsecret) ----
 
-	private static byte[]? TrySecretToolRead()
+	private static PlatformKeyResult TrySecretToolRead()
 	{
-		string? output = RunTool(KeyStoreTool.LinuxSecretTool,
+		ToolResult result = RunTool(KeyStoreTool.LinuxSecretTool,
 			["lookup", "service", KeychainService, "account", KeychainAccount]);
-		return DecodeHex(output);
+		return DecodeToolKey(result);
 	}
 
-	private static bool TrySecretToolWrite(byte[] key)
+	private static PlatformKeyWriteStatus TrySecretToolWrite(byte[] key)
 	{
 		string hex = Convert.ToHexString(key);
-		return RunTool(KeyStoreTool.LinuxSecretTool,
+		ToolResult result = RunTool(KeyStoreTool.LinuxSecretTool,
 			["store", "--label=Nori Desktop Pet", "service", KeychainService, "account", KeychainAccount],
-			stdin: hex) is not null;
+			stdin: hex);
+		if (result.IsUnavailable) return PlatformKeyWriteStatus.Unavailable;
+		return result.Output is not null ? PlatformKeyWriteStatus.Stored : PlatformKeyWriteStatus.Failed;
+	}
+
+	private static PlatformKeyResult DecodeToolKey(ToolResult result)
+	{
+		if (result.IsUnavailable) return new(PlatformKeyStatus.Unavailable);
+		byte[]? key = DecodeHex(result.Output);
+		return key is null ? new(PlatformKeyStatus.NotFound) : new(PlatformKeyStatus.Found, key);
 	}
 
 	private static byte[]? DecodeHex(string? text)
@@ -280,10 +323,12 @@ public sealed class SecretKeyStore : ISecretKeyStore
 		}
 	}
 
+	private readonly record struct ToolResult(string? Output = null, bool IsUnavailable = false);
+
 	/// <summary>
-	/// 跑一个外部密钥库命令; 命令不存在或返回非 0 时给 null (调用方回退文件)
+	/// 跑一个外部密钥库命令；超时表示暂时不可用，命令不存在或快速非 0 退出仍允许文件回退。
 	/// </summary>
-	private static string? RunTool(KeyStoreTool tool, string[] arguments, string? stdin = null)
+	private static ToolResult RunTool(KeyStoreTool tool, string[] arguments, string? stdin = null)
 	{
 		try
 		{
@@ -305,7 +350,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 			foreach (string argument in arguments) info.ArgumentList.Add(argument);
 
 			using Process? process = Process.Start(info); // nosemgrep
-			if (process is null) return null;
+			if (process is null) return new();
 			if (stdin is not null)
 			{
 				process.StandardInput.Write(stdin);
@@ -321,18 +366,18 @@ public sealed class SecretKeyStore : ISecretKeyStore
 					TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
 					TaskScheduler.Default);
 				TryTerminate(process);
-				return null;
+				return new(IsUnavailable: true);
 			}
 			if (!process.WaitForExit(5000))
 			{
 				TryTerminate(process);
-				return null;
+				return new(IsUnavailable: true);
 			}
-			return process.ExitCode == 0 ? outputTask.GetAwaiter().GetResult() : null;
+			return new(process.ExitCode == 0 ? outputTask.GetAwaiter().GetResult() : null);
 		}
 		catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or AggregateException)
 		{
-			return null;
+			return new();
 		}
 	}
 

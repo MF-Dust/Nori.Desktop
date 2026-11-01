@@ -150,16 +150,22 @@ class IsolatedDesktopTests(unittest.TestCase):
 					"--height", "1024", "--socket", "nori-test", "--xwayland", "--no-lockscreen", "--no-global-shortcuts",
 					"--no-kactivities", "--exit-with-session", str(session)],
 					env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+				timed_out = False
 				try:
 					process.wait(timeout=300)
-					output.seek(0)
-					self.assertTrue(completed.is_file(), output.read())
+				except subprocess.TimeoutExpired:
+					timed_out = True
 				finally:
 					try:
 						os.killpg(process.pid, signal.SIGKILL)
 					except ProcessLookupError:
 						pass
 					process.wait()
+				output.seek(0)
+				diagnostics = output.read()
+				if timed_out:
+					self.fail(f"隔离桌面验收在 300 秒后超时\n{diagnostics}")
+				self.assertTrue(completed.is_file(), diagnostics)
 
 
 @unittest.skipUnless(shutil.which("dotnet"), "未安装 .NET SDK，跳过构建属性验证")

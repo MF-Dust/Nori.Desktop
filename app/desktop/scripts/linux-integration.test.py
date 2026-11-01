@@ -5,8 +5,11 @@ import importlib.util
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
+import sys
 import tempfile
+import shlex
 import time
 import unittest
 
@@ -103,6 +106,60 @@ class DesktopTests(unittest.TestCase):
 		(self.root / "Nori").unlink()
 		self.run_script("uninstall")
 		self.assertFalse(self.menu.exists())
+
+
+@unittest.skipUnless(os.environ.get("NORI_TEST_LINUX_DESKTOP") == "1", "设置 NORI_TEST_LINUX_DESKTOP=1 运行隔离 KWin/XWayland 桌面验收")
+class IsolatedDesktopTests(unittest.TestCase):
+	def test_pointer_delivery_and_published_startup(self):
+		for executable in ("kwin_wayland", "dbus-run-session", "dotnet"):
+			self.assertIsNotNone(shutil.which(executable), f"隔离桌面验收需要 {executable}")
+		workspace = SCRIPTS.parent
+		architecture = {"x86_64": "x64", "aarch64": "arm64"}.get(os.uname().machine)
+		self.assertIsNotNone(architecture, "当前架构不在 Linux 发布矩阵内")
+		binary = workspace / f"bin/publish/linux-{architecture}/Nori"
+		self.assertTrue(binary.is_file(), "请先运行 publish.sh 生成当前架构的发布包")
+		with tempfile.TemporaryDirectory(prefix="nori-native-desktop-") as temporary:
+			root = Path(temporary)
+			for directory in ("home", "config", "cache", "data", "state", "runtime"):
+				(root / directory).mkdir(mode=0o700)
+			# 仅测试合成器允许 XTEST 注入；不读取或修改用户 KWin 配置。
+			(root / "config/kwinrc").write_text("[Xwayland]\nXwaylandEisNoPrompt=true\n")
+			completed = root / "completed"
+			commands = ["#!/bin/sh", "set -eu", "export NORI_TEST_X11=1 NORI_TEST_X11_POINTER=1"]
+			commands.append(shlex.join(["dotnet", "test", str(workspace / "Nori.Desktop.Tests/Nori.Desktop.Tests.csproj"),
+				"--configuration", "Release", "--no-build", "--no-restore", "-m:1", "--filter", "FullyQualifiedName~LinuxInputShapeTests"]))
+			for native_wayland in (False, True):
+				prefix = ["env", "DISPLAY="] if native_wayland else []
+				for mode, safe_mode in (("first-run", False), ("initialized", False), ("initialized", True)):
+					command = prefix + [sys.executable, str(SCRIPTS / "smoke-published.py"), str(binary), "--mode", mode]
+					if safe_mode:
+						command.append("--safe-mode")
+					commands.append(shlex.join(command))
+			# KWin 不承诺透传会话子进程退出码，只有全部检查成功才写此完成标记。
+			commands.append(shlex.join(["touch", str(completed)]))
+			session = root / "session.sh"
+			session.write_text("\n".join(commands) + "\n")
+			session.chmod(0o700)
+			env = dict(os.environ, HOME=str(root / "home"), XDG_CONFIG_HOME=str(root / "config"),
+				XDG_CACHE_HOME=str(root / "cache"), XDG_DATA_HOME=str(root / "data"),
+				XDG_STATE_HOME=str(root / "state"), XDG_RUNTIME_DIR=str(root / "runtime"))
+			for key in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XAUTHORITY"):
+				env.pop(key, None)
+			with tempfile.TemporaryFile(mode="w+") as output:
+				process = subprocess.Popen(["dbus-run-session", "--", "kwin_wayland", "--virtual", "--width", "1280",
+					"--height", "1024", "--socket", "nori-test", "--xwayland", "--no-lockscreen", "--no-global-shortcuts",
+					"--no-kactivities", "--exit-with-session", str(session)],
+					env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+				try:
+					process.wait(timeout=300)
+					output.seek(0)
+					self.assertTrue(completed.is_file(), output.read())
+				finally:
+					try:
+						os.killpg(process.pid, signal.SIGKILL)
+					except ProcessLookupError:
+						pass
+					process.wait()
 
 
 @unittest.skipUnless(shutil.which("dotnet"), "未安装 .NET SDK，跳过构建属性验证")

@@ -217,7 +217,7 @@ NORI_TEST_LIVE2D_ASSETS=1 NORI_TEST_NATIVE_GL=1 dotnet test Nori.Desktop.Tests/N
 
 ### Gated X11 Input Tests
 
-`[NativeX11Fact]` requires `NORI_TEST_X11=1` and a Linux X11/XWayland session with SHAPE 1.1+. `LinuxInputShapeTests` round-trips the production input-shape calls through an unmapped native window; it does not move the real pointer or prove visible-window click delivery. Run with `--filter FullyQualifiedName~LinuxInputShapeTests`.
+`[NativeX11Fact]` requires `NORI_TEST_X11=1` and a Linux X11/XWayland session with SHAPE 1.1+. It round-trips production input-shape calls through an unmapped native window without moving the pointer. `[NativeX11PointerFact]` additionally requires explicit `NORI_TEST_X11_POINTER=1` and `libXtst`; it maps native windows and injects real XTEST pointer input to verify click delivery. Never enable it on the user's desktop. Use the isolated KWin virtual/XWayland runner instead: after a Release test build and `./publish.sh <current-linux-rid>`, run `NORI_TEST_LINUX_DESKTOP=1 python3 scripts/linux-integration.test.py IsolatedDesktopTests` from `app/desktop/`. The runner creates private HOME/config/runtime and D-Bus, runs both input tests plus six published-launcher startup profiles (X11/Wayland × first-run/initialized/safe), then cleans up the compositor. It needs installed `kwin_wayland`, `dbus-run-session`, .NET, XWayland and `libXtst`; it installs nothing.
 
 ## 6. Commit & Pull Request Guidelines
 

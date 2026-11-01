@@ -58,6 +58,12 @@ public sealed record PlatformCapabilities
 /// </summary>
 public interface IPlatformServices
 {
+	/// <summary>在图形驱动初始化前配置包内缓存；没有对应驱动环境的平台不做处理。</summary>
+	void ConfigureGraphicsCache(string directory)
+	{
+		if (OperatingSystem.IsLinux()) LinuxGraphicsCache.Configure(directory);
+	}
+
 	/// <summary>系统主题、壁纸和通知的 UDA 接口；macOS 与缺失原生库时明确降级。</summary>
 	IDesktopIntegration DesktopIntegration => UniDesktopIntegration.Current;
 

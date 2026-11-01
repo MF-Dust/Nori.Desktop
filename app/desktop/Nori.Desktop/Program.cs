@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Nori.Core;
 using Nori.Core.Data;
+using Nori.Core.Platform;
 using Nori.Desktop.Diagnostics;
 using Nori.Desktop.Startup;
 using Nori.Startup;
@@ -39,6 +40,10 @@ internal static class Program
 		};
 		return $"{os}-{architecture}";
 	}
+
+	/// <summary>原生图形驱动缓存随包隔离，避免复用用户目录中其他应用留下的 Mesa 缓存。</summary>
+	internal static void ConfigureGraphicsCache(AppStoragePaths paths) =>
+		PlatformServices.Current.ConfigureGraphicsCache(paths.ResourcesCacheDirectory);
 
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "启动错误展示失败不能覆盖原始错误。")]
 	private static void ShowStartupError(string title, string message)
@@ -173,6 +178,7 @@ internal static class Program
 			AppStoragePaths paths = StoragePaths ?? throw new InvalidOperationException("存储路径尚未初始化");
 			StartupSplash.Report(15, "正在准备本地存储");
 			StorageBootstrapper.Bootstrap(paths, ProductVersion.Current, RuntimeRid());
+			ConfigureGraphicsCache(paths);
 			Nori.Core.Logging.FileLogger logger = new(paths.LogsDirectory);
 			AttachActivationFailureLog(logger);
 			CrashReporter.AttachLogger(logger);

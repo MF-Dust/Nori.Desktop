@@ -122,13 +122,69 @@ public class SecretKeyStoreTests : IDisposable
 	[Fact]
 	public void 生成的密钥长度正确且同实例稳定()
 	{
-		SecretKeyStore store = new(_dir);
+		SecretKeyStore store = new(_dir, () => null, _ => false);
 		byte[] first = store.LoadOrCreate();
 		byte[] second = store.LoadOrCreate();
 
 		Assert.Equal(SecretKeyStore.KeySize, first.Length);
 		Assert.Equal(first, second);
 		Assert.NotEqual(new byte[SecretKeyStore.KeySize], first);
+	}
+
+	[Fact]
+	public void 已有本地密钥不会被恢复的系统密钥环替换()
+	{
+		byte[] local = new SecretKeyStore(_dir, () => null, _ => false).LoadOrCreate();
+		string cipher = SecretProtector.ProtectV2(local, "llm_api_key", "existing-secret");
+		int platformReads = 0;
+		SecretKeyStore reopened = new(_dir, () => { platformReads++; return new byte[SecretKeyStore.KeySize]; },
+			_ => throw new InvalidOperationException("不得覆盖主密钥"));
+
+		byte[] loaded = reopened.LoadOrCreate();
+
+		Assert.Equal(local, loaded);
+		Assert.Equal(0, platformReads);
+		Assert.Equal(!OperatingSystem.IsWindows(), reopened.IsFileFallback);
+		Assert.True(SecretProtector.TryUnprotectV2(loaded, "llm_api_key", cipher, out string plain));
+		Assert.Equal("existing-secret", plain);
+	}
+
+	[Fact]
+	public void 无本地文件时仍复用系统密钥环()
+	{
+		byte[] platform = Enumerable.Repeat((byte)0x42, SecretKeyStore.KeySize).ToArray();
+		SecretKeyStore store = new(_dir, () => platform, _ => throw new InvalidOperationException("不得重建系统密钥"));
+
+		Assert.Equal(platform, store.LoadOrCreate());
+		Assert.False(store.IsFileFallback);
+		Assert.False(File.Exists(Path.Combine(_dir, "secret.key")));
+	}
+
+	[Fact]
+	public void 损坏的本地密钥不得回退到其他系统密钥或被覆盖()
+	{
+		string path = Path.Combine(_dir, "secret.key");
+		File.WriteAllBytes(path, [1, 2, 3]);
+		if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+		SecretKeyStore store = new(_dir, () => new byte[SecretKeyStore.KeySize], _ => true);
+
+		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
+		Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(path));
+	}
+
+	[Fact]
+	public void Unix回退文件权限仅允许当前用户读写()
+	{
+		if (OperatingSystem.IsWindows()) return;
+		SecretKeyStore store = new(_dir, () => null, _ => false);
+		store.LoadOrCreate();
+		string path = Path.Combine(_dir, "secret.key");
+
+		Assert.True(store.IsFileFallback);
+		Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+		File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.OtherRead);
+		SecretKeyStore reopened = new(_dir, () => new byte[SecretKeyStore.KeySize], _ => true);
+		Assert.Throws<SecretKeyStoreException>(() => reopened.LoadOrCreate());
 	}
 
 	[Fact]
@@ -145,14 +201,13 @@ public class SecretKeyStoreTests : IDisposable
 	[Fact]
 	public async Task 不同实例并发首次读取仍返回同一主密钥()
 	{
-		if (!OperatingSystem.IsWindows()) return;
 
 		using ManualResetEventSlim gate = new(false);
 		Task<byte[]>[] tasks = Enumerable.Range(0, 16)
 			.Select(_ => Task.Run(() =>
 			{
 				gate.Wait();
-				return new SecretKeyStore(_dir).LoadOrCreate();
+				return new SecretKeyStore(_dir, () => null, _ => false).LoadOrCreate();
 			}))
 			.ToArray();
 
@@ -164,7 +219,7 @@ public class SecretKeyStoreTests : IDisposable
 	[Fact]
 	public async Task 同实例并发首次读取只生成一个主密钥()
 	{
-		SecretKeyStore store = new(_dir);
+		SecretKeyStore store = new(_dir, () => null, _ => false);
 		using ManualResetEventSlim gate = new(false);
 		Task<byte[]>[] tasks = Enumerable.Range(0, 16)
 			.Select(_ => Task.Run(() =>

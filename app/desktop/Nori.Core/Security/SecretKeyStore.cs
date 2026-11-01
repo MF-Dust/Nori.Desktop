@@ -48,6 +48,8 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	private const string KeychainAccount = "config-master-key";
 
 	private readonly string _keyPath;
+	private readonly Func<byte[]?> _readPlatformKey = ReadPlatformKey;
+	private readonly Func<byte[], bool> _writePlatformKey = WritePlatformKey;
 	private readonly Lock _gate = new();
 	private byte[]? _cached;
 
@@ -68,6 +70,13 @@ public sealed class SecretKeyStore : ISecretKeyStore
 		_keyPath = Directory.Exists(directory) || string.IsNullOrEmpty(Path.GetExtension(directory))
 			? Path.Combine(directory, "secret.key")
 			: Path.GetFullPath(directory);
+	}
+
+	/// <summary>测试替换外部密钥库，避免读写开发机的真实主密钥。</summary>
+	internal SecretKeyStore(string directory, Func<byte[]?> readPlatformKey, Func<byte[], bool> writePlatformKey) : this(directory)
+	{
+		_readPlatformKey = readPlatformKey;
+		_writePlatformKey = writePlatformKey;
 	}
 
 	/// <inheritdoc />
@@ -134,11 +143,8 @@ public sealed class SecretKeyStore : ISecretKeyStore
 
 	private byte[]? TryLoad()
 	{
-		if (OperatingSystem.IsMacOS() && TryFrameworkKeychainRead() is {Length: KeySize} fromFramework) return fromFramework;
-		if (OperatingSystem.IsMacOS() && TryKeychainRead() is {Length: KeySize} fromKeychain) return fromKeychain;
-		if (OperatingSystem.IsLinux() && TrySecretToolRead() is {Length: KeySize} fromSecretTool) return fromSecretTool;
-
-		if (!File.Exists(_keyPath)) return null;
+		// 文件回退一旦承载了已有密文，就不能因系统密钥环恢复而切换到另一把密钥。
+		if (!File.Exists(_keyPath)) return _readPlatformKey();
 		try
 		{
 			if (!OperatingSystem.IsWindows())
@@ -168,8 +174,7 @@ public sealed class SecretKeyStore : ISecretKeyStore
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "密钥保存失败时的回滚清理不能覆盖原始异常。")]
 	private void Save(byte[] key)
 	{
-		if (OperatingSystem.IsMacOS() && TryKeychainWrite(key)) return;
-		if (OperatingSystem.IsLinux() && TrySecretToolWrite(key)) return;
+		if (_writePlatformKey(key)) return;
 
 		try
 		{
@@ -181,7 +186,10 @@ public sealed class SecretKeyStore : ISecretKeyStore
 			string temporary = _keyPath + $".tmp-{Guid.NewGuid():N}";
 			try
 			{
-				using (FileStream stream = new(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+				FileStreamOptions options = new() { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+				// 创建时即限制访问，不能等裸密钥写完后再收紧权限。
+				if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+				using (FileStream stream = new(temporary, options))
 				{
 					stream.Write(payload);
 					stream.Flush(true);
@@ -204,6 +212,16 @@ public sealed class SecretKeyStore : ISecretKeyStore
 		}
 		if (!OperatingSystem.IsWindows()) IsFileFallback = true;
 	}
+
+	private static byte[]? ReadPlatformKey()
+	{
+		if (OperatingSystem.IsMacOS())
+			return TryFrameworkKeychainRead() ?? TryKeychainRead();
+		return OperatingSystem.IsLinux() ? TrySecretToolRead() : null;
+	}
+
+	private static bool WritePlatformKey(byte[] key) =>
+		(OperatingSystem.IsMacOS() && TryKeychainWrite(key)) || (OperatingSystem.IsLinux() && TrySecretToolWrite(key));
 
 	// ---- macOS 钥匙串 (Keychain) ----
 

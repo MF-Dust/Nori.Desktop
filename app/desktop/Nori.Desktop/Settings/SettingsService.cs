@@ -40,6 +40,7 @@ public sealed class SettingsService : IDisposable
 		"stt_stop",
 		"settings_update_workspace",
 		"settings_pick_workspace",
+		"settings_pick_splash_background",
 		"settings_update_tasks",
 		"settings_update_notifications",
 		"settings_update_permission",

@@ -71,7 +71,8 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 		AddPage(new ProactiveSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new WorkspaceSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new GeneralSettingsPage(_service, _lifetimeCts.Token));
-		// 账户排在常规之后、更新之前：它跟更新一样属于「这个软件本身」，
+		AddPage(new PersonalizationSettingsPage(_service, _lifetimeCts.Token));
+		// 账户排在个性化之后、更新之前：它跟更新一样属于「这个软件本身」，
 		// 但比更新常用 —— 换一台机器就要走一次。
 		AddPage(new AccountSettingsPage(_service, _lifetimeCts.Token));
 		AddPage(new UpdatesSettingsPage(_service, _lifetimeCts.Token));

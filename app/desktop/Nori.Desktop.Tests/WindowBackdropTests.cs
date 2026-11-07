@@ -33,7 +33,7 @@ public partial class BridgeCommandsTests
 	public Task BackgroundBlurFieldSavesAndIgnoresStaleSnapshotDuringEdit() => WithSettingsUiAsync(async () =>
 	{
 		using SettingsService service = new(_services, new Window());
-		using GeneralSettingsPage page = new(service);
+		using PersonalizationSettingsPage page = new(service);
 		SettingsFieldViewModel field = page.Sections.SelectMany(section => section.Fields).Single(item => item.Key == "backgroundBlurEnabled");
 		Assert.True(field.Boolean);
 		field.Boolean = false;

@@ -105,6 +105,21 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// <summary>配置键: 常规窗口的系统背景模糊开关。</summary>
 	public const string KeyBackgroundBlurEnabled = "ui_background_blur_enabled";
 
+	/// <summary>配置键: 强调色预设标识。</summary>
+	public const string KeyUiAccent = "ui_accent";
+
+	/// <summary>配置键: 普通窗口界面缩放百分比 (整数)。</summary>
+	public const string KeyUiScale = "ui_scale";
+
+	/// <summary>配置键: 对话气泡字体 (rounded / interface / system)。</summary>
+	public const string KeyBubbleFont = "ui_bubble_font";
+
+	/// <summary>配置键: 对话气泡字号 (standard / large)。</summary>
+	public const string KeyBubbleSize = "ui_bubble_size";
+
+	/// <summary>配置键: 动效偏好 (system / reduce / full)。</summary>
+	public const string KeyMotion = "ui_motion";
+
 	/// <summary>MCP stdio 环境变量的独立敏感配置键前缀。</summary>
 	public const string McpEnvironmentKeyPrefix = "mcp_server_env_";
 

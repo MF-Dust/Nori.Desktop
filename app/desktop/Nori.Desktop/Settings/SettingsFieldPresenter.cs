@@ -158,7 +158,12 @@ public sealed class SettingsFieldPresenter : ContentControl
 		if (_row is null || _editorStack is null || _field is null) return;
 		bool notice = _readOnlyText is not null && string.IsNullOrWhiteSpace(_readOnlyText.Text);
 		_editorStack.IsVisible = !notice;
-		bool stacked = notice || _field.EditorKind == SettingsEditorKind.Multiline || width < 560;
+		bool stacked = notice
+			|| _field.EditorKind is SettingsEditorKind.Multiline
+				or SettingsEditorKind.SplashLayouts
+				or SettingsEditorKind.ImageFile
+				or SettingsEditorKind.BubblePreview
+			|| width < 560;
 		if (_stacked == stacked) return;
 		_stacked = stacked;
 		_row.ColumnDefinitions = new ColumnDefinitions(stacked ? "*" : "190,*");
@@ -174,7 +179,12 @@ public sealed class SettingsFieldPresenter : ContentControl
 		if (_field is null) return;
 		IsVisible = _field.IsVisible;
 		if (_readOnlyText is not null && !_field.IsReadOnly) { Build(); return; }
-		if (_editor is not null) _editor.IsEnabled = !_field.IsReadOnly || _editor is TextBox or SelectableTextBlock || _field.EditorKind == SettingsEditorKind.Avatars;
+		// 气泡预览只展示，只读也不禁用，否则字体绑定看起来像失效。
+		if (_editor is not null)
+			_editor.IsEnabled = _field.EditorKind == SettingsEditorKind.BubblePreview
+				|| !_field.IsReadOnly
+				|| _editor is TextBox or SelectableTextBlock
+				|| _field.EditorKind == SettingsEditorKind.Avatars;
 		if (_textBox is not null) _textBox.IsReadOnly = _field.IsReadOnly;
 		if (_numeric is not null) _numeric.IsReadOnly = _field.IsReadOnly;
 	}
@@ -253,6 +263,16 @@ public sealed class SettingsFieldPresenter : ContentControl
 				return _combo;
 			case SettingsEditorKind.Avatars:
 				return BuildAvatarWall();
+			case SettingsEditorKind.Segmented:
+				return new SegmentedEditor(_field);
+			case SettingsEditorKind.Swatches:
+				return new SwatchEditor(_field);
+			case SettingsEditorKind.SplashLayouts:
+				return new SplashLayoutGallery(_field);
+			case SettingsEditorKind.ImageFile:
+				return new ImageFileEditor(_field);
+			case SettingsEditorKind.BubblePreview:
+				return new BubblePreviewEditor(_field);
 			case SettingsEditorKind.Action:
 				Button button = new()
 				{
@@ -348,6 +368,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 			return;
 		}
 		if (_field is null || !ReferenceEquals(sender, _field)) return;
+		if (_editor is ISettingsFieldEditor custom) custom.Refresh(args.PropertyName);
 		switch (args.PropertyName)
 		{
 			case nameof(SettingsFieldViewModel.Label):

@@ -7,6 +7,7 @@ using Nori.Core.Live2D;
 using Nori.Core.Memory;
 using Nori.Core.Resources;
 using Nori.Core.Skills;
+using Nori.Desktop.Appearance;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Diagnostics;
 using Nori.Desktop.Chat;
@@ -151,12 +152,13 @@ public sealed partial class BridgeCommands
 
 		/// <summary>
 		/// 更新常规设置并同步窗口外观；启动画面设置在下次启动时生效。
-		/// 前端调用：invoke("settings_update_general", {backgroundBlurEnabled: true, splashEnabled: true, splashTheme: "character", splashBackground: ""})
+		/// 前端调用：invoke("settings_update_general", {backgroundBlurEnabled: true, splashEnabled: true, splashTheme: "character", splashBackground: "", accent: "teal", uiScale: 100, bubbleFont: "rounded", bubbleSize: "standard", motion: "system"})
 		/// </summary>
 		"settings_update_general" => RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () =>
 			Run(() =>
 			{
 				ValidateSplashSettings(args);
+				ValidateAppearanceSettings(args);
 				UpdateBoolConfig(args, "splashEnabled", "splash_enabled");
 				UpdateOptionalConfig(args, "splashTheme", "splash_theme");
 				UpdateOptionalConfig(args, "splashBackground", "splash_background");
@@ -168,6 +170,24 @@ public sealed partial class BridgeCommands
 				{
 					bool blurEnabled = _services.Config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true);
 					Avalonia.Threading.Dispatcher.UIThread.Post(() => _services.Windows.UpdateBackgroundBlurEnabled(blurEnabled));
+				}
+				UpdateOptionalConfig(args, "accent", ConfigStore.KeyUiAccent);
+				if (args.ValueKind == JsonValueKind.Object
+					&& args.TryGetProperty("uiScale", out JsonElement uiScale)
+					&& uiScale.ValueKind == JsonValueKind.Number
+					&& uiScale.TryGetInt32(out int percent))
+				{
+					// 存为 Integer：SQLite 读回会按存储文本重新推断类型。
+					_services.Config.Set(ConfigStore.KeyUiScale, new ConfigValue.Integer(percent));
+				}
+				UpdateOptionalConfig(args, "bubbleFont", ConfigStore.KeyBubbleFont);
+				UpdateOptionalConfig(args, "bubbleSize", ConfigStore.KeyBubbleSize);
+				UpdateOptionalConfig(args, "motion", ConfigStore.KeyMotion);
+				if (HasProperty(args, "accent") || HasProperty(args, "uiScale") || HasProperty(args, "bubbleFont")
+					|| HasProperty(args, "bubbleSize") || HasProperty(args, "motion"))
+				{
+					AppearancePreferences preferences = AppearancePreferences.Read(_services.Config);
+					Avalonia.Threading.Dispatcher.UIThread.Post(() => _services.Windows.UpdateAppearance(preferences));
 				}
 				UpdateBoolConfig(args, "sidebarCollapsed", "ui_sidebar_collapsed");
 				UpdateBoolConfig(args, "autoCheckUpdates", "auto_check_updates");
@@ -233,6 +253,12 @@ public sealed partial class BridgeCommands
 		/// 前端调用：invoke("settings_pick_workspace")
 		/// </summary>
 		"settings_pick_workspace" => await PickWorkspaceAsync(source),
+
+		/// <summary>
+		/// 打开系统图片选择框，返回所选启动画面背景的本地路径；用户取消返回 null，不写配置。
+		/// 前端调用：invoke("settings_pick_splash_background")
+		/// </summary>
+		"settings_pick_splash_background" => await PickSplashBackgroundAsync(source),
 
 		// ---- 自动更新 ----
 		/// <summary>

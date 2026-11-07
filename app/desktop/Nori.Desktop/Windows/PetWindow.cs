@@ -11,6 +11,7 @@ using Nori.Core.Live2D;
 using Nori.Core.Logging;
 using Nori.Core.Platform;
 using Nori.Desktop.Bridge;
+using Nori.Desktop.Chat;
 using Nori.Desktop.Live2D;
 using Nori.Desktop.QuickChat;
 using Avalonia.Layout;
@@ -794,7 +795,7 @@ public sealed class PetWindow : Window
 		// web 顶栏菜单：保留浅色文字与危险色，悬停和键盘选中使用冰青 10% 叠加层而非亮强调色。
 		menu.Resources["MenuFlyoutItemBackgroundPointerOver"] = NoriThemeTokens.Brush("hover-ice");
 		menu.Resources["MenuFlyoutItemBackgroundPressed"] = NoriThemeTokens.Brush("hover-ice-strong");
-		menu.Resources["LayoutBackgroundMidBrush"] = NoriThemeTokens.Brush("bg-selection");
+		menu.Resources["LayoutBackgroundMidBrush"] = ChatPalette.Selection;
 
 		var openMainItem = CreateMenuItem("打开主界面", () => _services.Windows.Show(WindowLabels.Main));
 		var randomMotionItem = CreateMenuItem("随机动作", () => _runtime.PlayRandomMotion());

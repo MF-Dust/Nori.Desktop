@@ -55,7 +55,6 @@ public static class ChatMarkdown
 		RegexOptions.Multiline | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
 	// 尺寸使用 NoriThemeTokens 的 rem × 10 规则，画刷只供 Markdown 使用，不注册共享主题资源。
-	private static readonly FontFamily BodyFont = NoriTypography.Conversation;
 	private static readonly FontFamily CodeFont = new("ui-monospace, SFMono-Regular, Menlo, Consolas, monospace");
 	private static readonly IBrush BodyText = NoriThemeTokens.Brush("chat-ai-text");
 	private static readonly IBrush CodeBackground = NoriThemeTokens.Brush("bg-base");
@@ -125,15 +124,13 @@ public static class ChatMarkdown
 	private static string Trim(string text) => TrimWhitespace.Replace(text, "");
 	private static string[] Parts(string text, string pattern) => Regex.Split(text, pattern).Select(Trim).Where(part => part.Length > 0).ToArray();
 
-	private static TextBlock Text(string? text = null, double size = NoriMetrics.FontBase, IBrush? foreground = null) => new()
-	{
-		Text = text,
-		FontFamily = BodyFont,
-		FontSize = size,
-		LineHeight = size * 1.625,
-		Foreground = foreground ?? BodyText,
-		TextWrapping = TextWrapping.Wrap,
-	};
+	private static TextBlock Text(string? text = null, double size = NoriMetrics.FontBase, IBrush? foreground = null) =>
+		BubbleTypography.Apply(new TextBlock
+		{
+			Text = text,
+			Foreground = foreground ?? BodyText,
+			TextWrapping = TextWrapping.Wrap,
+		}, size, size * 1.625);
 
 	private static ScrollViewer HorizontalScroll(Control content) => new()
 	{
@@ -201,7 +198,7 @@ public static class ChatMarkdown
 					TextBlock title = Paragraph(heading, NoriMetrics.FontBase);
 					title.Name = "ChatMarkdownHeading";
 					title.FontWeight = FontWeight.Bold;
-					title.LineHeight = 19.6;
+					BubbleTypography.Apply(title, NoriMetrics.FontBase, 19.6);
 					title.Margin = new Thickness(0, 8, 0, 4);
 					return title;
 				case ParagraphBlock paragraph:

@@ -124,6 +124,65 @@ export const COLORS = {
 	"traffic-highlight": "rgba(255, 255, 255, 0.25)",
 } as const
 
+/**
+ * 强调色预设覆盖的令牌
+ *
+ * 只换品牌强调色及由它派生的选中底色、焦点环与发光；
+ * 冰青发丝线、文字灰阶、对话气泡与扫描芯片属于外壳材质，不随预设变化。
+ */
+export const ACCENT_KEYS = [
+	"nori-teal",
+	"nori-teal-bright",
+	"nori-teal-soft",
+	"nori-teal-pressed",
+	"on-teal",
+	"bg-selection",
+	"ring-focus-from",
+	"ring-focus-via",
+	"ring-focus-to",
+	"window-focus-glow",
+] as const
+
+type AccentKey = typeof ACCENT_KEYS[number]
+
+const channels = (hex: string): number[] => [1, 3, 5].map(index => Number.parseInt(hex.slice(index, index + 2), 16))
+
+const withAlpha = (hex: string, alpha: number): string => `rgba(${channels(hex).join(", ")}, ${alpha})`
+
+/** 不透明地叠在底色上，与 bg-selection 的 primary/10 写法一致 */
+const over = (hex: string, base: string, alpha: number): string => {
+	const BASE = channels(base)
+	return "#" + channels(hex).map((channel, index) => Math.round(channel * alpha + BASE[index] * (1 - alpha)).toString(16).padStart(2, "0")).join("")
+}
+
+/** 由主色、高亮、柔和与按下四色推导一整套强调令牌 */
+const accent = (base: string, bright: string, soft: string, pressed: string): Record<AccentKey, string> => ({
+	"nori-teal": base,
+	"nori-teal-bright": bright,
+	"nori-teal-soft": soft,
+	"nori-teal-pressed": pressed,
+	"on-teal": COLORS["on-teal"],
+	"bg-selection": over(base, COLORS["bg-base"], 0.1),
+	"ring-focus-from": soft,
+	"ring-focus-via": withAlpha(base, 0.44),
+	"ring-focus-to": withAlpha(base, 0.12),
+	"window-focus-glow": withAlpha(base, 0.5),
+})
+
+/**
+ * 强调色预设 (界面顺序即声明顺序)
+ *
+ * teal 直接取 COLORS，默认外观与预设引入前逐字相同。
+ * 新增预设前先过 tests/theme/contrast.test.ts 的强调色门禁。
+ */
+export const ACCENTS = {
+	teal: Object.fromEntries(ACCENT_KEYS.map(key => [key, COLORS[key]])) as Record<AccentKey, string>,
+	sakura: accent("#f0a6c2", "#f6c3d6", "#f3b4cc", "#d991ad"),
+	lavender: accent("#b7a6f2", "#cec2f8", "#c2b4f5", "#a291dc"),
+	sky: accent("#86b8f2", "#aecff8", "#9bc3f5", "#7aa6dc"),
+	apricot: accent("#f2b98a", "#f7d0ae", "#f4c49c", "#d9a476"),
+} as const satisfies Record<string, Record<AccentKey, string>>
+
 /** 圆角令牌 (web Tailwind v4: sm 4 / md 6 / lg 8 / xl 12 / 2xl 16) */
 export const RADIUS = {
 	xs: "0.4rem",

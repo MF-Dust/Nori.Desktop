@@ -2,9 +2,6 @@
 	<!-- 主界面的按钮只影响当前窗口，保留原生键盘与自动化语义。 -->
 	<Styles.Resources>
 		<ResourceDictionary>
-			<ResourceDictionary.MergedDictionaries>
-				<ResourceInclude Source="avares://Nori.Desktop/Appearance/NoriThemeResources.g.axaml"/>
-			</ResourceDictionary.MergedDictionaries>
 			<ControlTheme x:Key="MainButtonTheme" TargetType="Button">
 				<Setter Property="Background" Value="Transparent"/>
 				<Setter Property="Foreground" Value="{DynamicResource MainText}"/>

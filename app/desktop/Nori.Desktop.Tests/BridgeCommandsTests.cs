@@ -195,6 +195,8 @@ public partial class BridgeCommandsTests : IDisposable
 		public int CloudSyncShowCount { get; private set; }
 		public List<bool> BackgroundBlurChanges { get; } = [];
 		public void UpdateBackgroundBlurEnabled(bool enabled) => BackgroundBlurChanges.Add(enabled);
+		public List<Nori.Desktop.Appearance.AppearancePreferences> AppearanceChanges { get; } = [];
+		public void UpdateAppearance(Nori.Desktop.Appearance.AppearancePreferences preferences) => AppearanceChanges.Add(preferences);
 		private readonly Dictionary<string, bool> _visible = [];
 
 		public event Action<string, bool>? VisibilityChanged;

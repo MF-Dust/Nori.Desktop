@@ -144,9 +144,10 @@ public sealed partial class ChatView
 		}
 		private Control Body(string text)
 		{
-			if (text.Length == 0 && _message.Streaming) return new TextBlock { Text = "…", Foreground = ChatPalette.AssistantText, FontSize = NoriMetrics.FontBase };
+			if (text.Length == 0 && _message.Streaming)
+				return BubbleTypography.Apply(new TextBlock { Text = "…", Foreground = ChatPalette.AssistantText }, NoriMetrics.FontBase);
 			if (_message.Role == "assistant") return ChatMarkdown.Render(text, url => _view.Run(_view.ExecuteAsync("open_url", new { url }, _view._lifetime.Token)), _view.GeneratedImages);
-			return new SelectableTextBlock { FontFamily = NoriTypography.Conversation, Text = text, Foreground = ChatPalette.UserText, FontSize = NoriMetrics.FontBase, LineHeight = 20.8, TextWrapping = TextWrapping.Wrap };
+			return BubbleTypography.Apply(new SelectableTextBlock { Text = text, Foreground = ChatPalette.UserText, TextWrapping = TextWrapping.Wrap }, NoriMetrics.FontBase, 20.8);
 		}
 		private async Task CopyAsync(Button copy)
 		{

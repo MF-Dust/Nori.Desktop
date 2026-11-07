@@ -3,7 +3,10 @@ using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Chat;
 
-/// <summary>原生界面与网页共用生成的不可变主题画刷。</summary>
+/// <summary>
+/// 原生界面与网页共用的主题画刷。
+/// 强调色是随个性化就地变色的共享画刷，其余仍是不可变令牌画刷。
+/// </summary>
 internal static class ChatPalette
 {
 	internal static readonly IBrush Background = NoriThemeTokens.Brush("bg-base");
@@ -13,10 +16,11 @@ internal static class ChatPalette
 	internal static readonly IBrush Body = NoriThemeTokens.Brush("text-body");
 	internal static readonly IBrush Muted = NoriThemeTokens.Brush("text-muted");
 	internal static readonly IBrush Faint = NoriThemeTokens.Brush("text-faint");
-	internal static readonly IBrush Accent = NoriThemeTokens.Brush("nori-teal-bright");
-	internal static readonly IBrush Teal = NoriThemeTokens.Brush("nori-teal");
-	internal static readonly IBrush TealPressed = NoriThemeTokens.Brush("nori-teal-pressed");
-	internal static readonly IBrush OnTeal = NoriThemeTokens.Brush("on-teal");
+	internal static IBrush Accent => NoriAppearance.Current?.TealBright ?? NoriThemeTokens.Brush("nori-teal-bright");
+	internal static IBrush Teal => NoriAppearance.Current?.Teal ?? NoriThemeTokens.Brush("nori-teal");
+	internal static IBrush TealPressed => NoriAppearance.Current?.TealPressed ?? NoriThemeTokens.Brush("nori-teal-pressed");
+	internal static IBrush OnTeal => NoriAppearance.Current?.OnTeal ?? NoriThemeTokens.Brush("on-teal");
+	internal static IBrush Selection => NoriAppearance.Current?.Selection ?? NoriThemeTokens.Brush("bg-selection");
 	/// <summary>危险文字色；填充与描边用 <see cref="DangerFill"/>。</summary>
 	internal static readonly IBrush Danger = NoriThemeTokens.Brush("danger-text");
 	internal static readonly IBrush DangerFill = NoriThemeTokens.Brush("danger");

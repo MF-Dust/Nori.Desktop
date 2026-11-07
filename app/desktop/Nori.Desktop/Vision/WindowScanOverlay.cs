@@ -65,7 +65,7 @@ internal sealed class WindowScanOverlay : Window
 		ScalingChanged += (_, _) => ApplyScreenBounds();
 		Opened += (_, _) =>
 		{
-			_reducedMotion = PlatformServices.Current.PrefersReducedMotion;
+			_reducedMotion = MotionPreference.PrefersReducedMotion;
 			ApplyScreenBounds();
 			_elapsed.Restart();
 			_timer.Start();

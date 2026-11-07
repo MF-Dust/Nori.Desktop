@@ -76,7 +76,7 @@ public sealed class FirstRunWindow : Window
 		MinWidth = definition.MinWidth ?? definition.Width;
 		MinHeight = definition.MinHeight ?? definition.Height;
 		CanResize = definition.CanResize;
-		NativeWindowSizing.ConstrainOnFirstOpen(this, NativeWindowSizing.FirstRunSize);
+		NativeWindowSizing.ConstrainOnFirstOpen(this, NativeWindowSizing.FirstRunSize, scaled: false);
 		WindowDecorations = WindowDecorations.None;
 		WindowStartupLocation = WindowStartupLocation.CenterScreen;
 		RequestedThemeVariant = ThemeVariant.Dark;

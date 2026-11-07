@@ -7,6 +7,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using Nori.Desktop.Appearance;
+using Nori.Startup;
 
 namespace Nori.SplashHost;
 
@@ -80,7 +81,7 @@ internal sealed partial class SplashWindow : Window
 			_logo.Dispose();
 			(Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown();
 		};
-		if (theme is "character" or "android-studio" && !string.IsNullOrWhiteSpace(background)) _ = LoadBackgroundAsync(background);
+		if (SplashOptions.SupportsBackground(theme) && !string.IsNullOrWhiteSpace(background)) _ = LoadBackgroundAsync(background);
 	}
 
 	internal void UpdateStage(int progress, string stage)
@@ -132,9 +133,9 @@ internal sealed partial class SplashWindow : Window
 		{
 			bitmap = await Task.Run(() =>
 			{
-				if (!Path.IsPathFullyQualified(path) || path.Replace('\\', '/').StartsWith("//", StringComparison.Ordinal)) return null;
+				if (!SplashOptions.IsLocalAbsolutePath(path)) return null;
 				FileInfo file = new(path);
-				if (!file.Exists || file.Length > 16 * 1024 * 1024) return null;
+				if (!file.Exists || file.Length > SplashOptions.MaxBackgroundBytes) return null;
 				using FileStream stream = File.OpenRead(path);
 				return Bitmap.DecodeToWidth(stream, 1200);
 			});

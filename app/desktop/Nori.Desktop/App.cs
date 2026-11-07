@@ -18,17 +18,19 @@ public sealed class App : Application
 	public override void Initialize()
 	{
 		// 控件模板复用 Avalonia Fluent；配色、圆角与字体由 Nori 令牌覆盖，对齐 Nori.Web 的 theme-nori。
+		// 样式里的 StaticResource 在加载时解析，共享画刷必须先于样式注册。
 		RequestedThemeVariant = ThemeVariant.Dark;
-		Styles.Add(new FluentTheme());
-		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/"))
-		{
-			Source = new Uri("avares://Nori.Desktop/Appearance/NoriControls.axaml"),
-		});
 		Resources["DefaultFontFamily"] = NoriTypography.System;
 		Resources["ContentControlThemeFontFamily"] = NoriTypography.System;
 		Resources.MergedDictionaries.Add(new ResourceInclude(new Uri("avares://Nori.Desktop/"))
 		{
 			Source = new Uri("avares://Nori.Desktop/Appearance/NoriThemeResources.g.axaml"),
+		});
+		NoriAppearance.Install(this);
+		Styles.Add(new FluentTheme());
+		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/"))
+		{
+			Source = new Uri("avares://Nori.Desktop/Appearance/NoriControls.axaml"),
 		});
 	}
 

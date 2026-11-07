@@ -49,6 +49,10 @@ internal sealed class SplashApp : Application
 	public override void Initialize()
 	{
 		RequestedThemeVariant = ThemeVariant.Dark;
+		Resources.MergedDictionaries.Add(new ResourceInclude(new Uri("avares://Nori.SplashHost/"))
+		{
+			Source = new Uri("avares://Nori.SplashHost/Appearance/NoriThemeResources.g.axaml"),
+		});
 		Styles.Add(new FluentTheme());
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.SplashHost/"))
 		{

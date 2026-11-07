@@ -20,7 +20,6 @@ namespace Nori.Desktop.QuickChat;
 /// <summary>贴近桌宠显示的原生轻量对话界面；完整历史与复杂操作交给独立聊天窗口。</summary>
 public sealed partial class QuickChatView : UserControl, IDisposable
 {
-	private static readonly FontFamily ConversationFont = NoriTypography.Conversation;
 	private static readonly SplineEasing ComposerEase = new() { X1 = 0.25, Y1 = 0.1, X2 = 0.25, Y2 = 1 };
 	private readonly NativeChatService _service;
 	private readonly Func<string, object?, CancellationToken, Task<JsonElement>> _execute;
@@ -46,24 +45,19 @@ public sealed partial class QuickChatView : UserControl, IDisposable
 		TextWrapping = TextWrapping.NoWrap,
 		HorizontalAlignment = HorizontalAlignment.Stretch,
 	};
-	private readonly TextBlock _placeholder = new()
+	private readonly TextBlock _placeholder = BubbleTypography.Apply(new TextBlock
 	{
 		Name = "QuickChatPlaceholder",
-		FontSize = NoriMetrics.FontBase,
 		FontWeight = FontWeight.Medium,
-		FontFamily = ConversationFont,
 		VerticalAlignment = VerticalAlignment.Center,
 		IsHitTestVisible = false,
 		TextTrimming = TextTrimming.CharacterEllipsis,
-	};
-	private readonly TextBlock _shortcutText = new()
+	}, NoriMetrics.FontBase);
+	private readonly TextBlock _shortcutText = BubbleTypography.Apply(new TextBlock
 	{
-		FontSize = NoriMetrics.FontXs,
 		FontWeight = FontWeight.Medium,
-		FontFamily = ConversationFont,
-		LineHeight = 16,
 		VerticalAlignment = VerticalAlignment.Center,
-	};
+	}, NoriMetrics.FontXs, 16);
 	private readonly Border _shortcut = new()
 	{
 		Name = "QuickChatShortcutHint",
@@ -219,8 +213,7 @@ public sealed partial class QuickChatView : UserControl, IDisposable
 		ClipToBounds = false;
 		RenderTransformOrigin = new RelativePoint(0.5, 1, RelativeUnit.Relative);
 		RenderTransform = _dragScale;
-		FontFamily = ConversationFont;
-		FontSize = NoriMetrics.FontBase;
+		BubbleTypography.ApplyControl(this, NoriMetrics.FontBase);
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/QuickChat/QuickChatTheme.axaml") });
 		BuildContent();
 		_state.Changed += QueueRender;
@@ -460,7 +453,7 @@ public sealed partial class QuickChatView : UserControl, IDisposable
 		_composer.Classes.Add("quick-composer");
 		// Devolutions 通过独立 AdornerLayer 绘制焦点环；只禁用该环，保留输入框自己的薄荷高亮。
 		_composer.Classes.Add("no-focus-border");
-		_composer.FontFamily = ConversationFont;
+		BubbleTypography.ApplyControl(_composer, NoriMetrics.FontBase);
 		_composer.LineHeight = 20;
 		var frostContent = new Grid();
 		frostContent.Children.Add(_composerTint);
@@ -759,15 +752,14 @@ public sealed partial class QuickChatView : UserControl, IDisposable
 
 	private string T(string chinese, string english) => UiLanguage.IsEnglish(_state.Language) ? english : chinese;
 
-	private static TextBlock Text(string value, double size, FontWeight weight, IBrush brush) => new()
-	{
-		Text = value,
-		FontFamily = ConversationFont,
-		FontSize = size,
-		FontWeight = weight,
-		Foreground = brush,
-		TextWrapping = TextWrapping.Wrap,
-	};
+	private static TextBlock Text(string value, double size, FontWeight weight, IBrush brush) =>
+		BubbleTypography.Apply(new TextBlock
+		{
+			Text = value,
+			FontWeight = weight,
+			Foreground = brush,
+			TextWrapping = TextWrapping.Wrap,
+		}, size);
 
 	private static Border KeyCap(TextBlock label) => new()
 	{

@@ -166,6 +166,13 @@ public sealed class WindowManager : IWindowManager
 		_backdrops?.SetEnabled(enabled);
 	}
 
+	/// <inheritdoc />
+	public void UpdateAppearance(AppearancePreferences preferences)
+	{
+		Dispatcher.UIThread.VerifyAccess();
+		NoriAppearance.Current?.Apply(preferences);
+	}
+
 	private async Task LoadBackdropPreferenceAsync(AppServices services)
 	{
 		try
@@ -243,7 +250,7 @@ public sealed class WindowManager : IWindowManager
 	{
 		Dispatcher.UIThread.VerifyAccess();
 		if (Volatile.Read(ref _shutdownRequested) != 0) return;
-		if (page is not null && page is not ("ai" or "voice" or "proactive" or "skills" or "mcp" or "automation" or "plugins" or "general" or "account" or "updates" or "debug" or "about"))
+		if (page is not null && page is not ("ai" or "voice" or "proactive" or "skills" or "mcp" or "automation" or "plugins" or "general" or "personalization" or "account" or "updates" or "debug" or "about"))
 			throw new ArgumentException("未知的设置页面", nameof(page));
 		if (Get(WindowLabels.Settings) is not SettingsWindow settings)
 		{

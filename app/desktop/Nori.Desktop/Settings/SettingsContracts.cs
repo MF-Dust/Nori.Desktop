@@ -24,6 +24,16 @@ public enum SettingsEditorKind
 	/// 只读头像墙：显示 <see cref="SettingsFieldViewModel.Avatars"/>，Text 作为加载或失败提示。
 	/// </summary>
 	Avatars,
+	/// <summary>单选，分段按钮。</summary>
+	Segmented,
+	/// <summary>单选，色块。</summary>
+	Swatches,
+	/// <summary>单选，启动画面布局缩略图卡片。</summary>
+	SplashLayouts,
+	/// <summary>Text 存图片路径，带预览、选择与清除。</summary>
+	ImageFile,
+	/// <summary>只读，对话气泡实时预览。</summary>
+	BubblePreview,
 }
 
 /// <summary>一条可随语言切换的设置文案。</summary>
@@ -41,6 +51,9 @@ public sealed record SettingsOption(string Value, SettingsText Text)
 {
 	/// <summary>当前语言下显示的选项名称。</summary>
 	public string DisplayText { get; internal set; } = Text.Chinese;
+
+	/// <summary>色块颜色，格式为 "#RRGGBB"。</summary>
+	public string? Swatch { get; init; }
 }
 
 /// <summary>提供可观察属性通知的设置对象。</summary>
@@ -444,6 +457,9 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	/// <summary>当前语言下字段说明。</summary>
 	public string Description => _descriptionText.Resolve(_language);
 
+	/// <summary>字段当前语言；切换语言时先于标题更新，编辑器内部文案据此解析。</summary>
+	internal string Language => _language;
+
 	/// <summary>文本编辑值。</summary>
 	public string Text
 	{
@@ -592,10 +608,14 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 					OnPropertyChanged(nameof(Number));
 					break;
 				case SettingsEditorKind.Choice:
+				case SettingsEditorKind.Segmented:
+				case SettingsEditorKind.Swatches:
+				case SettingsEditorKind.SplashLayouts:
 					_selected = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
 					OnPropertyChanged(nameof(Selected));
 					break;
 				default:
+					// ImageFile 与 BubblePreview 走 Text：前者存路径，后者不参与编辑。
 					_text = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
 					OnPropertyChanged(nameof(Text));
 					break;
@@ -613,7 +633,7 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	{
 		SettingsEditorKind.Boolean => _boolean,
 		SettingsEditorKind.Number or SettingsEditorKind.Slider or SettingsEditorKind.Progress => _number,
-		SettingsEditorKind.Choice => _selected,
+		SettingsEditorKind.Choice or SettingsEditorKind.Segmented or SettingsEditorKind.Swatches or SettingsEditorKind.SplashLayouts => _selected,
 		_ => _text,
 	};
 

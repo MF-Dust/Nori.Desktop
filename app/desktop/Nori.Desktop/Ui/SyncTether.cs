@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Threading;
-using Nori.Desktop.Account;
+using Nori.Desktop.Appearance;
 using Nori.Desktop.Chat;
 
 namespace Nori.Desktop.Ui;

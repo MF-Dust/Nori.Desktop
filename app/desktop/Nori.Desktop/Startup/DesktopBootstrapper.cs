@@ -9,6 +9,7 @@ using Nori.Core.Network;
 using Nori.Core.Resources;
 using Nori.Core.Security;
 using Nori.Core.Telemetry;
+using Nori.Desktop.Appearance;
 using Nori.Desktop.Automation.Desktop;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Diagnostics;
@@ -17,6 +18,7 @@ using Nori.Desktop.Tray;
 using Nori.Desktop.Windows;
 using Nori.Desktop.Startup;
 using Nori.PluginRuntime;
+using Nori.Startup;
 
 namespace Nori.Desktop;
 
@@ -124,8 +126,9 @@ internal sealed class DesktopBootstrapper
 		}
 		StartupSplash.Configure(
 			ParseBoolFlag(config.GetStringOr("splash_enabled", "true")) ?? true,
-			config.GetStringOr("splash_theme", "character"),
+			config.GetStringOr("splash_theme", SplashOptions.DefaultTheme),
 			config.GetStringOr("splash_background", ""));
+		AppearancePreferences appearance = AppearancePreferences.Read(config);
 		StartupSplash.Report(45, safeMode ? "安全模式：正在准备本地服务" : "正在准备伴侣服务");
 		// 只有完成配置初始化并确认 consent=granted 后才允许初始化 Native Sentry。
 		telemetry.Configure(config.GetTelemetryConsent() == TelemetryConsent.Granted);
@@ -256,6 +259,7 @@ internal sealed class DesktopBootstrapper
 		}
 		await Dispatcher.UIThread.InvokeAsync(() =>
 		{
+			NoriAppearance.Current?.Apply(appearance);
 			services.Windows = new WindowManager(desktop);
 			services.Commands = new BridgeCommands(services);
 			services.Windows.CreateAll(services);

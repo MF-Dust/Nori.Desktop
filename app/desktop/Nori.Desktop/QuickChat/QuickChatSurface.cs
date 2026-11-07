@@ -1,6 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
-using Nori.Core.Platform;
+using Nori.Desktop.Appearance;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
 using Nori.Desktop.Vision;
@@ -24,7 +24,7 @@ internal sealed class QuickChatSurface : Border, IDisposable
 	{
 		_owner = owner;
 		_service = new NativeChatService(services, owner, NativeChatSurface.QuickChat);
-		Body = new QuickChatView(_service, () => PlatformServices.Current.PrefersReducedMotion);
+		Body = new QuickChatView(_service, () => MotionPreference.PrefersReducedMotion);
 		_scan = new WindowScanController(services, owner, () => Body.ScanEnglish, Body.ShowScanReadout, Body.SetScanPicking);
 		Body.AttachScan(services.ScanChip, _scan.ToggleAsync);
 		Padding = new Thickness(QuickChatLayout.ShadowMargin);

@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest"
 import {contrastRatio, parseColor, relativeLuminance} from "../../src/services/theme/contrast"
-import {COLORS} from "../../src/assets/style/tokens"
+import {ACCENT_KEYS, ACCENTS, COLORS} from "../../src/assets/style/tokens"
 
 /** 原生窗口、面板和玻璃背景 */
 const BACKGROUNDS = {
@@ -53,5 +53,34 @@ describe("原生设计令牌可读性门禁", () => {
 	it("青绿强调色上的深色文字 ≥ 4.5:1", () => {
 		expect(contrastRatio("#03101c", COLORS["nori-teal"])).toBeGreaterThanOrEqual(4.5)
 		expect(contrastRatio("#03101c", COLORS["nori-teal-bright"])).toBeGreaterThanOrEqual(4.5)
+	})
+})
+
+describe("强调色预设可读性门禁", () => {
+	const PRESETS = Object.entries(ACCENTS)
+
+	it("默认预设与现有令牌逐字一致", () => {
+		for (const key of ACCENT_KEYS) expect(ACCENTS.teal[key], key).toBe(COLORS[key])
+	})
+
+	it.each(PRESETS)("%s 的强调文字在所有背景与选中底色上 ≥ 4.5:1", (name, preset) => {
+		const SURFACES = {...BACKGROUNDS, selection: preset["bg-selection"]}
+		for (const token of ["nori-teal", "nori-teal-bright", "nori-teal-soft"] as const) {
+			for (const [surface, background] of Object.entries(SURFACES)) {
+				const RATIO = contrastRatio(preset[token], background)
+				expect(RATIO, `${name} ${token} on ${surface} = ${RATIO.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+			}
+			for (const desktop of ["#ffffff", "#000000"]) {
+				const RATIO = contrastRatio(preset[token], COLORS["bg-glass"], desktop)
+				expect(RATIO, `${name} ${token} on glass over ${desktop} = ${RATIO.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+			}
+		}
+	})
+
+	it.each(PRESETS)("%s 的强调填充上的深色文字 ≥ 4.5:1", (name, preset) => {
+		for (const fill of ["nori-teal", "nori-teal-bright", "nori-teal-pressed"] as const) {
+			const RATIO = contrastRatio(preset["on-teal"], preset[fill])
+			expect(RATIO, `${name} on-teal on ${fill} = ${RATIO.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+		}
 	})
 })

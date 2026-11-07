@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Nori.Desktop.Appearance;
 using Nori.Desktop.Bridge;
 
 namespace Nori.Desktop.Windows;
@@ -52,6 +53,9 @@ public interface IWindowManager
 
 	/// <summary>更新已注册窗口的背景模糊偏好；无界面宿主无需处理。</summary>
 	void UpdateBackgroundBlurEnabled(bool enabled) { }
+
+	/// <summary>应用个性化外观偏好（强调色、界面缩放、对话气泡与动效）；无界面宿主无需处理。</summary>
+	void UpdateAppearance(AppearancePreferences preferences) { }
 
 	/// <summary>隐藏窗口</summary>
 	void Hide(string label);

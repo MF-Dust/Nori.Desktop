@@ -163,7 +163,7 @@ public sealed class MainWindow : Window
 		_homeLabel.FontWeight = FontWeight.Medium;
 		Border home = new()
 		{
-			Background = NoriThemeTokens.Brush("bg-selection"), CornerRadius = new CornerRadius(NoriMetrics.RadiusSm), Padding = new Thickness(10, 8),
+			Background = ChatPalette.Selection, CornerRadius = new CornerRadius(NoriMetrics.RadiusSm), Padding = new Thickness(10, 8),
 			Child = new StackPanel {Orientation = Orientation.Horizontal, Spacing = 10, Children = {MainVisual.Icon("home", 16, ChatPalette.Teal), _homeLabel}},
 		};
 		_groupLabel.Margin = new Thickness(10, 16, 0, 4);

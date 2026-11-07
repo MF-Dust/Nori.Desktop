@@ -149,10 +149,13 @@ internal sealed class NativeWindowChrome : Border
 	/// <summary>
 	/// web 窗口外框：自上而下的冰青渐变描边，窗口激活后切换为品牌青渐变；
 	/// 圆角与 Windows 11 DWM 的 8px 窗口圆角一致，最大化时取消描边与圆角。
+	/// 描边留在缩放变换外面，1px 不会随界面缩放变粗。
 	/// </summary>
 	internal static Border WindowFrame(Window window, Control content)
 	{
-		Border frame = new() { Name = "NativeWindowFrame", Child = content };
+		LayoutTransformControl scaled = new() { Name = "NativeWindowScale", Child = content };
+		scaled.Bind(LayoutTransformControl.LayoutTransformProperty, scaled.GetResourceObservable(NoriAppearance.UiScaleTransformKey));
+		Border frame = new() { Name = "NativeWindowFrame", Child = scaled };
 		void Refresh()
 		{
 			bool maximized = window.WindowState == WindowState.Maximized;
@@ -164,6 +167,29 @@ internal sealed class NativeWindowChrome : Border
 		{
 			if (args.Property == WindowBase.IsActiveProperty || args.Property == Window.WindowStateProperty) Refresh();
 		};
+		NoriAppearance? appearance = NoriAppearance.Current;
+		double scale = appearance?.UiScale ?? 1;
+		EventHandler onOpened = (_, _) => NativeWindowSizing.ApplyScale(window, NoriAppearance.Current?.UiScale ?? 1);
+		window.Opened += onOpened;
+		if (appearance is { } current)
+		{
+			Action onAppearanceChanged = () =>
+			{
+				Refresh();
+				double next = current.UiScale;
+				if (next == scale) return;
+				scale = next;
+				NativeWindowSizing.ApplyScale(window, next);
+			};
+			current.Changed += onAppearanceChanged;
+			window.Closed += (_, _) =>
+			{
+				window.Opened -= onOpened;
+				current.Changed -= onAppearanceChanged;
+			};
+		}
+		else window.Closed += (_, _) => window.Opened -= onOpened;
+		NativeWindowSizing.ApplyScale(window, scale);
 		Refresh();
 		return frame;
 	}
@@ -174,11 +200,18 @@ internal sealed class NativeWindowChrome : Border
 		EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
 		GradientStops =
 		{
-			new GradientStop(NoriThemeTokens.Color(focused ? "ring-focus-from" : "ring-rest-from"), 0),
-			new GradientStop(NoriThemeTokens.Color(focused ? "ring-focus-via" : "ring-rest-via"), 0.5),
-			new GradientStop(NoriThemeTokens.Color(focused ? "ring-focus-to" : "ring-rest-to"), 1),
+			new GradientStop(RingColor(focused, "from"), 0),
+			new GradientStop(RingColor(focused, "via"), 0.5),
+			new GradientStop(RingColor(focused, "to"), 1),
 		},
 	};
+
+	private static Color RingColor(bool focused, string stop)
+	{
+		string token = (focused ? "ring-focus-" : "ring-rest-") + stop;
+		if (!focused) return NoriThemeTokens.Color(token);
+		return NoriAppearance.Current?.Color(token) ?? NoriThemeTokens.Color(token);
+	}
 
 	internal static NativeWindowChrome Attach(Window window, Func<bool>? english = null, Action? onClose = null)
 	{

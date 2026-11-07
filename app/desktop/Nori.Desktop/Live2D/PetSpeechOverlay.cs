@@ -35,13 +35,12 @@ public sealed class PetSpeechOverlay : Border
 			Color = Color.FromArgb(110, 0, 0, 0),
 		});
 
-		_text = new TextBlock
+		_text = BubbleTypography.Apply(new TextBlock
 		{
 			Foreground = NoriThemeTokens.Brush("text-primary"),
-			FontSize = NoriMetrics.FontBase,
 			TextWrapping = TextWrapping.Wrap,
 			TextAlignment = TextAlignment.Center,
-		};
+		}, NoriMetrics.FontBase);
 		Child = _text;
 
 		_hideTimer = new DispatcherTimer {Interval = TimeSpan.FromSeconds(6)};

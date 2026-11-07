@@ -140,6 +140,7 @@ public partial class BridgeCommandsTests
 	[Theory]
 	[InlineData("settings_update_workspace")]
 	[InlineData("settings_pick_workspace")]
+	[InlineData("settings_pick_splash_background")]
 	[InlineData("settings_update_tasks")]
 	[InlineData("settings_update_expression")]
 	public void 原生设置白名单包含领域命令(string command)
@@ -446,7 +447,7 @@ public partial class BridgeCommandsTests
 		try
 		{
 			window.Show();
-			foreach (string key in new[] {"ai", "skills", "mcp", "automation", "plugins", "debug", "general", "updates", "ai"})
+			foreach (string key in new[] {"ai", "skills", "mcp", "automation", "plugins", "debug", "general", "personalization", "updates", "ai"})
 			{
 				window.Content = null;
 				viewModel.Navigate(key);

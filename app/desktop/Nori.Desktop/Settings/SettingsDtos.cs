@@ -135,6 +135,21 @@ public sealed record SettingsGeneralPatchDto
 
 	[JsonPropertyName("telemetryEnabled")]
 	public bool? TelemetryEnabled { get; init; }
+
+	[JsonPropertyName("accent")]
+	public string? Accent { get; init; }
+
+	[JsonPropertyName("uiScale")]
+	public int? UiScale { get; init; }
+
+	[JsonPropertyName("bubbleFont")]
+	public string? BubbleFont { get; init; }
+
+	[JsonPropertyName("bubbleSize")]
+	public string? BubbleSize { get; init; }
+
+	[JsonPropertyName("motion")]
+	public string? Motion { get; init; }
 }
 
 /// <summary>原生设置窗口使用的主动行为配置补丁。</summary>

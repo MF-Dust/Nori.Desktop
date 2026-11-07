@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Nori.Core.Configuration;
+using Nori.Desktop.Appearance;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Settings;
 
@@ -78,7 +79,7 @@ public partial class SettingsWindow : Window
 		SettingsPageScroll.Offset = default;
 		// 插件可以自带滚动容器，内嵌页按有限视口测量，避免嵌套滚动撑开内容。
 		SettingsPageScroll.VerticalScrollBarVisibility = PagePresenter.DataContext is PluginSettingsPage ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
-		if (!IsVisible || PagePresenter.DataContext is not SettingsPageBase) return;
+		if (!IsVisible || PagePresenter.DataContext is not SettingsPageBase || !MotionPreference.AllowAnimation) return;
 
 		// 只在换页时淡入，不移动表单或重建编辑状态；快速切换取消上一段动画。
 		using CancellationTokenSource cancellation = new();

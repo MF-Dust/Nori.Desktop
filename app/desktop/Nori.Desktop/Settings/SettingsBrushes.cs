@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Nori.Desktop.Appearance;
 
 namespace Nori.Desktop.Settings;
 
@@ -42,7 +43,10 @@ internal sealed class SettingsBrushPalette
 		get
 		{
 			if (_brushes.TryGetValue(key, out SolidColorBrush? brush)) return brush;
-			brush = new SolidColorBrush(((ISolidColorBrush)SettingsBrushes.Resolve(_owner, key)).Color);
+			IBrush resolved = SettingsBrushes.Resolve(_owner, key);
+			// 复制品不会跟着强调色变，共享画刷必须原样交出去。
+			if (NoriAppearance.Current?.Owns(resolved) == true) return resolved;
+			brush = new SolidColorBrush(((ISolidColorBrush)resolved).Color);
 			_brushes.Add(key, brush);
 			return brush;
 		}

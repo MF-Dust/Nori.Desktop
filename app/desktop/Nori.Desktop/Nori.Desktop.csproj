@@ -35,6 +35,7 @@
 		<Compile Include="../Nori.Startup/LinuxStartupError.cs" Link="Startup/LinuxStartupError.cs" />
 		<Compile Include="../Nori.Startup/LinuxWindowing.cs" Link="Startup/LinuxWindowing.cs" />
 		<Compile Include="../Nori.Startup/SplashMessage.cs" Link="Startup/SplashMessage.cs" />
+		<Compile Include="../Nori.Startup/SplashOptions.cs" Link="Startup/SplashOptions.cs" />
 		<InternalsVisibleTo Include="Nori.Desktop.Tests" />
 		<ProjectReference Include="../Nori.Core/Nori.Core.csproj" />
 		<ProjectReference Include="../Nori.PluginRuntime/Nori.PluginRuntime.csproj" />

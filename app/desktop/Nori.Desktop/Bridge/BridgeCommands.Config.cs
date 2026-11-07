@@ -4,7 +4,9 @@ using Avalonia.Platform.Storage;
 using Nori.Core.Configuration;
 using Nori.Core.Logging;
 using Nori.Core.Tools;
+using Nori.Desktop.Appearance;
 using Nori.Desktop.Windows;
+using Nori.Startup;
 
 namespace Nori.Desktop.Bridge;
 
@@ -245,6 +247,35 @@ public sealed partial class BridgeCommands
 		return picked is null ? null : new { root = picked };
 	}
 
+	/// <summary>
+	/// 选启动画面背景图片。返回选中的本地路径，用户取消时返回 null。
+	///
+	/// 仅返回选择结果，不写配置：写入仍由 `settings_update_general` 承担，配置只有一个写入点。
+	/// </summary>
+	private async Task<object?> PickSplashBackgroundAsync(IBridgeSource source)
+	{
+		RequireMainVoid(source);
+		Avalonia.Controls.Window? self = source.Self ?? throw new InvalidOperationException("来源窗口不可用");
+		string? picked = await _uiDispatcher.InvokeTaskAsync(async () =>
+		{
+			IReadOnlyList<IStorageFile> files = await self.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+			{
+				Title = "选择启动画面背景图片",
+				AllowMultiple = false,
+				FileTypeFilter =
+				[
+					new FilePickerFileType("图片 (png/jpg/jpeg/webp)")
+					{
+						Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp"],
+					},
+				],
+			});
+			return files.Count > 0 ? files[0].Path.LocalPath : null;
+		});
+
+		return picked is null ? null : new { path = picked };
+	}
+
 	private void UpdateConfigDirect(string key, string value) =>
 		_services.Config.Set(key, new ConfigValue.Text(value));
 
@@ -358,25 +389,44 @@ public sealed partial class BridgeCommands
 
 	private static bool HasAnyString(JsonElement args, params string[] names) => names.Any(name => HasString(args, name));
 
+	/// <summary>保存前校验个性化外观，避免部分写入非法补丁。</summary>
+	private static void ValidateAppearanceSettings(JsonElement args)
+	{
+		if (HasProperty(args, "accent") && (OptionalStr(args, "accent") is not string accent || !NoriAccentPresets.Contains(accent)))
+			throw new InvalidOperationException("请选择受支持的强调色");
+		if (HasProperty(args, "uiScale"))
+		{
+			JsonElement scale = args.GetProperty("uiScale");
+			if (scale.ValueKind != JsonValueKind.Number || !scale.TryGetInt32(out int percent) || !AppearancePreferences.UiScales.Contains(percent))
+				throw new InvalidOperationException("界面缩放仅支持 90%、100%、110% 或 125%");
+		}
+		if (HasProperty(args, "bubbleFont") && (OptionalStr(args, "bubbleFont") is not string font || !AppearancePreferences.BubbleFonts.Contains(font)))
+			throw new InvalidOperationException("请选择受支持的气泡字体");
+		if (HasProperty(args, "bubbleSize") && (OptionalStr(args, "bubbleSize") is not string size || !AppearancePreferences.BubbleSizes.Contains(size)))
+			throw new InvalidOperationException("请选择受支持的气泡字号");
+		if (HasProperty(args, "motion") && !AppearancePreferences.TryParseMotion(OptionalStr(args, "motion"), out _))
+			throw new InvalidOperationException("请选择受支持的动效选项");
+	}
+
 	/// <summary>保存前校验启动画面的主题和本地背景，避免部分写入非法补丁。</summary>
 	private static void ValidateSplashSettings(JsonElement args)
 	{
-		if (HasProperty(args, "splashTheme") && OptionalStr(args, "splashTheme") is not ("character" or "minimal" or "android-studio" or "microsoft-365" or "office-legacy" or "island" or "alls"))
+		if (HasProperty(args, "splashTheme") && !SplashOptions.IsTheme(OptionalStr(args, "splashTheme")))
 			throw new InvalidOperationException("请选择受支持的启动画面主题");
 		if (!HasProperty(args, "splashBackground")) return;
 		string background = OptionalStr(args, "splashBackground")
 			?? throw new InvalidOperationException("启动画面背景必须是本地图片的绝对路径，留空可恢复默认");
 		if (background.Length == 0) return;
-		if (background.Replace('\\', '/').StartsWith("//", StringComparison.Ordinal) || !Path.IsPathFullyQualified(background))
+		if (!SplashOptions.IsLocalAbsolutePath(background))
 			throw new InvalidOperationException("启动画面背景必须使用本地绝对路径，不支持网址或网络共享路径");
 
 		try
 		{
-			if (Path.GetExtension(background).ToLowerInvariant() is not (".png" or ".jpg" or ".jpeg" or ".webp"))
+			if (!SplashOptions.HasImageExtension(background))
 				throw new InvalidOperationException("启动画面背景仅支持 PNG、JPG、JPEG 或 WebP 图片");
 			FileInfo file = new(background);
 			if (!file.Exists) throw new InvalidOperationException("启动画面背景文件不存在，请检查图片路径");
-			if (file.Length > 16L * 1024 * 1024) throw new InvalidOperationException("启动画面背景图片不能超过 16 MiB");
+			if (file.Length > SplashOptions.MaxBackgroundBytes) throw new InvalidOperationException("启动画面背景图片不能超过 16 MiB");
 		}
 		catch (Exception exception) when (exception is ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
 		{

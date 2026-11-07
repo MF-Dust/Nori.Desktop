@@ -15,7 +15,6 @@ using Nori.Core.Live2D;
 using Nori.Core.Logging;
 using Nori.Core.Platform;
 using Nori.Core.Resources;
-using Nori.Desktop.Account;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
 using Nori.Desktop.Ui;

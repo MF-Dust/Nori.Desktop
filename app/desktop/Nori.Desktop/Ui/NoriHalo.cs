@@ -44,6 +44,16 @@ internal sealed class NoriHalo : Panel
 	private readonly Ellipse _innerRing;
 	private readonly Ellipse _glow;
 	private readonly Image _logo;
+	private readonly RadialGradientBrush _glowFill = new()
+	{
+		GradientStops =
+		{
+			new GradientStop(Colors.Transparent, 0),
+			new GradientStop(Colors.Transparent, 0.45),
+			new GradientStop(Colors.Transparent, 0.75),
+		},
+	};
+	private NoriAppearance? _appearance;
 
 	private readonly RotateTransform _outerRotation = new();
 	private readonly RotateTransform _innerRotation = new();
@@ -97,18 +107,11 @@ internal sealed class NoriHalo : Panel
 			Opacity = 0.30, RenderTransform = _innerRotation,
 			RenderTransformOrigin = RelativePoint.Center,
 		};
+		RefreshGlow();
 		_glow = new Ellipse
 		{
 			Width = size - 52, Height = size - 52,
-			Fill = new RadialGradientBrush
-			{
-				GradientStops =
-				[
-					new GradientStop(WithAlpha(NoriThemeTokens.Color("nori-teal-bright"), 0x3a), 0),
-					new GradientStop(WithAlpha(NoriThemeTokens.Color("nori-teal-bright"), 0x1a), 0.45),
-					new GradientStop(Colors.Transparent, 0.75),
-				],
-			},
+			Fill = _glowFill,
 		};
 		_logo = new Image
 		{
@@ -127,6 +130,34 @@ internal sealed class NoriHalo : Panel
 		// 显式调用一次：否则初始外观取自上面的内联赋值，而 Mood 的默认值是 Working，
 		// 同一组数值存在两份，修改其中一份不会报错但会产生不一致。
 		ApplyMood();
+	}
+
+	/// <summary>光晕画刷只创建一次；挂载期间跟随强调色改渐变停止点。</summary>
+	protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+	{
+		base.OnAttachedToVisualTree(e);
+		if (_appearance is not null) return;
+		if (NoriAppearance.Current is not { } appearance) return;
+		_appearance = appearance;
+		appearance.Changed += RefreshGlow;
+		RefreshGlow();
+	}
+
+	protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+	{
+		if (_appearance is not null)
+		{
+			_appearance.Changed -= RefreshGlow;
+			_appearance = null;
+		}
+		base.OnDetachedFromVisualTree(e);
+	}
+
+	private void RefreshGlow()
+	{
+		Color color = NoriAppearance.Current?.Color("nori-teal-bright") ?? NoriThemeTokens.Color("nori-teal-bright");
+		_glowFill.GradientStops[0].Color = WithAlpha(color, 0x3a);
+		_glowFill.GradientStops[1].Color = WithAlpha(color, 0x1a);
 	}
 
 	/// <summary>

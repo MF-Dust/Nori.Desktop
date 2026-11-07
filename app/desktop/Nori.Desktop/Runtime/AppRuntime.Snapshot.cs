@@ -6,6 +6,7 @@ using Nori.Core.Proactive;
 using Nori.Core.Sandbox;
 using Nori.Core.Security;
 using Nori.Core.Tools;
+using Nori.Desktop.Appearance;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Windows;
 
@@ -131,6 +132,7 @@ public sealed partial class AppRuntime
 			};
 		}
 
+		AppearancePreferences appearance = AppearancePreferences.Read(config);
 		return new
 		{
 			version = snapshotVersion,
@@ -158,6 +160,11 @@ public sealed partial class AppRuntime
 				petAutoSummon = ParseBoolFlag(config.GetStringOr("pet_auto_summon", "true")) ?? true,
 				quickChatEnabled = ParseBoolFlag(config.GetStringOr(ConfigStore.KeyQuickChatEnabled, "true")) ?? true,
 				backgroundBlurEnabled = config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true),
+				accent = appearance.Accent,
+				uiScale = appearance.UiScale,
+				bubbleFont = appearance.BubbleFont,
+				bubbleSize = appearance.BubbleSize,
+				motion = AppearancePreferences.FormatMotion(appearance.Motion),
 				sidebarCollapsed = ParseBoolFlag(config.GetStringOr("ui_sidebar_collapsed", "")) ?? false,
 				autoCheckUpdates = config.GetBoolOr("auto_check_updates", true),
 			},

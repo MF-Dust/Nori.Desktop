@@ -6,7 +6,6 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Nori.Core.Mcp;
 using Nori.Core.Skills;
-using Nori.Desktop.Settings;
 
 namespace Nori.Desktop.Settings.Pages;
 
@@ -14,14 +13,17 @@ namespace Nori.Desktop.Settings.Pages;
 internal static class NativeCatalogImportDialogs
 {
 	/// <summary>粘贴或选择技能文件，确认后才写入。</summary>
-	public static async Task ShowSkillImportAsync(Window owner, SkillsSettingsViewModel viewModel)
+	public static async Task ShowSkillImportAsync(
+		Window owner,
+		SkillsSettingsViewModel viewModel,
+		Func<Window, string[], int, Task<string?>>? readFile = null)
 	{
+		readFile ??= ReadFileAsync;
 		TextBox paste = new() {AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 120, MaxLines = 10};
 		TextBlock fileLabel = new() {TextWrapping = TextWrapping.Wrap, Foreground = SettingsBrushes.Resolve(owner, "SettingsSecondaryBrush")};
 		TextBlock preview = new() {TextWrapping = TextWrapping.Wrap, IsVisible = false};
 		TextBlock feedback = new() {TextWrapping = TextWrapping.Wrap, IsVisible = false};
 		ToggleSwitch enabled = new() {Content = NativeSettingsResources.Get("common.enable"), IsChecked = true};
-		string text = "";
 		string? token = null;
 		StackPanel body = new() {Spacing = 12, Margin = new Thickness(24)};
 		body.Children.Add(new TextBlock {Text = NativeSettingsResources.Get("skills.importHint"), TextWrapping = TextWrapping.Wrap});
@@ -46,10 +48,9 @@ internal static class NativeCatalogImportDialogs
 		Window dialog = NativeSettingsDialogs.CreateWindow(NativeSettingsResources.Get("skills.import"), body, Math.Min(640, Math.Max(420, owner.Bounds.Width - 48)));
 		pick.Click += async (_, _) =>
 		{
-			string? loaded = await ReadFileAsync(dialog, ["*.md", "*.json", "*.txt"], SkillLimits.MaxRemoteDocumentCharacters).ConfigureAwait(true);
+			string? loaded = await readFile(dialog, ["*.md", "*.json", "*.txt"], SkillLimits.MaxRemoteDocumentCharacters).ConfigureAwait(true);
 			if (loaded is null) return;
-			text = loaded;
-			paste.Text = loaded.Length > 4000 ? loaded[..4000] : loaded;
+			paste.Text = loaded;
 			fileLabel.Text = NativeSettingsResources.Get("skills.pickFile");
 			token = null;
 			confirm.IsEnabled = false;
@@ -58,8 +59,7 @@ internal static class NativeCatalogImportDialogs
 		{
 			try
 			{
-				text = string.IsNullOrWhiteSpace(paste.Text) ? text : paste.Text ?? "";
-				SkillImportPreviewItem item = await viewModel.PreviewLocalAsync(text).ConfigureAwait(true);
+				SkillImportPreviewItem item = await viewModel.PreviewLocalAsync(paste.Text ?? "").ConfigureAwait(true);
 				token = item.Token;
 				preview.IsVisible = true;
 				preview.Text = $"{item.Name}\n{item.Description}\n{item.Category}\n{string.Join(", ", item.Tools)}";
@@ -137,8 +137,12 @@ internal static class NativeCatalogImportDialogs
 	}
 
 	/// <summary>粘贴、选择文件或从网址预览 MCP 配置。确认后才写入。</summary>
-	public static async Task ShowMcpImportAsync(Window owner, McpSettingsViewModel viewModel)
+	public static async Task ShowMcpImportAsync(
+		Window owner,
+		McpSettingsViewModel viewModel,
+		Func<Window, string[], int, Task<string?>>? readFile = null)
 	{
+		readFile ??= ReadFileAsync;
 		bool safeMode = viewModel.SafeMode;
 		TextBox paste = new() {AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 100, MaxLines = 8};
 		TextBox url = new() {PlaceholderText = NativeSettingsResources.Get("mcp.url"), IsEnabled = !safeMode};
@@ -168,20 +172,17 @@ internal static class NativeCatalogImportDialogs
 		actions.Children.Add(confirm);
 		body.Children.Add(actions);
 		Window dialog = NativeSettingsDialogs.CreateWindow(NativeSettingsResources.Get("mcp.import"), body, Math.Min(640, Math.Max(420, owner.Bounds.Width - 48)));
-		string fileText = "";
 		pick.Click += async (_, _) =>
 		{
-			string? loaded = await ReadFileAsync(dialog, ["*.json"], McpConfigImporter.MaxDocumentCharacters).ConfigureAwait(true);
+			string? loaded = await readFile(dialog, ["*.json"], McpConfigImporter.MaxDocumentCharacters).ConfigureAwait(true);
 			if (loaded is null) return;
-			fileText = loaded;
-			paste.Text = loaded.Length > 4000 ? loaded[..4000] : loaded;
+			paste.Text = loaded;
 		};
 		reviewFile.Click += async (_, _) =>
 		{
 			try
 			{
-				string text = string.IsNullOrWhiteSpace(paste.Text) ? fileText : paste.Text ?? "";
-				await ShowPreviewAsync(viewModel.PreviewTextAsync(text), preview, feedback, confirm, value => token = value).ConfigureAwait(true);
+				await ShowPreviewAsync(viewModel.PreviewTextAsync(paste.Text ?? ""), preview, feedback, confirm, value => token = value).ConfigureAwait(true);
 			}
 			catch (Exception exception)
 			{

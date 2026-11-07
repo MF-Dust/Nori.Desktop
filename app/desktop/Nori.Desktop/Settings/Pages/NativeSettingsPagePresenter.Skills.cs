@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -53,19 +54,18 @@ public sealed partial class NativeSettingsPagePresenter
 		filters.Children.Add(category);
 		root.Children.Add(filters);
 		InitializeComplexBody(root, viewModel,
-			() => string.Join('\n',
-			[
-				viewModel.ShowMarketplace.ToString(),
+			() => JsonSerializer.Serialize(new
+			{
+				viewModel.ShowMarketplace,
 				viewModel.SearchText,
 				viewModel.SelectedCategory,
-				viewModel.SafeMode.ToString(),
-				viewModel.EnabledCount.ToString(),
-				viewModel.PromptCharacters.ToString(),
-				viewModel.PromptLimit.ToString(),
-				string.Join(',', viewModel.Installed.Select(skill => $"{skill.Id}:{skill.Enabled}:{skill.Source}")),
-				string.Join(',', viewModel.Marketplace.Select(skill => skill.Id)),
-				string.Join(',', viewModel.InstalledIds),
-			]),
+				viewModel.SafeMode,
+				viewModel.EnabledCount,
+				viewModel.PromptCharacters,
+				viewModel.PromptLimit,
+				viewModel.Installed,
+				viewModel.Marketplace,
+			}),
 			list =>
 			{
 				sync++;

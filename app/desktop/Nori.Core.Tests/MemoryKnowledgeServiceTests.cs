@@ -1,3 +1,4 @@
+using System.Reflection;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Embedding;
@@ -52,6 +53,100 @@ public sealed class MemoryKnowledgeServiceTests : IAsyncLifetime
 		MemoryIndexStatus unchanged = await _knowledge.ReindexAsync();
 		Assert.Equal(3, unchanged.Processed);
 	}
+
+	[Fact]
+	public async Task 文件变更完成后再次变更可重建并正常关闭()
+	{
+		await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n第一轮内容。");
+		await NotifyFileChanged().WaitAsync(TimeSpan.FromSeconds(10));
+		Assert.Null(GetWatcherField<CancellationTokenSource>("_watchDebounce"));
+
+		await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n第二轮内容。");
+		await NotifyFileChanged().WaitAsync(TimeSpan.FromSeconds(10));
+		RetrievedKnowledge result = Assert.Single(_knowledge.Search("第二轮内容"));
+		Assert.Contains("第二轮内容", result.Content);
+		Assert.DoesNotContain("第一轮内容", result.Content);
+		await _knowledge.DisposeAsync();
+	}
+
+	[Fact]
+	public async Task 快速连续变更取消旧任务且最终索引最新内容()
+	{
+		await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n旧版内容。");
+		Task[] tasks = Enumerable.Range(0, 100).Select(_ => NotifyFileChanged()).ToArray();
+		await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n最终版本。");
+		Task latest = NotifyFileChanged();
+		await latest.WaitAsync(TimeSpan.FromSeconds(10));
+		Assert.All(tasks, task => Assert.True(task.IsCompletedSuccessfully));
+		Assert.NotEmpty(_knowledge.Search("最终版本"));
+		Assert.Empty(_knowledge.Search("旧版内容"));
+		Assert.Null(GetWatcherField<CancellationTokenSource>("_watchDebounce"));
+	}
+
+	[Fact]
+	public async Task 完成释放与并发变更交错不抛异常()
+	{
+		await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n并发内容。");
+		Task first = NotifyFileChanged();
+		Task[] changes = Enumerable.Range(0, 32).Select(_ => Task.Run(async () =>
+		{
+			await first;
+			await NotifyFileChanged();
+		})).ToArray();
+		await Task.WhenAll(changes).WaitAsync(TimeSpan.FromSeconds(10));
+		Assert.NotEmpty(_knowledge.Search("并发内容"));
+		Assert.Null(GetWatcherField<CancellationTokenSource>("_watchDebounce"));
+	}
+
+	[Fact]
+	public async Task 关闭等待旧索引退出并拒绝排队回调和重启监听()
+	{
+		await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n关闭时内容。");
+		TaskCompletionSource rebuilding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		using ManualResetEventSlim release = new();
+		int rebuilds = 0;
+		_knowledge.StatusChanged = () =>
+		{
+			if (_knowledge.Status.State != MemoryIndexState.Rebuilding) return;
+			Interlocked.Increment(ref rebuilds);
+			rebuilding.TrySetResult();
+			Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+		};
+		Task first = NotifyFileChanged();
+		try
+		{
+			await rebuilding.Task.WaitAsync(TimeSpan.FromSeconds(10));
+			Task latest = NotifyFileChanged();
+			Task closing = _knowledge.DisposeAsync().AsTask();
+			Assert.False(closing.IsCompleted);
+			Assert.Null(NotifyFileChanged());
+			_knowledge.StartWatcher();
+			Assert.Null(GetWatcherField<FileSystemWatcher>("_watcher"));
+			release.Set();
+			await closing.WaitAsync(TimeSpan.FromSeconds(10));
+			Assert.True(first.IsCompletedSuccessfully);
+			Assert.True(latest.IsCompletedSuccessfully);
+			Assert.Equal(1, rebuilds);
+			Assert.Null(GetWatcherField<CancellationTokenSource>("_watchDebounce"));
+		}
+		finally
+		{
+			release.Set();
+			await first.WaitAsync(TimeSpan.FromSeconds(10));
+			_knowledge.StatusChanged = null;
+		}
+	}
+
+	// 直接投递监听回调，避免依赖操作系统通知次数和时序。
+	private Task NotifyFileChanged()
+	{
+		typeof(KnowledgeService).GetMethod("OnFileChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
+			.Invoke(_knowledge, [this, new FileSystemEventArgs(WatcherChangeTypes.Changed, Path.GetDirectoryName(_knowledgePath)!, Path.GetFileName(_knowledgePath))]);
+		return GetWatcherField<Task>("_watchTask")!;
+	}
+
+	private T? GetWatcherField<T>(string name) where T : class =>
+		(T?)typeof(KnowledgeService).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_knowledge);
 
 	public Task InitializeAsync() => Task.CompletedTask;
 

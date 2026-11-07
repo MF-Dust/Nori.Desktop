@@ -175,39 +175,51 @@ public sealed class KnowledgeService : IAsyncDisposable
 
 	public void StartWatcher()
 	{
-		if (!_memory.Settings.KnowledgeWatch || _watcher is not null) return;
-		string path = EnsureDefaultFile();
-		_watcher = new FileSystemWatcher(System.IO.Path.GetDirectoryName(path)!, System.IO.Path.GetFileName(path))
+		lock (_gate)
 		{
-			NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
-			EnableRaisingEvents = true,
-		};
-		_watcher.Changed += OnFileChanged;
-		_watcher.Created += OnFileChanged;
-		_watcher.Renamed += OnFileChanged;
+			if (_disposed != 0 || !_memory.Settings.KnowledgeWatch || _watcher is not null) return;
+			string path = EnsureDefaultFile();
+			_watcher = new FileSystemWatcher(System.IO.Path.GetDirectoryName(path)!, System.IO.Path.GetFileName(path))
+			{
+				NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
+			};
+			_watcher.Changed += OnFileChanged;
+			_watcher.Created += OnFileChanged;
+			_watcher.Renamed += OnFileChanged;
+			_watcher.EnableRaisingEvents = true;
+		}
 	}
 
 	private void OnFileChanged(object sender, FileSystemEventArgs args)
 	{
-		CancellationTokenSource next = new();
-		CancellationTokenSource? previous;
 		lock (_gate)
 		{
-			previous = _watchDebounce;
+			if (_disposed != 0) return;
+			_watchDebounce?.Cancel();
+			CancellationTokenSource next = new();
 			_watchDebounce = next;
-		}
-		previous?.Cancel();
-		_watchTask = Task.Run(async () =>
-		{
-			try
+			Task? previousTask = _watchTask;
+			// 串联所有在途任务，避免旧索引覆盖新内容，并让关闭等待整条任务链。
+			_watchTask = Task.Run(async () =>
 			{
-				await Task.Delay(750, next.Token).ConfigureAwait(false);
-				await ReindexAsync(next.Token).ConfigureAwait(false);
-			}
-			catch (OperationCanceledException) { }
-			catch (Exception exception) { SetStatus(new MemoryIndexStatus {State = MemoryIndexState.Failed, LastError = exception.Message}); }
-			finally { next.Dispose(); }
-		});
+				try
+				{
+					if (previousTask is not null) await previousTask.ConfigureAwait(false);
+					await Task.Delay(750, next.Token).ConfigureAwait(false);
+					await ReindexAsync(next.Token).ConfigureAwait(false);
+				}
+				catch (OperationCanceledException) { }
+				catch (Exception exception) { SetStatus(new MemoryIndexStatus {State = MemoryIndexState.Failed, LastError = exception.Message}); }
+				finally
+				{
+					lock (_gate)
+					{
+						if (ReferenceEquals(_watchDebounce, next)) _watchDebounce = null;
+						next.Dispose();
+					}
+				}
+			});
+		}
 	}
 
 	private string ResolvePath()
@@ -364,19 +376,20 @@ public sealed class KnowledgeService : IAsyncDisposable
 
 	public async ValueTask DisposeAsync()
 	{
-		if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-		_watcher?.Dispose();
-		CancellationTokenSource? debounce;
+		FileSystemWatcher? watcher;
 		Task? watchTask;
-		lock (_gate) { debounce = _watchDebounce; _watchDebounce = null; watchTask = _watchTask; _watchTask = null; }
-		debounce?.Cancel();
-		if (watchTask is not null)
+		lock (_gate)
 		{
-			try { await watchTask.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false); }
-			catch (OperationCanceledException) { }
-			catch (TimeoutException) { }
+			if (_disposed != 0) return;
+			_disposed = 1;
+			watcher = _watcher;
+			_watcher = null;
+			_watchDebounce?.Cancel();
+			watchTask = _watchTask;
+			_watchTask = null;
 		}
-		debounce?.Dispose();
+		watcher?.Dispose();
+		if (watchTask is not null) await watchTask.ConfigureAwait(false);
 	}
 
 	private sealed record KnowledgeDocument(long Id, string Path, string ContentHash, string UpdatedAt);

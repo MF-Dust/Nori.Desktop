@@ -551,6 +551,25 @@ public sealed partial class BridgeCommands
 		// invoke("skills_export", {id}) → JSON 字符串
 		"skills_export" => RequireMain(source, () => Runtime.Skills.Export(Str(args, "id"))),
 
+		// invoke("skills_import_preview", {text}) → {token, name, description, category, tools}
+		"skills_import_preview" => RequireMain(source, () => Runtime.Skills.PreviewLocal(Str(args, "text"))),
+
+		// invoke("skills_import_commit", {token, enabled}) → 脱敏 SkillDto
+		"skills_import_commit" => RequireMain(source, () =>
+		{
+			SkillRecord saved = Runtime.Skills.CommitLocal(Str(args, "token"), OptionalBool(args, "enabled") ?? false);
+			Runtime.InvalidateSnapshot();
+			return RedactedSkillDto(saved);
+		}),
+
+		// invoke("skills_duplicate", {id}) → 脱敏 SkillDto
+		"skills_duplicate" => RequireMain(source, () =>
+		{
+			SkillRecord copy = Runtime.Skills.Duplicate(Str(args, "id"));
+			Runtime.InvalidateSnapshot();
+			return RedactedSkillDto(copy);
+		}),
+
 		// ---- MCP 服务 ----
 		// invoke("mcp_get_servers")
 		"mcp_get_servers" => await McpGetServersAsync(source),
@@ -566,8 +585,12 @@ public sealed partial class BridgeCommands
 		"mcp_test_server" => await McpTestServerAsync(source, args),
 		// invoke("mcp_call_tool", {serverId, toolName, arguments, sessionId?})
 		"mcp_call_tool" => await McpCallToolAsync(source, args, cancellationToken),
-		// invoke("mcp_import_url", {url})
+		// invoke("mcp_import_url", {url}) → 预览，不写入
 		"mcp_import_url" => await McpImportUrlAsync(source, args, cancellationToken),
+		// invoke("mcp_import_preview", {text}) → {token, servers:[{name, transport, ...}]}
+		"mcp_import_preview" => RequireMain(source, () => _services.Mcp.PreviewImport(Str(args, "text"))),
+		// invoke("mcp_import_commit", {token})
+		"mcp_import_commit" => await McpImportCommitAsync(source, args),
 
 		// invoke("tools_execute_manual", {name, arguments}) — 设置页手动测试, 仅放行 safe 工具
 		"tools_execute_manual" => await ToolsExecuteManualAsync(source, args),

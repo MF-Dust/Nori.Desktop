@@ -1,89 +1,157 @@
-using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Nori.Desktop.Settings;
 
 namespace Nori.Desktop.Settings.Pages;
 
-/// <summary>MCP 连接的原生编辑器，草稿验证失败时保留用户输入。</summary>
+/// <summary>MCP 连接的原生编辑器。空白的环境变量和请求头表示保留已保存密文。</summary>
 internal static class NativeMcpServerEditor
 {
-	/// <summary>编辑元数据和只写环境变量，连接测试与保存分别执行。</summary>
-	public static async Task ShowAsync(Window owner, McpSettingsViewModel viewModel, McpServerDraft draft, bool editing, bool hasEnvironment)
+	/// <summary>编辑元数据和只写秘密字段。测试与保存使用同一套保留规则。</summary>
+	public static async Task ShowAsync(
+		Window owner,
+		McpSettingsViewModel viewModel,
+		McpServerDraft draft,
+		bool editing,
+		bool hasEnvironment,
+		bool hasHeaders = false)
 	{
+		bool safeMode = viewModel.SafeMode;
 		StackPanel body = new() {Spacing = 12, Margin = new Thickness(24)};
+		if (safeMode)
+		{
+			body.Children.Add(new TextBlock
+			{
+				Text = NativeSettingsResources.Get("mcp.safeMode"),
+				Foreground = SettingsBrushes.Resolve(owner, "SettingsWarningBrush"),
+				TextWrapping = TextWrapping.Wrap,
+			});
+		}
 		StackPanel fields = new() {Spacing = 12};
 		TextBox name = Input(draft.Name);
-		ComboBox transport = new() {ItemsSource = new[] {"Stdio", "SSE"}, SelectedIndex = draft.Transport == "sse" ? 1 : 0, HorizontalAlignment = HorizontalAlignment.Stretch};
+		int sync = 0;
+		string transport = draft.Transport is "http" or "sse" ? draft.Transport : "stdio";
+		ToggleButton stdio = Choice("Stdio");
+		ToggleButton http = Choice("HTTP");
+		ToggleButton sse = Choice("SSE");
+		stdio.Name = "McpTransportStdio";
+		http.Name = "McpTransportHttp";
+		sse.Name = "McpTransportSse";
+		WrapPanel transportRow = new() {Orientation = Orientation.Horizontal};
+		transportRow.Children.Add(stdio);
+		transportRow.Children.Add(http);
+		transportRow.Children.Add(sse);
 		TextBox command = Input(draft.Command);
-		TextBox arguments = Input(JsonSerializer.Serialize(draft.Arguments, new JsonSerializerOptions {WriteIndented = true}), multiline: true);
+		TextBox arguments = Input(McpSettingsViewModel.FormatArgumentLines(draft.Arguments), multiline: true);
+		arguments.Name = "McpArguments";
 		TextBox url = Input(draft.Url ?? "");
 		TextBox environment = Input("", multiline: true);
+		environment.Name = "McpEnvironment";
+		TextBox headers = Input("", multiline: true);
+		headers.Name = "McpHeaders";
 		ToggleSwitch enabled = new() {Content = NativeSettingsResources.Get("common.enable"), IsChecked = draft.Enabled};
-		ToggleSwitch autoConnect = new() {Content = Text("启动时自动连接", "Connect automatically on startup"), IsChecked = draft.AutoConnect};
-		CheckBox clearEnvironment = new() {Content = Text("清除已保存的环境变量", "Clear saved environment variables"), IsVisible = hasEnvironment};
+		ToggleSwitch autoConnect = new()
+		{
+			Content = NativeSettingsResources.Get("mcp.autoConnect"),
+			IsChecked = safeMode ? false : draft.AutoConnect,
+			IsEnabled = !safeMode,
+		};
+		CheckBox clearEnvironment = new() {Content = NativeSettingsResources.Get("mcp.clearEnv"), IsVisible = hasEnvironment};
+		CheckBox clearHeaders = new() {Content = NativeSettingsResources.Get("mcp.clearHeaders"), IsVisible = hasHeaders};
+		TextBlock urlLabel = new() {Text = NativeSettingsResources.Get("mcp.sseUrl"), FontWeight = FontWeight.SemiBold};
 		fields.Children.Add(Field(NativeSettingsResources.Get("mcp.name"), name));
-		fields.Children.Add(Field(NativeSettingsResources.Get("mcp.transport"), transport));
+		fields.Children.Add(Field(NativeSettingsResources.Get("mcp.transport"), transportRow));
 		Control commandField = Field(NativeSettingsResources.Get("mcp.command"), command);
-		Control argumentsField = Field(Text("启动参数 · JSON 字符串数组", "Arguments · JSON string array"), arguments);
-		Control urlField = Field(NativeSettingsResources.Get("mcp.sseUrl"), url);
+		Control argumentsField = Field(NativeSettingsResources.Get("mcp.argsHint"), arguments);
+		Control urlField = Field(urlLabel, url);
+		Control headersField = Field(NativeSettingsResources.Get("mcp.headers"), headers);
 		fields.Children.Add(commandField);
 		fields.Children.Add(argumentsField);
 		fields.Children.Add(urlField);
 		fields.Children.Add(Field(NativeSettingsResources.Get("mcp.env"), environment));
-		fields.Children.Add(new TextBlock
-		{
-			Text = hasEnvironment
-				? Text("已有环境变量保持加密。留空会保留原值；填写后会替换整个环境变量集合。测试只使用本次填写的值。", "Saved values stay encrypted. Leave blank to preserve them, or enter a replacement set. Tests use only values entered here.")
-				: Text("每行填写 NAME=value。环境变量只写入宿主，不会从宿主回传。", "Use NAME=value on each line. Environment variables are write-only and are never returned by the host."),
-			TextWrapping = TextWrapping.Wrap,
-		});
+		fields.Children.Add(new TextBlock {Text = NativeSettingsResources.Get("mcp.envHint"), TextWrapping = TextWrapping.Wrap});
 		fields.Children.Add(clearEnvironment);
+		fields.Children.Add(headersField);
+		fields.Children.Add(new TextBlock {Text = NativeSettingsResources.Get("mcp.headerHint"), TextWrapping = TextWrapping.Wrap});
+		fields.Children.Add(clearHeaders);
 		fields.Children.Add(enabled);
 		fields.Children.Add(autoConnect);
-		void UpdateTransport()
+		void SyncTransport()
 		{
-			bool stdio = transport.SelectedIndex == 0;
-			commandField.IsVisible = stdio;
-			argumentsField.IsVisible = stdio;
-			urlField.IsVisible = !stdio;
+			sync++;
+			stdio.IsChecked = transport == "stdio";
+			http.IsChecked = transport == "http";
+			sse.IsChecked = transport == "sse";
+			sync--;
+			bool remote = transport is "http" or "sse";
+			commandField.IsVisible = !remote;
+			argumentsField.IsVisible = !remote;
+			urlField.IsVisible = remote;
+			headersField.IsVisible = remote;
+			clearHeaders.IsVisible = remote && hasHeaders;
+			urlLabel.Text = transport == "sse" ? NativeSettingsResources.Get("mcp.sseUrl") : NativeSettingsResources.Get("mcp.http");
 		}
-		transport.SelectionChanged += (_, _) => UpdateTransport();
+		void OnChoice(ToggleButton button, string value, Action select)
+		{
+			if (sync > 0) return;
+			if (button.IsChecked == true)
+			{
+				select();
+				return;
+			}
+			if (transport != value) return;
+			sync++;
+			button.IsChecked = true;
+			sync--;
+		}
+		void SelectTransport(string value)
+		{
+			if (sync > 0) return;
+			transport = value;
+			SyncTransport();
+		}
+		stdio.IsCheckedChanged += (_, _) => OnChoice(stdio, "stdio", () => SelectTransport("stdio"));
+		http.IsCheckedChanged += (_, _) => OnChoice(http, "http", () => SelectTransport("http"));
+		sse.IsCheckedChanged += (_, _) => OnChoice(sse, "sse", () => SelectTransport("sse"));
 		clearEnvironment.IsCheckedChanged += (_, _) => environment.IsEnabled = clearEnvironment.IsChecked != true;
-		UpdateTransport();
+		clearHeaders.IsCheckedChanged += (_, _) => headers.IsEnabled = clearHeaders.IsChecked != true;
+		SyncTransport();
 		body.Children.Add(new ScrollViewer
 		{
 			Content = fields,
 			MaxHeight = Math.Max(140, Math.Min(520, owner.Bounds.Height - 220)),
 			HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
 		});
-		TextBlock feedback = new() {TextWrapping = TextWrapping.Wrap, IsVisible = false};
+		TextBlock feedback = new() {Name = "McpEditorFeedback", TextWrapping = TextWrapping.Wrap, IsVisible = false};
 		body.Children.Add(feedback);
 		StackPanel actions = new() {Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8};
 		Button cancel = new() {Content = NativeSettingsResources.Get("common.cancel")};
-		Button test = new() {Content = NativeSettingsResources.Get("common.test")};
+		Button test = new() {Content = NativeSettingsResources.Get("common.test"), IsEnabled = !safeMode};
 		Button save = new() {Content = NativeSettingsResources.Get("common.save")};
 		save.Classes.Add("accent");
 		actions.Children.Add(cancel);
 		actions.Children.Add(test);
 		actions.Children.Add(save);
 		body.Children.Add(actions);
-		Window dialog = NativeSettingsDialogs.CreateWindow(editing ? NativeSettingsResources.Get("common.edit") : NativeSettingsResources.Get("mcp.add"), body, Math.Min(600, Math.Max(420, owner.Bounds.Width - 48)));
+		Window dialog = NativeSettingsDialogs.CreateWindow(editing ? NativeSettingsResources.Get("common.edit") : NativeSettingsResources.Get("mcp.add"), body, Math.Min(640, Math.Max(440, owner.Bounds.Width - 48)));
 		dialog.MaxHeight = Math.Max(320, owner.Bounds.Height - 24);
 		bool busy = false;
 		McpServerDraft ReadDraft() => draft with
 		{
 			Name = (name.Text ?? "").Trim(),
-			Transport = transport.SelectedIndex == 1 ? "sse" : "stdio",
+			Transport = transport,
 			Command = command.Text ?? "",
-			Arguments = transport.SelectedIndex == 0 ? McpSettingsViewModel.ParseArgumentList(arguments.Text ?? "") : [],
+			Arguments = transport == "stdio" ? McpSettingsViewModel.ParseArgumentLines(arguments.Text ?? "") : [],
 			Environment = clearEnvironment.IsChecked == true ? new Dictionary<string, string>() : McpSettingsViewModel.ParseEnvironment(environment.Text ?? ""),
 			ClearEnvironment = clearEnvironment.IsChecked == true,
+			Headers = clearHeaders.IsChecked == true ? new Dictionary<string, string>() : McpSettingsViewModel.ParseHeaders(headers.Text ?? ""),
+			ClearHeaders = clearHeaders.IsChecked == true,
 			Url = url.Text,
 			Enabled = enabled.IsChecked == true,
-			AutoConnect = autoConnect.IsChecked == true,
+			AutoConnect = safeMode ? false : autoConnect.IsChecked == true,
 		};
 		async Task ExecuteAsync(bool saveChanges)
 		{
@@ -107,9 +175,9 @@ internal static class NativeMcpServerEditor
 				{
 					McpServerItem? result = await viewModel.TestServerAsync(updated).ConfigureAwait(true);
 					feedback.Text = result?.Status == "connected"
-						? Text("连接成功", "Connection succeeded")
+						? NativeSettingsResources.Get("mcp.connected")
 						: result?.ErrorMessage ?? NativeSettingsResources.Get("mcp.disconnected");
-					feedback.Foreground = SettingsBrushes.Resolve(dialog, result?.Status == "connected" ? "SettingsPrimaryBrush" : "SettingsErrorBrush");
+					feedback.Foreground = SettingsBrushes.Resolve(dialog, result?.Status == "connected" ? "SettingsSuccessBrush" : "SettingsErrorBrush");
 				}
 			}
 			catch (Exception exception)
@@ -121,7 +189,7 @@ internal static class NativeMcpServerEditor
 			{
 				busy = false;
 				fields.IsEnabled = true;
-				test.IsEnabled = true;
+				test.IsEnabled = !safeMode;
 				save.IsEnabled = true;
 			}
 		}
@@ -129,6 +197,13 @@ internal static class NativeMcpServerEditor
 		test.Click += async (_, _) => await ExecuteAsync(false).ConfigureAwait(true);
 		save.Click += async (_, _) => await ExecuteAsync(true).ConfigureAwait(true);
 		await dialog.ShowDialog(owner).ConfigureAwait(true);
+
+		static ToggleButton Choice(string text)
+		{
+			ToggleButton button = new() {Content = text, MinHeight = 32, Margin = new Thickness(0, 0, 8, 0)};
+			button.Classes.Add("settings-choice");
+			return button;
+		}
 	}
 
 	private static TextBox Input(string value, bool multiline = false) => new()
@@ -140,13 +215,13 @@ internal static class NativeMcpServerEditor
 		MaxLines = multiline ? 8 : 1,
 	};
 
-	private static Control Field(string label, Control control)
+	private static Control Field(string label, Control control) => Field(new TextBlock {Text = label, FontWeight = FontWeight.SemiBold}, control);
+
+	private static Control Field(Control label, Control control)
 	{
 		StackPanel field = new() {Spacing = 6};
-		field.Children.Add(new TextBlock {Text = label, FontWeight = FontWeight.SemiBold});
+		field.Children.Add(label);
 		field.Children.Add(control);
 		return field;
 	}
-
-	private static string Text(string chinese, string english) => SettingsLocalization.IsEnglish ? english : chinese;
 }

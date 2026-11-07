@@ -44,6 +44,12 @@ public static partial class ConfigValidation
 		&& value.Length <= 256
 		&& EnvironmentNameRegex().IsMatch(value);
 
+	/// <summary>校验 HTTP 请求头名。允许连字符，不接受空白或冒号。</summary>
+	public static bool IsValidHeaderName(string? value) =>
+		!string.IsNullOrWhiteSpace(value)
+		&& value.Length <= 256
+		&& HeaderNameRegex().IsMatch(value);
+
 	/// <summary>校验一个配置键是否为敏感字段。</summary>
 	public static bool IsSensitiveKey(string key) => ConfigStore.IsSensitiveKey(key);
 
@@ -52,6 +58,9 @@ public static partial class ConfigValidation
 
 	[GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant)]
 	private static partial Regex EnvironmentNameRegex();
+
+	[GeneratedRegex(@"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$", RegexOptions.CultureInvariant)]
+	private static partial Regex HeaderNameRegex();
 }
 
 /// <summary>遥测同意状态; 未确认时任何远程 SDK 都必须保持关闭。</summary>

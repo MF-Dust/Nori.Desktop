@@ -65,3 +65,22 @@ public sealed record SkillRecord
 	[JsonPropertyName("url")]
 	public string? Url { get; set; }
 }
+
+/// <summary>本地技能导入预览。不含指令正文。</summary>
+public sealed record SkillImportPreview
+{
+	[JsonPropertyName("token")]
+	public required string Token { get; init; }
+
+	[JsonPropertyName("name")]
+	public required string Name { get; init; }
+
+	[JsonPropertyName("description")]
+	public string Description { get; init; } = "";
+
+	[JsonPropertyName("category")]
+	public string Category { get; init; } = "productivity";
+
+	[JsonPropertyName("tools")]
+	public IReadOnlyList<string> Tools { get; init; } = [];
+}

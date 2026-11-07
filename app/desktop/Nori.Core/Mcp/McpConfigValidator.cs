@@ -14,6 +14,8 @@ public static partial class McpConfigValidator
 	public const int MaxTotalArgumentCharacters = 32_000;
 	public const int MaxEnvironmentEntries = 64;
 	public const int MaxEnvironmentValueCharacters = 8_192;
+	public const int MaxHeaderEntries = 64;
+	public const int MaxHeaderValueCharacters = 8_192;
 	public const int MaxToolNameCharacters = 256;
 	public const int MaxToolArgumentsCharacters = 32_000;
 	public const int MaxToolDescriptionCharacters = 2_000;
@@ -28,7 +30,7 @@ public static partial class McpConfigValidator
 		if (!IdRegex().IsMatch(id)) throw new InvalidOperationException("MCP 服务器 ID 只能包含字母、数字、点、下划线和连字符");
 		string name = Required(config.Name, "MCP 服务器名称", MaxNameCharacters);
 		string transport = config.Transport.Trim().ToLowerInvariant();
-		if (transport is not (McpTransportType.Stdio or McpTransportType.Sse))
+		if (transport is not (McpTransportType.Stdio or McpTransportType.Http or McpTransportType.Sse))
 		{
 			throw new InvalidOperationException($"不支持的 MCP 传输类型: {config.Transport}");
 		}
@@ -41,31 +43,21 @@ public static partial class McpConfigValidator
 		}
 
 		string? url = null;
-		if (transport == McpTransportType.Sse)
+		if (transport is McpTransportType.Http or McpTransportType.Sse)
 		{
-			if (!Uri.TryCreate(config.Url, UriKind.Absolute, out Uri? endpoint)
-				|| (endpoint.Scheme != Uri.UriSchemeHttp && endpoint.Scheme != Uri.UriSchemeHttps)
-				|| endpoint.UserInfo.Length > 0)
-			{
-				throw new InvalidOperationException("MCP SSE URL 必须是无用户信息的 http/https 地址");
-			}
-			url = endpoint.ToString();
+			url = RequireHttpUrl(config.Url, transport == McpTransportType.Sse ? "MCP SSE URL" : "MCP HTTP URL");
 		}
 
 		string[] args = ValidateArguments(config.Args);
-		Dictionary<string, string>? environment = null;
-		if (config.Env is not null)
+		Dictionary<string, string>? environment = ValidateMap(
+			config.Env, MaxEnvironmentEntries, MaxEnvironmentValueCharacters, "环境变量", EnvironmentKeyRegex());
+		if (transport == McpTransportType.Stdio && config.Headers is {Count: > 0})
 		{
-			if (config.Env.Count > MaxEnvironmentEntries) throw new InvalidOperationException("MCP 环境变量数量超过上限");
-			environment = new Dictionary<string, string>(StringComparer.Ordinal);
-			foreach ((string key, string value) in config.Env)
-			{
-				if (!EnvironmentKeyRegex().IsMatch(key)) throw new InvalidOperationException($"MCP 环境变量名无效: {key}");
-				if (value.Length > MaxEnvironmentValueCharacters) throw new InvalidOperationException($"MCP 环境变量过长: {key}");
-				RejectControl(value, $"MCP 环境变量 {key}");
-				environment[key] = value;
-			}
+			throw new InvalidOperationException("stdio 传输不能携带请求头");
 		}
+		Dictionary<string, string>? headers = transport == McpTransportType.Stdio
+			? null
+			: ValidateHeaders(config.Headers);
 
 		return config with
 		{
@@ -75,6 +67,7 @@ public static partial class McpConfigValidator
 			Command = command,
 			Args = args,
 			Env = environment,
+			Headers = headers,
 			Url = url,
 		};
 	}
@@ -128,6 +121,53 @@ public static partial class McpConfigValidator
 		};
 	}
 
+
+	private static string RequireHttpUrl(string? value, string label)
+	{
+		if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? endpoint)
+			|| (endpoint.Scheme != Uri.UriSchemeHttp && endpoint.Scheme != Uri.UriSchemeHttps)
+			|| endpoint.UserInfo.Length > 0)
+		{
+			throw new InvalidOperationException($"{label}必须是无用户信息的 http/https 地址");
+		}
+		return endpoint.ToString();
+	}
+
+	private static Dictionary<string, string>? ValidateMap(
+		IReadOnlyDictionary<string, string>? values,
+		int maxEntries,
+		int maxValueCharacters,
+		string label,
+		Regex pattern)
+	{
+		if (values is null) return null;
+		if (values.Count > maxEntries) throw new InvalidOperationException($"MCP {label}数量超过上限");
+		Dictionary<string, string> copy = new(StringComparer.Ordinal);
+		foreach ((string key, string value) in values)
+		{
+			if (!pattern.IsMatch(key)) throw new InvalidOperationException($"MCP {label}名无效: {key}");
+			if (value.Length > maxValueCharacters) throw new InvalidOperationException($"MCP {label}过长: {key}");
+			RejectControl(value, $"MCP {label} {key}");
+			copy[key] = value;
+		}
+		return copy;
+	}
+
+	private static Dictionary<string, string>? ValidateHeaders(IReadOnlyDictionary<string, string>? values)
+	{
+		if (values is null) return null;
+		if (values.Count > MaxHeaderEntries) throw new InvalidOperationException("MCP 请求头数量超过上限");
+		Dictionary<string, string> copy = new(StringComparer.Ordinal);
+		foreach ((string key, string value) in values)
+		{
+			if (!Nori.Core.Configuration.ConfigValidation.IsValidHeaderName(key))
+				throw new InvalidOperationException($"MCP 请求头名无效: {key}");
+			if (value.Length > MaxHeaderValueCharacters) throw new InvalidOperationException($"MCP 请求头过长: {key}");
+			RejectControl(value, $"MCP 请求头 {key}");
+			copy[key] = value;
+		}
+		return copy;
+	}
 
 	private static string Required(string? value, string label, int max)
 	{

@@ -14,15 +14,23 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 {
 	public const string KeyMcpServers = "mcp_servers";
 
+	private const int MaxPendingImports = 8;
+	private static readonly TimeSpan ImportPreviewLifetime = TimeSpan.FromMinutes(10);
+
 	private readonly HttpClient _httpClient = httpClient;
 	private readonly ConfigStore _configStore = configStore;
 	private readonly McpEnvironmentStore _environmentStore = new(configStore);
+	private readonly McpHeaderStore _headerStore = new(configStore);
 	private readonly ConcurrentDictionary<string, OfficialMcpConnection> _activeClients = new();
 	private readonly ConcurrentDictionary<string, McpServerStatusInfo> _serverStatuses = new();
 	private readonly ConcurrentBag<Task> _backgroundTasks = new();
 	private readonly SemaphoreSlim _lock = new(1, 1);
+	private readonly Lock _importGate = new();
+	private readonly Dictionary<string, PendingImport> _pendingImports = new(StringComparer.Ordinal);
 	private readonly CancellationTokenSource _lifetimeCts = new();
 	private bool _disposed;
+
+	private sealed record PendingImport(IReadOnlyList<McpServerConfig> Servers, DateTimeOffset ExpiresAt);
 
 	/// <summary>
 	/// 获取所有已配置的 MCP 服务器及其当前运行时状态
@@ -34,28 +42,8 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 
 		foreach (McpServerConfig conf in configs)
 		{
-			SecretIssue? secretIssue = _environmentStore.GetIssue(conf.Id);
-			bool hasEnvironment = conf.Env is {Count: > 0};
-			if (_serverStatuses.TryGetValue(conf.Id, out McpServerStatusInfo? status))
-			{
-				results.Add(status with
-				{
-					HasEnvironment = hasEnvironment,
-					SecretIssue = secretIssue?.Code,
-				});
-			}
-			else
-			{
-				results.Add(new McpServerStatusInfo
-				{
-					ServerId = conf.Id,
-					Name = conf.Name,
-					Status = secretIssue?.RequiresUserAction == true ? "error" : "disconnected",
-					ErrorMessage = secretIssue?.RequiresUserAction == true ? "MCP 环境变量密钥不可用, 请重新填写" : null,
-					HasEnvironment = hasEnvironment,
-					SecretIssue = secretIssue?.Code,
-				});
-			}
+			_serverStatuses.TryGetValue(conf.Id, out McpServerStatusInfo? status);
+			results.Add(OverlaySecrets(conf, status));
 		}
 
 		return await Task.FromResult(results);
@@ -80,9 +68,14 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 			int existingIndex = configs.FindIndex(c => c.Id == config.Id);
 			if (existingIndex >= 0)
 			{
-				// Env=null 表示前端未回传秘密字段, 必须保留已有加密环境变量；
-				// 显式空字典才表示用户要求清除。
-				if (config.Env is null) config = config with {Env = configs[existingIndex].Env};
+				// null 表示前端未回传秘密字段, 必须保留已有密文；显式空字典才表示清除。
+				McpServerConfig existing = configs[existingIndex];
+				if (config.Env is null) config = config with {Env = existing.Env};
+				if (string.Equals(config.Transport, McpTransportType.Stdio, StringComparison.OrdinalIgnoreCase))
+					config = config with {Headers = null};
+				else if (config.Headers is null)
+					config = config with {Headers = existing.Headers};
+				config = McpConfigValidator.Validate(config);
 				configs[existingIndex] = config;
 			}
 			else
@@ -102,14 +95,7 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 				return await ConnectServerInternalAsync(config);
 			}
 
-			McpServerStatusInfo disconnectedStatus = new()
-			{
-				ServerId = config.Id,
-				Name = config.Name,
-				Status = "disconnected",
-				HasEnvironment = config.Env is {Count: > 0},
-				SecretIssue = _environmentStore.GetIssue(config.Id)?.Code,
-			};
+			McpServerStatusInfo disconnectedStatus = SecretStatus(config, "disconnected", null);
 			_serverStatuses[config.Id] = disconnectedStatus;
 			return disconnectedStatus;
 		}
@@ -133,7 +119,11 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 			{
 				SaveConfigs(configs);
 			}
-			if (ConfigValidation.IsValidMcpServerId(serverId)) _environmentStore.Delete(serverId);
+			if (ConfigValidation.IsValidMcpServerId(serverId))
+			{
+				_environmentStore.Delete(serverId);
+				_headerStore.Delete(serverId);
+			}
 
 			if (_activeClients.TryRemove(serverId, out OfficialMcpConnection? client))
 			{
@@ -186,12 +176,9 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 			}
 
 			McpServerConfig? config = LoadConfigs().FirstOrDefault(c => c.Id == serverId);
-			McpServerStatusInfo status = new()
-			{
-				ServerId = serverId,
-				Name = config?.Name ?? serverId,
-				Status = "disconnected",
-			};
+			McpServerStatusInfo status = config is null
+				? new McpServerStatusInfo {ServerId = serverId, Name = serverId, Status = "disconnected"}
+				: SecretStatus(config, "disconnected", null);
 			_serverStatuses[serverId] = status;
 			return status;
 		}
@@ -262,7 +249,12 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 	/// </summary>
 	public async Task<McpServerStatusInfo> TestServerAsync(McpServerConfig config)
 	{
-		config = McpConfigValidator.Validate(config);
+		string? blocked = DescribeReuseBlock(config);
+		if (blocked is not null)
+		{
+			return SecretStatus(config, "error", blocked);
+		}
+		config = McpConfigValidator.Validate(ApplyStoredSecrets(config));
 		OfficialMcpConnection? client = null;
 		try
 		{
@@ -271,26 +263,11 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 			IReadOnlyList<McpToolDefinition> tools = await client.ListToolsAsync(cts.Token);
 			IReadOnlyList<McpResourceDefinition> resources = await client.ListResourcesAsync(cts.Token);
 
-			return new McpServerStatusInfo
-			{
-				ServerId = config.Id,
-				Name = config.Name,
-				Status = "connected",
-				Tools = tools,
-				Resources = resources,
-				HasEnvironment = config.Env is {Count: > 0},
-				SecretIssue = _environmentStore.GetIssue(config.Id)?.Code,
-			};
+			return SecretStatus(config, "connected", null) with {Tools = tools, Resources = resources};
 		}
 		catch (Exception exception)
 		{
-			return new McpServerStatusInfo
-			{
-				ServerId = config.Id,
-				Name = config.Name,
-				Status = "error",
-				ErrorMessage = exception.Message,
-			};
+			return SecretStatus(config, "error", exception.Message);
 		}
 		finally
 		{
@@ -370,22 +347,74 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 		_lifetimeCts.Dispose();
 	}
 
+	/// <summary>解析导入文本并暂存。返回值只含名称和键名。</summary>
+	public McpImportPreview PreviewImport(string text)
+	{
+		IReadOnlyList<McpServerConfig> servers = McpConfigImporter.Parse(text);
+		string token = Guid.NewGuid().ToString("N");
+		lock (_importGate)
+		{
+			PurgeExpiredImports();
+			while (_pendingImports.Count >= MaxPendingImports)
+			{
+				string oldest = _pendingImports.OrderBy(pair => pair.Value.ExpiresAt).First().Key;
+				_pendingImports.Remove(oldest);
+			}
+			_pendingImports[token] = new PendingImport(servers, DateTimeOffset.UtcNow.Add(ImportPreviewLifetime));
+		}
+		return new McpImportPreview
+		{
+			Token = token,
+			Servers = servers.Select(ToPreview).ToArray(),
+		};
+	}
+
+	/// <summary>按预览令牌写入。导入结果一律停用且不自动连接。令牌只能使用一次。</summary>
+	public async Task<IReadOnlyList<McpServerStatusInfo>> CommitImportAsync(string token)
+	{
+		if (string.IsNullOrWhiteSpace(token)) throw new InvalidOperationException("预览已失效");
+		PendingImport pending;
+		lock (_importGate)
+		{
+			PurgeExpiredImports();
+			if (!_pendingImports.Remove(token, out pending!)) throw new InvalidOperationException("预览已失效");
+		}
+		List<McpServerStatusInfo> saved = [];
+		foreach (McpServerConfig server in pending.Servers)
+		{
+			saved.Add(await SaveServerAsync(server with {Enabled = false, AutoConnect = false}));
+		}
+		return saved;
+	}
+
+	/// <summary>测试时补回已保存的密文。空字典表示清除，不读取旧值。</summary>
+	internal McpServerConfig ApplyStoredSecrets(McpServerConfig config)
+	{
+		if (!ConfigValidation.IsValidMcpServerId(config.Id)) return config;
+		Dictionary<string, string>? environment = config.Env;
+		Dictionary<string, string>? headers = config.Headers;
+		if (environment is null)
+		{
+			IReadOnlyDictionary<string, string> stored = _environmentStore.Read(config.Id);
+			if (stored.Count > 0) environment = new Dictionary<string, string>(stored);
+		}
+		if (headers is null && !string.Equals(config.Transport, McpTransportType.Stdio, StringComparison.OrdinalIgnoreCase))
+		{
+			IReadOnlyDictionary<string, string> stored = _headerStore.Read(config.Id);
+			if (stored.Count > 0) headers = new Dictionary<string, string>(stored);
+		}
+		return config with {Env = environment, Headers = headers};
+	}
+
 	private async Task<McpServerStatusInfo> ConnectServerInternalAsync(McpServerConfig config)
 	{
 		config = McpConfigValidator.Validate(config);
-		SecretIssue? secretIssue = _environmentStore.GetIssue(config.Id);
-		if (secretIssue?.RequiresUserAction == true)
+		string? blocked = SecretBlockMessage(_environmentStore.GetIssue(config.Id), _headerStore.GetIssue(config.Id));
+		if (blocked is not null)
 		{
-			McpServerStatusInfo blocked = new()
-			{
-				ServerId = config.Id,
-				Name = config.Name,
-				Status = "error",
-				ErrorMessage = "MCP 环境变量密钥不可用, 请重新填写",
-				SecretIssue = secretIssue.Code,
-			};
-			_serverStatuses[config.Id] = blocked;
-			return blocked;
+			McpServerStatusInfo blockedStatus = SecretStatus(config, "error", blocked);
+			_serverStatuses[config.Id] = blockedStatus;
+			return blockedStatus;
 		}
 
 		if (_activeClients.TryRemove(config.Id, out OfficialMcpConnection? existing))
@@ -393,13 +422,7 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 			await existing.DisposeAsync();
 		}
 
-		_serverStatuses[config.Id] = new McpServerStatusInfo
-		{
-			ServerId = config.Id,
-			Name = config.Name,
-			Status = "connecting",
-			HasEnvironment = config.Env is {Count: > 0},
-		};
+		_serverStatuses[config.Id] = SecretStatus(config, "connecting", null);
 
 		OfficialMcpConnection? client = null;
 		try
@@ -412,15 +435,10 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 
 			_activeClients[config.Id] = client;
 
-			McpServerStatusInfo connectedStatus = new()
+			McpServerStatusInfo connectedStatus = SecretStatus(config, "connected", null) with
 			{
-				ServerId = config.Id,
-				Name = config.Name,
-				Status = "connected",
 				Tools = tools,
 				Resources = resources,
-				HasEnvironment = config.Env is {Count: > 0},
-				SecretIssue = _environmentStore.GetIssue(config.Id)?.Code,
 			};
 			_serverStatuses[config.Id] = connectedStatus;
 			return connectedStatus;
@@ -433,15 +451,7 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 				catch { /* 保留原始连接错误 */ }
 			}
 
-			McpServerStatusInfo errorStatus = new()
-			{
-				ServerId = config.Id,
-				Name = config.Name,
-				Status = "error",
-				ErrorMessage = DescribeConnectionError(exception),
-				HasEnvironment = config.Env is {Count: > 0},
-				SecretIssue = _environmentStore.GetIssue(config.Id)?.Code,
-			};
+			McpServerStatusInfo errorStatus = SecretStatus(config, "error", DescribeConnectionError(exception));
 			_serverStatuses[config.Id] = errorStatus;
 			return errorStatus;
 		}
@@ -482,6 +492,19 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 				config = config with {Env = null};
 				migrated = true;
 			}
+			if (original.Headers is {Count: > 0})
+			{
+				try
+				{
+					_headerStore.Save(original.Id, original.Headers);
+				}
+				catch (Exception exception) when (exception is SecretKeyStoreException or InvalidOperationException or IOException or UnauthorizedAccessException)
+				{
+					_configStore.RecordSecretIssue(McpHeaderStore.KeyFor(original.Id), SecretIssueCategory.KeyStoreUnavailable);
+				}
+				config = config with {Headers = null};
+				migrated = true;
+			}
 
 			if (includeEnvironment && config.Env is null)
 			{
@@ -492,10 +515,20 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 			{
 				config = config with {Env = null};
 			}
+			if (includeEnvironment && config.Headers is null
+				&& !string.Equals(config.Transport, McpTransportType.Stdio, StringComparison.OrdinalIgnoreCase))
+			{
+				IReadOnlyDictionary<string, string> headers = _headerStore.Read(config.Id);
+				config = config with {Headers = headers.Count == 0 ? null : new Dictionary<string, string>(headers)};
+			}
+			else
+			{
+				config = config with {Headers = null};
+			}
 			result.Add(config);
 		}
 
-		if (migrated) SaveMetadata(result.Select(config => config with {Env = null}).ToList());
+		if (migrated) SaveMetadata(result);
 		return result;
 	}
 
@@ -525,14 +558,95 @@ public sealed class McpManager(HttpClient httpClient, ConfigStore configStore) :
 		foreach (McpServerConfig config in configs)
 		{
 			_environmentStore.Save(config.Id, config.Env);
+			if (string.Equals(config.Transport, McpTransportType.Stdio, StringComparison.OrdinalIgnoreCase))
+				_headerStore.Delete(config.Id);
+			else
+				_headerStore.Save(config.Id, config.Headers);
 		}
-		SaveMetadata(configs.Select(config => config with {Env = null}).ToList());
+		SaveMetadata(configs);
 	}
 
 	private void SaveMetadata(List<McpServerConfig> configs)
 	{
-		string json = JsonSerializer.Serialize(configs);
+		List<McpServerConfig> metadata = configs.Select(config => config with {Env = null, Headers = null}).ToList();
+		string json = JsonSerializer.Serialize(metadata);
 		JsonNode? node = JsonNode.Parse(json);
 		if (node is JsonArray array) _configStore.Set(KeyMcpServers, new ConfigValue.Json(array));
 	}
+
+	private McpServerStatusInfo OverlaySecrets(McpServerConfig config, McpServerStatusInfo? status)
+	{
+		SecretIssue? environment = _environmentStore.GetIssue(config.Id);
+		SecretIssue? headers = _headerStore.GetIssue(config.Id);
+		string? blocked = SecretBlockMessage(environment, headers);
+		McpServerStatusInfo basis = status ?? new McpServerStatusInfo
+		{
+			ServerId = config.Id,
+			Name = config.Name,
+			Status = blocked is null ? "disconnected" : "error",
+			ErrorMessage = blocked,
+		};
+		return basis with
+		{
+			HasEnvironment = config.Env is {Count: > 0},
+			SecretIssue = environment?.Code,
+			HasHeaders = config.Headers is {Count: > 0},
+			HeaderSecretIssue = headers?.Code,
+		};
+	}
+
+	private McpServerStatusInfo SecretStatus(McpServerConfig config, string status, string? error)
+	{
+		bool valid = ConfigValidation.IsValidMcpServerId(config.Id);
+		return new McpServerStatusInfo
+		{
+			ServerId = config.Id,
+			Name = string.IsNullOrWhiteSpace(config.Name) ? config.Id : config.Name,
+			Status = status,
+			ErrorMessage = error,
+			HasEnvironment = config.Env is {Count: > 0},
+			SecretIssue = valid ? _environmentStore.GetIssue(config.Id)?.Code : null,
+			HasHeaders = config.Headers is {Count: > 0},
+			HeaderSecretIssue = valid ? _headerStore.GetIssue(config.Id)?.Code : null,
+		};
+	}
+
+	private string? DescribeReuseBlock(McpServerConfig config)
+	{
+		if (!ConfigValidation.IsValidMcpServerId(config.Id)) return null;
+		SecretIssue? environment = config.Env is null ? _environmentStore.GetIssue(config.Id) : null;
+		SecretIssue? headers = config.Headers is null
+			&& !string.Equals(config.Transport, McpTransportType.Stdio, StringComparison.OrdinalIgnoreCase)
+				? _headerStore.GetIssue(config.Id)
+				: null;
+		return SecretBlockMessage(environment, headers);
+	}
+
+	private static string? SecretBlockMessage(SecretIssue? environment, SecretIssue? headers)
+	{
+		bool envBlocked = environment?.RequiresUserAction == true;
+		bool headerBlocked = headers?.RequiresUserAction == true;
+		if (envBlocked && headerBlocked) return "MCP 环境变量和请求头密钥不可用, 请重新填写";
+		if (envBlocked) return "MCP 环境变量密钥不可用, 请重新填写";
+		if (headerBlocked) return "MCP 请求头密钥不可用, 请重新填写";
+		return null;
+	}
+
+	private void PurgeExpiredImports()
+	{
+		DateTimeOffset now = DateTimeOffset.UtcNow;
+		foreach (string key in _pendingImports.Where(pair => pair.Value.ExpiresAt <= now).Select(pair => pair.Key).ToArray())
+			_pendingImports.Remove(key);
+	}
+
+	private static McpImportServerPreview ToPreview(McpServerConfig config) => new()
+	{
+		Name = config.Name,
+		Transport = config.Transport,
+		Command = config.Command,
+		Url = config.Url,
+		ArgumentCount = config.Args?.Length ?? 0,
+		EnvironmentNames = config.Env?.Keys.OrderBy(name => name, StringComparer.Ordinal).ToArray() ?? [],
+		HeaderNames = config.Headers?.Keys.OrderBy(name => name, StringComparer.Ordinal).ToArray() ?? [],
+	};
 }

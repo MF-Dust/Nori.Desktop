@@ -21,7 +21,7 @@ public static class SkillLimits
 	public static string Cap(string? value, int limit) =>
 		string.IsNullOrEmpty(value) ? "" : value.Length <= limit ? value : value[..limit];
 
-	public static SkillRecord Normalize(SkillRecord skill, bool remote = false)
+	public static SkillRecord Normalize(SkillRecord skill)
 	{
 		string id = Cap(skill.Id, MaxIdCharacters);
 		if (string.IsNullOrWhiteSpace(id)) throw new InvalidOperationException("技能 ID 不能为空");
@@ -41,7 +41,7 @@ public static class SkillLimits
 				.Take(MaxTools)
 				.Select(tool => Cap(tool.Trim(), MaxIdCharacters)).ToList(),
 			Url = skill.Url is null ? null : Cap(skill.Url, MaxUrlCharacters),
-			Enabled = remote ? false : skill.Enabled,
+			Enabled = skill.Enabled,
 		};
 	}
 }

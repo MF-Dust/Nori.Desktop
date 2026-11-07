@@ -163,19 +163,26 @@ internal sealed class OfficialMcpConnection : IAsyncDisposable
 
 	private static IClientTransport CreateTransport(McpServerConfig config, HttpClient httpClient)
 	{
-		if (string.Equals(config.Transport, McpTransportType.Sse, StringComparison.OrdinalIgnoreCase))
+		if (string.Equals(config.Transport, McpTransportType.Sse, StringComparison.OrdinalIgnoreCase)
+			|| string.Equals(config.Transport, McpTransportType.Http, StringComparison.OrdinalIgnoreCase))
 		{
+			bool sse = string.Equals(config.Transport, McpTransportType.Sse, StringComparison.OrdinalIgnoreCase);
 			if (!Uri.TryCreate(config.Url, UriKind.Absolute, out Uri? endpoint) ||
 				(endpoint.Scheme != Uri.UriSchemeHttp && endpoint.Scheme != Uri.UriSchemeHttps))
 			{
-				throw new InvalidOperationException($"MCP SSE 服务器 {config.Name} 的 URL 无效");
+				throw new InvalidOperationException(sse
+					? $"MCP SSE 服务器 {config.Name} 的 URL 无效"
+					: $"MCP HTTP 服务器 {config.Name} 的 URL 无效");
 			}
 
 			HttpClientTransportOptions options = new()
 			{
 				Endpoint = endpoint,
-				TransportMode = HttpTransportMode.Sse,
+				TransportMode = sse ? HttpTransportMode.Sse : HttpTransportMode.AutoDetect,
 				Name = config.Name,
+				AdditionalHeaders = config.Headers is {Count: > 0}
+					? new Dictionary<string, string>(config.Headers)
+					: null,
 			};
 			return new HttpClientTransport(options, httpClient, NullLoggerFactory.Instance, ownsHttpClient: false);
 		}

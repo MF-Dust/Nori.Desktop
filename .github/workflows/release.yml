@@ -193,7 +193,7 @@ jobs:
           - os: ubuntu-latest
             name: linux
             rid: linux-x64
-          - os: macos-14
+          - os: macos-15
             name: macos
             rid: osx-arm64
     defaults:

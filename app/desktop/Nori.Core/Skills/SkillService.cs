@@ -48,9 +48,15 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 			| RegexOptions.IgnorePatternWhitespace
 			| RegexOptions.Compiled);
 
+	private const int MaxPendingImports = 8;
+	private static readonly TimeSpan ImportPreviewLifetime = TimeSpan.FromMinutes(10);
+
 	private readonly Lock _gate = new();
+	private readonly Dictionary<string, PendingSkillImport> _pendingImports = new(StringComparer.Ordinal);
 	private Dictionary<string, SkillRecord> _skills = [];
 	private bool _initialized;
+
+	private sealed record PendingSkillImport(SkillRecord Skill, DateTimeOffset ExpiresAt);
 
 	/// <summary>加载技能列表 (首次缺失时种子内置预设)</summary>
 	public void EnsureLoaded()
@@ -76,11 +82,11 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 							// 只接受旧配置对内置技能的启停修改，拒绝覆盖内置定义。
 							loaded[rawSkill.Id] = builtin with
 							{
-								Enabled = !IsRemoteSource(rawSkill.Source) && rawSkill.Enabled,
+								Enabled = rawSkill.Enabled,
 							};
 							continue;
 						}
-						SkillRecord normalized = SkillLimits.Normalize(rawSkill, remote: IsRemoteSource(rawSkill.Source));
+						SkillRecord normalized = SkillLimits.Normalize(rawSkill);
 						loaded[normalized.Id] = normalized;
 					}
 				}
@@ -158,16 +164,87 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 		return complete;
 	}
 
-	/// <summary>卸载删除技能</summary>
+	/// <summary>卸载删除技能。内置技能由程序集提供，不能删除。</summary>
 	public bool Uninstall(string id)
 	{
 		EnsureLoaded();
+		if (SkillPresets.Find(id) is {Source: "builtin"}) throw new InvalidOperationException("内置技能不能卸载");
 		lock (_gate)
 		{
+			if (_skills.TryGetValue(id, out SkillRecord? skill)
+				&& string.Equals(skill.Source, "builtin", StringComparison.OrdinalIgnoreCase))
+			{
+				throw new InvalidOperationException("内置技能不能卸载");
+			}
 			bool removed = _skills.Remove(id);
 			if (removed) SaveLocked();
 			return removed;
 		}
+	}
+
+	/// <summary>复制为新的自定义技能。始终分配新 ID，默认关闭。</summary>
+	public SkillRecord Duplicate(string id)
+	{
+		EnsureLoaded();
+		SkillRecord source;
+		lock (_gate)
+		{
+			if (!_skills.TryGetValue(id, out source!)) throw new InvalidOperationException("技能不存在");
+		}
+		return SaveCustom(source with
+		{
+			Id = AllocateCustomId(null),
+			Enabled = false,
+			Source = "custom",
+			Url = null,
+		});
+	}
+
+	/// <summary>预览本地 SKILL.md 或 JSON。返回值不含指令正文。</summary>
+	public SkillImportPreview PreviewLocal(string text)
+	{
+		EnsureLoaded();
+		SkillRecord parsed = ParseLocalDocument(text);
+		string token = Guid.NewGuid().ToString("N");
+		lock (_gate)
+		{
+			PurgeExpiredImports();
+			while (_pendingImports.Count >= MaxPendingImports)
+			{
+				string oldest = _pendingImports.OrderBy(pair => pair.Value.ExpiresAt).First().Key;
+				_pendingImports.Remove(oldest);
+			}
+			_pendingImports[token] = new PendingSkillImport(parsed, DateTimeOffset.UtcNow.Add(ImportPreviewLifetime));
+		}
+		return new SkillImportPreview
+		{
+			Token = token,
+			Name = parsed.Name,
+			Description = parsed.Description,
+			Category = parsed.Category,
+			Tools = parsed.Tools ?? [],
+		};
+	}
+
+	/// <summary>确认本地导入。记为自定义技能，启用状态由调用方决定。令牌只能使用一次。</summary>
+	public SkillRecord CommitLocal(string token, bool enabled)
+	{
+		EnsureLoaded();
+		SkillRecord staged;
+		lock (_gate)
+		{
+			PurgeExpiredImports();
+			if (!_pendingImports.Remove(token, out PendingSkillImport? pending) || pending is null)
+				throw new InvalidOperationException("预览已失效");
+			staged = pending.Skill;
+		}
+		return SaveCustom(staged with
+		{
+			Id = AllocateCustomId(staged.Id),
+			Enabled = enabled,
+			Source = "custom",
+			Url = null,
+		});
 	}
 
 	/// <summary>导出技能为 JSON 字符串</summary>
@@ -269,13 +346,10 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 			Enabled = false,
 			Source = "url",
 			Url = url,
-		}, remote: true);
+		});
 		Upsert(remote);
 		return remote;
 	}
-
-	private static bool IsRemoteSource(string? source) =>
-		string.Equals(source, "url", StringComparison.OrdinalIgnoreCase);
 
 	private static InvalidOperationException CreateRemoteContentError(RemoteContentFailure failure)
 	{
@@ -307,7 +381,51 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 		}
 	}
 
-	private SkillRecord ParseSkillJson(string text, string url)
+	private SkillRecord ParseLocalDocument(string text)
+	{
+		if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("技能内容不能为空");
+		if (text.Length > SkillLimits.MaxRemoteDocumentCharacters) throw new InvalidOperationException("技能文件超过大小上限");
+		if (SensitiveRemoteContentPattern.IsMatch(text)) throw new InvalidOperationException("技能文件包含敏感信息，已拒绝");
+		SkillRecord parsed;
+		try
+		{
+			parsed = text.TrimStart().StartsWith("---", StringComparison.Ordinal)
+				? ParseSkillMarkdown(text, null)
+				: ParseSkillJson(text, null);
+		}
+		catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+		{
+			throw new InvalidOperationException("技能文件格式无效");
+		}
+		if (string.IsNullOrWhiteSpace(parsed.Name) || string.IsNullOrWhiteSpace(parsed.Instructions))
+			throw new InvalidOperationException("技能缺少名称或指令正文");
+		return parsed;
+	}
+
+	private string AllocateCustomId(string? requested)
+	{
+		string id = requested?.Trim() ?? "";
+		lock (_gate)
+		{
+			if (id.Length > 0 && SkillPresets.Find(id) is null && !_skills.ContainsKey(id)) return id;
+			string candidate;
+			do
+			{
+				candidate = "skill_custom_" + Guid.NewGuid().ToString("N")[..8];
+			}
+			while (SkillPresets.Find(candidate) is not null || _skills.ContainsKey(candidate));
+			return candidate;
+		}
+	}
+
+	private void PurgeExpiredImports()
+	{
+		DateTimeOffset now = DateTimeOffset.UtcNow;
+		foreach (string key in _pendingImports.Where(pair => pair.Value.ExpiresAt <= now).Select(pair => pair.Key).ToArray())
+			_pendingImports.Remove(key);
+	}
+
+	private SkillRecord ParseSkillJson(string text, string? url)
 	{
 		SkillRecord manifest = JsonSerializer.Deserialize<SkillRecord>(text, JsonOptions)
 			?? throw new InvalidOperationException("解析远程技能格式失败: 不是合法的 JSON 技能清单");
@@ -325,7 +443,7 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 	}
 
 	/// <summary>解析 SKILL.md (YAML Frontmatter + Markdown Instructions)</summary>
-	public static SkillRecord ParseSkillMarkdown(string content, string url)
+	public static SkillRecord ParseSkillMarkdown(string content, string? url)
 	{
 		Match match = Regex.Match(content.TrimStart(), @"^---\r?\n(?<front>.*?)\r?\n---(?:\r?\n|$)(?<body>.*)$", RegexOptions.Singleline);
 		if (!match.Success)
@@ -377,9 +495,10 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 			Description = meta.GetValueOrDefault("description", "从 SKILL.md 安装的技能"),
 			Author = meta.GetValueOrDefault("author", "Online Creator"),
 			Version = meta.GetValueOrDefault("version", "1.0.0"),
-			Icon = "sparkles",
+			Icon = meta.GetValueOrDefault("icon") is {Length: > 0} icon ? icon : "sparkles",
 			Tags = tags,
-			Category = "productivity",
+			Category = meta.GetValueOrDefault("category") is {Length: > 0} category ? category : "productivity",
+			Tools = ReadTools(meta),
 			Instructions = body,
 			Enabled = false,
 			Source = "url",
@@ -402,10 +521,24 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 		return meta;
 	}
 
+	private static IReadOnlyList<string>? ReadTools(Dictionary<string, string> meta)
+	{
+		if (!meta.TryGetValue("tools", out string? raw) || string.IsNullOrWhiteSpace(raw)) return null;
+		string[] tools = raw.Split(',').Select(item => item.Trim()).Where(item => item.Length > 0).ToArray();
+		return tools.Length == 0 ? null : tools;
+	}
+
 	/// <summary>
 	/// 构建注入系统提示词的技能指令集
 	/// </summary>
-	public string BuildSkillsPrompt(IReadOnlySet<string>? availableTools = null)
+	public string BuildSkillsPrompt(IReadOnlySet<string>? availableTools = null) =>
+		ComposePrompt(availableTools, cap: true);
+
+	/// <summary>未截断的提示词字符数，供界面判断是否超过预算。</summary>
+	public int MeasurePromptCharacters(IReadOnlySet<string>? availableTools = null) =>
+		ComposePrompt(availableTools, cap: false).Length;
+
+	private string ComposePrompt(IReadOnlySet<string>? availableTools, bool cap)
 	{
 		IReadOnlyList<SkillRecord> active = GetEnabled().Where(skill => skill.Enabled).Take(SkillLimits.MaxSkills).ToList();
 		if (active.Count == 0) return "";
@@ -413,7 +546,7 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 		List<string> lines = ["【已激活技能与扩展指令 (Active Skills)】："];
 		for (int i = 0; i < active.Count; i++)
 		{
-			SkillRecord skill = SkillLimits.Normalize(active[i], remote: IsRemoteSource(active[i].Source));
+			SkillRecord skill = SkillLimits.Normalize(active[i]);
 			List<string> entry = [$"\n=== 技能 {i + 1}：{skill.Name} (v{skill.Version}) ==="];
 			if (!string.IsNullOrEmpty(skill.Description)) entry.Add($"简介: {skill.Description}");
 			if (skill.Tools is {Count: > 0})
@@ -440,11 +573,15 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 				}
 			}
 			entry.Add(skill.Instructions);
-			string candidate = string.Join("\n", lines.Append(string.Join("\n", entry)));
-			if (candidate.Length > SkillLimits.MaxPromptCharacters) break;
+			if (cap)
+			{
+				string candidate = string.Join("\n", lines.Append(string.Join("\n", entry)));
+				if (candidate.Length > SkillLimits.MaxPromptCharacters) break;
+			}
 			lines.Add(string.Join("\n", entry));
 		}
-		return SkillLimits.Cap(string.Join("\n", lines), SkillLimits.MaxPromptCharacters);
+		string text = string.Join("\n", lines);
+		return cap ? SkillLimits.Cap(text, SkillLimits.MaxPromptCharacters) : text;
 	}
 
 	private static string SafeToolName(string name)
@@ -455,7 +592,7 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 
 	private void Upsert(SkillRecord skill)
 	{
-		SkillRecord normalized = SkillLimits.Normalize(skill, remote: IsRemoteSource(skill.Source));
+		SkillRecord normalized = SkillLimits.Normalize(skill);
 		lock (_gate)
 		{
 			if (_skills.TryGetValue(normalized.Id, out SkillRecord? existing)

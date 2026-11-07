@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Nori.Core.Skills;
 
 namespace Nori.Desktop.Settings.Pages;
 
@@ -18,6 +19,12 @@ public sealed record SkillItem(
 	IReadOnlyList<string> Tools,
 	long InstalledAt,
 	string? Url);
+
+/// <summary>技能编辑器里的一个工具选项。</summary>
+public sealed record SkillToolChoice(string Name, string Availability);
+
+/// <summary>本地技能导入预览，不含指令正文。</summary>
+public sealed record SkillImportPreviewItem(string Token, string Name, string Description, string Category, IReadOnlyList<string> Tools);
 
 /// <summary>技能编辑表单。</summary>
 public sealed record SkillDraft(
@@ -42,9 +49,14 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	private static readonly string[] Categories = ["all", "productivity", "coding", "life", "roleplay", "entertainment"];
 	private IReadOnlyList<SkillItem> _installed = [];
 	private IReadOnlyList<SkillItem> _marketplace = [];
+	private IReadOnlyList<(string Name, bool Enabled)> _tools = [];
 	private string _searchText = "";
 	private string _selectedCategory = "all";
 	private bool _showMarketplace;
+	private bool _safeMode;
+	private int _enabledCount;
+	private int _promptCharacters;
+	private int _promptLimit = SkillLimits.MaxPromptCharacters;
 
 	/// <summary>创建技能工坊 ViewModel。</summary>
 	public SkillsSettingsViewModel(SettingsService service) : base(service) { }
@@ -92,8 +104,47 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	public bool ShowMarketplace
 	{
 		get => _showMarketplace;
-		set => SetProperty(ref _showMarketplace, value);
+		set
+		{
+			if (!SetProperty(ref _showMarketplace, value)) return;
+			NotifyChanged(nameof(FilteredInstalled));
+			NotifyChanged(nameof(FilteredMarketplace));
+		}
 	}
+
+	/// <summary>安全模式。网址安装不可用，本地导入仍可用。</summary>
+	public bool SafeMode
+	{
+		get => _safeMode;
+		private set => SetProperty(ref _safeMode, value);
+	}
+
+	/// <summary>已启用技能数。</summary>
+	public int EnabledCount
+	{
+		get => _enabledCount;
+		private set => SetProperty(ref _enabledCount, value);
+	}
+
+	/// <summary>未截断的提示词字符数。</summary>
+	public int PromptCharacters
+	{
+		get => _promptCharacters;
+		private set => SetProperty(ref _promptCharacters, value);
+	}
+
+	/// <summary>提示词字符上限。</summary>
+	public int PromptLimit
+	{
+		get => _promptLimit;
+		private set => SetProperty(ref _promptLimit, value);
+	}
+
+	/// <summary>同时启用的技能上限。</summary>
+	public int SkillLimit => SkillLimits.MaxSkills;
+
+	/// <summary>启用数或提示词超过预算。</summary>
+	public bool PromptOverBudget => EnabledCount > SkillLimit || PromptCharacters > PromptLimit;
 
 	/// <summary>可选分类键。</summary>
 	public static IReadOnlyList<string> CategoryKeys => Categories;
@@ -114,11 +165,18 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 		try
 		{
 			JsonElement snapshot = await Service.GetSnapshotAsync(cancellationToken).ConfigureAwait(true);
+			SafeMode = SettingsJson.Bool(SettingsJson.Object(snapshot, "app"), "safeMode");
+			EnabledCount = SettingsJson.Int(snapshot, "enabledSkillsCount");
+			PromptCharacters = SettingsJson.Int(snapshot, "skillPromptCharacters");
+			PromptLimit = Math.Max(1, SettingsJson.Int(snapshot, "skillPromptLimit", SkillLimits.MaxPromptCharacters));
+			_tools = SettingsJson.Array(snapshot, "tools").Select(item => (SettingsJson.String(item, "name"), SettingsJson.Bool(item, "enabled", true)))
+				.Where(item => item.Item1.Length > 0).ToArray();
 			Installed = ParseSkills(SettingsJson.Array(snapshot, "skills"));
 			JsonElement marketplace = await Service.ExecuteAsync("skills_marketplace", cancellationToken: cancellationToken).ConfigureAwait(true);
 			Marketplace = ParseSkills(SettingsJson.RootArray(marketplace), marketplace: true);
 			NotifyChanged(nameof(FilteredInstalled));
 			NotifyChanged(nameof(FilteredMarketplace));
+			NotifyChanged(nameof(PromptOverBudget));
 		}
 		finally
 		{
@@ -145,7 +203,7 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>从远程 URL 安装技能。</summary>
 	public async Task InstallUrlAsync(string url, CancellationToken cancellationToken = default)
 	{
-		if (!TryValidateHttpUrl(url, out string normalized)) throw new ArgumentException("技能 URL 必须是公开的 HTTP 或 HTTPS 地址。", nameof(url));
+		if (!TryValidateHttpUrl(url, out string normalized)) throw new InvalidOperationException("技能 URL 必须是公开的 HTTP 或 HTTPS 地址。");
 		await ExecuteAsync("skills_install_url", new {url = normalized}, cancellationToken).ConfigureAwait(true);
 		await RefreshAsync(cancellationToken).ConfigureAwait(true);
 	}
@@ -154,8 +212,8 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	public async Task SaveCustomAsync(SkillDraft draft, CancellationToken cancellationToken = default)
 	{
 		ArgumentNullException.ThrowIfNull(draft);
-		if (string.IsNullOrWhiteSpace(draft.Name)) throw new ArgumentException("技能名称不能为空。", nameof(draft));
-		if (string.IsNullOrWhiteSpace(draft.Instructions)) throw new ArgumentException("技能指令不能为空。", nameof(draft));
+		if (string.IsNullOrWhiteSpace(draft.Name)) throw new InvalidOperationException("技能名称不能为空。");
+		if (string.IsNullOrWhiteSpace(draft.Instructions)) throw new InvalidOperationException("技能指令不能为空。");
 		object skill = new
 		{
 			id = draft.Id,
@@ -184,6 +242,65 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 		if (string.Equals(skill.Source, "builtin", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("内置技能不能卸载。 ");
 		await ExecuteAsync("skills_uninstall", new {id = skill.Id}, cancellationToken).ConfigureAwait(true);
 		await RefreshAsync(cancellationToken).ConfigureAwait(true);
+	}
+
+	/// <summary>预览本地 SKILL.md 或 JSON，不保存。</summary>
+	public async Task<SkillImportPreviewItem> PreviewLocalAsync(string text, CancellationToken cancellationToken = default)
+	{
+		JsonElement result = await ExecuteAsync("skills_import_preview", new {text}, cancellationToken).ConfigureAwait(true);
+		return new SkillImportPreviewItem(
+			SettingsJson.String(result, "token"),
+			SettingsJson.String(result, "name"),
+			SettingsJson.String(result, "description"),
+			SettingsJson.String(result, "category", "productivity"),
+			ReadStrings(result, "tools"));
+	}
+
+	/// <summary>确认本地导入。启用状态由用户选择。</summary>
+	public async Task CommitLocalAsync(string token, bool enabled, CancellationToken cancellationToken = default)
+	{
+		await ExecuteAsync("skills_import_commit", new {token, enabled}, cancellationToken).ConfigureAwait(true);
+		await RefreshAsync(cancellationToken).ConfigureAwait(true);
+	}
+
+	/// <summary>复制为新的自定义技能。</summary>
+	public async Task DuplicateAsync(SkillItem skill, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(skill);
+		await ExecuteAsync("skills_duplicate", new {id = skill.Id}, cancellationToken).ConfigureAwait(true);
+		await RefreshAsync(cancellationToken).ConfigureAwait(true);
+	}
+
+	/// <summary>导出已安装技能的 JSON。</summary>
+	public async Task<string> ExportJsonAsync(SkillItem skill, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(skill);
+		JsonElement result = await ExecuteAsync("skills_export", new {id = skill.Id}, cancellationToken).ConfigureAwait(true);
+		return SettingsJson.RawOrString(result);
+	}
+
+	/// <summary>把文本写入剪贴板。</summary>
+	public async Task CopyTextAsync(string text, CancellationToken cancellationToken = default)
+	{
+		await ExecuteAsync("clipboard_write_text", new {text}, cancellationToken).ConfigureAwait(true);
+	}
+
+	/// <summary>当前工具快照里的可选项，并标出已选但不存在的工具。</summary>
+	public IReadOnlyList<SkillToolChoice> ToolChoices(IReadOnlyList<string> selected)
+	{
+		HashSet<string> known = new(StringComparer.Ordinal);
+		List<SkillToolChoice> choices = [];
+		foreach ((string name, bool enabled) in _tools.OrderBy(item => item.Name, StringComparer.Ordinal))
+		{
+			if (!known.Add(name)) continue;
+			choices.Add(new SkillToolChoice(name, enabled ? "available" : "disabled"));
+		}
+		foreach (string name in selected)
+		{
+			if (name.Length == 0 || known.Contains(name)) continue;
+			choices.Add(new SkillToolChoice(name, "missing"));
+		}
+		return choices;
 	}
 
 	/// <summary>读取技能的完整指令正文。</summary>

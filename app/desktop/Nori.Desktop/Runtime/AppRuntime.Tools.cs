@@ -45,26 +45,16 @@ public sealed partial class AppRuntime
 			IReadOnlyList<McpServerStatusInfo> servers = await Services.Mcp.GetServersAsync().ConfigureAwait(false);
 			ct.ThrowIfCancellationRequested();
 
-			McpServerStatusInfo? unavailable = servers.FirstOrDefault(server =>
-				string.Equals(server.Status, "error", StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(server.Status, "connecting", StringComparison.OrdinalIgnoreCase)
-				|| (!string.Equals(server.Status, "connected", StringComparison.OrdinalIgnoreCase)
-					&& !string.Equals(server.Status, "disconnected", StringComparison.OrdinalIgnoreCase)));
-			if (unavailable is not null)
-			{
-				LogMcpRefreshFailure(
-					unavailable.ServerId,
-					string.Equals(unavailable.Status, "error", StringComparison.OrdinalIgnoreCase)
-						? "server-error"
-						: "server-not-ready");
-				return;
-			}
-
 			List<RegisteredTool> replacements = [];
 			HashSet<string> replacementNames = new(StringComparer.Ordinal);
-			foreach (McpServerStatusInfo server in servers.Where(server =>
-				string.Equals(server.Status, "connected", StringComparison.OrdinalIgnoreCase)))
+			foreach (McpServerStatusInfo server in servers)
 			{
+				if (!string.Equals(server.Status, "connected", StringComparison.OrdinalIgnoreCase))
+				{
+					if (!string.Equals(server.Status, "disconnected", StringComparison.OrdinalIgnoreCase))
+						LogMcpRefreshSkip(server.ServerId, server.Status);
+					continue;
+				}
 				failureServerId = server.ServerId;
 				foreach (McpToolDefinition definition in server.Tools)
 				{
@@ -118,6 +108,17 @@ public sealed partial class AppRuntime
 	}
 
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "诊断写入失败不能覆盖已分类的 MCP 刷新失败。")]
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "诊断写入失败不能挡住已连接服务的工具替换。")]
+	private void LogMcpRefreshSkip(string? serverId, string status)
+	{
+		string safeServerId = CapMcpLogPart(serverId, McpRefreshLogServerIdMaxCharacters);
+		string safeStatus = CapMcpLogPart(status, 32);
+		string message = $"MCP 工具刷新已跳过未就绪服务: server_id={safeServerId} status={safeStatus}";
+		if (message.Length > McpRefreshLogMaxCharacters) message = message[..McpRefreshLogMaxCharacters];
+		try { Services.Logger.Write(LogSource.Backend, "warn", message); }
+		catch { }
+	}
+
 	private void LogMcpRefreshFailure(string? serverId, string category)
 	{
 		string safeServerId = CapMcpLogPart(serverId, McpRefreshLogServerIdMaxCharacters);

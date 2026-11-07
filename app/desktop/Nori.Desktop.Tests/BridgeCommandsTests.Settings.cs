@@ -573,4 +573,80 @@ public partial class BridgeCommandsTests
 		}
 		finally { window.Close(); }
 	});
+
+	[Theory]
+	[InlineData("zh-CN", 720, 480)]
+	[InlineData("zh-CN", 1920, 1080)]
+	[InlineData("en-US", 720, 480)]
+	[InlineData("en-US", 1920, 1080)]
+	public Task 技能与MCP页在两种语言和分辨率下保留筛选(string language, int width, int height) => WithSettingsUiAsync(async () =>
+	{
+		using BridgeCommandsTests fixture = new();
+		fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(language));
+		Window window = new() {Width = width, Height = height};
+		using SettingsService service = new(fixture._services, window);
+		using SettingsViewModel viewModel = new(service);
+		SettingsPagePresenter presenter = new();
+		try
+		{
+			window.Show();
+			await viewModel.RefreshSnapshotAsync();
+			Assert.Equal(language, viewModel.Language);
+			await ShowPageAsync(window, presenter, viewModel, "skills");
+			(TextBox skillSearch, ComboBox skillCategory) = FindFilters(presenter, "SkillSearch", "SkillCategory");
+			skillSearch.Text = "nori";
+			Assert.True(skillSearch.Focus());
+			skillCategory.SelectedIndex = 1;
+			await viewModel.RefreshSnapshotAsync();
+			await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
+			Assert.Same(skillSearch, FindFilters(presenter, "SkillSearch", "SkillCategory").Search);
+			Assert.Equal("nori", skillSearch.Text);
+			Assert.True(skillSearch.IsFocused);
+			Assert.Equal(1, skillCategory.SelectedIndex);
+			CaptureUi(window, $"skills-{language}-{width}x{height}");
+
+			await ShowPageAsync(window, presenter, viewModel, "mcp");
+			(TextBox mcpSearch, ComboBox mcpCategory) = FindFilters(presenter, "McpSearch", "McpCategory");
+			mcpSearch.Text = "server";
+			Assert.True(mcpSearch.Focus());
+			mcpCategory.SelectedIndex = 1;
+			await viewModel.RefreshSnapshotAsync();
+			await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
+			Assert.Same(mcpSearch, FindFilters(presenter, "McpSearch", "McpCategory").Search);
+			Assert.Equal("server", mcpSearch.Text);
+			Assert.True(mcpSearch.IsFocused);
+			Assert.Equal(1, mcpCategory.SelectedIndex);
+			CaptureUi(window, $"mcp-{language}-{width}x{height}");
+			McpSettingsViewModel mcp = Assert.IsType<McpSettingsViewModel>(Assert.IsAssignableFrom<NativeSettingsPageBase>(viewModel.CurrentPage).ComplexViewModel);
+			mcp.ShowTools = true;
+			await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
+			Assert.Same(mcpSearch, FindFilters(presenter, "McpSearch", "McpCategory").Search);
+			CaptureUi(window, $"mcp-tools-{language}-{width}x{height}");
+		}
+		finally
+		{
+			presenter.DataContext = null;
+			window.Close();
+			SettingsLocalization.SetLanguage("zh-CN");
+		}
+	});
+
+	private static async Task ShowPageAsync(Window window, SettingsPagePresenter presenter, SettingsViewModel viewModel, string key)
+	{
+		viewModel.Navigate(key);
+		await viewModel.RefreshSnapshotAsync();
+		presenter.DataContext = viewModel.CurrentPage;
+		window.Content = presenter;
+		window.UpdateLayout();
+		Assert.Empty(viewModel.ErrorMessage);
+		Assert.IsType<NativeSettingsPagePresenter>(presenter.Content);
+	}
+
+	private static (TextBox Search, ComboBox Category) FindFilters(SettingsPagePresenter presenter, string searchName, string categoryName)
+	{
+		Control root = Assert.IsAssignableFrom<Control>(Assert.IsType<NativeSettingsPagePresenter>(presenter.Content).Content);
+		return (
+			root.GetLogicalDescendants().OfType<TextBox>().Single(box => box.Name == searchName),
+			root.GetLogicalDescendants().OfType<ComboBox>().Single(box => box.Name == categoryName));
+	}
 }

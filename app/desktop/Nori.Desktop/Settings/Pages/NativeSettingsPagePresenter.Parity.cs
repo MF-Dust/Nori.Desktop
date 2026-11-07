@@ -35,120 +35,12 @@ public sealed partial class NativeSettingsPagePresenter
 			body => RenderPlugins(body, viewModel));
 	}
 
-	private void BuildSkills(StackPanel root, SkillsSettingsViewModel viewModel)
-	{
-		Button installed = Button(NativeSettingsResources.Get("skills.installed"), () => { viewModel.ShowMarketplace = false; Build(); });
-		Button marketplace = Button(NativeSettingsResources.Get("skills.marketplace"), () => { viewModel.ShowMarketplace = true; Build(); });
-		root.Children.Add(ActionGroup(installed, marketplace,
-			Button(NativeSettingsResources.Get("skills.new"), () => _ = RunAsync(() => NewSkillAsync(viewModel)), accent: true),
-			Button(NativeSettingsResources.Get("skills.installUrl"), () => _ = RunAsync(() => InstallSkillUrlAsync(viewModel))),
-			Button(ParityText("刷新", "Refresh"), () => _ = RunAsync(() => viewModel.RefreshAsync()))));
-		Grid filters = new() {ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8};
-		TextBox search = new() {Text = viewModel.SearchText, PlaceholderText = NativeSettingsResources.Get("skills.search"), MinWidth = 80};
-		search.TextChanged += (_, _) => viewModel.SearchText = search.Text ?? string.Empty;
-		filters.Children.Add(search);
-		ComboBox category = new()
-		{
-			ItemsSource = SkillsSettingsViewModel.CategoryKeys.Select(CategoryName).ToArray(),
-			SelectedIndex = Array.IndexOf(SkillsSettingsViewModel.CategoryKeys.ToArray(), viewModel.SelectedCategory),
-			MinWidth = 128,
-		};
-		category.SelectionChanged += (_, _) =>
-		{
-			if (category.SelectedIndex >= 0) viewModel.SelectedCategory = SkillsSettingsViewModel.CategoryKeys[category.SelectedIndex];
-		};
-		Grid.SetColumn(category, 1);
-		filters.Children.Add(category);
-		root.Children.Add(filters);
-		InitializeComplexBody(root, viewModel,
-			() => JsonSerializer.Serialize(new {viewModel.ShowMarketplace, viewModel.SearchText, viewModel.SelectedCategory, viewModel.Installed, viewModel.Marketplace}),
-			list =>
-			{
-				installed.Classes.Set("accent", !viewModel.ShowMarketplace);
-				marketplace.Classes.Set("accent", viewModel.ShowMarketplace);
-				IReadOnlyList<SkillItem> items = viewModel.ShowMarketplace ? viewModel.FilteredMarketplace : viewModel.FilteredInstalled;
-				if (items.Count == 0) list.Children.Add(Empty(NativeSettingsResources.Get("skills.noItems")));
-				else list.Children.Add(CardGrid(items.Select(skill => SkillCard(viewModel, skill))));
-			});
-	}
 
-	private async Task DeleteMcpAsync(McpSettingsViewModel viewModel, McpServerItem server)
-	{
-		if (await NativeSettingsDialogs.ConfirmAsync(Owner(), NativeSettingsResources.Get("common.delete"), NativeSettingsResources.Get("mcp.deleteConfirm"), true).ConfigureAwait(true))
-			await viewModel.DeleteAsync(server).ConfigureAwait(true);
-	}
 
-	private async Task EditMcpAsync(McpSettingsViewModel viewModel, McpServerItem? existing)
-	{
-		McpServerDraft draft = existing is null
-			? McpSettingsViewModel.NewDraft(NativeSettingsResources.Get("mcp.add"))
-			: await viewModel.LoadDraftAsync(existing).ConfigureAwait(true);
-		await NativeMcpServerEditor.ShowAsync(Owner(), viewModel, draft, existing is not null, existing?.HasEnvironment == true).ConfigureAwait(true);
-	}
 
-	private async Task EditSkillAsync(SkillsSettingsViewModel viewModel, SkillItem skill)
-	{
-		SkillItem detailed = await viewModel.LoadDetailsAsync(skill).ConfigureAwait(true);
-		SkillDraft draft = SkillsSettingsViewModel.ToDraft(detailed);
-		if (string.Equals(skill.Source, "builtin", StringComparison.OrdinalIgnoreCase))
-			draft = draft with {Id = SkillsSettingsViewModel.NewDraft(detailed.Author).Id, Source = "custom", InstalledAt = 0};
-		await EditSkillFormAsync(viewModel, draft).ConfigureAwait(true);
-	}
 
-	private async Task EditSkillFormAsync(SkillsSettingsViewModel viewModel, SkillDraft draft)
-	{
-		IReadOnlyDictionary<string, string>? form = await NativeSettingsDialogs.FormAsync(
-			Owner(),
-			NativeSettingsResources.Get("skills.new"),
-			[
-				new("name", NativeSettingsResources.Get("skills.name"), draft.Name),
-				new("description", NativeSettingsResources.Get("skills.description"), draft.Description),
-				new("author", NativeSettingsResources.Get("skills.author"), draft.Author),
-				new("version", NativeSettingsResources.Get("skills.version"), draft.Version),
-				new("icon", NativeSettingsResources.Get("skills.icon"), draft.Icon),
-				new("category", NativeSettingsResources.Get("skills.categoryField"), draft.Category),
-				new("tags", NativeSettingsResources.Get("skills.tags"), string.Join(", ", draft.Tags)),
-				new("tools", NativeSettingsResources.Get("skills.tools"), string.Join(", ", draft.Tools)),
-				new("instructions", NativeSettingsResources.Get("skills.instructions"), draft.Instructions, false, true),
-			],
-			NativeSettingsResources.Get("common.save")).ConfigureAwait(true);
-		if (form is null) return;
-		SkillDraft updated = draft with
-		{
-			Name = form["name"].Trim(),
-			Description = form["description"].Trim(),
-			Author = form["author"].Trim(),
-			Version = form["version"].Trim(),
-			Icon = form["icon"].Trim(),
-			Category = form["category"].Trim(),
-			Tags = SplitCsv(form["tags"]),
-			Tools = SplitCsv(form["tools"]),
-			Instructions = form["instructions"],
-		};
-		await viewModel.SaveCustomAsync(updated).ConfigureAwait(true);
-	}
 
-	private async Task ExecuteMcpToolAsync(McpSettingsViewModel viewModel, McpToolItem tool)
-	{
-		string schema = tool.InputSchema.ValueKind == JsonValueKind.Object
-			? JsonSerializer.Serialize(tool.InputSchema, new JsonSerializerOptions {WriteIndented = true})
-			: "{}";
-		string? json = await NativeSettingsDialogs.PromptAsync(
-			Owner(), tool.Name,
-			$"{tool.Description}\n\n{ParityText("参数结构", "Input schema")}\n{schema}\n\n{NativeSettingsResources.Get("mcp.executeArgs")}",
-			McpSettingsViewModel.CreateToolArguments(tool), multiline: true).ConfigureAwait(true);
-		if (json is null) return;
-		JsonElement result = await viewModel.ExecuteToolAsync(tool, json).ConfigureAwait(true);
-		await NativeSettingsDialogs.ShowMessageAsync(Owner(), tool.Name, result.ValueKind == JsonValueKind.Undefined
-			? NativeSettingsResources.Get("common.none")
-			: JsonSerializer.Serialize(result, new JsonSerializerOptions {WriteIndented = true})).ConfigureAwait(true);
-	}
 
-	private async Task ImportMcpAsync(McpSettingsViewModel viewModel)
-	{
-		string? url = await NativeSettingsDialogs.PromptAsync(Owner(), NativeSettingsResources.Get("mcp.import"), NativeSettingsResources.Get("mcp.url")).ConfigureAwait(true);
-		if (!string.IsNullOrWhiteSpace(url)) await viewModel.ImportAsync(url).ConfigureAwait(true);
-	}
 
 	private void InitializeComplexBody(StackPanel root, SettingsPageViewModelBase owner, Func<string> state, Action<StackPanel> render)
 	{
@@ -162,23 +54,8 @@ public sealed partial class NativeSettingsPagePresenter
 		UpdateComplexPage();
 	}
 
-	private async Task InstallSkillUrlAsync(SkillsSettingsViewModel viewModel)
-	{
-		string? url = await NativeSettingsDialogs.PromptAsync(Owner(), NativeSettingsResources.Get("skills.installUrl"), NativeSettingsResources.Get("skills.url")).ConfigureAwait(true);
-		if (!string.IsNullOrWhiteSpace(url)) await viewModel.InstallUrlAsync(url).ConfigureAwait(true);
-	}
 
-	private static object McpToolFingerprint(McpToolItem tool) => new
-	{
-		tool.Name, tool.Description, tool.PermissionLevel, tool.Enabled, tool.ServerId,
-		Schema = tool.InputSchema.ValueKind == JsonValueKind.Object ? tool.InputSchema.GetRawText() : "",
-	};
 
-	private async Task NewSkillAsync(SkillsSettingsViewModel viewModel)
-	{
-		SkillDraft draft = SkillsSettingsViewModel.NewDraft(Environment.UserName);
-		await EditSkillFormAsync(viewModel, draft).ConfigureAwait(true);
-	}
 
 	private static WrapPanel ActionGroup(params Control[] children)
 	{
@@ -354,46 +231,7 @@ public sealed partial class NativeSettingsPagePresenter
 		await NativeSettingsDialogs.ShowMessageAsync(Owner(), plugin.Name, text).ConfigureAwait(true);
 	}
 
-	private async Task ShowSkillDetailsAsync(SkillsSettingsViewModel viewModel, SkillItem skill)
-	{
-		SkillItem detailed = await viewModel.LoadDetailsAsync(skill).ConfigureAwait(true);
-		string text = string.IsNullOrWhiteSpace(detailed.Instructions) ? NativeSettingsResources.Get("common.none") : detailed.Instructions;
-		if (detailed.Tools.Count > 0) text += Environment.NewLine + Environment.NewLine + $"{NativeSettingsResources.Get("skills.tools")}: {string.Join(", ", detailed.Tools)}";
-		await NativeSettingsDialogs.ShowMessageAsync(Owner(), detailed.Name, text).ConfigureAwait(true);
-	}
 
-	private Control SkillCard(SkillsSettingsViewModel viewModel, SkillItem skill)
-	{
-		StackPanel body = CardBody(skill.Name, $"{skill.Version} · {skill.Author} · {CategoryName(skill.Category)}", compact: true);
-		if (!string.IsNullOrWhiteSpace(skill.Description)) body.Children.Add(new TextBlock {Text = skill.Description, TextWrapping = TextWrapping.Wrap, Foreground = Brush("SettingsSecondaryBrush")});
-		if (skill.Tags.Count > 0) body.Children.Add(new TextBlock {Text = string.Join("  ·  ", skill.Tags), Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap});
-		WrapPanel actions = new() {Margin = new Thickness(0, 4, 0, 0)};
-		if (viewModel.ShowMarketplace)
-		{
-			Button install = Button(NativeSettingsResources.Get("common.install"), () => _ = RunAsync(() => viewModel.InstallMarketplaceAsync(skill)), accent: true);
-			install.IsEnabled = !viewModel.InstalledIds.Contains(skill.Id);
-			actions.Children.Add(install);
-		}
-		else
-		{
-			ToggleSwitch enabled = new() {IsChecked = skill.Enabled, OnContent = NativeSettingsResources.Get("common.enable"), OffContent = NativeSettingsResources.Get("common.disable")};
-			Avalonia.Automation.AutomationProperties.SetName(enabled, skill.Name);
-			enabled.IsCheckedChanged += (_, _) => _ = RunAsync(() => viewModel.ToggleAsync(skill, enabled.IsChecked == true));
-			actions.Children.Add(enabled);
-		}
-		Button details = Button(NativeSettingsResources.Get("skills.details"), () => _ = RunAsync(() => ShowSkillDetailsAsync(viewModel, skill)));
-		actions.Children.Add(details);
-		if (!viewModel.ShowMarketplace)
-		{
-			Button edit = Button(skill.Source == "builtin" ? ParityText("创建副本", "Create a copy") : NativeSettingsResources.Get("common.edit"), () => _ = RunAsync(() => EditSkillAsync(viewModel, skill)));
-			actions.Children.Add(edit);
-			Button uninstall = Button(NativeSettingsResources.Get("common.delete"), () => _ = RunAsync(() => UninstallSkillAsync(viewModel, skill)), danger: true);
-			if (!string.Equals(skill.Source, "builtin", StringComparison.OrdinalIgnoreCase)) actions.Children.Add(uninstall);
-		}
-		foreach (Control action in actions.Children) action.Margin = new Thickness(0, 0, 6, 4);
-		body.Children.Add(actions);
-		return WrapCard(body, compact: true);
-	}
 
 	private Control TaskRow(AutomationSettingsViewModel viewModel, AutomationTaskItem task)
 	{
@@ -420,20 +258,6 @@ public sealed partial class NativeSettingsPagePresenter
 		return row;
 	}
 
-	private Control ToolCard(McpSettingsViewModel viewModel, McpToolItem tool)
-	{
-		StackPanel body = CardBody(tool.Name, $"{tool.Category} · {tool.PermissionLevel}", compact: true);
-		body.Children.Add(new TextBlock {Text = tool.Description, Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap});
-		WrapPanel actions = new() {Margin = new Thickness(0, 4, 0, 0)};
-		ToggleSwitch enabled = new() {IsChecked = tool.Enabled, OnContent = NativeSettingsResources.Get("common.enable"), OffContent = NativeSettingsResources.Get("common.disable")};
-		Avalonia.Automation.AutomationProperties.SetName(enabled, tool.Name);
-		enabled.IsCheckedChanged += (_, _) => _ = RunAsync(() => viewModel.ToggleToolAsync(tool, enabled.IsChecked == true));
-		actions.Children.Add(enabled);
-		actions.Children.Add(Button(NativeSettingsResources.Get("common.test"), () => _ = RunAsync(() => ExecuteMcpToolAsync(viewModel, tool)), enabled: tool.Enabled));
-		foreach (Control action in actions.Children) action.Margin = new Thickness(0, 0, 6, 4);
-		body.Children.Add(actions);
-		return WrapCard(body, compact: true);
-	}
 
 	private async Task TestPluginActionAsync(PluginsSettingsViewModel viewModel, McpToolItem action)
 	{
@@ -454,16 +278,6 @@ public sealed partial class NativeSettingsPagePresenter
 		if (result.RequiresRestart) await NativeSettingsDialogs.ShowMessageAsync(Owner(), plugin.Name, NativeSettingsResources.Get("plugins.restart")).ConfigureAwait(true);
 	}
 
-	private async Task UninstallSkillAsync(SkillsSettingsViewModel viewModel, SkillItem skill)
-	{
-		if (string.Equals(skill.Source, "builtin", StringComparison.OrdinalIgnoreCase))
-		{
-			await NativeSettingsDialogs.ShowMessageAsync(Owner(), skill.Name, NativeSettingsResources.Get("skills.builtin")).ConfigureAwait(true);
-			return;
-		}
-		if (await NativeSettingsDialogs.ConfirmAsync(Owner(), NativeSettingsResources.Get("common.delete"), NativeSettingsResources.Get("skills.uninstallConfirm"), true).ConfigureAwait(true))
-			await viewModel.UninstallAsync(skill).ConfigureAwait(true);
-	}
 
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S3241", Justification = "调用方使用返回值决定是否跳过完整重建。")]
 	private bool UpdateComplexPage()
@@ -486,72 +300,7 @@ public sealed partial class NativeSettingsPagePresenter
 		return true;
 	}
 
-	private void BuildMcp(StackPanel root, McpSettingsViewModel viewModel)
-	{
-		Button servers = Button(NativeSettingsResources.Get("mcp.servers"), () => { viewModel.ShowTools = false; Build(); });
-		Button tools = Button(NativeSettingsResources.Get("mcp.tools"), () => { viewModel.ShowTools = true; Build(); });
-		root.Children.Add(ActionGroup(servers, tools,
-			Button(NativeSettingsResources.Get("mcp.import"), () => _ = RunAsync(() => ImportMcpAsync(viewModel))),
-			Button(NativeSettingsResources.Get("mcp.add"), () => _ = RunAsync(() => EditMcpAsync(viewModel, null)), accent: true),
-			Button(ParityText("刷新", "Refresh"), () => _ = RunAsync(() => viewModel.RefreshAsync()))));
-		TextBox search = new() {Text = viewModel.SearchText, PlaceholderText = NativeSettingsResources.Get("mcp.search")};
-		search.TextChanged += (_, _) => viewModel.SearchText = search.Text ?? string.Empty;
-		root.Children.Add(search);
-		InitializeComplexBody(root, viewModel,
-			() => JsonSerializer.Serialize(new
-			{
-				viewModel.ShowTools, viewModel.SearchText,
-				Servers = viewModel.Servers.Select(server => new {server.Id, server.Name, server.Status, server.ErrorMessage, server.ResourceCount, server.HasEnvironment, server.SecretIssue, Tools = server.Tools.Select(McpToolFingerprint)}),
-				Tools = viewModel.BuiltinTools.Select(McpToolFingerprint),
-			}),
-			list =>
-			{
-				servers.Classes.Set("accent", !viewModel.ShowTools);
-				tools.Classes.Set("accent", viewModel.ShowTools);
-				if (viewModel.ShowTools)
-				{
-					if (viewModel.FilteredTools.Count == 0) list.Children.Add(Empty(NativeSettingsResources.Get("mcp.noItems")));
-					else list.Children.Add(CardGrid(viewModel.FilteredTools.Select(tool => ToolCard(viewModel, tool))));
-				}
-				else
-				{
-					if (viewModel.FilteredServers.Count == 0) list.Children.Add(Empty(NativeSettingsResources.Get("mcp.noItems")));
-					else list.Children.Add(CardGrid(viewModel.FilteredServers.Select(server => ServerCard(viewModel, server))));
-				}
-			});
-	}
 
-	private Control ServerCard(McpSettingsViewModel viewModel, McpServerItem server)
-	{
-		string status = server.Status switch
-		{
-			"connected" => NativeSettingsResources.Get("mcp.connected"),
-			"connecting" => ParityText("连接中", "Connecting"),
-			"error" => ParityText("连接失败", "Connection failed"),
-			_ => NativeSettingsResources.Get("mcp.disconnected"),
-		};
-		StackPanel body = CardBody(server.Name, $"{status} · {server.Tools.Count} {NativeSettingsResources.Get("mcp.tools")} · {server.ResourceCount} {ParityText("资源", "resources")}", compact: true);
-		if (!string.IsNullOrWhiteSpace(server.ErrorMessage)) body.Children.Add(Empty(server.ErrorMessage));
-		if (!string.IsNullOrWhiteSpace(server.SecretIssue)) body.Children.Add(Empty($"{ParityText("环境变量状态", "Environment status")}: {server.SecretIssue}"));
-		if (server.HasEnvironment) body.Children.Add(Empty(ParityText("已保存加密环境变量", "Encrypted environment variables saved")));
-		body.Children.Add(ActionGroup(
-			Button(server.Status == "connected" ? NativeSettingsResources.Get("common.stop") : NativeSettingsResources.Get("common.start"),
-				() => _ = RunAsync(() => server.Status == "connected" ? viewModel.DisconnectAsync(server) : viewModel.ConnectAsync(server)), enabled: server.Status != "connecting"),
-			Button(NativeSettingsResources.Get("common.edit"), () => _ = RunAsync(() => EditMcpAsync(viewModel, server))),
-			Button(NativeSettingsResources.Get("common.delete"), () => _ = RunAsync(() => DeleteMcpAsync(viewModel, server)), danger: true)));
-		if (server.Tools.Count > 0)
-		{
-			StackPanel toolList = new() {Spacing = 10};
-			foreach (McpToolItem tool in server.Tools)
-			{
-				StackPanel row = CardBody(tool.Name, tool.Description, compact: true);
-				row.Children.Add(Button(NativeSettingsResources.Get("common.test"), () => _ = RunAsync(() => ExecuteMcpToolAsync(viewModel, tool)), enabled: server.Status == "connected"));
-				toolList.Children.Add(row);
-			}
-			body.Children.Add(new Expander {Header = NativeSettingsResources.Get("mcp.tools"), Content = toolList, HorizontalAlignment = HorizontalAlignment.Stretch});
-		}
-		return WrapCard(body, compact: true);
-	}
 
 	private void RenderPlugins(StackPanel root, PluginsSettingsViewModel viewModel)
 	{

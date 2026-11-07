@@ -302,76 +302,16 @@ public sealed partial class BridgeCommands
 		}
 		string text = await Nori.Core.Network.UrlAccessPolicy.ReadCappedTextAsync(
 			response.Content, Nori.Core.Network.UrlAccessPolicy.MaxResponseBytes, cancellationToken);
-
-		List<McpServerConfig> imported = [];
-		try
-		{
-			using JsonDocument document = JsonDocument.Parse(text);
-			JsonElement root = document.RootElement.Clone();
-
-			if (root.TryGetProperty("mcpServers", out JsonElement serversElem) && serversElem.ValueKind == JsonValueKind.Object)
-			{
-				foreach (JsonProperty server in serversElem.EnumerateObject())
-				{
-					imported.Add(BuildImportedConfig(server.Name, server.Value));
-				}
-			}
-			else if (root.ValueKind == JsonValueKind.Array)
-			{
-				foreach (JsonElement item in root.EnumerateArray())
-				{
-					imported.Add(BuildImportedConfig(OptionalGetString(item, "name") ?? "导入的 MCP 服务", item));
-				}
-			}
-			else
-			{
-				imported.Add(BuildImportedConfig(
-					OptionalGetString(root, "name") ?? OptionalGetString(root, "id") ?? "导入的 MCP 服务", root));
-			}
-		}
-		catch (JsonException exception)
-		{
-			throw new InvalidOperationException($"未识别的 MCP 配置文件结构: {exception.Message}");
-		}
-
-		List<McpServerStatusInfo> results = [];
-		foreach (McpServerConfig config in imported)
-		{
-			cancellationToken.ThrowIfCancellationRequested();
-			results.Add(await _services.Mcp.SaveServerAsync(config));
-		}
-
-		InvalidateMcpSnapshot();
-		return results;
+		return _services.Mcp.PreviewImport(text);
 	}
 
-	private static string? OptionalGetString(JsonElement element, string name) =>
-		element.ValueKind == JsonValueKind.Object
-			&& element.TryGetProperty(name, out JsonElement value)
-			&& value.ValueKind == JsonValueKind.String
-				? value.GetString()
-				: null;
-
-	private static McpServerConfig BuildImportedConfig(string name, JsonElement source)
+	private async Task<object?> McpImportCommitAsync(IBridgeSource source, JsonElement args)
 	{
-		static string[] ReadArgs(JsonElement element) =>
-			element.ValueKind == JsonValueKind.Object
-				&& element.TryGetProperty("args", out JsonElement argsElem)
-				&& argsElem.ValueKind == JsonValueKind.Array
-					? argsElem.EnumerateArray().OfType<JsonElement>().Where(a => a.ValueKind == JsonValueKind.String).Select(a => a.GetString()!).ToArray()
-					: [];
-
-		return new McpServerConfig
-		{
-			Id = $"mcp_import_{Guid.NewGuid().ToString("N")[..8]}",
-			Name = name,
-			Transport = OptionalGetString(source, "url") is not null ? McpTransportType.Sse : McpTransportType.Stdio,
-			Command = OptionalGetString(source, "command") ?? "npx",
-			Args = ReadArgs(source),
-			Url = OptionalGetString(source, "url"),
-			Enabled = false,
-			AutoConnect = false,
-		};
+		RequireMainVoid(source);
+		IReadOnlyList<McpServerStatusInfo> saved = await _services.Mcp.CommitImportAsync(Str(args, "token"));
+		await Runtime.RefreshMcpToolsAsync();
+		InvalidateMcpSnapshot();
+		return saved;
 	}
 
 	private async Task<object?> McpSaveServerAsync(IBridgeSource source, JsonElement args)

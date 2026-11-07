@@ -6,6 +6,7 @@ using Nori.Core.Logging;
 using Nori.Core.Live2D;
 using Nori.Core.Mcp;
 using Nori.Core.Resources;
+using Nori.Core.Tools;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Bridge;
@@ -344,6 +345,12 @@ public sealed partial class BridgeCommands
 	{
 		string serverId = Str(args, "serverId");
 		string toolName = Str(args, "toolName");
+		if (source is INativeSettingsSource)
+		{
+			RegisteredTool? registered = Runtime.Tools.Get($"mcp__{serverId}__{toolName}");
+			if (registered is null || !string.Equals(registered.PermissionLevel, "safe", StringComparison.OrdinalIgnoreCase))
+				throw new InvalidOperationException("该工具需要在对话里逐次授权，不能在设置页直接测试");
+		}
 		JsonObject? toolArgs = null;
 		if (args.TryGetProperty("arguments", out JsonElement argElem) && argElem.ValueKind == JsonValueKind.Object)
 		{

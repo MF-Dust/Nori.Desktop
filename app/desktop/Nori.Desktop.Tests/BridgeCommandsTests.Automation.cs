@@ -317,7 +317,7 @@ public partial class BridgeCommandsTests
 		[
 			"llm_fetch_models", "ai_test_connection", "chat_start",
 			"memory_reembed_all", "memory_recall_debug", "memory_knowledge_reindex",
-			"skills_install_url", "mcp_get_servers", "mcp_connect_server", "mcp_test_server",
+			"skills_install_url", "mcp_connect_server", "mcp_test_server",
 			"mcp_call_tool", "mcp_import_url", "tts_test", "stt_start", "stt_stop", "open_url",
 		];
 
@@ -332,6 +332,23 @@ public partial class BridgeCommandsTests
 			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "mcp_save_server",
 				Args(new {enabled = true, autoConnect = true})));
 		Assert.Contains("安全模式", autoConnectException.Message, StringComparison.Ordinal);
+
+		Assert.NotNull(await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "mcp_get_servers", Args(new { })));
+		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "mcp_save_server", Args(new
+		{
+			id = "safe-local",
+			name = "安全模式本地服务",
+			transport = "stdio",
+			command = "npx",
+			enabled = true,
+			autoConnect = false,
+		}));
+		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "mcp_disconnect_server", Args(new {id = "safe-local"}));
+		await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "mcp_delete_server", Args(new {id = "safe-local"}));
+		Assert.NotNull(await commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "mcp_import_preview", Args(new
+		{
+			text = """{"mcpServers":{"local":{"command":"npx","args":["-y","pkg"]}}}""",
+		})));
 	}
 
 
@@ -360,5 +377,29 @@ public partial class BridgeCommandsTests
 		Assert.Same(previous, _runtime.Tools.Get(previous.Name));
 		LogEntry log = Assert.Single(_services.Logger.RecentLogs(), entry => entry.Message.Contains("category=cancelled", StringComparison.Ordinal));
 		Assert.True(log.Message.Length <= 192);
+	}
+
+	[Fact]
+	public async Task MCP刷新跳过故障服务并替换旧工具()
+	{
+		RegisteredTool previous = MakeMcpTool("mcp__previous__tool");
+		_runtime.Tools.Register(previous);
+		await _services.Mcp.SaveServerAsync(new McpServerConfig
+		{
+			Id = "broken-server",
+			Name = "故障服务",
+			Command = "npx",
+			Enabled = true,
+			AutoConnect = false,
+		});
+		_config.RecordSecretIssue(McpEnvironmentStore.KeyFor("broken-server"), SecretIssueCategory.CorruptCiphertext);
+		McpServerStatusInfo status = await _services.Mcp.ConnectServerAsync("broken-server");
+		Assert.Equal("error", status.Status);
+
+		await _runtime.RefreshMcpToolsAsync();
+
+		Assert.Null(_runtime.Tools.Get(previous.Name));
+		Assert.Contains(_services.Logger.RecentLogs(), entry => entry.Message.Contains("已跳过未就绪服务", StringComparison.Ordinal)
+			&& entry.Message.Contains("broken-server", StringComparison.Ordinal));
 	}
 }

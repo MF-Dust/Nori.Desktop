@@ -66,6 +66,9 @@ public sealed class SettingsService : IDisposable
 		"skills_save_custom",
 		"skills_uninstall",
 		"skills_export",
+		"skills_import_preview",
+		"skills_import_commit",
+		"skills_duplicate",
 		"mcp_get_servers",
 		"mcp_save_server",
 		"mcp_delete_server",
@@ -74,6 +77,8 @@ public sealed class SettingsService : IDisposable
 		"mcp_test_server",
 		"mcp_call_tool",
 		"mcp_import_url",
+		"mcp_import_preview",
+		"mcp_import_commit",
 		"tools_set_enabled",
 		"tools_execute_manual",
 		"plugin_list",
@@ -322,11 +327,13 @@ public sealed class SettingsService : IDisposable
 			or "skills_install_url"
 			or "skills_save_custom"
 			or "skills_uninstall"
+			or "skills_import_commit"
+			or "skills_duplicate"
 			or "mcp_save_server"
 			or "mcp_delete_server"
 			or "mcp_connect_server"
 			or "mcp_disconnect_server"
-			or "mcp_import_url"
+			or "mcp_import_commit"
 			or "tools_set_enabled"
 			or "plugin_install_local"
 			or "plugin_enable"

@@ -93,7 +93,7 @@ public partial class BridgeCommandsTests
 	[Fact]
 	public Task NativeMcpFeedbackUsesErrorColorAndResetsOnRetry() => WithSettingsUiAsync(async () =>
 	{
-		using BridgeCommandsTests fixture = new(safeMode: true);
+		using BridgeCommandsTests fixture = new(safeMode: false);
 		Window owner = new() { Width = 720, Height = 480 };
 		using SettingsService service = new(fixture._services, owner);
 		McpSettingsViewModel viewModel = new(service);
@@ -102,14 +102,14 @@ public partial class BridgeCommandsTests
 		{
 			Task editing = NativeMcpServerEditor.ShowAsync(owner, viewModel, McpSettingsViewModel.NewDraft("test") with { Arguments = [] }, false, false);
 			Window dialog = Assert.Single(owner.OwnedWindows);
-			TextBlock feedback = dialog.GetLogicalDescendants().OfType<TextBlock>().Single(block => !block.IsVisible);
-			TextBox arguments = dialog.GetLogicalDescendants().OfType<TextBox>().Single(editor => editor.Text == "[]");
+			TextBlock feedback = dialog.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "McpEditorFeedback");
+			TextBox environment = dialog.GetLogicalDescendants().OfType<TextBox>().Single(editor => editor.Name == "McpEnvironment");
 			Button test = dialog.GetLogicalDescendants().OfType<Button>().Single(button => (string?)button.Content == NativeSettingsResources.Get("common.test"));
 			// 本地解析失败即返回，不执行网络连接测试。
-			arguments.Text = "{";
+			environment.Text = "not a pair";
 			test.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 			Assert.True(feedback.IsVisible);
-			Assert.False(string.IsNullOrWhiteSpace(feedback.Text));
+			Assert.Equal("环境变量每行必须采用 NAME=value 格式。", feedback.Text);
 			AssertNoriBrush(feedback.Foreground, "danger-text");
 			CaptureUi(dialog, "mcp-feedback-error");
 			bool reset = false;

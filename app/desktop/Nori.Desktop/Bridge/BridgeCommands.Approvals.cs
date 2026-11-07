@@ -18,7 +18,6 @@ public sealed partial class BridgeCommands
 			or "memory_recall_debug"
 			or "memory_knowledge_reindex"
 			or "skills_install_url"
-			or "mcp_get_servers"
 			or "mcp_connect_server"
 			or "mcp_test_server"
 			or "mcp_call_tool"

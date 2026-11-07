@@ -409,6 +409,8 @@ public sealed partial class AppRuntime
 				enabled = skill.Enabled, source = skill.Source,
 			}).ToArray(),
 			enabledSkillsCount = Skills.GetEnabled().Count,
+			skillPromptCharacters = Skills.MeasurePromptCharacters(Tools.List().Where(tool => tool.Enabled).Select(tool => tool.Name).ToHashSet(StringComparer.Ordinal)),
+			skillPromptLimit = Nori.Core.Skills.SkillLimits.MaxPromptCharacters,
 			tools = Tools.List().Select(tool => new
 			{
 				name = tool.Name, description = tool.Description,

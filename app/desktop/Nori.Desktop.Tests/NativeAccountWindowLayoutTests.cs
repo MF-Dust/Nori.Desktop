@@ -86,6 +86,7 @@ public partial class BridgeCommandsTests
 	{
 		string? directory = Environment.GetEnvironmentVariable("NORI_UI_CAPTURE_DIR");
 		if (string.IsNullOrWhiteSpace(directory)) return;
+		AvaloniaHeadlessPlatform.ForceRenderTimerTick();
 		using var frame = surface.CaptureRenderedFrame();
 		Assert.NotNull(frame);
 		Directory.CreateDirectory(directory);

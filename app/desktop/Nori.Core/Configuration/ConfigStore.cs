@@ -123,6 +123,9 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// <summary>MCP stdio 环境变量的独立敏感配置键前缀。</summary>
 	public const string McpEnvironmentKeyPrefix = "mcp_server_env_";
 
+	/// <summary>MCP HTTP / SSE 请求头的独立敏感配置键前缀。</summary>
+	public const string McpHeaderKeyPrefix = "mcp_server_headers_";
+
 	/// <summary>配置键: 伴侣窗口 X 坐标。</summary>
 	public const string KeyPetWindowX = "pet_window_x";
 
@@ -156,6 +159,7 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	/// <summary>判断某个配置键是否必须加密。</summary>
 	public static bool IsSensitiveKey(string key) =>
 		key.StartsWith(McpEnvironmentKeyPrefix, StringComparison.Ordinal) ||
+		key.StartsWith(McpHeaderKeyPrefix, StringComparison.Ordinal) ||
 		key.EndsWith("_api_key", StringComparison.OrdinalIgnoreCase) ||
 		key.EndsWith("_secret", StringComparison.OrdinalIgnoreCase) ||
 		key.EndsWith("_token", StringComparison.OrdinalIgnoreCase) ||

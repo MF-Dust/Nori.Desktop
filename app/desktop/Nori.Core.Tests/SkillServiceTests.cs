@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Skills;
@@ -37,6 +38,9 @@ public sealed class SkillServiceTests : IDisposable
 		Assert.DoesNotContain(skills.GetEnabled(), skill => skill.Id == installed.Id);
 		Assert.True(skills.Toggle(installed.Id, true));
 		Assert.Contains(skills.GetEnabled(), skill => skill.Id == installed.Id);
+
+		SkillService reloaded = new(_config, http);
+		Assert.Contains(reloaded.GetInstalled(), skill => skill.Id == installed.Id && skill.Enabled);
 	}
 
 	[Fact]
@@ -101,6 +105,7 @@ public sealed class SkillServiceTests : IDisposable
 		string prompt = skills.BuildSkillsPrompt(new HashSet<string>());
 
 		Assert.True(prompt.Length <= SkillLimits.MaxPromptCharacters);
+		Assert.True(skills.MeasurePromptCharacters(new HashSet<string>()) > SkillLimits.MaxPromptCharacters);
 	}
 
 	[Fact]
@@ -190,6 +195,64 @@ public sealed class SkillServiceTests : IDisposable
 		Assert.False(skill.Enabled);
 		Assert.Equal("url", skill.Source);
 		Assert.Equal("https://example.com/SKILL.md", skill.Url);
+	}
+
+	[Fact]
+	public void 内置技能拒绝卸载且市场技能仍可卸载()
+	{
+		using HttpClient http = new();
+		SkillService skills = new(_config, http);
+		skills.EnsureLoaded();
+
+		InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => skills.Uninstall("code-reviewer"));
+		Assert.Equal("内置技能不能卸载", error.Message);
+		Assert.Contains(skills.GetInstalled(), skill => skill.Id == "code-reviewer");
+
+		skills.InstallFromMarketplace("language-coach");
+		Assert.True(skills.Uninstall("language-coach"));
+		Assert.DoesNotContain(skills.GetInstalled(), skill => skill.Id == "language-coach");
+	}
+
+	[Fact]
+	public void 本地导入预览不含指令并可按选择启用()
+	{
+		using HttpClient http = new();
+		SkillService skills = new(_config, http);
+		string document = """
+			---
+			name: Local Note
+			description: 本地说明
+			category: coding
+			tools:
+			  - getTime
+			---
+			这是不应出现在预览里的指令正文
+			""";
+
+		SkillImportPreview preview = skills.PreviewLocal(document);
+		string json = JsonSerializer.Serialize(preview);
+		Assert.DoesNotContain("不应出现在预览里的指令正文", json, StringComparison.Ordinal);
+		Assert.Equal("Local Note", preview.Name);
+		Assert.Equal("coding", preview.Category);
+		Assert.Contains("getTime", preview.Tools);
+
+		SkillRecord saved = skills.CommitLocal(preview.Token, enabled: true);
+		Assert.Equal("custom", saved.Source);
+		Assert.True(saved.Enabled);
+		Assert.Contains("不应出现在预览里的指令正文", saved.Instructions, StringComparison.Ordinal);
+		Assert.Throws<InvalidOperationException>(() => skills.CommitLocal(preview.Token, enabled: false));
+		Assert.Throws<InvalidOperationException>(() => skills.PreviewLocal("api_key: sk-should-not-import\ninstructions"));
+	}
+
+	[Fact]
+	public void 预设指令写明要调用的工具()
+	{
+		foreach (SkillRecord skill in SkillPresets.All)
+		{
+			foreach (string tool in skill.Tools ?? [])
+				Assert.Contains(tool, skill.Instructions, StringComparison.Ordinal);
+		}
+		Assert.Contains(SkillPresets.All, skill => skill.Name == "代码审查与架构顾问");
 	}
 
 	// 请求由替身处理；公网 IP 字面量避免内容测试依赖真实 DNS，不会连接该地址。

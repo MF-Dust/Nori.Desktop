@@ -9,6 +9,8 @@
 			<StaticResource x:Key="SettingsPrimaryBrush" ResourceKey="NoriTextPrimaryBrush"/>
 			<StaticResource x:Key="SettingsSecondaryBrush" ResourceKey="NoriTextMutedBrush"/>
 			<StaticResource x:Key="SettingsErrorBrush" ResourceKey="NoriDangerTextBrush"/>
+			<StaticResource x:Key="SettingsSuccessBrush" ResourceKey="NoriSuccessBrush"/>
+			<StaticResource x:Key="SettingsWarningBrush" ResourceKey="NoriWarningBrush"/>
 			<StaticResource x:Key="SettingsSelectionBrush" ResourceKey="NoriBgSelectionBrush"/>
 			<StaticResource x:Key="SettingsAccentBrush" ResourceKey="NoriNoriTealBrush"/>
 			<StaticResource x:Key="SettingsInputBrush" ResourceKey="NoriBgInputBrush"/>

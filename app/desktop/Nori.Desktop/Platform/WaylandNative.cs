@@ -67,9 +67,21 @@ internal static class WaylandNative
 		return property?.GetValue(proxy) is nint handle ? handle : 0;
 	}
 
+	/// <summary>沿基类查找实例属性。NWayland 的 <c>WlProxy.Interface</c> 是 internal，只查 public 会漏掉。</summary>
+	internal static PropertyInfo? FindInstanceProperty(Type type, string name)
+	{
+		const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+		for (Type? current = type; current is not null; current = current.BaseType)
+		{
+			PropertyInfo? property = current.GetProperty(name, flags);
+			if (property is not null) return property;
+		}
+		return null;
+	}
+
 	internal static nint InterfaceOf(object proxy)
 	{
-		PropertyInfo? property = proxy.GetType().GetProperty("Interface", BindingFlags.Instance | BindingFlags.Public);
+		PropertyInfo? property = FindInstanceProperty(proxy.GetType(), "Interface");
 		object? description = property?.GetValue(proxy);
 		if (description is null) return 0;
 		MethodInfo? native = description.GetType().GetMethod("GetNative", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);

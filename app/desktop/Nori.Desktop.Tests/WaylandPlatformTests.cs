@@ -1,3 +1,4 @@
+using System.Reflection;
 using Avalonia;
 using Nori.Desktop.Live2D;
 using Nori.Desktop.Platform;
@@ -38,6 +39,58 @@ public class WaylandPlatformTests
 		Assert.Same(source, WaylandHitRegions.FitSurface(source, 200, 100, 200, 100));
 		WaylandHitRegions.PixelRect[] scaled = WaylandHitRegions.FitSurface(source, 200, 100, 400, 200);
 		Assert.Equal(new WaylandHitRegions.PixelRect(2, 6, 22, 18), scaled[0]);
+	}
+
+	[Fact]
+	public void NWayland表面接口沿非公开基类属性取得原生指针()
+	{
+		Assembly nwayland = Assembly.Load("NWayland");
+		Type surface = nwayland.GetType("NWayland.Protocols.Wayland.WlSurface")
+			?? throw new InvalidOperationException("缺少 WlSurface");
+		PropertyInfo? iface = WaylandNative.FindInstanceProperty(surface, "Interface");
+		Assert.NotNull(iface);
+		Assert.False(iface!.GetGetMethod(true)!.IsPublic);
+		Assert.NotEqual(0, WaylandNative.InterfaceOfType(nwayland, "NWayland.Protocols.Wayland.WlSurface"));
+		Assert.NotEqual(0, WaylandNative.InterfaceOfType(nwayland, "NWayland.Protocols.Wayland.WlRegion"));
+	}
+
+	[Fact]
+	public void Plasma窗口管理只绑定版本17并覆盖该版本事件()
+	{
+		Assert.Equal(0, KdePlasmaTopmost.SelectBindVersion(8));
+		Assert.Equal(0, KdePlasmaTopmost.SelectBindVersion(16));
+		Assert.Equal(17, KdePlasmaTopmost.SelectBindVersion(17));
+		Assert.Equal(17, KdePlasmaTopmost.SelectBindVersion(22));
+		Assert.Equal(
+			["show_desktop_changed", "window", "stacking_order_changed", "stacking_order_uuid_changed", "window_with_uuid", "stacking_order_changed_2"],
+			KdePlasmaTopmost.ManagerEvents.Select(item => item.Name).ToArray());
+		Assert.Equal("a", KdePlasmaTopmost.ManagerEvents[2].Signature);
+		Assert.Equal("us", KdePlasmaTopmost.ManagerEvents[4].Signature);
+		Assert.Equal(17, KdePlasmaTopmost.WindowEvents.Length);
+		Assert.Equal("ss", KdePlasmaTopmost.WindowEvents[13].Signature);
+		Assert.Equal("pid_changed", KdePlasmaTopmost.WindowEvents[10].Name);
+	}
+
+	[Fact]
+	public void 置顶请求先刷新再等合成器确认()
+	{
+		int step = 0;
+		Assert.True(KdePlasmaTopmost.ConfirmQueuedRequest(
+			() => { Assert.Equal(0, step); step = 1; return 0; },
+			() => { Assert.Equal(1, step); step = 2; return 0; }));
+		Assert.Equal(2, step);
+		Assert.False(KdePlasmaTopmost.ConfirmQueuedRequest(() => -1, () => throw new InvalidOperationException("不应在刷新失败后 roundtrip")));
+		Assert.False(KdePlasmaTopmost.ConfirmQueuedRequest(() => 0, () => -1));
+	}
+
+	[Fact]
+	public void 表面销毁不算穿透永久失败且与模糊故障分开()
+	{
+		Assert.True(WaylandSurfacePoster.IsSurfaceGone(new ObjectDisposedException("WlSurface")));
+		Assert.True(WaylandSurfacePoster.IsSurfaceGone(new TargetInvocationException(new ObjectDisposedException("WlSurface"))));
+		Assert.False(WaylandSurfacePoster.IsSurfaceGone(new MissingMethodException("WlSurface", "SetInputRegion")));
+		Assert.False(WaylandSurfacePoster.IsSurfaceGone(new TargetInvocationException(new MissingMethodException("WlSurface", "SetInputRegion"))));
+		Assert.False(WaylandInputRegion.Failed);
 	}
 
 	[Fact]

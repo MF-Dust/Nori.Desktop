@@ -7,7 +7,6 @@ namespace Nori.Desktop.Platform;
 internal static class WaylandSurfacePoster
 {
 	private static readonly object Missing = new();
-	private static int _broken;
 
 	internal enum Result
 	{
@@ -16,22 +15,13 @@ internal static class WaylandSurfacePoster
 		Unsupported,
 	}
 
-	internal static bool IsBroken => Volatile.Read(ref _broken) != 0;
-
-	internal static Exception? Failure { get; private set; }
-
-	/// <summary>workerAction 在 Wayland 线程执行，参数是 worker 侧表面对象。</summary>
-	internal static Result Post(Window window, Action<object> workerAction)
+	/// <summary>workerAction 在 Wayland 线程执行，参数是 worker 侧表面对象。失败只交给这次调用，不连坐其他能力。</summary>
+	internal static Result Post(Window window, Action<object> workerAction, Action<Exception>? onFailure = null)
 	{
-		if (IsBroken) return Result.Unsupported;
 		if (!TryResolve(window, out object? client, out object? surface) || client is null || surface is null)
 			return Result.NotReady;
 		MethodInfo? post = client.GetType().GetMethod("PostWithCommit", BindingFlags.Instance | BindingFlags.Public);
-		if (post is null)
-		{
-			MarkBroken(new MissingMethodException(client.GetType().FullName, "PostWithCommit"));
-			return Result.Unsupported;
-		}
+		if (post is null) return Result.Unsupported;
 		Action action = () =>
 		{
 			try
@@ -39,9 +29,13 @@ internal static class WaylandSurfacePoster
 				if (Disposed(Member(surface, "WlSurface"))) return;
 				workerAction(surface);
 			}
+			catch (Exception exception) when (IsSurfaceGone(exception))
+			{
+				// 合成器重连后表面会重建，下一轮再用新的 wl_surface。
+			}
 			catch (Exception exception)
 			{
-				MarkBroken(exception);
+				onFailure?.Invoke(Unwrap(exception));
 			}
 		};
 		try
@@ -49,11 +43,39 @@ internal static class WaylandSurfacePoster
 			post.Invoke(client, [action]);
 			return Result.Posted;
 		}
-		catch (Exception exception)
+		catch (Exception exception) when (IsSurfaceGone(exception))
 		{
-			MarkBroken(exception);
+			return Result.NotReady;
+		}
+		catch (Exception)
+		{
 			return Result.Unsupported;
 		}
+	}
+
+	internal static bool IsMissing(object? value) => value is null || ReferenceEquals(value, Missing);
+
+	internal static bool IsSurfaceGone(Exception exception)
+	{
+		Exception current = Unwrap(exception);
+		return current is ObjectDisposedException;
+	}
+
+	internal static nint SurfaceHandle(Window window)
+	{
+		if (!TryResolve(window, out _, out object? surface) || surface is null) return 0;
+		object? wlSurface = Member(surface, "WlSurface");
+		if (Disposed(wlSurface)) return 0;
+		return wlSurface is null ? 0 : WaylandNative.HandleOf(wlSurface);
+	}
+
+	internal static object? Connection(Window window)
+	{
+		if (!TryResolve(window, out _, out object? surface) || surface is null) return null;
+		object? globals = Member(surface, "Globals");
+		if (IsMissing(globals)) return null;
+		object? connection = Member(globals!, "Connection");
+		return IsMissing(connection) ? null : connection;
 	}
 
 	private static bool TryResolve(Window window, out object? client, out object? surface)
@@ -91,9 +113,10 @@ internal static class WaylandSurfacePoster
 		return property?.GetValue(proxy) is true;
 	}
 
-	private static void MarkBroken(Exception exception)
+	private static Exception Unwrap(Exception exception)
 	{
-		Failure = exception;
-		Volatile.Write(ref _broken, 1);
+		Exception current = exception;
+		while (current is TargetInvocationException { InnerException: { } inner }) current = inner;
+		return current;
 	}
 }

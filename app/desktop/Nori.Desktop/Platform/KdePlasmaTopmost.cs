@@ -3,16 +3,58 @@ using System.Runtime.InteropServices;
 namespace Nori.Desktop.Platform;
 
 /// <summary>
-/// 短连接绑定 org_kde_plasma_window_management，只把本进程、标题为 Nori 的窗口设为 KeepAbove。
-/// 没有 WAYLAND_DISPLAY、协议或 pid 事件时立即放弃，不抛给界面。
+/// 短连接绑定 org_kde_plasma_window_management。协议要求至少版本 17，因此只绑定 17，
+/// 并接住该版本会发送的全部事件。只把本进程、标题为 Nori 的窗口设为 KeepAbove。
+/// set_state 入队后先 flush 并 roundtrip，确认发出后才断开。
 /// </summary>
 internal static class KdePlasmaTopmost
 {
+	internal const int BoundProtocolVersion = 17;
 	private const string InterfaceName = "org_kde_plasma_window_management";
 	private const uint KeepAbove = 0x10;
-	private const int ProtocolVersion = 8;
 	private static int _running;
 	private static int _logged;
+
+	internal static readonly (string Name, string Signature)[] ManagerEvents =
+	[
+		("show_desktop_changed", "u"),
+		("window", "u"),
+		("stacking_order_changed", "a"),
+		("stacking_order_uuid_changed", "s"),
+		("window_with_uuid", "us"),
+		("stacking_order_changed_2", ""),
+	];
+
+	internal static readonly (string Name, string Signature)[] WindowEvents =
+	[
+		("title_changed", "s"),
+		("app_id_changed", "s"),
+		("state_changed", "u"),
+		("virtual_desktop_changed", "i"),
+		("themed_icon_name_changed", "s"),
+		("unmapped", ""),
+		("initial_state", ""),
+		("parent_window", "?o"),
+		("geometry", "iiuu"),
+		("icon_changed", ""),
+		("pid_changed", "u"),
+		("virtual_desktop_entered", "s"),
+		("virtual_desktop_left", "s"),
+		("application_menu", "ss"),
+		("activity_entered", "s"),
+		("activity_left", "s"),
+		("resource_name_changed", "s"),
+	];
+
+	/// <summary>广告版本低于 17 不绑定；更高版本也只绑定 17，避免收到未实现的事件。</summary>
+	internal static int SelectBindVersion(uint advertised) => advertised < BoundProtocolVersion ? 0 : BoundProtocolVersion;
+
+	/// <summary>先把已入队的请求写到套接字，再等合成器处理完这一轮。</summary>
+	internal static bool ConfirmQueuedRequest(Func<int> flush, Func<int> roundtrip)
+	{
+		if (flush() < 0) return false;
+		return roundtrip() >= 0;
+	}
 
 	internal static bool TryStart(Action<Exception>? onFailure = null)
 	{
@@ -50,19 +92,25 @@ internal static class KdePlasmaTopmost
 		using Session session = new();
 		if (!session.Connect()) return;
 		DateTime deadline = DateTime.UtcNow.AddSeconds(2);
-		while (DateTime.UtcNow < deadline && !session.Applied)
+		while (DateTime.UtcNow < deadline && !session.Confirmed)
 		{
 			if (!session.Dispatch(50)) break;
+			if (session.PendingSend && !session.ConfirmPending()) break;
 		}
 	}
 
 	private sealed class Session : IDisposable
 	{
 		private readonly Dictionary<nint, WindowState> _windows = [];
+		private readonly HashSet<uint> _seenIds = [];
 		private readonly RegistryGlobal _onGlobal;
 		private readonly RegistryRemove _onRemove;
 		private readonly ManagerShowDesktop _onShowDesktop;
 		private readonly ManagerWindow _onWindow;
+		private readonly ArrayEvent _onStacking;
+		private readonly StringEvent _onStackingUuids;
+		private readonly WindowWithUuid _onWindowUuid;
+		private readonly SimpleEvent _onStacking2;
 		private readonly TitleChanged _onTitle;
 		private readonly StringEvent _onAppId;
 		private readonly StateChanged _onState;
@@ -76,12 +124,13 @@ internal static class KdePlasmaTopmost
 		private readonly PidChanged _onPid;
 		private readonly StringEvent _onDesktopEntered;
 		private readonly StringEvent _onDesktopLeft;
+		private readonly TwoStringEvent _onApplicationMenu;
+		private readonly StringEvent _onActivityEntered;
+		private readonly StringEvent _onActivityLeft;
+		private readonly StringEvent _onResourceName;
 		private nint _display;
 		private nint _registry;
 		private nint _manager;
-		private nint _registryInterface;
-		private nint _managerInterface;
-		private nint _windowInterface;
 		private nint _registryListener;
 		private nint _managerListener;
 		private nint _windowListener;
@@ -90,7 +139,8 @@ internal static class KdePlasmaTopmost
 		private uint _globalName;
 		private bool _sawGlobal;
 
-		internal bool Applied { get; private set; }
+		internal bool PendingSend { get; private set; }
+		internal bool Confirmed { get; private set; }
 
 		internal Session()
 		{
@@ -98,6 +148,10 @@ internal static class KdePlasmaTopmost
 			_onRemove = (_, _, _) => { };
 			_onShowDesktop = (_, _, _) => { };
 			_onWindow = OnWindow;
+			_onStacking = (_, _, _) => { };
+			_onStackingUuids = (_, _, _) => { };
+			_onWindowUuid = OnWindowUuid;
+			_onStacking2 = (_, _) => { };
 			_onTitle = OnTitle;
 			_onAppId = (_, _, _) => { };
 			_onState = (_, _, _) => { };
@@ -111,6 +165,10 @@ internal static class KdePlasmaTopmost
 			_onPid = OnPid;
 			_onDesktopEntered = (_, _, _) => { };
 			_onDesktopLeft = (_, _, _) => { };
+			_onApplicationMenu = (_, _, _, _) => { };
+			_onActivityEntered = (_, _, _) => { };
+			_onActivityLeft = (_, _, _) => { };
+			_onResourceName = (_, _, _) => { };
 			_processId = (uint)Environment.ProcessId;
 		}
 
@@ -118,23 +176,23 @@ internal static class KdePlasmaTopmost
 		{
 			_display = WaylandNative.DisplayConnect(0);
 			if (_display == 0) return false;
-			_registryInterface = ProtocolInterfaces.Registry();
-			_registry = WaylandNative.Send(_display, 1, _registryInterface, 1, new WaylandNative.Argument());
+			nint registryInterface = ProtocolInterfaces.Registry();
+			_registry = WaylandNative.Send(_display, 1, registryInterface, 1, new WaylandNative.Argument());
 			if (_registry == 0) return false;
 			_handle = GCHandle.Alloc(this);
 			_registryListener = Listener(_onGlobal, _onRemove);
 			if (WaylandNative.AddListener(_registry, _registryListener, GCHandle.ToIntPtr(_handle)) != 0) return false;
 			if (WaylandNative.DisplayRoundtrip(_display) < 0 || !_sawGlobal) return false;
-			_windowInterface = ProtocolInterfaces.Window();
-			_managerInterface = ProtocolInterfaces.Manager(_windowInterface);
-			_manager = WaylandNative.Send(_registry, 0, _managerInterface, ProtocolVersion,
+			nint windowInterface = ProtocolInterfaces.Window();
+			nint managerInterface = ProtocolInterfaces.Manager(windowInterface);
+			_manager = WaylandNative.Send(_registry, 0, managerInterface, BoundProtocolVersion,
 				new WaylandNative.Argument { UInt = _globalName },
-				new WaylandNative.Argument { Pointer = ReadInterfaceName(_managerInterface) },
-				new WaylandNative.Argument { UInt = ProtocolVersion },
+				new WaylandNative.Argument { Pointer = ReadInterfaceName(managerInterface) },
+				new WaylandNative.Argument { UInt = BoundProtocolVersion },
 				new WaylandNative.Argument());
 			if (_manager == 0) return false;
 			_windowListener = WindowListener();
-			_managerListener = Listener(_onShowDesktop, _onWindow);
+			_managerListener = ManagerListener();
 			if (WaylandNative.AddListener(_manager, _managerListener, GCHandle.ToIntPtr(_handle)) != 0) return false;
 			return WaylandNative.DisplayRoundtrip(_display) >= 0;
 		}
@@ -154,8 +212,21 @@ internal static class KdePlasmaTopmost
 			return ready >= 0 && WaylandNative.DisplayDispatchPending(_display) >= 0;
 		}
 
+		internal bool ConfirmPending()
+		{
+			if (!PendingSend || _display == 0 || Confirmed) return Confirmed;
+			bool confirmed = ConfirmQueuedRequest(() => WaylandNative.DisplayFlush(_display), () => WaylandNative.DisplayRoundtrip(_display));
+			if (!confirmed) return false;
+			PendingSend = false;
+			Confirmed = true;
+			return true;
+		}
+
 		public void Dispose()
 		{
+			if (_display != 0 && PendingSend && !Confirmed) ConfirmPending();
+			// roundtrip 期间若又入队了请求，断开前再刷一次，避免 set_state 留在缓冲里。
+			if (_display != 0) WaylandNative.DisplayFlush(_display);
 			if (_display != 0) WaylandNative.DisplayDisconnect(_display);
 			_display = 0;
 			if (_handle.IsAllocated) _handle.Free();
@@ -166,7 +237,7 @@ internal static class KdePlasmaTopmost
 
 		private void OnGlobal(nint data, nint registry, uint name, nint interfaceName, uint version)
 		{
-			if (_sawGlobal || Marshal.PtrToStringUTF8(interfaceName) != InterfaceName || version < ProtocolVersion) return;
+			if (_sawGlobal || Marshal.PtrToStringUTF8(interfaceName) != InterfaceName || SelectBindVersion(version) == 0) return;
 			_sawGlobal = true;
 			_globalName = name;
 		}
@@ -177,10 +248,14 @@ internal static class KdePlasmaTopmost
 			return iface.Name;
 		}
 
-		private void OnWindow(nint data, nint manager, uint id)
+		private void OnWindow(nint data, nint manager, uint id) => TrackWindow(manager, id);
+
+		private void OnWindowUuid(nint data, nint manager, uint id, nint uuid) => TrackWindow(manager, id);
+
+		private void TrackWindow(nint manager, uint id)
 		{
-			if (_windowInterface == 0 || _windowListener == 0) return;
-			nint window = WaylandNative.Send(manager, 1, _windowInterface, ProtocolVersion,
+			if (_windowListener == 0 || !_seenIds.Add(id)) return;
+			nint window = WaylandNative.Send(manager, 1, ProtocolInterfaces.Window(), BoundProtocolVersion,
 				new WaylandNative.Argument(),
 				new WaylandNative.Argument { UInt = id });
 			if (window == 0) return;
@@ -214,16 +289,34 @@ internal static class KdePlasmaTopmost
 
 		private void TryKeepAbove(nint window, WindowState state)
 		{
-			if (Applied || !state.Initial || !state.HasPid || state.Pid != _processId || state.Title != "Nori") return;
-			WaylandNative.Send(window, 0, 0, ProtocolVersion,
+			if (state.Sent || Confirmed || !state.Initial || !state.HasPid || state.Pid != _processId || state.Title != "Nori") return;
+			WaylandNative.Send(window, 0, 0, BoundProtocolVersion,
 				new WaylandNative.Argument { UInt = KeepAbove },
 				new WaylandNative.Argument { UInt = KeepAbove });
-			Applied = true;
+			state.Sent = true;
+			PendingSend = true;
 		}
 
-		private nint WindowListener() => Listener(
-			_onTitle, _onAppId, _onState, _onDesktop, _onIcon, _onUnmapped, _onInitial, _onParent,
-			_onGeometry, _onIconChanged, _onPid, _onDesktopEntered, _onDesktopLeft);
+		private nint ManagerListener()
+		{
+			Delegate[] callbacks = [_onShowDesktop, _onWindow, _onStacking, _onStackingUuids, _onWindowUuid, _onStacking2];
+			if (callbacks.Length != ManagerEvents.Length)
+				throw new InvalidOperationException("plasma 窗口管理事件与监听数量不一致");
+			return Listener(callbacks);
+		}
+
+		private nint WindowListener()
+		{
+			Delegate[] callbacks =
+			[
+				_onTitle, _onAppId, _onState, _onDesktop, _onIcon, _onUnmapped, _onInitial, _onParent,
+				_onGeometry, _onIconChanged, _onPid, _onDesktopEntered, _onDesktopLeft, _onApplicationMenu,
+				_onActivityEntered, _onActivityLeft, _onResourceName,
+			];
+			if (callbacks.Length != WindowEvents.Length)
+				throw new InvalidOperationException("plasma 窗口事件与监听数量不一致");
+			return Listener(callbacks);
+		}
 
 		private static nint Listener(params Delegate[] callbacks)
 		{
@@ -245,6 +338,7 @@ internal static class KdePlasmaTopmost
 		internal uint Pid;
 		internal bool HasPid;
 		internal bool Initial;
+		internal bool Sent;
 	}
 
 	private static class ProtocolInterfaces
@@ -260,33 +354,29 @@ internal static class KdePlasmaTopmost
 				("global_remove", "u", WaylandNative.Types(0)),
 			]);
 
-		internal static nint Manager(nint windowInterface) => _manager != 0 ? _manager : _manager = WaylandNative.DefineInterface(InterfaceName, ProtocolVersion,
+		internal static nint Manager(nint windowInterface) => _manager != 0 ? _manager : _manager = WaylandNative.DefineInterface(InterfaceName, BoundProtocolVersion,
 			[
 				("show_desktop", "u", WaylandNative.Types(0)),
 				("get_window", "nu", WaylandNative.Types(windowInterface, 0)),
 			],
-			[
-				("show_desktop_changed", "u", WaylandNative.Types(0)),
-				("window", "u", WaylandNative.Types(0)),
-			]);
+			ManagerEvents.Select(item => (item.Name, item.Signature, TypesFor(item.Signature))).ToArray());
 
-		internal static nint Window() => _window != 0 ? _window : _window = WaylandNative.DefineInterface("org_kde_plasma_window", ProtocolVersion,
+		internal static nint Window() => _window != 0 ? _window : _window = WaylandNative.DefineInterface("org_kde_plasma_window", BoundProtocolVersion,
 			[("set_state", "uu", WaylandNative.Types(0, 0))],
-			[
-				("title_changed", "s", WaylandNative.Types(0)),
-				("app_id_changed", "s", WaylandNative.Types(0)),
-				("state_changed", "u", WaylandNative.Types(0)),
-				("virtual_desktop_changed", "i", WaylandNative.Types(0)),
-				("themed_icon_name_changed", "s", WaylandNative.Types(0)),
-				("unmapped", "", 0),
-				("initial_state", "", 0),
-				("parent_window", "?o", WaylandNative.Types(0)),
-				("geometry", "iiuu", WaylandNative.Types(0, 0, 0, 0)),
-				("icon_changed", "", 0),
-				("pid_changed", "u", WaylandNative.Types(0)),
-				("virtual_desktop_entered", "s", WaylandNative.Types(0)),
-				("virtual_desktop_left", "s", WaylandNative.Types(0)),
-			]);
+			WindowEvents.Select(item => (item.Name, item.Signature, TypesFor(item.Signature))).ToArray());
+
+		private static nint TypesFor(string signature)
+		{
+			int count = 0;
+			for (int index = 0; index < signature.Length; index++)
+			{
+				if (signature[index] == '?') continue;
+				count++;
+			}
+			if (count == 0) return 0;
+			nint[] types = new nint[count];
+			return WaylandNative.Types(types);
+		}
 	}
 
 	[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -302,10 +392,19 @@ internal static class KdePlasmaTopmost
 	private delegate void ManagerWindow(nint data, nint manager, uint id);
 
 	[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+	private delegate void WindowWithUuid(nint data, nint manager, uint id, nint uuid);
+
+	[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+	private delegate void ArrayEvent(nint data, nint proxy, nint array);
+
+	[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 	private delegate void TitleChanged(nint data, nint window, nint title);
 
 	[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 	private delegate void StringEvent(nint data, nint window, nint text);
+
+	[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+	private delegate void TwoStringEvent(nint data, nint window, nint first, nint second);
 
 	[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 	private delegate void StateChanged(nint data, nint window, uint flags);

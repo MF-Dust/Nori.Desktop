@@ -13,7 +13,7 @@
 - 插件设置内嵌页：`IPluginPageContribution.Placement = Settings` 的页面直接出现在设置侧栏「插件设置」分组，停用或撤销时同步卸下并释放。
 - 插件应用互操作 (`applications`)：查询进程、按绝对路径启动可执行文件并等待退出；不提供终止进程，Windows 上拒绝 `.bat`/`.cmd`。
 - 插件管理：新增 `plugin_reload` 重新加载已启用插件 (可切换到已安装的新版本，旧程序集无法回收时返回待重启)；设置页支持搜索、仅显示运行中、刷新，并可展开查看、启停及手动测试插件动作 (仅 safe)。
-- Linux 原生 Wayland：没有 `DISPLAY` 时使用 Avalonia 原生 Wayland 后端，Quick Chat 与桌宠共用同一个无标题栏窗口，保留窗口内视线跟随与原生拖动；不提供窗口外全局光标、点击穿透、强制置顶或位置恢复。存在 `DISPLAY` 时仍按 X11/XWayland 处理。
+- Linux 原生 Wayland：没有 `DISPLAY` 时使用 Avalonia 原生 Wayland 后端，Quick Chat 与桌宠共用同一个无标题栏窗口，保留窗口内视线跟随与原生拖动；用 `wl_surface.set_input_region` 做模型矩形穿透，表面不可达时整窗可点。KWin 提供 `org_kde_kwin_blur_manager` 时普通窗口背景模糊，提供 plasma window management 时把本进程标题为 Nori 的窗口保持在上层。不提供窗口外全局光标或位置恢复。存在 `DISPLAY` 时仍按 X11/XWayland 处理。
 - Linux 桌面入口：发布包根附带 `linux-desktop.sh`（`install` / `uninstall` / `enable-autostart` / `disable-autostart`），按 XDG 目录为当前用户注册菜单与登录自启入口，始终运行稳定根启动器并声明 `StartupWMClass=Nori.Desktop`；包路径可含空格、引号、`$`、`%`、`=` 等字符，卸载只删除属于当前包的入口。
 - Linux 授权通知：通过会话 D-Bus 通知服务提供「允许执行 / 拒绝」，点正文只打开应用内卡片；超时、取消或应用内决定后撤回，通知不含工具参数或描述。首个请求允许总线按需启动通知服务，撤回只发给实际应答的实例；带 `desktop-entry` 提示并使用包内 `nori.png` 图标。取代原先 UniDesktop 的只读提醒。
 - Linux 启动失败时优先用系统已有的 `zenity` / `kdialog` 弹出错误（文本只作参数传递），同时保留标准错误输出。

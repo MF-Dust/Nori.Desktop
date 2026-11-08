@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Nori.Core.Platform;
+using Nori.Desktop.Platform;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Appearance;
@@ -72,6 +74,7 @@ internal sealed class WindowBackdropController : IDisposable
 		Dispatcher.UIThread.VerifyAccess();
 		if (_disposed || !IsEligible(window) || !_windows.Add(window)) return;
 		window.PropertyChanged += OnWindowPropertyChanged;
+		window.Opened += OnWindowOpened;
 		window.Closed += OnWindowClosed;
 		ApplyRequest(window);
 		foreach (Window child in window.OwnedWindows) Register(child);
@@ -101,10 +104,37 @@ internal sealed class WindowBackdropController : IDisposable
 
 	private void ApplySurface(Window window)
 	{
-		bool active = IsBlurActive(_enabled, window.ActualTransparencyLevel);
+		bool active = IsBlurActive(_enabled, window.ActualTransparencyLevel) || WaylandBlurActive(window);
+		Paint(window, active);
+	}
+
+	/// <summary>测试可替换 Wayland 模糊结果。返回 null 时走真实协议。</summary>
+	internal static Func<Window, bool, bool?>? WaylandBlurOverride { get; set; }
+
+	private bool WaylandBlurActive(Window window)
+	{
+		if (WaylandBlurOverride is { } hook && hook(window, _enabled) is { } forced) return forced;
+		if (!OperatingSystem.IsLinux() || PlatformServices.Current.Session != SessionType.Wayland) return false;
+		WaylandBlur.Request(window, _enabled, active => NotifyWaylandBlur(window, active));
+		return false;
+	}
+
+	private void NotifyWaylandBlur(Window window, bool active)
+	{
+		if (_disposed || !_enabled || !_windows.Contains(window)) return;
+		Paint(window, active || IsBlurActive(true, window.ActualTransparencyLevel));
+	}
+
+	private static void Paint(Window window, bool active)
+	{
 		IBrush surface = NoriThemeTokens.Brush(active ? "bg-glass" : "bg-base");
 		window.Resources["NoriWindowSurfaceBrush"] = surface;
 		window.Background = surface;
+	}
+
+	private void OnWindowOpened(object? sender, EventArgs args)
+	{
+		if (sender is Window window && _windows.Contains(window)) ApplySurface(window);
 	}
 
 	private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs args)
@@ -121,8 +151,11 @@ internal sealed class WindowBackdropController : IDisposable
 	private void Unregister(Window window)
 	{
 		window.PropertyChanged -= OnWindowPropertyChanged;
+		window.Opened -= OnWindowOpened;
 		window.Closed -= OnWindowClosed;
 		_windows.Remove(window);
+		if (WaylandBlurOverride is null && OperatingSystem.IsLinux() && PlatformServices.Current.Session == SessionType.Wayland)
+			WaylandBlur.Request(window, false, static _ => { });
 	}
 
 	public void Dispose()

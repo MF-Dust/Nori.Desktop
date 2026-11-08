@@ -54,7 +54,7 @@ public sealed record PlatformCapabilities
 /// - Windows: user32 (GetCursorPos / WM_NCLBUTTONDOWN / WM_NCHITTEST)
 /// - macOS:   ObjC runtime (NSEvent.mouseLocation / performWindowDragWithEvent: / setIgnoresMouseEvents:)
 /// - Linux X11: libX11 + XShape (XQueryPointer / _NET_WM_MOVERESIZE / ShapeInput)
-/// - Wayland: 当前后端不公开输入形状；全局光标与强制定位不可用，拖动经 Avalonia 指针事件发起
+/// - Wayland: wl_surface 输入区做矩形穿透；全局光标与窗口坐标仍不可用，拖动经 Avalonia 指针事件发起。KWin 模糊与置顶由合成器协议按需补上
 /// </summary>
 public interface IPlatformServices
 {

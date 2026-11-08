@@ -99,7 +99,7 @@ Nori 在现实中被创造，却几乎是被「海」的高维信息一点点养
 - **自有运行层**：`Nori.Live2D` 负责 model3 资源声明、PurismCore 绑定、模型内存、动作、物理、姿势、呼吸、布局、指针平滑与遮罩规划；`Nori.Desktop/Live2D/Gl` 负责着色、网格上传、GL 状态恢复、离屏目标与纹理，不再依赖旧 SDK。这不代表完整的 Cubism SDK 兼容性，也不是 clean-room 认证。
 - **PurismCore**：MIT 许可、兼容 Cubism v6 ABI 的模型核心，仓库内附带 Windows、Linux、macOS 原生库。
 - **会看着你**：视线默认跟随光标，关闭跟随或拿不到光标时改为自然漂移；另有自动眨眼、表情、物理摆动与呼吸。语音播放时每 25 ms 计算一次 RMS，驱动口型开合。
-- **点击穿透**：约 10 Hz 采样 alpha 缓冲，求出可见模型的外接矩形，矩形以外的点击交还桌面——Windows 用 `WM_NCHITTEST`，Linux X11 用 XShape 输入区域，macOS 用 `setIgnoresMouseEvents:`；Wayland 无法穿透时整窗可点，由能力标志降级。
+- **点击穿透**：约 10 Hz 采样 alpha 缓冲，求出可见模型的外接矩形，矩形以外的点击交还桌面——Windows 用 `WM_NCHITTEST`，Linux X11 用 XShape 输入区域，Wayland 用 `wl_surface.set_input_region`，macOS 用 `setIgnoresMouseEvents:`；Wayland 表面不可达时整窗可点。
 - **跟手拖拽**：4 px 阈值的原生拖拽，位置自动记住。
 - **模型获取**：支持 `arg-nori`（默认）与 `nori`，模型文件不随仓库和发布包分发；启动时缺少所选模型会自动从 `static.nori.mom` 获取，也可在「模型」窗口在线获取或从本地 ZIP / 文件夹导入；解压时拒绝绝对路径、UNC、盘符、`..`、控制字符与符号链接。「模型」窗口用原生 `ModelPreviewControl` 做隔离的 OpenGL 预览与参数调节。
 
@@ -388,8 +388,8 @@ NORI_TEST_LIVE2D_ASSETS=1 NORI_TEST_NATIVE_GL=1 dotnet test Nori.Desktop.Tests/N
 ## 发布与稳定化口径
 
 - **版本**：未注入版本时产品版本为 `Dev`。正式发布由维护者在 GitHub Actions 中手动触发并填写代号（codename）：标签为 `v<数字版本>-<代号>`，同一数字版本不会被两个标签复用；informational 版本为 `v<数字版本>-<代号>+<7 位提交 hash>`，写入 `ProductVersion.Current`，并进入快照、readiness、诊断、崩溃报告与 MCP `clientInfo`；Sentry release 为 `nori@<数字版本>`。
-- **平台**：Windows x64 是首要验收平台与发布 blocker。Release 产出 `win-x64`、`linux-x64`、`osx-arm64`，`publish.sh` 另可在本地构建 `linux-arm64`、`osx-x64`；平台能力不足时（如 Wayland 下的全局光标与点击穿透）由能力标志驱动降级。
-- **Linux 会话**：存在 `DISPLAY` 时使用 X11/XWayland，支持模型输入区域穿透（要求 XShape 1.1+）；没有 `DISPLAY` 的 Wayland 会话使用原生后端，保留窗口内视线跟随和拖动，不提供窗口外全局光标、穿透、强制置顶或位置恢复。快捷聊天与 Live2D 共用同一个无标题栏窗口，拖动桌宠时一起移动。托盘按实际 StatusNotifier 宿主探测，并在同一条会话 D-Bus 连接上监听宿主变化（不轮询；监听失败时按无托盘处理，30 秒后重新订阅；没有 StatusNotifierWatcher 视为无托盘，不记告警）；宿主消失时，已隐藏的主窗口恢复为不抢焦点的最小化任务栏入口（不打断首次运行或初始化）。不可用时关闭主窗口改为最小化，宿主恢复后重新允许隐藏；恢复不会自动收起当前窗口。启动失败优先尝试系统已有的 `zenity` / `kdialog` 提示，同时保留标准错误输出。
+- **平台**：Windows x64 是首要验收平台与发布 blocker。Release 产出 `win-x64`、`linux-x64`、`osx-arm64`，`publish.sh` 另可在本地构建 `linux-arm64`、`osx-x64`；平台能力不足时（如 Wayland 下的全局光标与窗口坐标）由能力标志驱动降级。
+- **Linux 会话**：存在 `DISPLAY` 时使用 X11/XWayland，支持模型输入区域穿透（要求 XShape 1.1+）；没有 `DISPLAY` 的 Wayland 会话使用原生后端，用表面输入区做模型矩形穿透，保留窗口内视线跟随和拖动，不提供窗口外全局光标或位置恢复。KWin 在能绑定窗口管理协议时把本进程的 Nori 窗口保持在上层，合成器提供模糊协议时普通窗口使用背景模糊。快捷聊天与 Live2D 共用同一个无标题栏窗口，拖动桌宠时一起移动。托盘按实际 StatusNotifier 宿主探测，并在同一条会话 D-Bus 连接上监听宿主变化（不轮询；监听失败时按无托盘处理，30 秒后重新订阅；没有 StatusNotifierWatcher 视为无托盘，不记告警）；宿主消失时，已隐藏的主窗口恢复为不抢焦点的最小化任务栏入口（不打断首次运行或初始化）。不可用时关闭主窗口改为最小化，宿主恢复后重新允许隐藏；恢复不会自动收起当前窗口。启动失败优先尝试系统已有的 `zenity` / `kdialog` 提示，同时保留标准错误输出。
 - **Linux 授权通知**：通过会话 D-Bus 通知服务提供「允许执行 / 拒绝」，点正文只打开应用内卡片；超时、取消或应用内决定后撤回通知。通知不包含工具参数或描述；不支持动作按钮的桌面仅显示提醒，应用内审批始终保留。关闭系统通知本身不代表拒绝，关闭设置或退出应用会撤回仍在等待的通知。首个请求允许会话总线按需启动通知服务，之后的撤回只发给实际应答的服务实例；通知带 `desktop-entry` 提示，并使用发布包内的 `nori.png` 图标。
 - **产物**：三平台均为 framework-dependent 的槽式归档（Windows ZIP、Linux tar.gz、macOS ZIP），附 `.sha256`、SBOM、第三方声明与发布清单。目标机需要 .NET Runtime 10，不提供自包含安装包；Linux 另需 GTK 与 ALSA。
 - **数据迁移**：迁移前以 `VACUUM INTO` 备份数据库，单文件上限 64 MiB，最多保留 3 份。

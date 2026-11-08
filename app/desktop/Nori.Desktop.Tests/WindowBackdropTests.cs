@@ -94,6 +94,36 @@ public partial class BridgeCommandsTests
 	});
 
 	[Fact]
+	public Task Wayland模糊探测结果决定玻璃面且不改偏好() => WithSettingsUiAsync(() =>
+	{
+		_config.Set(ConfigStore.KeyBackgroundBlurEnabled, new ConfigValue.Boolean(true));
+		WindowBackdropController.WaylandBlurOverride = (_, enabled) => enabled;
+		using WindowBackdropController enabled = new();
+		Window glass = new();
+		Window solid = new();
+		try
+		{
+			enabled.Register(glass);
+			glass.Show();
+			Assert.Equal(NoriThemeTokens.Color("bg-glass"), Assert.IsAssignableFrom<ISolidColorBrush>(glass.Background).Color);
+			Assert.True(_config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, false));
+			WindowBackdropController.WaylandBlurOverride = (_, _) => false;
+			using WindowBackdropController disabled = new();
+			disabled.Register(solid);
+			solid.Show();
+			Assert.Equal(NoriThemeTokens.Color("bg-base"), Assert.IsAssignableFrom<ISolidColorBrush>(solid.Background).Color);
+			Assert.True(_config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, false));
+		}
+		finally
+		{
+			WindowBackdropController.WaylandBlurOverride = null;
+			glass.Close();
+			solid.Close();
+		}
+		return Task.CompletedTask;
+	});
+
+	[Fact]
 	public Task BackgroundBlurStartupReadCannotOverwriteNewUserChoice() => WithSettingsUiAsync(async () =>
 	{
 		using WindowBackdropController controller = new(false);

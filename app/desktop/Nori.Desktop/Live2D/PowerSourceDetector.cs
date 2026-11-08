@@ -1,9 +1,10 @@
 using System.Runtime.InteropServices;
 using Nori.Core.Live2D;
+using Nori.Core.Platform;
 
 namespace Nori.Desktop.Live2D;
 
-/// <summary>读取桌面电源状态；非 Windows 或读取失败时按交流电处理。</summary>
+/// <summary>读取桌面电源状态。Windows 看交流电是否断开，Linux 看 sysfs；读不到时按交流电。</summary>
 internal static class PowerSourceDetector
 {
 	[StructLayout(LayoutKind.Sequential)]
@@ -24,6 +25,8 @@ internal static class PowerSourceDetector
 
 	public static Live2DPowerSource Detect()
 	{
+		if (OperatingSystem.IsLinux())
+			return LinuxPowerSupply.OnBattery() ? Live2DPowerSource.Battery : Live2DPowerSource.Ac;
 		if (!OperatingSystem.IsWindows()) return Live2DPowerSource.Ac;
 		try
 		{

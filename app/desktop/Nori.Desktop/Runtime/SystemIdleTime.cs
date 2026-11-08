@@ -23,7 +23,7 @@ public static class SystemIdleTime
 	private static extern bool GetLastInputInfo(ref LastInputInfo info);
 
 	/// <summary>
-	/// 获取系统空闲秒数; 非 Windows 或查询失败返回 null
+	/// 获取 Windows 系统空闲秒数。Linux 走 <c>LinuxIdleTime</c>，这里查询失败或非 Windows 返回 null。
 	/// </summary>
 	[SupportedOSPlatform("windows")]
 	public static double? GetIdleSeconds()

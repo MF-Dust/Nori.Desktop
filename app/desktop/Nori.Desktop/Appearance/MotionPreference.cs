@@ -13,7 +13,8 @@ namespace Nori.Desktop.Appearance;
 ///
 /// 跟随系统时保留两种既有口径：装饰动效（页面过场、光环、连线）查询失败按允许处理，
 /// 因为据此关闭全部动效属于越权判断；快捷聊天与扫描浮层沿用平台服务的保守默认，
-/// 读不到系统设置时减少动效。用户显式选择的两档同时覆盖这两种口径。
+/// 读不到系统设置时减少动效。Linux 的系统值来自门户、GTK 与 KDE 动画开关的缓存，
+/// 读缓存本身不发起 IPC。用户显式选择的两档同时覆盖这两种口径。
 /// </summary>
 internal static partial class MotionPreference
 {
@@ -49,16 +50,20 @@ internal static partial class MotionPreference
 
 	private static bool Query()
 	{
-		if (!OperatingSystem.IsWindows()) return true;
-		try
+		if (OperatingSystem.IsWindows())
 		{
-			return QueryWindows();
+			try
+			{
+				return QueryWindows();
+			}
+			catch (Exception)
+			{
+				// 查询失败按允许处理，理由见类型注释。
+				return true;
+			}
 		}
-		catch (Exception)
-		{
-			// 查询失败按允许处理，理由见类型注释。
-			return true;
-		}
+		if (OperatingSystem.IsLinux()) return Nori.Core.Platform.LinuxMotionPreference.AllowDecorativeAnimations;
+		return true;
 	}
 
 	[SupportedOSPlatform("windows")]

@@ -84,6 +84,17 @@ public class WaylandPlatformTests
 	}
 
 	[Fact]
+	public void 新连接复用旧表面指针时仍要重设输入区()
+	{
+		nint reused = 0x42;
+		Assert.True(WaylandInputRegion.NeedsApply(1, reused, 2, reused, sameRequest: true));
+		Assert.True(WaylandInputRegion.NeedsApply(1, reused, 1, 0x43, sameRequest: true));
+		Assert.True(WaylandInputRegion.NeedsApply(0, reused, 1, reused, sameRequest: true));
+		Assert.False(WaylandInputRegion.NeedsApply(1, reused, 1, reused, sameRequest: true));
+		Assert.True(WaylandInputRegion.NeedsApply(1, reused, 1, reused, sameRequest: false));
+	}
+
+	[Fact]
 	public void 表面销毁不算穿透永久失败且与模糊故障分开()
 	{
 		Assert.True(WaylandSurfacePoster.IsSurfaceGone(new ObjectDisposedException("WlSurface")));

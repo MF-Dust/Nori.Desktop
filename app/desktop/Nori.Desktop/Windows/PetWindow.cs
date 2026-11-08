@@ -57,10 +57,7 @@ public sealed class PetWindow : Window
 	private bool? _lastClickThrough;
 	/// <summary>上一次提交的输入形状；显示、隐藏或尺寸变化后清空以强制重设。</summary>
 	private PetHitMask.InputShapeSignature _inputShape = PetHitMask.InputShapeSignature.Unspecified;
-	private WaylandHitRegions.PixelRect[]? _waylandRegions;
-	private int _waylandObservedWidth;
-	private int _waylandObservedHeight;
-	private nint _waylandSurface;
+	private int _waylandPosting;
 	private readonly (int X, int Y, int Width, int Height)[] _hitRegion = new (int, int, int, int)[1];
 	private static readonly (int X, int Y, int Width, int Height)[] EmptyHitRegions = [];
 
@@ -151,7 +148,6 @@ public sealed class PetWindow : Window
 		if (change.Property != Visual.IsVisibleProperty) return;
 
 		_inputShape = PetHitMask.InputShapeSignature.Unspecified;
-		_waylandRegions = null;
 		if (change.GetNewValue<bool>())
 		{
 			_glControl.ResumeRenderLoop();
@@ -328,17 +324,10 @@ public sealed class PetWindow : Window
 	{
 		if (WaylandInputRegion.Failed)
 		{
-			_hitShapeTimer?.Stop();
-			_services.Logger.Write(LogSource.Backend, "warn", "伴侣窗口穿透同步失败, 已恢复整窗可点", exception: WaylandInputRegion.Failure);
+			StopWaylandInputSync();
 			return;
 		}
-		nint surface = WaylandSurfacePoster.SurfaceHandle(this);
-		if (surface == 0)
-		{
-			_waylandRegions = null;
-			_waylandSurface = 0;
-			return;
-		}
+		if (Volatile.Read(ref _waylandPosting) != 0) return;
 		Rect model = _glControl.TranslatePoint(default, this) is { } origin
 			? new Rect(origin, _glControl.Bounds.Size)
 			: default;
@@ -346,31 +335,30 @@ public sealed class PetWindow : Window
 			_runtime.ClickThroughEnabled, _glControl.MaskBounds, model, EmbeddedInteractiveRects());
 		int logicalWidth = Bounds.Width > 0 ? (int)Math.Round(Bounds.Width) : 0;
 		int logicalHeight = Bounds.Height > 0 ? (int)Math.Round(Bounds.Height) : 0;
-		if (surface == _waylandSurface
-			&& WaylandHitRegions.Same(_waylandRegions, regions)
-			&& _waylandObservedWidth == WaylandInputRegion.ObservedSurfaceWidth
-			&& _waylandObservedHeight == WaylandInputRegion.ObservedSurfaceHeight)
-			return;
+		Volatile.Write(ref _waylandPosting, 1);
 		try
 		{
-			WaylandSurfacePoster.Result result = WaylandInputRegion.Apply(this, regions, logicalWidth, logicalHeight);
-			if (result == WaylandSurfacePoster.Result.NotReady) return;
-			if (result == WaylandSurfacePoster.Result.Unsupported || WaylandInputRegion.Failed)
+			WaylandSurfacePoster.Result result = WaylandInputRegion.Apply(this, regions, logicalWidth, logicalHeight, () =>
 			{
-				_hitShapeTimer?.Stop();
-				_services.Logger.Write(LogSource.Backend, "warn", "伴侣窗口穿透同步失败, 已恢复整窗可点", exception: WaylandInputRegion.Failure);
-				return;
-			}
-			_waylandRegions = regions;
-			_waylandSurface = surface;
-			_waylandObservedWidth = WaylandInputRegion.ObservedSurfaceWidth;
-			_waylandObservedHeight = WaylandInputRegion.ObservedSurfaceHeight;
+				Volatile.Write(ref _waylandPosting, 0);
+				if (!_closed && WaylandInputRegion.Failed) StopWaylandInputSync();
+			});
+			if (result == WaylandSurfacePoster.Result.Posted) return;
+			Volatile.Write(ref _waylandPosting, 0);
+			if (result == WaylandSurfacePoster.Result.Unsupported || WaylandInputRegion.Failed) StopWaylandInputSync();
 		}
 		catch (Exception exception) when (exception is InvalidOperationException or MissingMethodException or PlatformNotSupportedException)
 		{
+			Volatile.Write(ref _waylandPosting, 0);
 			_hitShapeTimer?.Stop();
-			_services.Logger.Write(LogSource.Backend, "warn", "伴侣窗口穿透同步失败, 已降级为整窗可点", exception: exception);
+			_services.Logger.Write(LogSource.Backend, "warn", "伴侣窗口穿透同步失败, 已恢复整窗可点", exception: exception);
 		}
+	}
+
+	private void StopWaylandInputSync()
+	{
+		_hitShapeTimer?.Stop();
+		_services.Logger.Write(LogSource.Backend, "warn", "伴侣窗口穿透同步失败, 已恢复整窗可点", exception: WaylandInputRegion.Failure);
 	}
 
 	private Rect[] EmbeddedInteractiveRects()

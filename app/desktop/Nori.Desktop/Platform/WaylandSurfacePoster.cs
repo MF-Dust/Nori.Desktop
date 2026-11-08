@@ -16,9 +16,10 @@ internal static class WaylandSurfacePoster
 	}
 
 	/// <summary>workerAction 在 Wayland 线程执行，参数是 worker 侧表面对象。失败只交给这次调用，不连坐其他能力。</summary>
-	internal static Result Post(Window window, Action<object> workerAction, Action<Exception>? onFailure = null)
+	internal static Result Post(Window window, Action<object> workerAction, Action<Exception>? onFailure = null, Action? finished = null)
 	{
-		if (!TryResolve(window, out object? client, out object? surface) || client is null || surface is null)
+		// 这里只拿 UI 侧的代理和调度器。WlSurface、句柄和连接对象留到工作线程再读。
+		if (!TryResolve(window, out object? client, out object? proxy) || client is null || proxy is null)
 			return Result.NotReady;
 		MethodInfo? post = client.GetType().GetMethod("PostWithCommit", BindingFlags.Instance | BindingFlags.Public);
 		if (post is null) return Result.Unsupported;
@@ -26,8 +27,9 @@ internal static class WaylandSurfacePoster
 		{
 			try
 			{
-				if (Disposed(Member(surface, "WlSurface"))) return;
-				workerAction(surface);
+				object? surface = Member(proxy, "ProxyTarget");
+				if (!IsMissing(surface) && !Disposed(Member(surface!, "WlSurface")))
+					workerAction(surface!);
 			}
 			catch (Exception exception) when (IsSurfaceGone(exception))
 			{
@@ -36,6 +38,10 @@ internal static class WaylandSurfacePoster
 			catch (Exception exception)
 			{
 				onFailure?.Invoke(Unwrap(exception));
+			}
+			finally
+			{
+				finished?.Invoke();
 			}
 		};
 		try
@@ -61,38 +67,19 @@ internal static class WaylandSurfacePoster
 		return current is ObjectDisposedException;
 	}
 
-	internal static nint SurfaceHandle(Window window)
-	{
-		if (!TryResolve(window, out _, out object? surface) || surface is null) return 0;
-		object? wlSurface = Member(surface, "WlSurface");
-		if (Disposed(wlSurface)) return 0;
-		return wlSurface is null ? 0 : WaylandNative.HandleOf(wlSurface);
-	}
-
-	internal static object? Connection(Window window)
-	{
-		if (!TryResolve(window, out _, out object? surface) || surface is null) return null;
-		object? globals = Member(surface, "Globals");
-		if (IsMissing(globals)) return null;
-		object? connection = Member(globals!, "Connection");
-		return IsMissing(connection) ? null : connection;
-	}
-
-	private static bool TryResolve(Window window, out object? client, out object? surface)
+	private static bool TryResolve(Window window, out object? client, out object? proxy)
 	{
 		client = null;
-		surface = null;
+		proxy = null;
 		object? impl = Member(window, "PlatformImpl");
-		if (impl is null || impl == Missing) return false;
-		if (impl.GetType().FullName?.Contains("Wayland", StringComparison.Ordinal) != true) return false;
-		object? proxy = Member(impl, "SurfaceProxy");
-		if (proxy is null || proxy == Missing) return false;
-		object? target = Member(proxy, "ProxyTarget");
-		if (target is null || target == Missing || Disposed(Member(target, "WlSurface"))) return false;
+		if (IsMissing(impl)) return false;
+		if (impl!.GetType().FullName?.Contains("Wayland", StringComparison.Ordinal) != true) return false;
+		object? surfaceProxy = Member(impl, "SurfaceProxy");
+		if (IsMissing(surfaceProxy)) return false;
 		object? worker = Member(impl, "Client");
-		if (worker is null || worker == Missing) return false;
+		if (IsMissing(worker)) return false;
 		client = worker;
-		surface = target;
+		proxy = surfaceProxy;
 		return true;
 	}
 

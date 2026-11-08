@@ -97,7 +97,7 @@ public class PlatformCapabilitiesTests
 		Assert.Equal(SessionType.Wayland, platform.Session);
 		Assert.True(platform.Capabilities.SupportsWindowDrag);
 		Assert.True(platform.Capabilities.SupportsTray);
-		Assert.False(platform.Capabilities.SupportsHitThrough);
+		Assert.True(platform.Capabilities.SupportsHitThrough);
 		Assert.False(platform.Capabilities.SupportsGlobalCursor);
 		Assert.False(platform.Capabilities.SupportsTopmost);
 		Assert.Throws<PlatformNotSupportedException>(() => platform.GetCursorPosition());

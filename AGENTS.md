@@ -16,7 +16,7 @@ Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12
   - Native Settings: `SettingsWindow` hosts Avalonia settings pages; inspect this native path for settings UI work.
   - Audio: `NativeAudioFactory` opens WASAPI on Windows, AudioQueue on macOS, and ALSA device `default` on Linux. Legacy `audio_backend=webview` does not switch implementations.
 - **Native Live2D Desk Pet**:
-  - `PetWindow` + `PetGlControl`: Native C# pipeline (`AutoBlink`, `EyeFocus`, `BeatSync`, `LipSync`, `ExpressionStore`, `ExpressionBehavior`). Alpha mask sampling (~10Hz) computes a single bounding rectangle for hit-testing (`WM_NCHITTEST` on Windows, `XShape` on Linux X11, `setIgnoresMouseEvents:` on macOS, degraded whole-window hit on Wayland). Model preview is the native `ModelPreviewControl`, not a web view.
+  - `PetWindow` + `PetGlControl`: Native C# pipeline (`AutoBlink`, `EyeFocus`, `BeatSync`, `LipSync`, `ExpressionStore`, `ExpressionBehavior`). Alpha mask sampling (~10Hz) computes a single bounding rectangle for hit-testing (`WM_NCHITTEST` on Windows, `XShape` on Linux X11, `wl_surface.set_input_region` on Wayland, `setIgnoresMouseEvents:` on macOS). Wayland falls back to the whole window when the surface is unreachable. Model preview is the native `ModelPreviewControl`, not a web view.
 - **IPC Bridge (`BridgeCommandRouter` & `BridgeCommands`)**:
   - Native windows call `BridgeCommands` through `SettingsService`, `NativeChatService`, `ModelService`, and `MemoryService` frozen allowlists.
   - Host dispatches commands through `BridgeCommands.cs`.

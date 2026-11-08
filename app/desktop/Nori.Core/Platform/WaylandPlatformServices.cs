@@ -8,7 +8,7 @@ public sealed class WaylandPlatformServices : IPlatformServices
 	{
 		SupportsGlobalCursor = false,
 		SupportsWindowDrag = true,
-		SupportsHitThrough = false,
+		SupportsHitThrough = true,
 		SupportsTopmost = false,
 		SupportsTray = true,
 	};

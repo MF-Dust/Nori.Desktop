@@ -13,6 +13,7 @@ using Nori.Core.Platform;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Chat;
 using Nori.Desktop.Live2D;
+using Nori.Desktop.Platform;
 using Nori.Desktop.QuickChat;
 using Avalonia.Layout;
 using ChatLayout = Nori.Desktop.QuickChat.QuickChatLayout;
@@ -25,7 +26,7 @@ namespace Nori.Desktop.Windows;
 /// 承载 PetGlControl 并接管伴侣视窗的全部交互：
 /// - 模型外接矩形穿透: 约 10Hz 从 alpha 画面更新连续交互范围; Windows 走 WM_NCHITTEST
 ///   逐点判定, 并用 WS_EX_LAYERED|WS_EX_TRANSPARENT 分层样式实现跨进程穿透, 窗口始终置顶;
-///   macOS/Linux(X11) 设置穿透开关/输入形状; Wayland 无此能力, 降级为整窗可点
+///   macOS/Linux(X11) 设置穿透开关/输入形状; Wayland 用表面输入区，失败时整窗可点
 /// - 左键拖拽移动窗口 + 坐标持久化（阈值 4px）
 /// - 左键点击触发动作与表情判定
 /// - 深海微光配色原生右键菜单（打开主界面 / 随机动作 / 重置位置 / 隐藏 Nori / 退出）
@@ -56,6 +57,10 @@ public sealed class PetWindow : Window
 	private bool? _lastClickThrough;
 	/// <summary>上一次提交的输入形状；显示、隐藏或尺寸变化后清空以强制重设。</summary>
 	private PetHitMask.InputShapeSignature _inputShape = PetHitMask.InputShapeSignature.Unspecified;
+	private int _waylandPosting;
+	private int _keepAboveWatch;
+	private int _keepAboveEpoch;
+	private readonly DispatcherTimer? _waylandConnectionTimer;
 	private readonly (int X, int Y, int Width, int Height)[] _hitRegion = new (int, int, int, int)[1];
 	private static readonly (int X, int Y, int Width, int Height)[] EmptyHitRegions = [];
 
@@ -132,6 +137,12 @@ public sealed class PetWindow : Window
 			_hitShapeTimer = new DispatcherTimer {Interval = TimeSpan.FromMilliseconds(100)};
 			_hitShapeTimer.Tick += OnHitShapeTick;
 		}
+		if (PlatformServices.Current.Session == SessionType.Wayland)
+		{
+			// Avalonia 不把 Wayland 重连暴露成窗口事件。窗口保持可见时，每秒在工作线程看一次连接对象。
+			_waylandConnectionTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+			_waylandConnectionTimer.Tick += (_, _) => ObserveWaylandConnection();
+		}
 
 		Opened += OnOpened;
 		Closed += OnClosed;
@@ -151,6 +162,9 @@ public sealed class PetWindow : Window
 			_glControl.ResumeRenderLoop();
 			if (PlatformServices.Current.Capabilities.SupportsGlobalCursor) _cursorTrackingTimer.Start();
 			_hitShapeTimer?.Start();
+			_keepAboveEpoch = 0;
+			_waylandConnectionTimer?.Start();
+			ApplyTopmost();
 			RefreshInputState();
 		}
 		else
@@ -158,6 +172,7 @@ public sealed class PetWindow : Window
 			_glControl.PauseRenderLoop();
 			_cursorTrackingTimer.Stop();
 			_hitShapeTimer?.Stop();
+			_waylandConnectionTimer?.Stop();
 			_speechOverlay.ClearText();
 			FinishDrag();
 		}
@@ -223,6 +238,7 @@ public sealed class PetWindow : Window
 		_glControl.ResumeRenderLoop();
 		if (PlatformServices.Current.Capabilities.SupportsGlobalCursor) _cursorTrackingTimer.Start();
 		_hitShapeTimer?.Start();
+		_waylandConnectionTimer?.Start();
 		ReapplyInputState();
 	}
 
@@ -232,8 +248,33 @@ public sealed class PetWindow : Window
 	/// Avalonia 的 Topmost 在 Windows/X11 上够用; macOS 需要额外把窗口提到
 	/// NSFloatingWindowLevel, 否则会被全屏应用盖住。
 	/// </summary>
+	private void ObserveWaylandConnection()
+	{
+		if (_closed || !IsVisible || Volatile.Read(ref _keepAboveWatch) != 0) return;
+		Volatile.Write(ref _keepAboveWatch, 1);
+		WaylandSurfacePoster.Result result = WaylandInputRegion.Observe(this, epoch =>
+		{
+			Volatile.Write(ref _keepAboveWatch, 0);
+			if (_closed) return;
+			if (!KdePlasmaTopmost.ShouldRequestAgain(_keepAboveEpoch, epoch))
+			{
+				if (epoch != 0) _keepAboveEpoch = epoch;
+				return;
+			}
+			_keepAboveEpoch = epoch;
+			ApplyTopmost();
+		});
+		if (result != WaylandSurfacePoster.Result.Posted) Volatile.Write(ref _keepAboveWatch, 0);
+	}
+
 	private void ApplyTopmost()
 	{
+		if (PlatformServices.Current.Session == SessionType.Wayland)
+		{
+			KdePlasmaTopmost.TryStart(exception =>
+				_services.Logger.Write(LogSource.Backend, "warn", "Wayland 桌宠置顶失败", exception: exception));
+			return;
+		}
 		if (!PlatformServices.Current.Capabilities.SupportsTopmost) return;
 		Topmost = true;
 		if (OperatingSystem.IsMacOS() && PlatformServices.Current is MacPlatformServices mac)
@@ -257,6 +298,11 @@ public sealed class PetWindow : Window
 	/// </summary>
 	private void OnHitShapeTick(object? sender, EventArgs e)
 	{
+		if (PlatformServices.Current.Session == SessionType.Wayland)
+		{
+			SyncWaylandInputRegion();
+			return;
+		}
 		nint handle = TryGetPlatformHandle()?.Handle ?? 0;
 		if (handle == 0) return;
 
@@ -305,6 +351,60 @@ public sealed class PetWindow : Window
 		}
 	}
 
+	/// <summary>Wayland 没有窗口句柄。空区域表示整窗穿透，嵌入的快捷聊天矩形始终保留。</summary>
+	private void SyncWaylandInputRegion()
+	{
+		if (WaylandInputRegion.Failed)
+		{
+			StopWaylandInputSync();
+			return;
+		}
+		if (Volatile.Read(ref _waylandPosting) != 0) return;
+		Rect model = _glControl.TranslatePoint(default, this) is { } origin
+			? new Rect(origin, _glControl.Bounds.Size)
+			: default;
+		WaylandHitRegions.PixelRect[] regions = WaylandHitRegions.Compose(
+			_runtime.ClickThroughEnabled, _glControl.MaskBounds, model, EmbeddedInteractiveRects());
+		int logicalWidth = Bounds.Width > 0 ? (int)Math.Round(Bounds.Width) : 0;
+		int logicalHeight = Bounds.Height > 0 ? (int)Math.Round(Bounds.Height) : 0;
+		Volatile.Write(ref _waylandPosting, 1);
+		try
+		{
+			WaylandSurfacePoster.Result result = WaylandInputRegion.Apply(this, regions, logicalWidth, logicalHeight, () =>
+			{
+				Volatile.Write(ref _waylandPosting, 0);
+				if (!_closed && WaylandInputRegion.Failed) StopWaylandInputSync();
+			});
+			if (result == WaylandSurfacePoster.Result.Posted) return;
+			Volatile.Write(ref _waylandPosting, 0);
+			if (result == WaylandSurfacePoster.Result.Unsupported || WaylandInputRegion.Failed) StopWaylandInputSync();
+		}
+		catch (Exception exception) when (exception is InvalidOperationException or MissingMethodException or PlatformNotSupportedException)
+		{
+			Volatile.Write(ref _waylandPosting, 0);
+			_hitShapeTimer?.Stop();
+			_services.Logger.Write(LogSource.Backend, "warn", "伴侣窗口穿透同步失败, 已恢复整窗可点", exception: exception);
+		}
+	}
+
+	private void StopWaylandInputSync()
+	{
+		_hitShapeTimer?.Stop();
+		_services.Logger.Write(LogSource.Backend, "warn", "伴侣窗口穿透同步失败, 已恢复整窗可点", exception: WaylandInputRegion.Failure);
+	}
+
+	private Rect[] EmbeddedInteractiveRects()
+	{
+		if (_embeddedQuickChat is not { IsEffectivelyVisible: true } surface) return [];
+		return surface.Body.InteractiveControls
+			.Where(control => control.IsEffectivelyVisible && control.Bounds.Width > 0 && control.Bounds.Height > 0)
+			.Select(control => control.TranslatePoint(default, this) is { } origin
+				&& control.TranslatePoint(new Point(control.Bounds.Width, control.Bounds.Height), this) is { } end
+				? new Rect(origin, end) : default)
+			.Where(rect => rect.Width > 0 && rect.Height > 0)
+			.ToArray();
+	}
+
 	private void OnClosed(object? sender, EventArgs e)
 	{
 		SetDragPressed(false);
@@ -318,6 +418,7 @@ public sealed class PetWindow : Window
 			_hitShapeTimer.Stop();
 			_hitShapeTimer.Tick -= OnHitShapeTick;
 		}
+		_waylandConnectionTimer?.Stop();
 		_runtime.ModelChanged -= OnRuntimeModelChanged;
 		_runtime.LayoutChanged -= OnRuntimeLayoutChanged;
 		if (OperatingSystem.IsWindows()) Win32Properties.RemoveWndProcHookCallback(this, _wndProcHook);

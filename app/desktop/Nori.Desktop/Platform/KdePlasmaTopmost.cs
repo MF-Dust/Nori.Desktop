@@ -46,6 +46,10 @@ internal static class KdePlasmaTopmost
 		("resource_name_changed", "s"),
 	];
 
+	/// <summary>只在连接代际变化后再次申请。0 表示还没有观察到连接，打开窗口时的那次申请不算重试。</summary>
+	internal static bool ShouldRequestAgain(int previousEpoch, int nextEpoch) =>
+		previousEpoch != 0 && nextEpoch != 0 && previousEpoch != nextEpoch;
+
 	/// <summary>广告版本低于 17 不绑定；更高版本也只绑定 17，避免收到未实现的事件。</summary>
 	internal static int SelectBindVersion(uint advertised) => advertised < BoundProtocolVersion ? 0 : BoundProtocolVersion;
 

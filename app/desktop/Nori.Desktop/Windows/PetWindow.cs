@@ -58,6 +58,9 @@ public sealed class PetWindow : Window
 	/// <summary>上一次提交的输入形状；显示、隐藏或尺寸变化后清空以强制重设。</summary>
 	private PetHitMask.InputShapeSignature _inputShape = PetHitMask.InputShapeSignature.Unspecified;
 	private int _waylandPosting;
+	private int _keepAboveWatch;
+	private int _keepAboveEpoch;
+	private readonly DispatcherTimer? _waylandConnectionTimer;
 	private readonly (int X, int Y, int Width, int Height)[] _hitRegion = new (int, int, int, int)[1];
 	private static readonly (int X, int Y, int Width, int Height)[] EmptyHitRegions = [];
 
@@ -134,6 +137,12 @@ public sealed class PetWindow : Window
 			_hitShapeTimer = new DispatcherTimer {Interval = TimeSpan.FromMilliseconds(100)};
 			_hitShapeTimer.Tick += OnHitShapeTick;
 		}
+		if (PlatformServices.Current.Session == SessionType.Wayland)
+		{
+			// Avalonia 不把 Wayland 重连暴露成窗口事件。窗口保持可见时，每秒在工作线程看一次连接对象。
+			_waylandConnectionTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+			_waylandConnectionTimer.Tick += (_, _) => ObserveWaylandConnection();
+		}
 
 		Opened += OnOpened;
 		Closed += OnClosed;
@@ -153,6 +162,8 @@ public sealed class PetWindow : Window
 			_glControl.ResumeRenderLoop();
 			if (PlatformServices.Current.Capabilities.SupportsGlobalCursor) _cursorTrackingTimer.Start();
 			_hitShapeTimer?.Start();
+			_keepAboveEpoch = 0;
+			_waylandConnectionTimer?.Start();
 			ApplyTopmost();
 			RefreshInputState();
 		}
@@ -161,6 +172,7 @@ public sealed class PetWindow : Window
 			_glControl.PauseRenderLoop();
 			_cursorTrackingTimer.Stop();
 			_hitShapeTimer?.Stop();
+			_waylandConnectionTimer?.Stop();
 			_speechOverlay.ClearText();
 			FinishDrag();
 		}
@@ -226,6 +238,7 @@ public sealed class PetWindow : Window
 		_glControl.ResumeRenderLoop();
 		if (PlatformServices.Current.Capabilities.SupportsGlobalCursor) _cursorTrackingTimer.Start();
 		_hitShapeTimer?.Start();
+		_waylandConnectionTimer?.Start();
 		ReapplyInputState();
 	}
 
@@ -235,6 +248,25 @@ public sealed class PetWindow : Window
 	/// Avalonia 的 Topmost 在 Windows/X11 上够用; macOS 需要额外把窗口提到
 	/// NSFloatingWindowLevel, 否则会被全屏应用盖住。
 	/// </summary>
+	private void ObserveWaylandConnection()
+	{
+		if (_closed || !IsVisible || Volatile.Read(ref _keepAboveWatch) != 0) return;
+		Volatile.Write(ref _keepAboveWatch, 1);
+		WaylandSurfacePoster.Result result = WaylandInputRegion.Observe(this, epoch =>
+		{
+			Volatile.Write(ref _keepAboveWatch, 0);
+			if (_closed) return;
+			if (!KdePlasmaTopmost.ShouldRequestAgain(_keepAboveEpoch, epoch))
+			{
+				if (epoch != 0) _keepAboveEpoch = epoch;
+				return;
+			}
+			_keepAboveEpoch = epoch;
+			ApplyTopmost();
+		});
+		if (result != WaylandSurfacePoster.Result.Posted) Volatile.Write(ref _keepAboveWatch, 0);
+	}
+
 	private void ApplyTopmost()
 	{
 		if (PlatformServices.Current.Session == SessionType.Wayland)
@@ -386,6 +418,7 @@ public sealed class PetWindow : Window
 			_hitShapeTimer.Stop();
 			_hitShapeTimer.Tick -= OnHitShapeTick;
 		}
+		_waylandConnectionTimer?.Stop();
 		_runtime.ModelChanged -= OnRuntimeModelChanged;
 		_runtime.LayoutChanged -= OnRuntimeLayoutChanged;
 		if (OperatingSystem.IsWindows()) Win32Properties.RemoveWndProcHookCallback(this, _wndProcHook);

@@ -29,6 +29,17 @@ internal static class WaylandInputRegion
 	internal static bool NeedsApply(int previousConnection, nint previousHandle, int nextConnection, nint nextHandle, bool sameRequest) =>
 		previousConnection == 0 || nextConnection == 0 || previousConnection != nextConnection || previousHandle != nextHandle || !sameRequest;
 
+	/// <summary>在 Wayland 线程读取当前连接代际，再把代号交回 UI。没有连接时代号为 0。</summary>
+	internal static WaylandSurfacePoster.Result Observe(Window window, Action<int> onEpoch)
+	{
+		int epoch = 0;
+		return WaylandSurfacePoster.Post(window, surface =>
+		{
+			object? connection = ConnectionOf(surface);
+			if (!WaylandSurfacePoster.IsMissing(connection)) epoch = ConnectionId(connection!);
+		}, finished: () => Dispatcher.UIThread.Post(() => onEpoch(epoch)));
+	}
+
 	internal static WaylandSurfacePoster.Result Apply(Window window, WaylandHitRegions.PixelRect[] regions, int logicalWidth, int logicalHeight, Action? completed = null)
 	{
 		if (Failed) return WaylandSurfacePoster.Result.Unsupported;

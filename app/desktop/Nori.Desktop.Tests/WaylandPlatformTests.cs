@@ -84,6 +84,15 @@ public class WaylandPlatformTests
 	}
 
 	[Fact]
+	public void 只有连接代际变化才重新申请置顶()
+	{
+		Assert.False(KdePlasmaTopmost.ShouldRequestAgain(0, 1));
+		Assert.False(KdePlasmaTopmost.ShouldRequestAgain(1, 1));
+		Assert.False(KdePlasmaTopmost.ShouldRequestAgain(2, 0));
+		Assert.True(KdePlasmaTopmost.ShouldRequestAgain(1, 2));
+	}
+
+	[Fact]
 	public void 新连接复用旧表面指针时仍要重设输入区()
 	{
 		nint reused = 0x42;

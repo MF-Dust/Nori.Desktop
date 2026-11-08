@@ -17,6 +17,10 @@ public sealed class LinuxHostSignalTests
 		Assert.Equal(7812, used);
 		Assert.Equal(15625, total);
 
+		(used, total) = LinuxProcStats.ParseMeminfo("MemTotal:       16000000 kB\r\nMemAvailable:    8000000 kB\r\n");
+		Assert.Equal(7812, used);
+		Assert.Equal(15625, total);
+
 		(used, total) = LinuxProcStats.ParseMeminfo("MemTotal: 2048 kB\n");
 		Assert.Null(used);
 		Assert.Equal(2, total);
@@ -91,13 +95,19 @@ public sealed class LinuxHostSignalTests
 		Assert.False(LinuxMotionPreference.SelectAnimations(null, false, true));
 		Assert.True(LinuxMotionPreference.SelectAnimations(null, null, true));
 		Assert.Null(LinuxMotionPreference.SelectAnimations(null, null, null));
+		Assert.Equal(LinuxMotionPreference.DesktopFamily.Kde, LinuxMotionPreference.ClassifyDesktop("KDE", "gnome"));
+		Assert.Equal(LinuxMotionPreference.DesktopFamily.Gnome, LinuxMotionPreference.ClassifyDesktop("ubuntu:GNOME", "plasma"));
+		Assert.Equal(LinuxMotionPreference.DesktopFamily.Kde, LinuxMotionPreference.ClassifyDesktop(null, "plasma"));
+		Assert.False(LinuxMotionPreference.SelectAnimations(null, true, false, LinuxMotionPreference.DesktopFamily.Kde));
+		Assert.True(LinuxMotionPreference.SelectAnimations(null, true, false, LinuxMotionPreference.DesktopFamily.Gnome));
+		Assert.False(LinuxMotionPreference.SelectAnimations(null, true, false));
 		Assert.True(LinuxMotionPreference.PrefersReduced(null));
 		Assert.True(LinuxMotionPreference.PrefersReduced(false));
 		Assert.False(LinuxMotionPreference.PrefersReduced(true));
 		Assert.True(LinuxMotionPreference.AllowDecorative(null));
 		Assert.False(LinuxMotionPreference.AllowDecorative(false));
 
-		Assert.Equal("/home/me/.config", LinuxMotionPreference.ResolveConfigHome("relative", "/home/me"));
+		Assert.Equal(Path.Combine("/home/me", ".config"), LinuxMotionPreference.ResolveConfigHome("relative", "/home/me"));
 		Assert.Equal("/xdg", LinuxMotionPreference.ResolveConfigHome("/xdg", "/home/me"));
 
 		Assert.False(LinuxMotionPreference.ParseGtkEnableAnimations("[Settings]\n# note\ngtk-enable-animations=0\n"));
@@ -120,10 +130,10 @@ public sealed class LinuxHostSignalTests
 	}
 
 	[Fact]
-	public void X11屏保空闲若能读到则落在合理范围()
+	public async Task X11屏保空闲若能读到则落在合理范围()
 	{
 		if (!OperatingSystem.IsLinux()) return;
-		double? idle = LinuxIdleTime.GetSeconds();
+		double? idle = await LinuxIdleTime.ProbeAsync();
 		if (idle is null) return;
 		Assert.InRange(idle.Value, 0, TimeSpan.FromDays(30).TotalSeconds);
 	}

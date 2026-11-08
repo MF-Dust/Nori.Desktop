@@ -42,8 +42,9 @@ internal static class LinuxProcStats
 		long? availableKb = null;
 		foreach (string raw in text.Split('\n'))
 		{
-			if (TryReadKb(raw, "MemTotal:", out long total)) totalKb = total;
-			else if (TryReadKb(raw, "MemAvailable:", out long available)) availableKb = available;
+			string line = raw.Trim();
+			if (TryReadKb(line, "MemTotal:", out long total)) totalKb = total;
+			else if (TryReadKb(line, "MemAvailable:", out long available)) availableKb = available;
 		}
 		if (totalKb is not > 0 || totalKb > (long)int.MaxValue * 1024) return (null, null);
 		int totalMb = (int)(totalKb.Value / 1024);
@@ -64,8 +65,9 @@ internal static class LinuxProcStats
 		times = default;
 		foreach (string raw in text.Split('\n'))
 		{
-			if (!raw.StartsWith("cpu ", StringComparison.Ordinal)) continue;
-			string[] fields = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+			string line = raw.Trim();
+			if (!line.StartsWith("cpu ", StringComparison.Ordinal)) continue;
+			string[] fields = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
 			// 至少 user nice system idle。
 			if (fields.Length < 5) return false;
 			ulong[] values = new ulong[fields.Length - 1];
@@ -98,7 +100,7 @@ internal static class LinuxProcStats
 	{
 		kilobytes = 0;
 		if (!line.StartsWith(label, StringComparison.Ordinal)) return false;
-		string[] fields = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+		string[] fields = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
 		if (fields.Length < 3 || !fields[2].Equals("kB", StringComparison.Ordinal)) return false;
 		return long.TryParse(fields[1], out kilobytes) && kilobytes >= 0;
 	}

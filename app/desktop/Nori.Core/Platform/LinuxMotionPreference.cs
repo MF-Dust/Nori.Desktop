@@ -3,8 +3,9 @@ using Tmds.DBus.Protocol;
 namespace Nori.Core.Platform;
 
 /// <summary>
-/// Linux 是否开启动画。门户优先，其次 GTK <c>settings.ini</c>，再其次 KDE 动画时长。
-/// 读不到保持未知：快捷聊天减少动效，装饰动效仍播放。属性本身不发起 IPC。
+/// Linux 是否开启动画。门户优先。门户没有结果时，Plasma 先看 KDE，GNOME 先看 GTK。
+/// 认不出桌面时，任一侧明确关闭即视为关闭。读不到保持未知：快捷聊天减少动效，装饰动效仍播放。
+/// 属性本身不发起 IPC。
 /// </summary>
 internal static class LinuxMotionPreference
 {
@@ -38,8 +39,46 @@ internal static class LinuxMotionPreference
 	/// <summary>只有明确关闭才停装饰动效。</summary>
 	internal static bool AllowDecorative(bool? animationsEnabled) => animationsEnabled != false;
 
-	/// <summary>门户优先，其次 GTK，再其次 KDE。</summary>
-	internal static bool? SelectAnimations(bool? portal, bool? gtk, bool? kde) => portal ?? gtk ?? kde;
+	internal enum DesktopFamily
+	{
+		Unknown,
+		Kde,
+		Gnome,
+	}
+
+	/// <summary><c>XDG_CURRENT_DESKTOP</c> 优先，没有时再看 <c>XDG_SESSION_DESKTOP</c>。值按冒号分段。</summary>
+	internal static DesktopFamily ClassifyDesktop(string? currentDesktop, string? sessionDesktop)
+	{
+		DesktopFamily current = Classify(currentDesktop);
+		return current != DesktopFamily.Unknown ? current : Classify(sessionDesktop);
+	}
+
+	/// <summary>
+	/// 门户优先。Plasma 先采用 KDE 动画时长，GNOME 先采用 GTK。
+	/// 桌面不明时，明确关闭盖过另一侧的开启。
+	/// </summary>
+	internal static bool? SelectAnimations(bool? portal, bool? gtk, bool? kde, DesktopFamily desktop = DesktopFamily.Unknown)
+	{
+		if (portal is not null) return portal;
+		return desktop switch
+		{
+			DesktopFamily.Kde => kde ?? gtk,
+			DesktopFamily.Gnome => gtk ?? kde,
+			_ => kde == false || gtk == false ? false : gtk ?? kde,
+		};
+	}
+
+	private static DesktopFamily Classify(string? value)
+	{
+		if (string.IsNullOrWhiteSpace(value)) return DesktopFamily.Unknown;
+		foreach (string part in value.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+		{
+			if (part.Equals("KDE", StringComparison.OrdinalIgnoreCase) || part.Equals("plasma", StringComparison.OrdinalIgnoreCase))
+				return DesktopFamily.Kde;
+			if (part.Contains("GNOME", StringComparison.OrdinalIgnoreCase)) return DesktopFamily.Gnome;
+		}
+		return DesktopFamily.Unknown;
+	}
 
 	internal static string ResolveConfigHome(string? configured, string home)
 	{
@@ -102,8 +141,10 @@ internal static class LinuxMotionPreference
 				string home = ResolveConfigHome(Environment.GetEnvironmentVariable("XDG_CONFIG_HOME"),
 					Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 				bool? gtk = portal is null ? ReadGtkAnimations(ReadFile, home) : null;
-				bool? kde = portal is null && gtk is null ? ReadKdeAnimations(ReadFile, home) : null;
-				Publish(SelectAnimations(portal, gtk, kde));
+				bool? kde = portal is null ? ReadKdeAnimations(ReadFile, home) : null;
+				DesktopFamily desktop = ClassifyDesktop(Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP"),
+					Environment.GetEnvironmentVariable("XDG_SESSION_DESKTOP"));
+				Publish(SelectAnimations(portal, gtk, kde, desktop));
 			}
 			catch (Exception)
 			{

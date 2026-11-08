@@ -7,15 +7,18 @@ namespace Nori.Core.Platform;
 /// Linux 键鼠空闲秒数。
 ///
 /// X11 用单独的 Display 调 <c>XScreenSaverQueryInfo</c>，不复用点击穿透那条连接。
-/// 原生 Wayland 以及屏保扩展不可用时，再试会话总线：ScreenSaver、Mutter IdleMonitor，最后是 logind。
-/// 失败保持 null，并短时间不再重试，避免每次对话都等待不存在的总线。
+/// 原生 Wayland 以及屏保扩展不可用时，再试会话总线上的 ScreenSaver 与 Mutter IdleMonitor，
+/// 最后用系统总线上的 logind。调用方只读缓存，刷新在后台进行。失败保持 null。
 /// </summary>
 internal static class LinuxIdleTime
 {
 	private const int RetryMilliseconds = 30_000;
 	private static readonly Lock Gate = new();
 	private static Source _source = Source.None;
-	private static long _retryAt;
+	private static long _refreshAfter;
+	private static int _refreshing;
+	private static double? _cached;
+	private static bool _hasCached;
 	private static Task<double?>? _x11Task;
 
 	private enum Source
@@ -27,25 +30,29 @@ internal static class LinuxIdleTime
 		Logind,
 	}
 
+	/// <summary>返回最近一次后台读数。不在调用线程上等待 X11 或 D-Bus。</summary>
 	internal static double? GetSeconds()
 	{
 		if (!OperatingSystem.IsLinux()) return null;
-		lock (Gate)
-		{
-			long now = Environment.TickCount64;
-			if (now < _retryAt) return null;
-			try
-			{
-				double? value = ReadOnce();
-				_retryAt = value is null ? now + RetryMilliseconds : 0;
-				return value;
-			}
-			catch (Exception)
-			{
-				_retryAt = now + RetryMilliseconds;
-				return null;
-			}
-		}
+		EnsureRefresh();
+		lock (Gate) return _hasCached ? _cached : null;
+	}
+
+	/// <summary>
+	/// 直接查询会话总线与系统总线。ScreenSaver 和 Mutter 只用会话总线，logind 只用系统总线。
+	/// 测试传入私有总线地址，不占用用户的真实总线。
+	/// </summary>
+	internal static async Task<double?> QueryBusesAsync(string? sessionAddress, string? systemAddress, CancellationToken cancellationToken = default)
+	{
+		(double? seconds, _) = await QueryBusesAsync(sessionAddress, systemAddress, Source.None, cancellationToken).ConfigureAwait(false);
+		return seconds;
+	}
+
+	/// <summary>立刻读一次，供本机校验。不经过给调用方用的缓存。</summary>
+	internal static async Task<double?> ProbeAsync()
+	{
+		(double? seconds, _) = await ReadFreshAsync().ConfigureAwait(false);
+		return seconds;
 	}
 
 	/// <summary>屏保或 Mutter 返回的毫秒。0 表示正在操作，不是查询失败。</summary>
@@ -76,20 +83,79 @@ internal static class LinuxIdleTime
 		return value.Type == VariantValueType.UInt64 ? value.GetUInt64() : null;
 	}
 
-	private static double? ReadOnce()
+	private static void EnsureRefresh()
 	{
-		bool wayland = PlatformServices.DetectSession() == SessionType.Wayland;
-		if (!wayland && (_source is Source.None or Source.Xss))
+		lock (Gate)
 		{
-			if (TryX11(out double seconds))
-			{
-				_source = Source.Xss;
-				return seconds;
-			}
-			if (_source == Source.Xss) _source = Source.None;
+			if (_refreshing != 0 || Environment.TickCount64 < _refreshAfter) return;
+			_refreshing = 1;
 		}
-		if (_source == Source.Xss || string.IsNullOrWhiteSpace(DBusAddress.Session)) return null;
-		return QueryBus();
+		_ = Task.Run(RefreshAsync);
+	}
+
+	private static async Task RefreshAsync()
+	{
+		double? value = null;
+		Source source = Source.None;
+		try
+		{
+			(value, source) = await ReadFreshAsync().ConfigureAwait(false);
+		}
+		catch (Exception)
+		{
+			value = null;
+			source = Source.None;
+		}
+		lock (Gate)
+		{
+			_hasCached = value is not null;
+			_cached = value;
+			_source = value is null ? Source.None : source;
+			_refreshAfter = Environment.TickCount64 + RetryMilliseconds;
+			_refreshing = 0;
+		}
+	}
+
+	private static async Task<(double? Seconds, Source Source)> ReadFreshAsync()
+	{
+		if (!OperatingSystem.IsLinux()) return (null, Source.None);
+		Source preferred;
+		lock (Gate) preferred = _source;
+		if (PlatformServices.DetectSession() != SessionType.Wayland
+			&& preferred is Source.None or Source.Xss
+			&& TryX11(out double seconds))
+			return (seconds, Source.Xss);
+		return await QueryBusesAsync(DBusAddress.Session, DBusAddress.System,
+			preferred == Source.Xss ? Source.None : preferred, CancellationToken.None).ConfigureAwait(false);
+	}
+
+	private static async Task<(double? Seconds, Source Source)> QueryBusesAsync(string? sessionAddress, string? systemAddress, Source preferred, CancellationToken cancellationToken)
+	{
+		using CancellationTokenSource cancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		cancel.CancelAfter(TimeSpan.FromSeconds(2));
+		foreach (Source source in Order(preferred))
+		{
+			string? address = source == Source.Logind ? systemAddress : sessionAddress;
+			(double? seconds, Source found) = await TryBusAsync(address, source, cancel.Token).ConfigureAwait(false);
+			if (seconds is not null) return (seconds, found);
+		}
+		return (null, Source.None);
+	}
+
+	private static async Task<(double? Seconds, Source Source)> TryBusAsync(string? address, Source source, CancellationToken cancellationToken)
+	{
+		if (string.IsNullOrWhiteSpace(address)) return (null, Source.None);
+		try
+		{
+			using DBusConnection connection = new(address);
+			await connection.ConnectAsync().AsTask().WaitObservedAsync(cancellationToken).ConfigureAwait(false);
+			double? value = await TrySourceAsync(connection, source, cancellationToken).ConfigureAwait(false);
+			return value is null ? (null, Source.None) : (value, source);
+		}
+		catch (Exception exception) when (exception is DBusExceptionBase or OperationCanceledException or TimeoutException or IOException)
+		{
+			return (null, Source.None);
+		}
 	}
 
 	private static bool TryX11(out double seconds)
@@ -130,34 +196,6 @@ internal static class LinuxIdleTime
 		{
 			CloseDisplay(display);
 		}
-	}
-
-	private static double? QueryBus()
-	{
-		try
-		{
-			return QueryBusAsync().GetAwaiter().GetResult();
-		}
-		catch (Exception)
-		{
-			return null;
-		}
-	}
-
-	private static async Task<double?> QueryBusAsync()
-	{
-		using CancellationTokenSource cancel = new(TimeSpan.FromSeconds(2));
-		using DBusConnection connection = new(DBusAddress.Session!);
-		await connection.ConnectAsync().AsTask().WaitObservedAsync(cancel.Token).ConfigureAwait(false);
-		foreach (Source source in Order(_source))
-		{
-			double? value = await TrySourceAsync(connection, source, cancel.Token).ConfigureAwait(false);
-			if (value is null) continue;
-			_source = source;
-			return value;
-		}
-		_source = Source.None;
-		return null;
 	}
 
 	private static Source[] Order(Source cached) => cached switch

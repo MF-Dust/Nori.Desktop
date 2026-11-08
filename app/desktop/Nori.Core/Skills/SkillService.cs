@@ -31,6 +31,14 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 		InvalidFormat,
 	}
 
+	/// <summary>
+	/// 远程技能正文上限是 12.8 万字符。两秒足够慢机器做线性扫描，同时拦住失控匹配。
+	/// frontmatter 依赖懒惰量词停在第一处结束分隔符，不能改成 NonBacktracking。
+	/// </summary>
+	internal static readonly TimeSpan ContentMatchTimeout = TimeSpan.FromSeconds(2);
+
+	internal const string ContentParseTimeoutMessage = "技能文件解析超时";
+
 	private static readonly Regex SensitiveRemoteContentPattern = new(
 		@"(?ix)
 			(?:
@@ -46,7 +54,23 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 		RegexOptions.IgnoreCase
 			| RegexOptions.CultureInvariant
 			| RegexOptions.IgnorePatternWhitespace
-			| RegexOptions.Compiled);
+			| RegexOptions.Compiled,
+		ContentMatchTimeout);
+
+	private static readonly Regex SkillFrontmatterPattern = new(
+		@"^---\r?\n(?<front>.*?)\r?\n---(?:\r?\n|$)(?<body>.*)$",
+		RegexOptions.Singleline | RegexOptions.CultureInvariant | RegexOptions.Compiled,
+		ContentMatchTimeout);
+
+	private static readonly Regex SkillIdPattern = new(
+		@"[^a-z0-9_-]+",
+		RegexOptions.CultureInvariant | RegexOptions.Compiled,
+		ContentMatchTimeout);
+
+	internal static readonly Lock ContentMatchGate = new();
+	internal static Func<string, bool> MatchSensitiveContent = static text => SensitiveRemoteContentPattern.IsMatch(text);
+	internal static Func<string, Match> MatchSkillFrontmatter = static text => SkillFrontmatterPattern.Match(text);
+	internal static Func<string, string> MatchSkillId = static name => SkillIdPattern.Replace(name, "-");
 
 	private const int MaxPendingImports = 8;
 	private static readonly TimeSpan ImportPreviewLifetime = TimeSpan.FromMinutes(10);
@@ -319,7 +343,22 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 		{
 			throw CreateRemoteContentError(RemoteContentFailure.Empty);
 		}
-		if (SensitiveRemoteContentPattern.IsMatch(text))
+		SkillRecord skill = ParseDownloadedSkill(text, url);
+		string remoteId = AvailableRemoteId(skill.Id);
+		SkillRecord remote = SkillLimits.Normalize(skill with
+		{
+			Id = remoteId,
+			Enabled = false,
+			Source = "url",
+			Url = url,
+		});
+		Upsert(remote);
+		return remote;
+	}
+
+	internal SkillRecord ParseDownloadedSkill(string text, string? url)
+	{
+		if (ContainsSensitiveContent(text))
 		{
 			throw CreateRemoteContentError(RemoteContentFailure.Sensitive);
 		}
@@ -331,7 +370,8 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 				? ParseSkillMarkdown(text, url)
 				: ParseSkillJson(text, url);
 		}
-		catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+		catch (Exception exception) when (exception is JsonException
+			|| exception is InvalidOperationException && exception is not SkillContentTimeoutException)
 		{
 			throw CreateRemoteContentError(RemoteContentFailure.InvalidFormat);
 		}
@@ -339,16 +379,7 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 		{
 			throw CreateRemoteContentError(RemoteContentFailure.InvalidFormat);
 		}
-		string remoteId = AvailableRemoteId(skill.Id);
-		SkillRecord remote = SkillLimits.Normalize(skill with
-		{
-			Id = remoteId,
-			Enabled = false,
-			Source = "url",
-			Url = url,
-		});
-		Upsert(remote);
-		return remote;
+		return skill;
 	}
 
 	private static InvalidOperationException CreateRemoteContentError(RemoteContentFailure failure)
@@ -385,7 +416,7 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 	{
 		if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("技能内容不能为空");
 		if (text.Length > SkillLimits.MaxRemoteDocumentCharacters) throw new InvalidOperationException("技能文件超过大小上限");
-		if (SensitiveRemoteContentPattern.IsMatch(text)) throw new InvalidOperationException("技能文件包含敏感信息，已拒绝");
+		if (ContainsSensitiveContent(text)) throw new InvalidOperationException("技能文件包含敏感信息，已拒绝");
 		SkillRecord parsed;
 		try
 		{
@@ -393,7 +424,8 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 				? ParseSkillMarkdown(text, null)
 				: ParseSkillJson(text, null);
 		}
-		catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+		catch (Exception exception) when (exception is JsonException
+			|| exception is InvalidOperationException && exception is not SkillContentTimeoutException)
 		{
 			throw new InvalidOperationException("技能文件格式无效");
 		}
@@ -445,7 +477,9 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 	/// <summary>解析 SKILL.md (YAML Frontmatter + Markdown Instructions)</summary>
 	public static SkillRecord ParseSkillMarkdown(string content, string? url)
 	{
-		Match match = Regex.Match(content.TrimStart(), @"^---\r?\n(?<front>.*?)\r?\n---(?:\r?\n|$)(?<body>.*)$", RegexOptions.Singleline);
+		Func<string, Match> frontmatter;
+		lock (ContentMatchGate) frontmatter = MatchSkillFrontmatter;
+		Match match = GuardContentMatch(() => frontmatter(content.TrimStart()));
 		if (!match.Success)
 		{
 			throw new InvalidOperationException("SKILL.md 格式错误：缺少完整的 YAML frontmatter 头部分隔符 ---");
@@ -479,8 +513,10 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 		}
 
 		string body = match.Groups["body"].Value.Trim();
+		Func<string, string> identify;
+		lock (ContentMatchGate) identify = MatchSkillId;
 		string id = meta.TryGetValue("name", out string? name) && !string.IsNullOrEmpty(name)
-			? Regex.Replace(name.ToLowerInvariant(), @"[^a-z0-9_-]+", "-")
+			? GuardContentMatch(() => identify(name.ToLowerInvariant()))
 			: $"skill_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 
 		meta.TryGetValue("tags", out string? tagsRaw);
@@ -505,6 +541,33 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 			InstalledAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
 			Url = url,
 		};
+	}
+
+	private static bool ContainsSensitiveContent(string text)
+	{
+		Func<string, bool> match;
+		lock (ContentMatchGate) match = MatchSensitiveContent;
+		return GuardContentMatch(() => match(text));
+	}
+
+	/// <summary>把正则超时转成可诊断的解析失败，避免未处理异常，也不把超时当成合法技能。</summary>
+	internal static T GuardContentMatch<T>(Func<T> match)
+	{
+		try
+		{
+			return match();
+		}
+		catch (RegexMatchTimeoutException exception)
+		{
+			throw new SkillContentTimeoutException(exception);
+		}
+	}
+
+	private sealed class SkillContentTimeoutException : InvalidOperationException
+	{
+		public SkillContentTimeoutException(Exception inner) : base(ContentParseTimeoutMessage, inner)
+		{
+		}
 	}
 
 	private static Dictionary<string, string> ParseLegacyFrontmatter(string frontmatter)

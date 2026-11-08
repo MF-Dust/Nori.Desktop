@@ -351,9 +351,10 @@ Task WaitForExitAsync(int processId, CancellationToken cancellationToken = defau
 ```
 
 - 查询只返回进程 ID 与名称，不返回路径、命令行或环境变量。
-- 启动要求已存在的可执行文件绝对路径，`UseShellExecute=false`，参数按独立项传递，不经过命令解释器；Windows 上拒绝 `.bat` / `.cmd`（系统会隐式交给 cmd.exe 解析参数）。可选工作目录也必须是已存在的绝对路径。
-- 宿主不跟踪也不终止插件启动的进程；撤销、取消或应用退出只取消等待。等待已退出的进程立即完成。
-- 插件必须声明 `"apiVersion": "2.4"` 与 `"capabilities": ["applications"]`，并在 README 中说明其启动的外部程序。该能力不做进程沙箱，仍属受信任的进程内扩展。
+- 启动要求已存在的可执行文件绝对路径，`UseShellExecute=false`，参数按独立项传递，不经过命令解释器；Windows 上拒绝 `.bat` / `.cmd`（系统会隐式交给 cmd.exe 解析参数）。可选工作目录也必须是已存在的绝对路径。这些检查不能限制插件启动哪个程序。
+- 用户确认进程内插件风险并启用插件后，声明了 `applications` 且宿主开启该能力时即授予，不会在每次启动前再次确认。模型没有宿主内置的启动工具；插件若把启动包进动作，仍按该动作自己声明的 safe/confirm/dangerous 审批。插件进程内本来就可以自行创建进程，因此本能力不是沙箱。
+- 用户可以不启用，或停用、卸载来撤销后续调用。宿主不跟踪也不终止插件已经启动的进程；撤销、取消或应用退出只取消等待。等待已退出的进程立即完成。
+- 插件必须声明 `"apiVersion": "2.4"` 与 `"capabilities": ["applications"]`，并在 README 中说明其启动的外部程序。
 
 ## 当前未实现
 

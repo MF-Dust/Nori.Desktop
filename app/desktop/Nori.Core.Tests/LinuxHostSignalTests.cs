@@ -118,15 +118,16 @@ public sealed class LinuxHostSignalTests
 		Assert.False(LinuxMotionPreference.ParseKdeAnimationFactor(kde));
 		Assert.Null(LinuxMotionPreference.ParseKdeAnimationFactor("[General]\nAnimationDurationFactor=0\n"));
 
+		const string configHome = "/cfg";
 		Dictionary<string, string> files = new(StringComparer.Ordinal)
 		{
-			["/cfg/gtk-4.0/settings.ini"] = "gtk-enable-animations=maybe\n",
-			["/cfg/gtk-3.0/settings.ini"] = "gtk-enable-animations=false\n",
-			["/cfg/kdeglobals"] = "[KDE]\nAnimationDurationFactor=1.5\n",
+			[Path.Combine(configHome, "gtk-4.0", "settings.ini")] = "gtk-enable-animations=maybe\n",
+			[Path.Combine(configHome, "gtk-3.0", "settings.ini")] = "gtk-enable-animations=false\n",
+			[Path.Combine(configHome, "kdeglobals")] = "[KDE]\nAnimationDurationFactor=1.5\n",
 		};
 		string? Read(string path) => files.TryGetValue(path, out string? text) ? text : null;
-		Assert.False(LinuxMotionPreference.ReadGtkAnimations(Read, "/cfg"));
-		Assert.True(LinuxMotionPreference.ReadKdeAnimations(Read, "/cfg"));
+		Assert.False(LinuxMotionPreference.ReadGtkAnimations(Read, configHome));
+		Assert.True(LinuxMotionPreference.ReadKdeAnimations(Read, configHome));
 	}
 
 	[Fact]

@@ -68,9 +68,9 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 		ContentMatchTimeout);
 
 	internal static readonly Lock ContentMatchGate = new();
-	internal static Func<string, bool> MatchSensitiveContent = static text => SensitiveRemoteContentPattern.IsMatch(text);
-	internal static Func<string, Match> MatchSkillFrontmatter = static text => SkillFrontmatterPattern.Match(text);
-	internal static Func<string, string> MatchSkillId = static name => SkillIdPattern.Replace(name, "-");
+	internal static Func<string, bool> MatchSensitiveContent { get; set; } = static text => SensitiveRemoteContentPattern.IsMatch(text);
+	internal static Func<string, Match> MatchSkillFrontmatter { get; set; } = static text => SkillFrontmatterPattern.Match(text);
+	internal static Func<string, string> MatchSkillId { get; set; } = static name => SkillIdPattern.Replace(name, "-");
 
 	private const int MaxPendingImports = 8;
 	private static readonly TimeSpan ImportPreviewLifetime = TimeSpan.FromMinutes(10);

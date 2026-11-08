@@ -137,11 +137,101 @@ public sealed class MemoryKnowledgeServiceTests : IAsyncLifetime
 		}
 	}
 
-	// 直接投递监听回调，避免依赖操作系统通知次数和时序。
-	private Task NotifyFileChanged()
+	[Fact]
+	public async Task 旧任务结束不会清掉新任务字段且最终索引最新内容()
 	{
+		await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n第一版。");
+		// 闸门结果回到测试线程再断言。StatusChanged 里的异常会被 SetStatus 吞掉。
+		TaskCompletionSource firstEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource<bool> firstGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource secondEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource<bool> secondGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		using ManualResetEventSlim releaseFirst = new();
+		using ManualResetEventSlim releaseSecond = new();
+		int rebuilds = 0;
+		_knowledge.StatusChanged = () =>
+		{
+			if (_knowledge.Status.State != MemoryIndexState.Rebuilding) return;
+			int visit = Interlocked.Increment(ref rebuilds);
+			if (visit == 1)
+			{
+				firstEntered.TrySetResult();
+				firstGate.TrySetResult(releaseFirst.Wait(TimeSpan.FromSeconds(10)));
+				return;
+			}
+			secondEntered.TrySetResult();
+			secondGate.TrySetResult(releaseSecond.Wait(TimeSpan.FromSeconds(10)));
+		};
+		Task first = NotifyFileChanged();
+		try
+		{
+			await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+			await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n第二版。");
+			Task second = NotifyFileChanged();
+			CancellationTokenSource? duringSecond = GetWatcherField<CancellationTokenSource>("_watchDebounce");
+			Assert.NotNull(duringSecond);
+			releaseFirst.Set();
+			Assert.True(await firstGate.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+			await first.WaitAsync(TimeSpan.FromSeconds(10));
+			// 第二个任务停在自己的重建通知里，不靠 750ms 延迟抢在它结束前读字段。
+			await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+			Assert.False(second.IsCompleted);
+			Assert.Same(duringSecond, GetWatcherField<CancellationTokenSource>("_watchDebounce"));
+			Assert.Null(Record.Exception(() => _ = duringSecond.Token));
+			releaseSecond.Set();
+			Assert.True(await secondGate.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+			await second.WaitAsync(TimeSpan.FromSeconds(10));
+			Assert.Contains("第二版", Assert.Single(_knowledge.Search("第二版")).Content);
+			Assert.Empty(_knowledge.Search("第一版"));
+			Assert.Null(GetWatcherField<CancellationTokenSource>("_watchDebounce"));
+		}
+		finally
+		{
+			releaseFirst.Set();
+			releaseSecond.Set();
+			_knowledge.StatusChanged = null;
+		}
+	}
+
+	[Fact]
+	public async Task 连续Changed_Created_Renamed后索引最新内容()
+	{
+		await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n甲。");
+		Task changed = NotifyFileChanged(WatcherChangeTypes.Changed);
+		await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n乙。");
+		Task created = NotifyFileChanged(WatcherChangeTypes.Created);
+		await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n丙。");
+		Task renamed = NotifyFileChanged(WatcherChangeTypes.Renamed);
+		await Task.WhenAll(changed, created, renamed).WaitAsync(TimeSpan.FromSeconds(10));
+		Assert.Contains("丙", Assert.Single(_knowledge.Search("丙")).Content);
+		Assert.Empty(_knowledge.Search("甲"));
+		Assert.Empty(_knowledge.Search("乙"));
+		Assert.Null(GetWatcherField<CancellationTokenSource>("_watchDebounce"));
+	}
+
+	[Fact]
+	public async Task 重复关闭立即返回且锁内取消不死锁()
+	{
+		await File.WriteAllTextAsync(_knowledgePath, "# 自我\n[NORI_KNOWS]\n关闭内容。");
+		Task pending = NotifyFileChanged();
+		await _knowledge.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+		Assert.True(pending.IsCompletedSuccessfully);
+		await _knowledge.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.Null(NotifyFileChanged());
+		_knowledge.StartWatcher();
+		Assert.Null(GetWatcherField<FileSystemWatcher>("_watcher"));
+	}
+
+	// 直接投递监听回调，避免依赖操作系统通知次数和时序。
+	private Task NotifyFileChanged(WatcherChangeTypes change = WatcherChangeTypes.Changed)
+	{
+		string directory = Path.GetDirectoryName(_knowledgePath)!;
+		string name = Path.GetFileName(_knowledgePath);
+		FileSystemEventArgs args = change == WatcherChangeTypes.Renamed
+			? new RenamedEventArgs(change, directory, name, name)
+			: new FileSystemEventArgs(change, directory, name);
 		typeof(KnowledgeService).GetMethod("OnFileChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
-			.Invoke(_knowledge, [this, new FileSystemEventArgs(WatcherChangeTypes.Changed, Path.GetDirectoryName(_knowledgePath)!, Path.GetFileName(_knowledgePath))]);
+			.Invoke(_knowledge, [this, args]);
 		return GetWatcherField<Task>("_watchTask")!;
 	}
 

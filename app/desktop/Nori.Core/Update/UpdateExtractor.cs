@@ -37,7 +37,11 @@ public sealed record SlotCommitResult(
 /// </summary>
 public static class UpdateExtractor
 {
-	private static readonly Regex SlotDirPattern = new("^app-(?<version>[0-9]+\\.[0-9]+\\.[0-9]+)-(?<revision>[0-9]+)$", RegexOptions.CultureInvariant | RegexOptions.Compiled);
+	// 槽名、版本号和单个路径段都很短。一秒只封住失控匹配，这些模式本身不是已证实的回溯漏洞。
+	private static readonly TimeSpan MetadataMatchTimeout = TimeSpan.FromSeconds(1);
+	private static readonly Regex SlotDirPattern = new("^app-(?<version>[0-9]+\\.[0-9]+\\.[0-9]+)-(?<revision>[0-9]+)$", RegexOptions.CultureInvariant | RegexOptions.Compiled, MetadataMatchTimeout);
+	private static readonly Regex NumericVersionPattern = new("^[0-9]+\\.[0-9]+\\.[0-9]+$", RegexOptions.CultureInvariant | RegexOptions.Compiled, MetadataMatchTimeout);
+	private static readonly Regex ReservedWindowsNamePattern = new(@"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled, MetadataMatchTimeout);
 	public const int MaxEntries = 8192;
 	public const long MaxSingleFileBytes = 512L * 1024 * 1024; // 512 MiB
 	public const long MaxTotalBytes = 1024L * 1024 * 1024; // 1024 MiB
@@ -61,7 +65,7 @@ public static class UpdateExtractor
 		ArgumentNullException.ThrowIfNull(expectedManifest);
 		ArgumentException.ThrowIfNullOrWhiteSpace(stagingDirectory);
 
-		if (!SlotDirPattern.IsMatch(currentRunningSlotName))
+		if (!IsMetadataMatch(SlotDirPattern, currentRunningSlotName))
 		{
 			throw new InvalidOperationException($"当前运行槽名格式无效: {currentRunningSlotName}");
 		}
@@ -74,7 +78,7 @@ public static class UpdateExtractor
 		if (!Directory.Exists(fullPackageRoot)) throw new DirectoryNotFoundException($"发布包根目录不存在: {fullPackageRoot}");
 
 		// 检查目标版本不得低于或等于当前运行版本
-		Match curMatch = SlotDirPattern.Match(currentRunningSlotName);
+		Match curMatch = MetadataMatch(SlotDirPattern, currentRunningSlotName);
 		string curNumeric = curMatch.Groups["version"].Value;
 		int curRevision = int.Parse(curMatch.Groups["revision"].Value, System.Globalization.CultureInfo.InvariantCulture);
 
@@ -201,7 +205,7 @@ public static class UpdateExtractor
 		string rid = root.GetProperty("rid").GetString()!;
 		string entrypoint = root.GetProperty("entrypoint").GetString()!;
 
-		if (!Regex.IsMatch(numeric, "^[0-9]+\\.[0-9]+\\.[0-9]+$", RegexOptions.CultureInvariant))
+		if (!IsMetadataMatch(NumericVersionPattern, numeric))
 		{
 			throw new InvalidOperationException($"部署 manifest 中的数字版本无效: {numeric}");
 		}
@@ -245,7 +249,7 @@ public static class UpdateExtractor
 		foreach (string directory in Directory.EnumerateDirectories(searchRoot, "*", SearchOption.AllDirectories))
 		{
 			string dirName = Path.GetFileName(directory);
-			if (SlotDirPattern.IsMatch(dirName) && File.Exists(Path.Combine(directory, "deployment.json")))
+			if (IsMetadataMatch(SlotDirPattern, dirName) && File.Exists(Path.Combine(directory, "deployment.json")))
 			{
 				if (selected is not null) throw new InvalidOperationException("更新包包含多个部署槽");
 				selected = Path.GetFullPath(directory);
@@ -405,6 +409,20 @@ public static class UpdateExtractor
 			throw new InvalidOperationException("TAR 压缩比异常");
 	}
 
+	private static bool IsMetadataMatch(Regex pattern, string input) => MetadataMatch(pattern, input).Success;
+
+	private static Match MetadataMatch(Regex pattern, string input)
+	{
+		try
+		{
+			return pattern.Match(input);
+		}
+		catch (RegexMatchTimeoutException exception)
+		{
+			throw new InvalidOperationException("部署内容校验超时", exception);
+		}
+	}
+
 	private static string SanitizePath(string raw)
 	{
 		if (raw.Length == 0) return string.Empty;
@@ -423,7 +441,7 @@ public static class UpdateExtractor
 			if (part.Length == 0 || part == ".") continue;
 			if (part == "..") throw new InvalidOperationException($"归档条目包含路径穿越: {raw}");
 			if (part.Any(char.IsControl) || part.IndexOfAny([':', '*', '?', '"', '<', '>', '|']) >= 0 || part.EndsWith('.') || part.EndsWith(' ')
-				|| Regex.IsMatch(part, @"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+				|| IsMetadataMatch(ReservedWindowsNamePattern, part))
 				throw new InvalidOperationException($"归档条目包含不安全文件名: {raw}");
 			parts.Add(part);
 		}

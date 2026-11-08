@@ -1,6 +1,8 @@
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Skills;
@@ -253,6 +255,113 @@ public sealed class SkillServiceTests : IDisposable
 				Assert.Contains(tool, skill.Instructions, StringComparison.Ordinal);
 		}
 		Assert.Contains(SkillPresets.All, skill => skill.Name == "代码审查与架构顾问");
+	}
+
+	[Fact]
+	public void 接近上限的正常技能可以解析且保存时仍截断指令()
+	{
+		const string header = """
+			---
+			name: Near Limit
+			description: 接近上限
+			---
+
+			""";
+		string content = header + new string('x', SkillLimits.MaxRemoteDocumentCharacters - header.Length);
+		Assert.Equal(SkillLimits.MaxRemoteDocumentCharacters, content.Length);
+
+		SkillRecord parsed = SkillService.ParseSkillMarkdown(content, null);
+		Assert.Equal("near-limit", parsed.Id);
+		Assert.Equal("Near Limit", parsed.Name);
+		Assert.True(parsed.Instructions.Length > SkillLimits.MaxInstructionsCharacters);
+
+		using HttpClient http = new();
+		SkillService skills = new(_config, http);
+		SkillImportPreview preview = skills.PreviewLocal(content);
+		SkillRecord saved = skills.CommitLocal(preview.Token, enabled: false);
+		Assert.Equal("near-limit", saved.Id);
+		Assert.Equal(SkillLimits.MaxInstructionsCharacters, saved.Instructions.Length);
+		Assert.False(saved.Enabled);
+	}
+
+	[Fact]
+	public void 重复文本和残缺frontmatter被拒绝且不会装成合法技能()
+	{
+		using HttpClient http = new();
+		SkillService skills = new(_config, http);
+		string repeated = string.Concat(Enumerable.Repeat("api_key: ", 4000));
+		InvalidOperationException sensitive = Assert.Throws<InvalidOperationException>(() => skills.PreviewLocal(repeated));
+		Assert.Equal("技能文件包含敏感信息，已拒绝", sensitive.Message);
+		Assert.DoesNotContain(skills.GetInstalled(), skill => skill.Source == "custom" && skill.Name.Contains("api_key", StringComparison.Ordinal));
+
+		string filler = new string('a', SkillLimits.MaxRemoteDocumentCharacters);
+		InvalidOperationException format = Assert.Throws<InvalidOperationException>(() => skills.PreviewLocal(filler));
+		Assert.Equal("技能文件格式无效", format.Message);
+
+		string broken = "---\nname: broken\n" + new string('-', 4000);
+		InvalidOperationException incomplete = Assert.Throws<InvalidOperationException>(() => skills.PreviewLocal(broken));
+		Assert.Equal("技能文件格式无效", incomplete.Message);
+		Assert.NotEqual(SkillService.ContentParseTimeoutMessage, incomplete.Message);
+	}
+
+	[Fact]
+	public void 生产正则有有限超时且导入路径保留解析超时()
+	{
+		foreach (string fieldName in new[] { "SensitiveRemoteContentPattern", "SkillFrontmatterPattern", "SkillIdPattern" })
+		{
+			Regex pattern = (Regex)typeof(SkillService).GetField(fieldName, BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+			Assert.Equal(SkillService.ContentMatchTimeout, pattern.MatchTimeout);
+			Assert.NotEqual(Regex.InfiniteMatchTimeout, pattern.MatchTimeout);
+			Assert.True(pattern.MatchTimeout > TimeSpan.Zero);
+		}
+
+		const string document = """
+			---
+			name: Timeout Probe
+			description: 超时传播
+			---
+			指令正文
+			""";
+		using HttpClient http = new();
+		SkillService skills = new(_config, http);
+		int installed = skills.GetInstalled().Count;
+		RegexMatchTimeoutException timeout = new("input", "pattern", SkillService.ContentMatchTimeout);
+		lock (SkillService.ContentMatchGate)
+		{
+			Func<string, bool> sensitive = SkillService.MatchSensitiveContent;
+			Func<string, string> skillId = SkillService.MatchSkillId;
+			Func<string, Match> frontmatter = SkillService.MatchSkillFrontmatter;
+			try
+			{
+				SkillService.MatchSensitiveContent = _ => throw timeout;
+				AssertTimeoutKept(skills, document);
+				SkillService.MatchSensitiveContent = sensitive;
+
+				SkillService.MatchSkillId = _ => throw timeout;
+				AssertTimeoutKept(skills, document);
+				SkillService.MatchSkillId = skillId;
+
+				SkillService.MatchSkillFrontmatter = _ => throw timeout;
+				AssertTimeoutKept(skills, document);
+			}
+			finally
+			{
+				SkillService.MatchSensitiveContent = sensitive;
+				SkillService.MatchSkillId = skillId;
+				SkillService.MatchSkillFrontmatter = frontmatter;
+			}
+		}
+		Assert.Equal(installed, skills.GetInstalled().Count);
+	}
+
+	private static void AssertTimeoutKept(SkillService skills, string document)
+	{
+		InvalidOperationException local = Assert.ThrowsAny<InvalidOperationException>(() => skills.PreviewLocal(document));
+		Assert.Equal(SkillService.ContentParseTimeoutMessage, local.Message);
+		Assert.NotEqual("技能文件格式无效", local.Message);
+		InvalidOperationException remote = Assert.ThrowsAny<InvalidOperationException>(() => skills.ParseDownloadedSkill(document, "https://8.8.8.8/slow.md"));
+		Assert.Equal(SkillService.ContentParseTimeoutMessage, remote.Message);
+		Assert.NotEqual("远程技能文件格式无效", remote.Message);
 	}
 
 	// 请求由替身处理；公网 IP 字面量避免内容测试依赖真实 DNS，不会连接该地址。

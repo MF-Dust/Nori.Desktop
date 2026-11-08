@@ -52,7 +52,8 @@ internal sealed class PluginApplicationCapability(CancellationToken stoppingToke
 			if (request is null || request.Arguments is null)
 				throw new PluginException(PluginErrorCodes.InvocationFailed, "应用启动请求无效");
 			string fileName = ValidateAbsolutePath(request.FileName);
-			// Windows 即使 UseShellExecute=false 也会经 cmd.exe 执行批处理，ArgumentList 的引号规则挡不住 cmd 元字符。
+			// 这里只拒绝外壳重新解析参数，以及 Windows 把 bat/cmd 交给 cmd.exe。
+			// 已启用插件是受信任的进程内代码，声明 applications 后即可启动任意已存在的程序；停用只撤销后续调用，不结束已启动进程。
 			if (OperatingSystem.IsWindows() && Path.GetExtension(fileName) is { } extension
 				&& (extension.Equals(".bat", StringComparison.OrdinalIgnoreCase) || extension.Equals(".cmd", StringComparison.OrdinalIgnoreCase)))
 				throw new PluginException(PluginErrorCodes.InvocationFailed, "不允许直接启动批处理文件");

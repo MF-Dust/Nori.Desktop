@@ -183,7 +183,7 @@ public sealed class LinuxPlatformServices : IPlatformServices
 	public PlatformCapabilities Capabilities { get; }
 
 	/// <inheritdoc />
-	public bool PrefersReducedMotion => true;
+	public bool PrefersReducedMotion => LinuxMotionPreference.PrefersReducedMotion;
 
 	/// <inheritdoc />
 	public (double X, double Y) GetCursorPosition()

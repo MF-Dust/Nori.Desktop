@@ -117,15 +117,16 @@ public sealed partial class AppRuntime
 		InvalidateSnapshot();
 	}
 
-	/// <summary>安全获取系统空闲秒数 (非 Windows 返回 null)</summary>
+	/// <summary>安全获取系统空闲秒数。平台没有接口或查询失败时返回 null，挂机关怀因此跳过。</summary>
 	private static double? GetIdleSecondsSafe()
 	{
-		if (!OperatingSystem.IsWindows()) return null;
 		try
 		{
-			return SystemIdleTime.GetIdleSeconds();
+			if (OperatingSystem.IsWindows()) return SystemIdleTime.GetIdleSeconds();
+			if (OperatingSystem.IsLinux()) return Nori.Core.Platform.LinuxIdleTime.GetSeconds();
+			return null;
 		}
-		catch
+		catch (Exception)
 		{
 			return null;
 		}

@@ -14,6 +14,7 @@
 	<ItemGroup>
 		<InternalsVisibleTo Include="Nori.Core.Tests" />
 		<InternalsVisibleTo Include="Nori.Desktop.Tests" />
+		<InternalsVisibleTo Include="Nori.Desktop" />
 	</ItemGroup>
 
 	<ItemGroup>

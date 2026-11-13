@@ -28,7 +28,12 @@ internal sealed class PluginApplicationCapability(CancellationToken stoppingToke
 				foreach (Process process in processes)
 				{
 					operation.Token.ThrowIfCancellationRequested();
-					try { applications.Add(new PluginApplicationInfo(process.Id, process.ProcessName)); }
+					try
+					{
+						// 名称读不到或为空时跳过。macOS 上枚举顺序不稳定，空名称进程排在前面会让调用方误以为没有可用应用。
+						string name = process.ProcessName;
+						if (!string.IsNullOrWhiteSpace(name)) applications.Add(new PluginApplicationInfo(process.Id, name));
+					}
 					catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or NotSupportedException)
 					{
 						// 进程可能在枚举后退出，或不允许读取名称；不影响其余快照。

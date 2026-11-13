@@ -12,7 +12,7 @@ public sealed class WaylandPlatformServices : IPlatformServices
 		SupportsTopmost = false,
 		SupportsTray = true,
 	};
-	public bool PrefersReducedMotion => true;
+	public bool PrefersReducedMotion => LinuxMotionPreference.PrefersReducedMotion;
 	public Nori.Core.Notifications.INativeNotifier CreateApprovalNotifier(Func<bool> english, Action<string> activated, Action<Exception> failure, string? iconPath = null) =>
 		new LinuxNativeNotifier(english, activated, failure, iconPath);
 

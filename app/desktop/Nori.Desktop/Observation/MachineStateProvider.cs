@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Nori.Core.Observation;
+using Nori.Core.Platform;
 using Nori.Desktop.Runtime;
 
 namespace Nori.Desktop.Observation;
@@ -12,8 +13,8 @@ namespace Nori.Desktop.Observation;
 ///
 /// 三条原则：
 ///
-/// 1. **不引入依赖。** 内存与 CPU 走 Win32，显卡走 `nvidia-smi` —— 后者随显卡驱动一起装好，
-///    是现成工具而不是新依赖；
+/// 1. **不引入依赖。** Windows 的内存与 CPU 走 Win32，Linux 读 `/proc`；显卡走 `nvidia-smi` ——
+///    后者随显卡驱动一起装好，是现成工具而不是新依赖；
 /// 2. **取不到就是 null。** 不用 0 兜底，调用方要能区分「读数为零」和「读不到」；
 /// 3. **自己控制开销。** 每一轮对话前都会被调用，因此显卡那次进程调用带缓存与超时，
 ///    不能让一次对话卡在子进程上。
@@ -35,6 +36,8 @@ public sealed class MachineStateProvider : IMachineStateProvider
 	private readonly Func<double?> _idleSeconds;
 	private readonly Func<int>? _rgbDeviceCount;
 	private (ulong Idle, ulong Total) _previousCpu;
+	private LinuxProcStats.CpuTimes _previousLinuxCpu;
+	private bool _hasLinuxCpu;
 	private GpuState? _gpu;
 	private DateTimeOffset _gpuReadAt = DateTimeOffset.MinValue;
 	private bool _gpuUnavailable;
@@ -42,7 +45,7 @@ public sealed class MachineStateProvider : IMachineStateProvider
 	/// <summary>创建采集器。</summary>
 	public MachineStateProvider(Func<double?>? idleSeconds = null, Func<int>? rgbDeviceCount = null)
 	{
-		_idleSeconds = idleSeconds ?? (() => OperatingSystem.IsWindows() ? SystemIdleTime.GetIdleSeconds() : null);
+		_idleSeconds = idleSeconds ?? ReadIdleSeconds;
 		_rgbDeviceCount = rgbDeviceCount;
 	}
 
@@ -64,8 +67,23 @@ public sealed class MachineStateProvider : IMachineStateProvider
 		};
 	}
 
+	private static double? ReadIdleSeconds()
+	{
+		try
+		{
+			if (OperatingSystem.IsWindows()) return SystemIdleTime.GetIdleSeconds();
+			if (OperatingSystem.IsLinux()) return LinuxIdleTime.GetSeconds();
+			return null;
+		}
+		catch (Exception)
+		{
+			return null;
+		}
+	}
+
 	private static (int? Used, int? Total) ReadMemory()
 	{
+		if (OperatingSystem.IsLinux()) return LinuxProcStats.ReadMemory();
 		if (!OperatingSystem.IsWindows()) return (null, null);
 
 		MemoryStatusEx status = new() {Length = (uint)Marshal.SizeOf<MemoryStatusEx>()};
@@ -82,6 +100,7 @@ public sealed class MachineStateProvider : IMachineStateProvider
 	/// </summary>
 	private int? ReadCpuPercent()
 	{
+		if (OperatingSystem.IsLinux()) return ReadLinuxCpu();
 		if (!OperatingSystem.IsWindows()) return null;
 		if (!GetSystemTimes(out FileTime idleTime, out FileTime kernelTime, out FileTime userTime)) return null;
 
@@ -97,6 +116,24 @@ public sealed class MachineStateProvider : IMachineStateProvider
 			ulong totalDelta = total - previousTotal;
 			ulong idleDelta = idle - previousIdle;
 			return (int)Math.Clamp(100 - (idleDelta * 100 / totalDelta), 0, 100);
+		}
+	}
+
+	/// <summary>第一次没有基线，返回 null。读失败时不推进基线。</summary>
+	private int? ReadLinuxCpu()
+	{
+		if (!LinuxProcStats.TryReadCpu(out LinuxProcStats.CpuTimes current)) return null;
+		lock (_gate)
+		{
+			if (!_hasLinuxCpu)
+			{
+				_previousLinuxCpu = current;
+				_hasLinuxCpu = true;
+				return null;
+			}
+			int? percent = LinuxProcStats.Percent(_previousLinuxCpu, current);
+			_previousLinuxCpu = current;
+			return percent;
 		}
 	}
 

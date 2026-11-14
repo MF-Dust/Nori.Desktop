@@ -127,6 +127,13 @@ internal sealed class WindowBackdropController : IDisposable
 		Paint(window, active);
 	}
 
+	/// <summary>打开和属性变化回调里应用材质。失败只报告，不打断窗口流程。</summary>
+	private void ApplySurfaceSafely(Window window)
+	{
+		try { ApplySurface(window); }
+		catch (Exception exception) when (exception is not OutOfMemoryException) { _onFailure?.Invoke(exception); }
+	}
+
 	/// <summary>测试可替换 Wayland 模糊结果。返回 null 时走真实协议。</summary>
 	internal static Func<Window, bool, bool?>? WaylandBlurOverride { get; set; }
 
@@ -153,13 +160,13 @@ internal sealed class WindowBackdropController : IDisposable
 
 	private void OnWindowOpened(object? sender, EventArgs args)
 	{
-		if (sender is Window window && _windows.Contains(window)) ApplySurface(window);
+		if (sender is Window window && _windows.Contains(window)) ApplySurfaceSafely(window);
 	}
 
 	private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs args)
 	{
 		if (!_disposed && sender is Window window && args.Property == TopLevel.ActualTransparencyLevelProperty)
-			ApplySurface(window);
+			ApplySurfaceSafely(window);
 	}
 
 	private void OnWindowClosed(object? sender, EventArgs args)

@@ -143,6 +143,35 @@ public partial class BridgeCommandsTests
 	});
 
 	[Fact]
+	public Task 显示过程中的其他失败不会替换仍在的窗口() => WithSettingsUiAsync(() =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		WindowManager manager = new(_ => { });
+		fixture._services.Windows = manager;
+		const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+		typeof(WindowManager).GetField("_services", flags)!.SetValue(manager, fixture._services);
+		MainWindow main = new(WindowDefinition.All.Single(item => item.Label == WindowLabels.Main), fixture._services);
+		RegisterNativeTestWindow(manager, WindowLabels.Main, main);
+		manager.VisibilityChanged += (_, visible) =>
+		{
+			if (visible) throw new InvalidOperationException("可见性订阅失败");
+		};
+		try
+		{
+			InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => manager.Show(WindowLabels.Main));
+			Assert.Equal("可见性订阅失败", exception.Message);
+			Assert.Same(main, manager.Get(WindowLabels.Main));
+			Assert.NotNull(main.PlatformImpl);
+		}
+		finally
+		{
+			main.AllowClose = true;
+			main.Close();
+		}
+		return Task.CompletedTask;
+	});
+
+	[Fact]
 	public Task 关闭时隐藏失败不会销毁窗口() => WithSettingsUiAsync(() =>
 	{
 		HideFailsWindow window = new();

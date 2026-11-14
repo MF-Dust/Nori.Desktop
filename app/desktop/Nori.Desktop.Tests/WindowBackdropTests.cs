@@ -94,6 +94,30 @@ public partial class BridgeCommandsTests
 	});
 
 	[Fact]
+	public Task 打开后材质失败不会打断窗口() => WithSettingsUiAsync(() =>
+	{
+		int failures = 0;
+		using WindowBackdropController controller = new(onFailure: _ => failures++);
+		Window window = new();
+		try
+		{
+			controller.Register(window);
+			WindowBackdropController.WaylandBlurOverride = (_, _) => throw new InvalidOperationException("材质失败");
+			window.Show();
+			window.TransparencyLevelHint = [WindowTransparencyLevel.None];
+			Assert.True(window.IsVisible);
+			Assert.NotNull(window.PlatformImpl);
+			Assert.True(failures > 0);
+		}
+		finally
+		{
+			WindowBackdropController.WaylandBlurOverride = null;
+			window.Close();
+		}
+		return Task.CompletedTask;
+	});
+
+	[Fact]
 	public Task BackgroundBlurUnsupportedBackendPreservesEnabledPreference() => WithSettingsUiAsync(async () =>
 	{
 		_config.Set(ConfigStore.KeyBackgroundBlurEnabled, new ConfigValue.Boolean(true));

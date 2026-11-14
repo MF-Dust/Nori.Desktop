@@ -188,20 +188,23 @@ public sealed class WindowManager : IWindowManager
 		Reveal(label, window);
 	}
 
-	/// <summary>显示仍有平台实现的窗口。实现已释放时换一个新窗口再试一次。</summary>
+	/// <summary>
+	/// 显示仍有平台实现的窗口。
+	/// 只有平台实现已经释放时才换一个新窗口再试一次；窗口还在时保留登记，并把异常交回调用方。
+	/// </summary>
 	private void Reveal(string label, Window window)
 	{
 		try
 		{
 			Present(window);
 		}
-		catch (InvalidOperationException exception)
+		catch (InvalidOperationException exception) when (window.PlatformImpl is null)
 		{
 			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "窗口无法再次显示，将重新创建", exception: exception);
 			ReplaceClosed(label, window);
 			if (Get(label) is not { } replacement || ReferenceEquals(replacement, window)) return;
 			try { Present(replacement); }
-			catch (InvalidOperationException retry)
+			catch (InvalidOperationException retry) when (replacement.PlatformImpl is null)
 			{
 				_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "重新创建后仍无法显示窗口", exception: retry);
 			}

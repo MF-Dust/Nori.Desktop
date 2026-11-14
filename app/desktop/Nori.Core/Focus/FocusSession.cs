@@ -189,7 +189,12 @@ public sealed class FocusSession : IDisposable
 		{
 			ThrowIfDisposed();
 			if (_phase is FocusPhase.Idle) throw new InvalidOperationException("当前没有进行中的专注。");
-			if (_phase is FocusPhase.Running or FocusPhase.Paused)
+			if (_phase == FocusPhase.Running && IsDue())
+			{
+				// 计时器回调还没跑到时，结束不能把已经走完的一场记成提前结束。
+				CompleteUnlocked();
+			}
+			else if (_phase is FocusPhase.Running or FocusPhase.Paused)
 			{
 				double elapsed = Math.Min(CommitElapsed(), _durationSeconds);
 				if (elapsed >= 1)
@@ -198,7 +203,9 @@ public sealed class FocusSession : IDisposable
 					AddRecent((int)Math.Round(elapsed), completed: false);
 				}
 			}
+			bool pendingNotice = _pendingNotice;
 			ClearActive();
+			_pendingNotice = pendingNotice;
 			Save();
 			changed = Changed;
 		}

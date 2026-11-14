@@ -265,6 +265,26 @@ public sealed class FocusSessionTests : IDisposable
 	}
 
 	[Fact]
+	public void 到点后不经计时回调直接结束仍记为完成()
+	{
+		ManualFocusClock clock = new();
+		using FocusSession session = Create(clock);
+		session.Start(1, notifyOnComplete: true, silentReminders: true);
+		clock.Now = 60_000;
+		session.End();
+
+		FocusView view = session.View();
+		Assert.Equal("idle", view.Phase);
+		Assert.Equal(1, view.CompletedCount);
+		Assert.Equal(60, view.TotalSeconds);
+		FocusRecord recent = Assert.Single(view.Recent);
+		Assert.True(recent.Completed);
+		Assert.Equal(60, recent.Seconds);
+		Assert.Equal("这段专注结束了。", session.ConsumeCompletionNotice(false));
+		Assert.Null(session.ConsumeCompletionNotice(false));
+	}
+
+	[Fact]
 	public void 到点后暂停会记成完成并只通知一次()
 	{
 		ManualFocusClock clock = new();

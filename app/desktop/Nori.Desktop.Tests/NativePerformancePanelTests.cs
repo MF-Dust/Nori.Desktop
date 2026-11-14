@@ -49,6 +49,54 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
+	public void 没有模型时可见采样不算正在渲染()
+	{
+		using BridgeCommandsTests fixture = new(safeMode: false);
+		PetRuntime runtime = new(fixture._services, previewMode: true);
+		Assert.Null(runtime.CurrentModel);
+		runtime.RecordRenderMetrics(16.7, 1.2);
+		runtime.SetRenderSurfaceState(true, true, true);
+		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Assert.Equal(Live2DPerformanceAvailability.Unavailable, snapshot.Availability);
+		Assert.Null(snapshot.TargetFps);
+		Assert.Null(snapshot.FrameTimeP95Ms);
+		Assert.Null(snapshot.DroppedFrames);
+		Assert.Null(snapshot.ShadowApplied);
+		Assert.Equal(0, snapshot.FrameSampleCount);
+		SettingsLocalization.SetLanguage("zh-CN");
+		Live2DPerformancePresentation text = Live2DPerformanceText.Present(snapshot);
+		Assert.Equal("没有可展示的实时采样", text.Status);
+		Assert.Contains("当前没有正在渲染的模型", text.CopyText, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void 沿用现有上下文的成功帧结束重建()
+	{
+		using BridgeCommandsTests fixture = new(safeMode: false);
+		PetRuntime runtime = new(fixture._services, previewMode: true);
+		PetGlControl control = new(runtime);
+		runtime.NoteRenderRecovery(PetRenderRecoveryPhase.Rebuilding);
+		control.ObserveSuccessfulFrame();
+		Assert.Equal(PetRenderRecoveryPhase.Rebuilding, runtime.RenderRecovery);
+
+		control.ArmExistingContextResume();
+		runtime.NoteRenderRecovery(PetRenderRecoveryPhase.ContextLost);
+		control.ObserveSuccessfulFrame();
+		Assert.Equal(PetRenderRecoveryPhase.ContextLost, runtime.RenderRecovery);
+
+		runtime.NoteRenderRecovery(PetRenderRecoveryPhase.Rebuilding);
+		control.ArmExistingContextResume();
+		control.ObserveSuccessfulFrame();
+		Assert.Equal(PetRenderRecoveryPhase.Restored, runtime.RenderRecovery);
+		MarkPerformanceModel(runtime, "nori");
+		runtime.RecordRenderMetrics(16, 1);
+		runtime.SetRenderSurfaceState(true, false, true);
+		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Assert.Equal(Live2DPerformanceAvailability.Live, snapshot.Availability);
+		Assert.True(snapshot.SurfaceRestored);
+	}
+
+	[Fact]
 	public void 有帧样本时展示真实读数且丢帧为零仍然有效()
 	{
 		using BridgeCommandsTests fixture = new(safeMode: false);
@@ -347,6 +395,13 @@ public partial class BridgeCommandsTests
 			Assert.Equal(language, viewModel.Language);
 			viewModel.Navigate("debug");
 			await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
+			if (capturePrefix.EndsWith("live", StringComparison.Ordinal) && fixture._services.PetRuntime is { } liveRuntime)
+			{
+				liveRuntime.RecordRenderMetrics(18.5, 0.8);
+				liveRuntime.SetRenderSurfaceState(true, true, true);
+				DebugPage(viewModel).RefreshPerformance();
+				await Dispatcher.UIThread.InvokeAsync(window.UpdateLayout, DispatcherPriority.Background);
+			}
 			Assert.Empty(viewModel.ErrorMessage);
 			NativeSettingsPagePresenter presenter = PerformancePresenter(window);
 			Assert.True(presenter.DebugRefreshActive);

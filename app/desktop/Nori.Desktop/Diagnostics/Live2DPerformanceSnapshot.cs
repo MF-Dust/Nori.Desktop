@@ -159,17 +159,16 @@ public sealed class Live2DPerformanceSnapshot
 		bool safeMessage = string.Equals(error, PetRuntime.SafeModeModelLoadMessage, StringComparison.Ordinal);
 		bool loadFailed = !string.IsNullOrWhiteSpace(error) && !safeMessage;
 		Live2DPerformanceAvailability availability = ResolveAvailability(safeMode, modelLoaded, loadFailed, metrics, utcNow);
-		bool hideFailedWithoutModel = loadFailed && !modelLoaded;
-		bool showFrames = metrics.FrameSampleCount > 0
-			&& !hideFailedWithoutModel
+		bool hideWithoutModel = !modelLoaded;
+		bool showFrames = modelLoaded
+			&& metrics.FrameSampleCount > 0
 			&& availability is not Live2DPerformanceAvailability.SafeMode and not Live2DPerformanceAvailability.ReadFailed;
-		bool showTargets = !hideFailedWithoutModel
-			&& availability is not Live2DPerformanceAvailability.SafeMode and not Live2DPerformanceAvailability.ReadFailed
-			&& (modelLoaded || metrics.FrameSampleCount > 0 || metrics.SurfaceStateKnown);
-		bool showSurface = metrics.SurfaceStateKnown
-			&& !hideFailedWithoutModel
+		bool showTargets = modelLoaded
 			&& availability is not Live2DPerformanceAvailability.SafeMode and not Live2DPerformanceAvailability.ReadFailed;
-		int? dropped = !hideFailedWithoutModel
+		bool showSurface = modelLoaded
+			&& metrics.SurfaceStateKnown
+			&& availability is not Live2DPerformanceAvailability.SafeMode and not Live2DPerformanceAvailability.ReadFailed;
+		int? dropped = modelLoaded
 			&& availability is not Live2DPerformanceAvailability.SafeMode and not Live2DPerformanceAvailability.ReadFailed
 			&& (metrics.FrameSampleCount > 0 || metrics.DroppedFrames > 0)
 			? metrics.DroppedFrames
@@ -197,7 +196,7 @@ public sealed class Live2DPerformanceSnapshot
 			ShadowApplied = showSurface ? metrics.ShadowApplied : null,
 			OffscreenRendering = showSurface ? metrics.OffscreenRendering : null,
 			SampledAtUtc = showFrames ? metrics.LastFrameSampleUtc : null,
-			FrameSampleCount = hideFailedWithoutModel ? 0 : metrics.FrameSampleCount,
+			FrameSampleCount = hideWithoutModel ? 0 : metrics.FrameSampleCount,
 			ProcessWorkingSetBytes = workingSetBytes,
 		};
 	}
@@ -257,10 +256,14 @@ public sealed class Live2DPerformanceSnapshot
 		if (metrics.Recovery is PetRenderRecoveryPhase.ContextLost or PetRenderRecoveryPhase.Rebuilding)
 			return Live2DPerformanceAvailability.Recovering;
 		if (loadFailed) return Live2DPerformanceAvailability.LoadFailed;
-		if (safeMode && !modelLoaded && metrics.FrameSampleCount == 0
-			&& metrics.Recovery is PetRenderRecoveryPhase.None or PetRenderRecoveryPhase.Restored)
-			return Live2DPerformanceAvailability.SafeMode;
-		if (metrics.FrameSampleCount == 0 && !metrics.SurfaceStateKnown && !modelLoaded)
+		if (!modelLoaded)
+		{
+			if (safeMode && metrics.FrameSampleCount == 0
+				&& metrics.Recovery is PetRenderRecoveryPhase.None or PetRenderRecoveryPhase.Restored)
+				return Live2DPerformanceAvailability.SafeMode;
+			return Live2DPerformanceAvailability.Unavailable;
+		}
+		if (metrics.FrameSampleCount == 0 && !metrics.SurfaceStateKnown)
 			return Live2DPerformanceAvailability.Unavailable;
 		if (!metrics.Visible && metrics.SurfaceStateKnown)
 			return Live2DPerformanceAvailability.Paused;

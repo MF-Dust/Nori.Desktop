@@ -19,6 +19,7 @@ public sealed class AnimatedModel : IDisposable
 	public ModelDefinition Definition { get; }
 	public bool RandomMotion { get; set; } = true;
 	public bool IsMotionFinished => _motions.IsFinished;
+	public MotionPriority CurrentMotionPriority => _motions.CurrentPriority;
 	public string? CurrentMotionGroup { get; private set; }
 	public event Action<string>? MotionEvent;
 	public Action? BeforeEffects { get; set; }
@@ -94,7 +95,7 @@ public sealed class AnimatedModel : IDisposable
 		if (playback is not null)
 		{
 			CurrentMotionGroup = key;
-			if (key.Equals(IdleGroup, StringComparison.OrdinalIgnoreCase))
+			if (MotionGroupNames.IsIdle(key))
 			{
 				// 连续待机的交叉淡化可能写到不同眼参数，取消时一并清理。
 				foreach (MotionCurve curve in motion.Clip.Curves)
@@ -112,6 +113,15 @@ public sealed class AnimatedModel : IDisposable
 		return playback;
 	}
 
+	/// <summary>该动作是否全程闭眼。组或下标不存在时返回 false，调用方可以跳过它。</summary>
+	public bool MotionKeepsEyesClosed(string group, int index)
+	{
+		ObjectDisposedException.ThrowIf(_disposed, this);
+		string? key = ResolveGroup(group);
+		if (key is null || (uint)index >= (uint)_groups[key].Length) return false;
+		return _groups[key][index].EyesClosed;
+	}
+
 	public MotionPlayback? StartRandomMotion(string group, MotionPriority priority, Action? finished = null)
 	{
 		ObjectDisposedException.ThrowIf(_disposed, this);
@@ -126,13 +136,24 @@ public sealed class AnimatedModel : IDisposable
 	}
 
 	/// <summary>
-	/// 关闭待机时取消 Idle 并恢复其眼开合基线；在动作更新及宿主表情等效果之前调用。
-	/// 其他参数保留动作快照，非 Idle 动作不受影响。
+	/// 字面 Idle 保持原有停止规则。其他 idle 前缀组只停止自主待机，
+	/// 手动 Force 播放不被关掉待机动画打断。
+	/// </summary>
+	internal static bool ShouldStopIdle(string? group, MotionPriority priority)
+	{
+		if (!MotionGroupNames.IsIdle(group)) return false;
+		if (string.Equals(group, IdleGroup, StringComparison.OrdinalIgnoreCase)) return true;
+		return priority < MotionPriority.Force;
+	}
+
+	/// <summary>
+	/// 关闭待机时取消待机组并恢复其眼开合基线；在动作更新及宿主表情等效果之前调用。
+	/// 其他参数保留动作快照，互动和语音动作不受影响。
 	/// </summary>
 	public void StopIdleMotion()
 	{
 		ObjectDisposedException.ThrowIf(_disposed, this);
-		if (!string.Equals(CurrentMotionGroup, IdleGroup, StringComparison.OrdinalIgnoreCase)) return;
+		if (!ShouldStopIdle(CurrentMotionGroup, CurrentMotionPriority)) return;
 		if (_idleEyeParameters.Count > 0)
 		{
 			// 先载入动作基线，避免把上一帧的表情、呼吸或物理结果保存进去。

@@ -41,7 +41,8 @@ public sealed class QuickChatWindow : Window
 		PropertyChanged += OnWindowPropertyChanged;
 		_inputTimer.Tick += UpdateInputRegion;
 		Opened += (_, _) => EnsureTopmost();
-		Closing += (_, args) => { if (!AllowClose) { args.Cancel = true; Hide(); } };
+		Closing += (_, args) => WindowClose.CancelAndHide(args, AllowClose, Hide,
+			exception => _services.Logger.Write(LogSource.Backend, "warn", "隐藏快捷聊天窗口失败", exception: exception));
 		Closed += (_, _) => DisposeSurface();
 	}
 

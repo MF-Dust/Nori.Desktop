@@ -22,6 +22,8 @@ internal sealed class ChatComposer : TextBox
 		{
 			e.Handled = true; SendRequested?.Invoke(); return;
 		}
+		// 预编辑字符在文本布局里，但不在 Text 里。这时退格会按布局下标调用 StringBuilder.Remove，越界（NORI-30）。
+		if (!e.Handled && e.Key is Key.Back or Key.Delete && !string.IsNullOrEmpty(_presenter?.PreeditText)) return;
 		base.OnKeyDown(e);
 	}
 }

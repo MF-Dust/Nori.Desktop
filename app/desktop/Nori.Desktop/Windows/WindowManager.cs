@@ -75,46 +75,16 @@ public sealed class WindowManager : IWindowManager
 		_services = services;
 		if (services.PluginRuntime is { } runtime)
 			_pluginPages = new PluginPageController(runtime, exception => services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "插件页面资源释放失败", exception: exception));
-		_backdrops = new WindowBackdropController();
+		_backdrops = new WindowBackdropController(onFailure: exception =>
+			services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "窗口背景材质失败", exception: exception));
 		_corners = new WindowCorners();
 		_ = LoadBackdropPreferenceAsync(services);
 		foreach (WindowDefinition definition in WindowDefinition.All)
 		{
-			if (definition.Label == WindowLabels.Main)
-			{
-				// 主界面是原生窗口。
-				MainWindow mainWindow = new(definition, services);
-				_windows[definition.Label] = mainWindow;
-			}
-			else if (definition.Label == WindowLabels.FirstRun)
-			{
-				// 首次运行向导也已经是原生的：和初始化窗口一样不碰音频。
-				_windows[definition.Label] = new FirstRunWindow(definition, services);
-			}
-			else if (definition.Label == WindowLabels.Init)
-			{
-				// 初始化窗口自足，不碰音频也不碰插件。
-				InitWindow initWindow = new(definition, services);
-				_windows[definition.Label] = initWindow;
-			}
-			else if (definition.Label == WindowLabels.Pet)
-			{
-				PetWindow petWindow = new(definition, services);
-				petWindow.Closing += (_, args) =>
-				{
-					if (petWindow.AllowClose) return;
-					args.Cancel = true;
-					petWindow.Hide();
-				};
-				_windows[definition.Label] = petWindow;
-				_petWindow = petWindow;
-			}
-			else
-			{
-				throw new InvalidOperationException($"窗口 {definition.Label} 没有原生实现");
-			}
-
-			TrackVisibility(definition.Label, _windows[definition.Label]);
+			Window window = CreateStartupWindow(definition, services);
+			_windows[definition.Label] = window;
+			if (window is PetWindow pet) _petWindow = pet;
+			TrackVisibility(definition.Label, window);
 		}
 	}
 
@@ -131,7 +101,7 @@ public sealed class WindowManager : IWindowManager
 		_visible[label] = window.IsVisible;
 		window.PropertyChanged += (_, args) =>
 		{
-			if (args.Property != Visual.IsVisibleProperty) return;
+			if (args.Property != Visual.IsVisibleProperty || !ReferenceEquals(Get(label), window)) return;
 			bool visible = window.IsVisible;
 			if (_visible.TryGetValue(label, out bool previous) && previous == visible) return;
 			_visible[label] = visible;
@@ -187,11 +157,11 @@ public sealed class WindowManager : IWindowManager
 	}
 
 	/// <summary>
-	/// 显示窗口；伴侣视窗不抢焦点，其他窗口同时聚焦
+	/// 显示窗口；伴侣视窗不抢焦点，其他窗口同时聚焦。
+	/// 平台窗口已经被销毁时重新创建，避免托盘再打开时抛出无法重新显示的异常。
 	/// </summary>
 	public void Show(string label)
 	{
-		if (label == WindowLabels.Pet) EnsureQuickChat();
 		if (label == WindowLabels.Settings)
 		{
 			ShowSettings();
@@ -212,7 +182,37 @@ public sealed class WindowManager : IWindowManager
 			ShowChat();
 			return;
 		}
+		if (Get(label) is { } closed && closed.PlatformImpl is null) ReplaceClosed(label, closed);
+		if (label == WindowLabels.Pet) EnsureQuickChat();
 		if (Get(label) is not { } window) return;
+		Reveal(label, window);
+	}
+
+	/// <summary>
+	/// 显示仍有平台实现的窗口。
+	/// 只有平台实现已经释放时才换一个新窗口再试一次；窗口还在时保留登记，并把异常交回调用方。
+	/// </summary>
+	private void Reveal(string label, Window window)
+	{
+		try
+		{
+			Present(window);
+		}
+		catch (InvalidOperationException exception) when (window.PlatformImpl is null)
+		{
+			_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "窗口无法再次显示，将重新创建", exception: exception);
+			ReplaceClosed(label, window);
+			if (Get(label) is not { } replacement || ReferenceEquals(replacement, window)) return;
+			try { Present(replacement); }
+			catch (InvalidOperationException retry) when (replacement.PlatformImpl is null)
+			{
+				_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "重新创建后仍无法显示窗口", exception: retry);
+			}
+		}
+	}
+
+	private static void Present(Window window)
+	{
 		if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
 		window.Show();
 		if (window is QuickChatWindow) return;
@@ -224,6 +224,65 @@ public sealed class WindowManager : IWindowManager
 			return;
 		}
 		window.Activate();
+	}
+
+	/// <summary>
+	/// 丢掉已经关闭、但仍留在调度表里的窗口，并按原标签建一个新的。
+	/// 主动 <see cref="Close"/> 会先移出调度表，不会从这里复活。
+	/// </summary>
+	private void ReplaceClosed(string label, Window window)
+	{
+		if (!ReferenceEquals(Get(label), window)) return;
+		_windows.Remove(label);
+		if (window is PetWindow && ReferenceEquals(_petWindow, window))
+		{
+			_petWindow = null;
+			// 旧控制器挂在已关闭的伴侣窗口上；Closed 回调会自己停掉。下次显示再挂新的。
+			_quickChat = null;
+		}
+		_services?.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "窗口平台实现已释放，准备重新创建");
+		WindowDefinition? definition = null;
+		foreach (WindowDefinition item in WindowDefinition.All)
+		{
+			if (item.Label != label) continue;
+			definition = item;
+			break;
+		}
+		if (_services is null || definition is null) return;
+		Window created = CreateStartupWindow(definition, _services);
+		_windows[label] = created;
+		if (created is PetWindow pet) _petWindow = pet;
+		TrackVisibility(label, created);
+	}
+
+	/// <summary>仍可显示的窗口。已经关闭的从调度表移除，调用方再按需新建。</summary>
+	private T? Reusable<T>(string label) where T : Window
+	{
+		if (Get(label) is not T window)
+		{
+			if (Get(label) is { } other) ReplaceClosed(label, other);
+			return null;
+		}
+		if (window.PlatformImpl is not null) return window;
+		ReplaceClosed(label, window);
+		return null;
+	}
+
+	private Window CreateStartupWindow(WindowDefinition definition, AppServices services)
+	{
+		if (definition.Label == WindowLabels.Main) return new MainWindow(definition, services);
+		if (definition.Label == WindowLabels.FirstRun) return new FirstRunWindow(definition, services);
+		if (definition.Label == WindowLabels.Init) return new InitWindow(definition, services);
+		if (definition.Label == WindowLabels.Pet) return CreatePetWindow(definition, services);
+		throw new InvalidOperationException($"窗口 {definition.Label} 没有原生实现");
+	}
+
+	private PetWindow CreatePetWindow(WindowDefinition definition, AppServices services)
+	{
+		PetWindow petWindow = new(definition, services);
+		petWindow.Closing += (_, args) => WindowClose.CancelAndHide(args, petWindow.AllowClose, petWindow.Hide,
+			exception => services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "隐藏伴侣窗口失败", exception: exception));
+		return petWindow;
 	}
 
 	private void EnsureQuickChat()
@@ -252,7 +311,7 @@ public sealed class WindowManager : IWindowManager
 		if (Volatile.Read(ref _shutdownRequested) != 0) return;
 		if (page is not null && page is not ("ai" or "voice" or "proactive" or "skills" or "mcp" or "automation" or "plugins" or "general" or "personalization" or "account" or "updates" or "debug" or "about"))
 			throw new ArgumentException("未知的设置页面", nameof(page));
-		if (Get(WindowLabels.Settings) is not SettingsWindow settings)
+		if (Reusable<SettingsWindow>(WindowLabels.Settings) is not { } settings)
 		{
 			AppServices services = _services ?? throw new InvalidOperationException("应用窗口尚未就绪");
 			settings = new SettingsWindow(services);
@@ -271,7 +330,7 @@ public sealed class WindowManager : IWindowManager
 		Dispatcher.UIThread.VerifyAccess();
 		if (Volatile.Read(ref _shutdownRequested) != 0) return;
 
-		if (_accountWindow is {} existing)
+		if (_accountWindow is { PlatformImpl: not null } existing)
 		{
 			// 已经开着就把它带到前面。再开一扇会有两份表单各自持有一个验证码状态，
 			// 而服务端那边只有一个。
@@ -280,6 +339,7 @@ public sealed class WindowManager : IWindowManager
 			existing.Activate();
 			return;
 		}
+		_accountWindow = null;
 
 		AppServices services = _services ?? throw new InvalidOperationException("应用窗口尚未就绪");
 		Account.SignInCoordinator coordinator = services.SignIn;
@@ -305,13 +365,14 @@ public sealed class WindowManager : IWindowManager
 		Dispatcher.UIThread.VerifyAccess();
 		if (Volatile.Read(ref _shutdownRequested) != 0) return;
 
-		if (_cloudSyncWindow is {} existing)
+		if (_cloudSyncWindow is { PlatformImpl: not null } existing)
 		{
 			if (existing.WindowState == WindowState.Minimized) existing.WindowState = WindowState.Normal;
 			existing.Show();
 			existing.Activate();
 			return;
 		}
+		_cloudSyncWindow = null;
 
 		AppServices services = _services ?? throw new InvalidOperationException("应用窗口尚未就绪");
 		Account.CloudSyncWindow window = new(services.CloudSync, services.ShutdownToken);
@@ -332,7 +393,7 @@ public sealed class WindowManager : IWindowManager
 		if (_memoryCloseTask is {IsCompleted: false}) return;
 		if (page is not null && !IsMemoryPage(page))
 			throw new ArgumentException("未知的记忆页面", nameof(page));
-		if (Get(WindowLabels.Memory) is not MemoryWindow memory)
+		if (Reusable<MemoryWindow>(WindowLabels.Memory) is not { } memory)
 		{
 			AppServices services = _services ?? throw new InvalidOperationException("应用窗口尚未就绪");
 			memory = new MemoryWindow(services);
@@ -362,7 +423,7 @@ public sealed class WindowManager : IWindowManager
 		Dispatcher.UIThread.VerifyAccess();
 		if (Volatile.Read(ref _shutdownRequested) != 0) return;
 		if (_modelsCloseTask is {IsCompleted: false}) return;
-		if (Get(WindowLabels.Models) is not ModelsWindow models)
+		if (Reusable<ModelsWindow>(WindowLabels.Models) is not { } models)
 		{
 			AppServices services = _services ?? throw new InvalidOperationException("应用窗口尚未就绪");
 			models = new ModelsWindow(services);
@@ -380,7 +441,7 @@ public sealed class WindowManager : IWindowManager
 	{
 		Dispatcher.UIThread.VerifyAccess();
 		if (Volatile.Read(ref _shutdownRequested) != 0 || _chatCloseTask is { IsCompleted: false }) return;
-		if (Get(WindowLabels.Chat) is not ChatWindow chat)
+		if (Reusable<ChatWindow>(WindowLabels.Chat) is not { } chat)
 		{
 			AppServices services = _services ?? throw new InvalidOperationException("应用窗口尚未就绪");
 			chat = new ChatWindow(services);

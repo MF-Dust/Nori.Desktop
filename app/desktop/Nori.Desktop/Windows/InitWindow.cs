@@ -77,12 +77,8 @@ public sealed class InitWindow : Window
 				_view.StopAnimation();
 			}
 		};
-		Closing += (_, args) =>
-		{
-			if (AllowClose) return;
-			args.Cancel = true;
-			Hide();
-		};
+		Closing += (_, args) => WindowClose.CancelAndHide(args, AllowClose, Hide,
+			exception => _services.Logger.Write(LogSource.Backend, "warn", "隐藏初始化窗口失败", exception: exception));
 	}
 
 	private bool IsEnglish() => UiLanguage.IsEnglish(_services.Config);

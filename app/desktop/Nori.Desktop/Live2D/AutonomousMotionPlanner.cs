@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Nori.Live2D;
 
 namespace Nori.Desktop.Live2D;
@@ -91,6 +92,23 @@ internal static class AutonomousPacing
 		Lively => 4,
 		_ => 8,
 	};
+}
+
+/// <summary>自主动作冷却用的单调时间。不读会回拨或前跳的系统墙钟。</summary>
+internal static class AutonomousTime
+{
+	public static double Seconds(long timestamp)
+	{
+		if (timestamp <= 0 || Stopwatch.Frequency <= 0) return 0;
+		return timestamp / (double)Stopwatch.Frequency;
+	}
+
+	/// <summary>终点不晚于起点时记 0，校时或计数回绕都不能把已经走过的冷却减掉。</summary>
+	public static double Elapsed(long start, long end)
+	{
+		if (end <= start || Stopwatch.Frequency <= 0) return 0;
+		return (end - start) / (double)Stopwatch.Frequency;
+	}
 }
 
 /// <summary>

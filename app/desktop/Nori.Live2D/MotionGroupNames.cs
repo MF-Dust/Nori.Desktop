@@ -11,31 +11,37 @@ public static class MotionGroupNames
 	/// <summary>名称以 idle 开头，且不是点击、触摸类互动组。</summary>
 	public static bool IsIdle(string? group)
 	{
-		string normalized = Normalize(group);
-		return normalized.StartsWith("idle", StringComparison.Ordinal) && !IsInteraction(normalized);
+		Span<char> buffer = stackalloc char[MaxScanLength];
+		int length = Normalize(group, buffer);
+		return IsIdle(buffer[..length]);
 	}
 
 	/// <summary>说话或语音组。待机和点击组不在这里。</summary>
 	public static bool IsVoice(string? group)
 	{
-		string normalized = Normalize(group);
-		if (normalized.Length == 0 || IsIdle(group) || IsInteraction(normalized)) return false;
+		Span<char> buffer = stackalloc char[MaxScanLength];
+		int length = Normalize(group, buffer);
+		ReadOnlySpan<char> normalized = buffer[..length];
+		if (normalized.IsEmpty || IsIdle(normalized) || IsInteraction(normalized)) return false;
 		return normalized.Contains("talk", StringComparison.Ordinal)
 			|| normalized.Contains("speak", StringComparison.Ordinal)
 			|| normalized.Contains("voice", StringComparison.Ordinal)
-			|| normalized == "chat";
+			|| normalized.SequenceEqual("chat");
 	}
 
-	private static bool IsInteraction(string normalized) =>
+	private static bool IsIdle(ReadOnlySpan<char> normalized) =>
+		normalized.StartsWith("idle", StringComparison.Ordinal) && !IsInteraction(normalized);
+
+	private static bool IsInteraction(ReadOnlySpan<char> normalized) =>
 		normalized.Contains("tap", StringComparison.Ordinal)
 		|| normalized.Contains("touch", StringComparison.Ordinal)
 		|| normalized.Contains("click", StringComparison.Ordinal);
 
-	private static string Normalize(string? value)
+	/// <summary>把组名收成小写字母数字，写进调用方提供的缓冲，不分配新字符串。</summary>
+	private static int Normalize(string? value, Span<char> buffer)
 	{
-		if (string.IsNullOrWhiteSpace(value)) return "";
-		int limit = Math.Min(value.Length, MaxScanLength);
-		Span<char> buffer = stackalloc char[MaxScanLength];
+		if (string.IsNullOrWhiteSpace(value)) return 0;
+		int limit = Math.Min(value.Length, buffer.Length);
 		int length = 0;
 		for (int index = 0; index < limit; index++)
 		{
@@ -43,6 +49,6 @@ public static class MotionGroupNames
 			if (!char.IsLetterOrDigit(character)) continue;
 			buffer[length++] = char.ToLowerInvariant(character);
 		}
-		return new string(buffer[..length]);
+		return length;
 	}
 }

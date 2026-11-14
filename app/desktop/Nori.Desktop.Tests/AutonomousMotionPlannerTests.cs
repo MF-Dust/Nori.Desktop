@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Nori.Desktop.Live2D;
 using Nori.Live2D;
 
@@ -88,6 +89,45 @@ public class AutonomousMotionPlannerTests
 		AutonomousDecision decision = planner.Tick(Frame(now: 10, speaking: true));
 		Assert.Equal(AutonomousActivity.Speaking, decision.Activity);
 		Assert.False(decision.HasMotion);
+	}
+
+	[Fact]
+	public void 时间回拨不会缩短待机冷却()
+	{
+		AutonomousMotionPlanner planner = Ready(next: _ => 0);
+		AutonomousDecision first = planner.Tick(Frame(now: 100));
+		Assert.True(first.HasMotion);
+		planner.Commit(first.Motion!.Value, first.Priority, 100, AutonomousPacing.Normal);
+
+		Assert.False(planner.Tick(Frame(now: 20)).HasMotion);
+		Assert.False(planner.Tick(Frame(now: 107.9)).HasMotion);
+		Assert.True(planner.Tick(Frame(now: 108)).HasMotion);
+	}
+
+	[Fact]
+	public void 单调时间戳回退时经过的秒数为零()
+	{
+		long stamp = Stopwatch.GetTimestamp();
+		Assert.Equal(0, AutonomousTime.Elapsed(stamp, stamp - 1));
+		Assert.Equal(0, AutonomousTime.Seconds(0));
+		Assert.InRange(AutonomousTime.Elapsed(stamp, stamp + Stopwatch.Frequency), 1, 1.001);
+	}
+
+	[Fact]
+	public void 动作组判断重复调用不分配字符串()
+	{
+		Assert.True(MotionGroupNames.IsIdle("IdleLoop"));
+		Assert.True(MotionGroupNames.IsVoice("Speaking"));
+		Assert.False(MotionGroupNames.IsIdle("Idle_TapBody"));
+		long before = GC.GetAllocatedBytesForCurrentThread();
+		for (int index = 0; index < 300; index++)
+		{
+			MotionGroupNames.IsIdle("IdleLoop");
+			MotionGroupNames.IsVoice("Speaking");
+			MotionGroupNames.IsIdle("Idle_TapBody");
+			MotionGroupNames.IsVoice("IdleTalk");
+		}
+		Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
 	}
 
 	[Fact]

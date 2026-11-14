@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -1612,7 +1613,8 @@ public sealed class PetRuntime
 	private void TryStartAutonomousMotion()
 	{
 		if (_currentModel is null) return;
-		double now = (DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
+		// 冷却只跟单调计数走。系统时间被校前或校后时，不能把下一次待机提前，也不能把它拖过整个间隔。
+		double now = AutonomousTime.Seconds(Stopwatch.GetTimestamp());
 		AutonomousDecision decision = _autonomous.Tick(new AutonomousFrame(
 			now,
 			AutonomousBehaviorEnabled,

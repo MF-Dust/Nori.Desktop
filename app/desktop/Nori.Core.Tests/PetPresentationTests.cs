@@ -83,6 +83,40 @@ public sealed class PetPresentationTests
 		Assert.InRange(visible.Width, 140, 160);
 	}
 
+	[Theory]
+	[InlineData("arg-nori", 0.75)]
+	[InlineData("arg-nori", 1)]
+	[InlineData("arg-nori", 1.25)]
+	[InlineData("arg-nori", 1.5)]
+	[InlineData("nori", 0.75)]
+	[InlineData("nori", 1)]
+	[InlineData("nori", 1.25)]
+	[InlineData("nori", 1.5)]
+	[InlineData("unknown", 0.75)]
+	[InlineData("unknown", 1)]
+	[InlineData("unknown", 1.25)]
+	[InlineData("unknown", 1.5)]
+	public void QuickChat缩放后头像裁切区域完整留在视口内(string modelId, double userScale)
+	{
+		PetPresentationProfile profile = PetPresentation.ForModel(modelId);
+		profile = profile with { Layout = PetPresentation.ScaleQuickChatLayout(profile.Layout, userScale) };
+		PetDrawableGeometry geometry = PetDrawableGeometry.FullCanvas;
+		PetNormalizedRect crop = profile.ResolveCrop(geometry);
+		const double CanvasHeight = 1.86;
+		double modelScale = 2 / CanvasHeight;
+		PetViewportProjection projection = PetPresentation.CalculateQuickChatProjection(
+			1, CanvasHeight, modelScale, modelScale, 0, 0, geometry, profile);
+		PetViewportMapping mapping = PetViewportMapping.FromProjection(
+			profile.Layout.ViewportWidth, profile.Layout.ViewportHeight,
+			1, CanvasHeight, projection, modelScale, modelScale);
+
+		Assert.True(mapping.TryMapNormalizedRectToClient(crop.X, crop.Y, crop.Width, crop.Height, out PetViewportRect visible));
+		Assert.True(visible.Left >= -1e-8, $"头像左侧越界：{visible.Left}");
+		Assert.True(visible.Left + visible.Width <= profile.Layout.ViewportWidth + 1e-8);
+		Assert.True(visible.Top >= profile.Layout.VisualTopPadding - 1e-8);
+		Assert.Equal(profile.Layout.VisualBottom, visible.Top + visible.Height, 8);
+	}
+
 	[Fact]
 	public void 未知模型根据Drawable范围顶部对齐而非回退全身()
 	{

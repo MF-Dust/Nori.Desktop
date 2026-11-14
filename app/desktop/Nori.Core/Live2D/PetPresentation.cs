@@ -182,9 +182,12 @@ public static class PetPresentation
 		if (cropModelWidth <= double.Epsilon || cropModelHeight <= double.Epsilon) return default;
 
 		double pixelsPerModelUnit = Math.Min(
-			layout.VisualMaxWidth / cropModelWidth,
+			Math.Min(layout.VisualMaxWidth, layout.ViewportWidth) / cropModelWidth,
 			(layout.VisualBottom - layout.VisualTopPadding) / cropModelHeight);
+		double actualWidth = cropModelWidth * pixelsPerModelUnit;
 		double actualHeight = cropModelHeight * pixelsPerModelUnit;
+		// 放大后仍优先保留左侧锚点，但不能让头像越过视口边缘。
+		double targetCenterX = Math.Clamp(layout.VisualCenterX, actualWidth / 2, layout.ViewportWidth - actualWidth / 2);
 		double targetCenterY = layout.VisualBottom - actualHeight / 2;
 
 		double cropCanvasCenterX = (crop.X + crop.Width / 2 - 0.5) * canvasWidth;
@@ -194,7 +197,7 @@ public static class PetPresentation
 
 		double scaleX = pixelsPerModelUnit * 2 / layout.ViewportWidth;
 		double scaleY = pixelsPerModelUnit * 2 / layout.ViewportHeight;
-		double targetNdcX = layout.VisualCenterX / layout.ViewportWidth * 2 - 1;
+		double targetNdcX = targetCenterX / layout.ViewportWidth * 2 - 1;
 		double targetNdcY = 1 - targetCenterY / layout.ViewportHeight * 2;
 		return new PetViewportProjection(
 			scaleX,

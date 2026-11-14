@@ -638,6 +638,41 @@ public sealed partial class BridgeCommands
 		/// invoke("reminder_list") 查询提醒状态
 		"reminder_list" => RequireMain(source, () => Runtime.Proactive.ListReminders()),
 
+		/// invoke("focus_start", { minutes: 25, notify: true, silentReminders: true }) 开始专注。安全模式拒绝。
+		"focus_start" => RequireMain(source, () =>
+		{
+			Runtime.Focus.Start(ReadFocusMinutes(args), OptionalBool(args, "notify") ?? true, OptionalBool(args, "silentReminders") ?? true);
+			Runtime.PublishFocus();
+			return Runtime.DescribeFocus();
+		}),
+
+		/// invoke("focus_pause") 暂停当前专注。已用时长停在这一刻。
+		"focus_pause" => RequireMain(source, () =>
+		{
+			Runtime.Focus.Pause();
+			Runtime.PublishFocus();
+			return Runtime.DescribeFocus();
+		}),
+
+		/// invoke("focus_resume") 继续已暂停的专注。安全模式拒绝。
+		"focus_resume" => RequireMain(source, () =>
+		{
+			Runtime.Focus.Resume();
+			Runtime.PublishFocus();
+			return Runtime.DescribeFocus();
+		}),
+
+		/// invoke("focus_end") 结束当前专注。未走完的时间计入累计，不发完成通知。
+		"focus_end" => RequireMain(source, () =>
+		{
+			Runtime.Focus.End();
+			Runtime.PublishFocus();
+			return Runtime.DescribeFocus();
+		}),
+
+		/// invoke("focus_view") 读取专注状态。不刷新整页快照，供设置页每秒更新倒计时。
+		"focus_view" => RequireMain(source, () => Runtime.DescribeFocus()),
+
 		// ---- 语音 ----
 		// invoke("tts_test", {text?})
 		"tts_test" => await TtsTestAsync(source, args),

@@ -54,8 +54,16 @@ public sealed partial class AppRuntime
 			}
 		}
 
+		if (!_focusSubscribed)
+		{
+			Focus.Changed += OnFocusChanged;
+			_focusSubscribed = true;
+		}
+		ApplyFocusQuiet();
 		if (!Services.SafeMode)
 		{
+			string? recoveredNotice = Focus.ConsumeCompletionNotice(UiLanguage.IsEnglish(Services.Config));
+			if (recoveredNotice is not null) Dispatcher.UIThread.Post(() => NotifyFocusComplete(recoveredNotice));
 			Proactive.Message += message => Dispatcher.UIThread.Post(() => OnProactiveMessage(message));
 			// 情绪一变就扇出到各条表达通道；协调器自己做节流，这里不判。
 			Emotion.Changed += state => _ = Expression.ApplyAsync(state, Services.ShutdownToken);
@@ -144,19 +152,80 @@ public sealed partial class AppRuntime
 
 	private void OnProactiveMessage(ProactiveMessage message)
 	{
+		bool autoTts = ParseBoolFlag(Services.Config.GetStringOr("tts_auto_play", "")) ?? false;
+		Nori.Core.Focus.FocusPresence presence = Focus.Presence;
+		if (!Nori.Core.Focus.FocusCompanionPolicy.ShouldDeliver(message.Care, presence)) return;
+		bool allowSpeech = Nori.Core.Focus.FocusCompanionPolicy.StillAllowsSpeech(message.AllowSpeech, presence);
+		bool allowAnimation = Nori.Core.Focus.FocusCompanionPolicy.StillAllowsAnimation(message.AllowAnimation, presence);
+		if (Nori.Core.Focus.FocusCompanionPolicy.ShouldAnimateProactive(allowAnimation))
+		{
+			try
+			{
+				Services.PetRuntime?.PlayMotionByName(message.Motion);
+				Services.PetRuntime?.PlayExpression(message.Expression);
+			}
+			catch
+			{
+				/* 伴侣未加载时忽略 */
+			}
+		}
+		if (Nori.Core.Focus.FocusCompanionPolicy.ShouldShowProactiveText(allowSpeech))
+		{
+			try { Services.Windows.ShowPetSpeech(message.Text); }
+			catch
+			{
+				/* 伴侣窗口还没建好时忽略 */
+			}
+		}
+		if (Nori.Core.Focus.FocusCompanionPolicy.ShouldSpeakProactive(allowSpeech, autoTts))
+			_ = SpeakSafelyAsync(message.Text);
+	}
+
+	private void OnFocusChanged()
+	{
+		if (Volatile.Read(ref _disposed) != 0) return;
+		ApplyFocusQuiet();
+		InvalidateSnapshot();
+		if (Services.SafeMode) return;
+		string? notice = Focus.ConsumeCompletionNotice(UiLanguage.IsEnglish(Services.Config));
+		if (notice is null) return;
+		Dispatcher.UIThread.Post(() =>
+		{
+			if (Volatile.Read(ref _disposed) == 0) NotifyFocusComplete(notice);
+		});
+	}
+
+	private void ApplyFocusQuiet()
+	{
 		try
 		{
-			Services.PetRuntime?.PlayMotionByName(message.Motion);
-			Services.PetRuntime?.PlayExpression(message.Expression);
+			if (Services.PetRuntime is { } pet) pet.FocusQuiet = Focus.Presence.Active;
 		}
 		catch
 		{
 			/* 伴侣未加载时忽略 */
 		}
-		bool autoTts = ParseBoolFlag(Services.Config.GetStringOr("tts_auto_play", "")) ?? false;
-		if (autoTts)
+	}
+
+	/// <summary>把专注状态推进快照，并按当前阶段压低或恢复氛围动作。</summary>
+	internal void PublishFocus()
+	{
+		ApplyFocusQuiet();
+		InvalidateSnapshot();
+	}
+
+	/// <summary>当前专注的只读描述，供快照和设置页倒计时共用。</summary>
+	internal Nori.Core.Focus.FocusDisplay DescribeFocus() =>
+		Nori.Core.Focus.FocusText.Describe(Focus.View(), UiLanguage.IsEnglish(Services.Config));
+
+	private void NotifyFocusComplete(string text)
+	{
+		try { Services.Windows.ShowPetSpeech(text); }
+		catch
 		{
-			_ = SpeakSafelyAsync(message.Text);
+			/* 伴侣窗口还没建好时忽略 */
 		}
+		bool autoTts = ParseBoolFlag(Services.Config.GetStringOr("tts_auto_play", "")) ?? false;
+		if (autoTts) _ = SpeakSafelyAsync(text);
 	}
 }

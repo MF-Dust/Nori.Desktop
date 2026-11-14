@@ -125,30 +125,22 @@ internal sealed class AutonomousMotionPlanner
 	/// </summary>
 	public static bool TryClassify(string? group, out AutonomousMotionRole role)
 	{
-		role = AutonomousMotionRole.Idle;
-		string normalized = Normalize(group);
-		if (normalized.Length == 0) return false;
-		if (normalized.StartsWith("idle", StringComparison.Ordinal))
+		if (MotionGroupNames.IsIdle(group))
 		{
 			role = AutonomousMotionRole.Idle;
 			return true;
 		}
-		if (normalized.Contains("tap", StringComparison.Ordinal)
-			|| normalized.Contains("touch", StringComparison.Ordinal)
-			|| normalized.Contains("click", StringComparison.Ordinal))
-		{
-			return false;
-		}
-		if (normalized.Contains("talk", StringComparison.Ordinal)
-			|| normalized.Contains("speak", StringComparison.Ordinal)
-			|| normalized.Contains("voice", StringComparison.Ordinal)
-			|| normalized == "chat")
+		if (MotionGroupNames.IsVoice(group))
 		{
 			role = AutonomousMotionRole.Voice;
 			return true;
 		}
+		role = AutonomousMotionRole.Idle;
 		return false;
 	}
+
+	/// <summary>当前组是否按待机处理。字面 Idle 以及 IdleLoop 这类前缀都算。</summary>
+	public static bool IsIdleGroup(string? group) => MotionGroupNames.IsIdle(group);
 
 	/// <summary>换模型或重新装载时替换候选，并清掉上一份模型的冷却和最近播放。</summary>
 	public void Bind(long generation, IReadOnlyList<AutonomousMotionSlot> idle, IReadOnlyList<AutonomousMotionSlot> voice)
@@ -244,6 +236,9 @@ internal sealed class AutonomousMotionPlanner
 		if (chosen >= 0) return chosen;
 		if (avoidRecent)
 		{
+			// 先放开较旧的一条。最近一次仍排除，除非已经没有别的候选。
+			chosen = Select(pool, random, filterClosed, true, recentA, -1);
+			if (chosen >= 0) return chosen;
 			chosen = Select(pool, random, filterClosed, false, -1, -1);
 			if (chosen >= 0) return chosen;
 		}
@@ -301,18 +296,5 @@ internal sealed class AutonomousMotionPlanner
 		if (index < 0) return;
 		older = newer;
 		newer = index;
-	}
-
-	private static string Normalize(string? value)
-	{
-		if (string.IsNullOrWhiteSpace(value)) return "";
-		Span<char> buffer = stackalloc char[value.Length];
-		int length = 0;
-		foreach (char character in value)
-		{
-			if (!char.IsLetterOrDigit(character)) continue;
-			buffer[length++] = char.ToLowerInvariant(character);
-		}
-		return new string(buffer[..length]);
 	}
 }

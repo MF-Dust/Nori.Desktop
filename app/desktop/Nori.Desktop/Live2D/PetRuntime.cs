@@ -966,8 +966,10 @@ public sealed class PetRuntime
 
 		// "空闲" = 没有动作在播, 或播的是待机组。待机动作由帧内规划在动作结束后开始,
 		// 所以眨眼和空闲眼神在待机期间仍然工作; 互动和语音动作不会被当成空闲。
+		string? motionGroup = model.Animation.CurrentMotionGroup;
 		bool isIdleMotion = model.Animation.IsMotionFinished
-			|| string.Equals(model.Animation.CurrentMotionGroup, "Idle", StringComparison.OrdinalIgnoreCase);
+			|| string.Equals(motionGroup, "Idle", StringComparison.OrdinalIgnoreCase)
+			|| AutonomousMotionPlanner.IsIdleGroup(motionGroup);
 
 		var ctx = _behaviorContext;
 		ctx.ResetFrame();

@@ -21,6 +21,7 @@ public class AutonomousMotionPlannerTests
 	[Theory]
 	[InlineData("Idle", "idle")]
 	[InlineData("IDLE_02", "idle")]
+	[InlineData("IdleLoop", "idle")]
 	[InlineData("Talk", "voice")]
 	[InlineData("Speaking", "voice")]
 	[InlineData("VoiceA", "voice")]
@@ -34,6 +35,8 @@ public class AutonomousMotionPlannerTests
 	[InlineData("TapBody")]
 	[InlineData("Touch")]
 	[InlineData("Click")]
+	[InlineData("Idle_TapBody")]
+	[InlineData("IdleTap")]
 	[InlineData("Dance")]
 	[InlineData("")]
 	[InlineData(null)]
@@ -136,6 +139,25 @@ public class AutonomousMotionPlannerTests
 	}
 
 	[Fact]
+	public void 两条待机时回退仍避开最近一条()
+	{
+		int[] draws = [0, 0, 1];
+		int cursor = 0;
+		AutonomousMotionPlanner planner = new();
+		planner.UseRandom(_ => draws[cursor++]);
+		planner.Bind(1, [new AutonomousMotionSlot("Idle", 0, false), new AutonomousMotionSlot("Idle", 1, false)], []);
+
+		AutonomousDecision first = planner.Tick(Frame(now: 10));
+		Assert.Equal(0, first.Motion?.Index);
+		planner.Commit(first.Motion!.Value, first.Priority, 10, AutonomousPacing.Normal);
+		AutonomousDecision second = planner.Tick(Frame(now: 20));
+		Assert.Equal(1, second.Motion?.Index);
+		planner.Commit(second.Motion!.Value, second.Priority, 20, AutonomousPacing.Normal);
+
+		Assert.Equal(0, planner.Tick(Frame(now: 30)).Motion?.Index);
+	}
+
+	[Fact]
 	public void 关闭随机时固定播放第一个睁眼待机()
 	{
 		AutonomousMotionPlanner planner = Ready();
@@ -227,6 +249,14 @@ public class AutonomousMotionPlannerTests
 	public void 未识别的频率回退到自然(string raw, string expected)
 	{
 		Assert.Equal(expected, AutonomousPacing.Normalize(raw));
+	}
+
+	[Fact]
+	public void 超长组名只按有限前缀归类且不抛出()
+	{
+		Assert.True(AutonomousMotionPlanner.TryClassify("Idle" + new string('A', 4000), out AutonomousMotionRole idle));
+		Assert.Equal(AutonomousMotionRole.Idle, idle);
+		Assert.False(AutonomousMotionPlanner.TryClassify(new string('x', 4000), out _));
 	}
 
 	[Fact]

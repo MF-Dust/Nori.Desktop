@@ -95,7 +95,7 @@ public sealed class AnimatedModel : IDisposable
 		if (playback is not null)
 		{
 			CurrentMotionGroup = key;
-			if (key.Equals(IdleGroup, StringComparison.OrdinalIgnoreCase))
+			if (MotionGroupNames.IsIdle(key))
 			{
 				// 连续待机的交叉淡化可能写到不同眼参数，取消时一并清理。
 				foreach (MotionCurve curve in motion.Clip.Curves)
@@ -136,13 +136,13 @@ public sealed class AnimatedModel : IDisposable
 	}
 
 	/// <summary>
-	/// 关闭待机时取消 Idle 并恢复其眼开合基线；在动作更新及宿主表情等效果之前调用。
-	/// 其他参数保留动作快照，非 Idle 动作不受影响。
+	/// 关闭待机时取消待机组并恢复其眼开合基线；在动作更新及宿主表情等效果之前调用。
+	/// 其他参数保留动作快照，互动和语音动作不受影响。
 	/// </summary>
 	public void StopIdleMotion()
 	{
 		ObjectDisposedException.ThrowIf(_disposed, this);
-		if (!string.Equals(CurrentMotionGroup, IdleGroup, StringComparison.OrdinalIgnoreCase)) return;
+		if (!MotionGroupNames.IsIdle(CurrentMotionGroup)) return;
 		if (_idleEyeParameters.Count > 0)
 		{
 			// 先载入动作基线，避免把上一帧的表情、呼吸或物理结果保存进去。

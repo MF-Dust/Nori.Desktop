@@ -15,6 +15,9 @@ public partial class BridgeCommandsTests
 	public Task 自主行为设置在中英文和两种窗口尺寸下可见() => WithSettingsUiAsync(async () =>
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true);
+		fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text("zh-CN"));
+		fixture._runtime.InvalidateSnapshot();
+		SettingsLocalization.SetLanguage("zh-CN");
 		ModelsWindow models = new(fixture._services);
 		try
 		{
@@ -22,14 +25,20 @@ public partial class BridgeCommandsTests
 			foreach (string language in new[] { "zh-CN", "en-US" })
 			{
 				bool english = language == "en-US";
+				string behavior = english ? "Autonomous behavior" : "自主行为";
+				string frequencyLabel = english ? "Behavior frequency" : "行为频率";
+				string title = english ? "Nori · Models" : "Nori · 模型";
 				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text(language));
 				fixture._runtime.InvalidateSnapshot();
 				SettingsLocalization.SetLanguage(language);
+				await models.RefreshAsync();
+				await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+				await models.RefreshAsync();
+				await WaitUntilAsync(() => models.Title == title);
 				foreach ((double width, double height) in new[] { (720d, 480d), (1920d, 1080d) })
 				{
 					models.Width = width;
 					models.Height = height;
-					await models.RefreshAsync();
 					models.Navigate("behaviors");
 					models.UpdateLayout();
 					await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
@@ -44,12 +53,8 @@ public partial class BridgeCommandsTests
 					Assert.True(master.IsChecked);
 					Assert.True(random.IsChecked);
 					Assert.Equal(1, frequency.SelectedIndex);
-					Assert.Contains(
-						models.PageContent.GetLogicalDescendants().OfType<TextBlock>(),
-						text => text.Text == (english ? "Autonomous behavior" : "自主行为"));
-					Assert.Contains(
-						models.PageContent.GetLogicalDescendants().OfType<TextBlock>(),
-						text => text.Text == (english ? "Behavior frequency" : "行为频率"));
+					Assert.Contains(models.PageContent.GetLogicalDescendants().OfType<TextBlock>(), text => text.Text == behavior);
+					Assert.Contains(models.PageContent.GetLogicalDescendants().OfType<TextBlock>(), text => text.Text == frequencyLabel);
 
 					frequency.BringIntoView();
 					await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);

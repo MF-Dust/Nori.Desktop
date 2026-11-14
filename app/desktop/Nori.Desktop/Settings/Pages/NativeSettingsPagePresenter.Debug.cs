@@ -24,9 +24,46 @@ public sealed partial class NativeSettingsPagePresenter
 	private ComboBox? _debugFilter;
 	private Button? _debugCopyLogs;
 	private Button? _debugCopyDiagnostic;
+	private StackPanel? _performanceRows;
+	private TextBlock? _performanceStatus;
+	private TextBlock? _performanceDetail;
+	private Button? _performanceCopy;
+	private readonly Dictionary<string, TextBlock> _performanceRowText = new(StringComparer.Ordinal);
+
+	/// <summary>调试页自动刷新间隔。性能读取与原有日志刷新共用这一次低频计时。</summary>
+	internal static readonly TimeSpan DebugRefreshInterval = TimeSpan.FromSeconds(2);
+
+	/// <summary>调试页计时器是否还在跑。</summary>
+	internal bool DebugRefreshActive => _debugRefreshTimer is not null;
+
+	/// <summary>执行一次与计时器相同的刷新。不可见时不读取性能。</summary>
+	internal void RunDebugRefreshTickForTests() => OnDebugRefreshTick(CancellationToken.None);
 
 	private void BuildDebug(StackPanel root, DebugSettingsViewModel viewModel)
 	{
+		StackPanel performance = CardBody(NativeSettingsResources.Get("perf.title"), NativeSettingsResources.Get("perf.subtitle"));
+		performance.Name = "Live2DPerformanceCard";
+		_performanceCopy = Button(NativeSettingsResources.Get("common.copy"), () => _ = RunAsync(() => viewModel.CopyPerformanceAsync()));
+		performance.Children.Add(ActionGroup(_performanceCopy));
+		_performanceStatus = new TextBlock
+		{
+			Name = "Live2DPerformanceStatus",
+			FontWeight = FontWeight.SemiBold,
+			TextWrapping = TextWrapping.Wrap,
+		};
+		_performanceDetail = new TextBlock
+		{
+			Name = "Live2DPerformanceDetail",
+			Foreground = Brush("SettingsSecondaryBrush"),
+			TextWrapping = TextWrapping.Wrap,
+		};
+		performance.Children.Add(_performanceStatus);
+		performance.Children.Add(_performanceDetail);
+		_performanceRowText.Clear();
+		_performanceRows = new StackPanel {Spacing = 4, Name = "Live2DPerformanceRows"};
+		performance.Children.Add(_performanceRows);
+		root.Children.Add(WrapCard(performance));
+
 		StackPanel diagnostic = CardBody(NativeSettingsResources.Get("debug.diagnostic"), null);
 		_debugCopyDiagnostic = Button(NativeSettingsResources.Get("common.copy"), () => _ = RunAsync(() => viewModel.CopyDiagnosticAsync()));
 		WrapPanel diagnosticActions = ActionGroup(
@@ -103,8 +140,8 @@ public sealed partial class NativeSettingsPagePresenter
 		logs.Children.Add(new Grid {Children = {logItems, _debugEmpty}});
 		root.Children.Add(WrapCard(logs));
 
-		UpdateDebug(viewModel);
 		StartDebugRefresh();
+		UpdateDebug(viewModel);
 	}
 
 
@@ -122,16 +159,18 @@ public sealed partial class NativeSettingsPagePresenter
 			_debugFilter.SelectedIndex = Array.IndexOf(DebugLevels, viewModel.LevelFilter);
 		if (_debugMinimum is not null) _debugMinimum.SelectedItem = viewModel.MinimumLevel;
 		if (_debugHealth is not null) _debugHealth.Text = viewModel.HealthText;
+		UpdatePerformance(viewModel);
 
 		if (_debugDiagnostic is not null)
 		{
-			foreach (string key in _debugDiagnosticRows.Keys.Except(viewModel.Diagnostic.Keys).ToArray())
+			foreach (string key in _debugDiagnosticRows.Keys.Where(key => key.StartsWith("live2d_", StringComparison.Ordinal) || !viewModel.Diagnostic.ContainsKey(key)).ToArray())
 			{
 				_debugDiagnostic.Children.Remove(_debugDiagnosticRows[key]);
 				_debugDiagnosticRows.Remove(key);
 			}
 			foreach ((string key, string value) in viewModel.Diagnostic)
 			{
+				if (key.StartsWith("live2d_", StringComparison.Ordinal)) continue;
 				if (!_debugDiagnosticRows.TryGetValue(key, out TextBlock? row))
 				{
 					row = new TextBlock {Foreground = Brush("SettingsSecondaryBrush"), TextWrapping = TextWrapping.Wrap};
@@ -160,20 +199,75 @@ public sealed partial class NativeSettingsPagePresenter
 		if (atBottom && logs.Count > 0) _debugLogItems.ScrollIntoView(logs[^1]);
 	}
 
+	private void UpdatePerformance(DebugSettingsViewModel viewModel)
+	{
+		Live2DPerformancePresentation presentation = Live2DPerformanceText.Present(viewModel.Performance);
+		if (_performanceStatus is not null)
+		{
+			_performanceStatus.Text = presentation.Status;
+			_performanceStatus.Foreground = Brush(presentation.BrushKey);
+		}
+		if (_performanceDetail is not null)
+		{
+			_performanceDetail.Text = presentation.Detail ?? "";
+			_performanceDetail.IsVisible = !string.IsNullOrWhiteSpace(presentation.Detail);
+		}
+		if (_performanceCopy is not null) _performanceCopy.IsEnabled = presentation.CopyText.Length > 0;
+		if (_performanceRows is null) return;
+		HashSet<string> keys = presentation.Rows.Select(row => row.Key).ToHashSet(StringComparer.Ordinal);
+		foreach (string key in _performanceRowText.Keys.Where(key => !keys.Contains(key)).ToArray())
+		{
+			_performanceRows.Children.Remove(_performanceRowText[key]);
+			_performanceRowText.Remove(key);
+		}
+		for (int index = 0; index < presentation.Rows.Count; index++)
+		{
+			Live2DPerformanceRow row = presentation.Rows[index];
+			if (!_performanceRowText.TryGetValue(row.Key, out TextBlock? text))
+			{
+				text = new TextBlock
+				{
+					Name = "PerfRow_" + row.Key,
+					Foreground = Brush("SettingsSecondaryBrush"),
+					TextWrapping = TextWrapping.Wrap,
+				};
+				_performanceRowText.Add(row.Key, text);
+				_performanceRows.Children.Add(text);
+			}
+			text.Text = $"{row.Label}: {row.Value}";
+			if (_performanceRows.Children.IndexOf(text) != index)
+			{
+				_performanceRows.Children.Remove(text);
+				_performanceRows.Children.Insert(index, text);
+			}
+		}
+	}
+
+	private bool IsDebugPanelVisible()
+	{
+		if (_disposed || !IsVisible) return false;
+		if (TopLevel.GetTopLevel(this) is not Window {IsVisible: true}) return false;
+		return !this.GetSelfAndVisualAncestors().Any(visual => !visual.IsVisible);
+	}
+
 	private void StartDebugRefresh()
 	{
-		if (_disposed || _viewModel is not DebugSettingsViewModel || TopLevel.GetTopLevel(this) is null || _debugRefreshTimer is not null) return;
+		if (_disposed || _viewModel is not DebugSettingsViewModel || TopLevel.GetTopLevel(this) is null) return;
+		if (IsDebugPanelVisible() && _viewModel is DebugSettingsViewModel visible) visible.RefreshPerformance();
+		if (_debugRefreshTimer is not null) return;
 		_debugRefreshLifetime = new CancellationTokenSource();
 		CancellationToken token = _debugRefreshLifetime.Token;
-		_debugRefreshTimer = new DispatcherTimer {Interval = TimeSpan.FromSeconds(2)};
-		_debugRefreshTimer.Tick += async (_, _) =>
-		{
-			if (_viewModel is not DebugSettingsViewModel {AutoRefresh: true} debug
-				|| TopLevel.GetTopLevel(this) is not Window {IsVisible: true}
-				|| this.GetSelfAndVisualAncestors().Any(visual => !visual.IsVisible)) return;
-			await RunAsync(() => debug.RefreshLogsAsync(token));
-		};
+		_debugRefreshTimer = new DispatcherTimer {Interval = DebugRefreshInterval};
+		_debugRefreshTimer.Tick += (_, _) => OnDebugRefreshTick(token);
 		_debugRefreshTimer.Start();
+	}
+
+	private void OnDebugRefreshTick(CancellationToken token)
+	{
+		if (_disposed || _viewModel is not DebugSettingsViewModel debug || !IsDebugPanelVisible()) return;
+		debug.RefreshPerformance();
+		if (!debug.AutoRefresh || token.IsCancellationRequested) return;
+		_ = RunAsync(() => debug.RefreshLogsAsync(token));
 	}
 
 	private void StopDebugRefresh()

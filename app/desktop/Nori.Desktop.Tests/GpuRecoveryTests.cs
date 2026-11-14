@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Platform;
 using Nori.Desktop.Diagnostics;
 using Nori.Desktop.Live2D;
+using Nori.Desktop.Settings.Pages;
 
 namespace Nori.Desktop.Tests;
 
@@ -47,7 +48,8 @@ public partial class BridgeCommandsTests
 	public Task GPU故障暂停帧请求并原位重建渲染表面() => WithSettingsUiAsync(() =>
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true);
-		PetGlControl control = new(new PetRuntime(fixture._services, previewMode: true));
+		PetRuntime runtime = new(fixture._services, previewMode: true);
+		PetGlControl control = new(runtime);
 		Border sibling = new();
 		Grid host = new() { Children = { control, sibling } };
 		Window window = new() { Content = host, Width = 160, Height = 160 };
@@ -61,12 +63,22 @@ public partial class BridgeCommandsTests
 
 			Assert.True(CrashReporter.TryHandleGpuFailure(new PlatformGraphicsContextLostException(), "gpu_render", requestRecovery: true));
 			Assert.True(control.GpuRecoveryPending);
+			Assert.Equal(PetRenderRecoveryPhase.Rebuilding, runtime.RenderRecovery);
+			Live2DPerformanceSnapshot whileRecovering = Live2DPerformanceSnapshot.Capture(runtime, true, DateTime.UtcNow, null);
+			Assert.Equal(Live2DPerformanceAvailability.Recovering, whileRecovering.Availability);
+			Assert.Null(whileRecovering.FrameTimeP95Ms);
+			Assert.Null(whileRecovering.TargetFps);
+			Assert.DoesNotContain("运行正常", Live2DPerformanceText.Present(whileRecovering).CopyText, StringComparison.Ordinal);
 			// 挂起期间 Avalonia 自身触发的失败不叠加重建，也不重置退避计时。
 			Assert.True(CrashReporter.TryHandleGpuFailure(new PlatformGraphicsContextLostException(), "gpu_render", requestRecovery: true));
 
 			control.RecoverFromGpuFailureNow();
 
 			Assert.False(control.GpuRecoveryPending);
+			Live2DPerformanceSnapshot afterRebuild = Live2DPerformanceSnapshot.Capture(runtime, true, DateTime.UtcNow, null);
+			Assert.NotEqual(Live2DPerformanceAvailability.Live, afterRebuild.Availability);
+			Assert.Null(afterRebuild.FrameTimeP95Ms);
+			Assert.Null(afterRebuild.DroppedFrames);
 			Assert.Equal(1, detached);
 			Assert.Equal(1, attached);
 			Assert.Equal(0, host.Children.IndexOf(control));

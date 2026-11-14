@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Nori.Desktop.Diagnostics;
 
 namespace Nori.Desktop.Settings.Pages;
 
@@ -26,9 +27,20 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 	private string _healthText = "";
 	private long _logRequest;
 	private bool _refreshingLogs;
+	private Live2DPerformanceSnapshot _performance = Live2DPerformanceSnapshot.Empty;
 
 	/// <summary>创建调试诊断 ViewModel。</summary>
 	public DebugSettingsViewModel(SettingsService service) : base(service) { }
+
+	/// <summary>性能面板实际读取次数。隐藏期间不得增加。</summary>
+	internal int PerformanceReadCount { get; private set; }
+
+	/// <summary>最近一次只读性能快照。</summary>
+	public Live2DPerformanceSnapshot Performance
+	{
+		get => _performance;
+		private set => SetProperty(ref _performance, value);
+	}
 
 	/// <summary>当前日志。</summary>
 	public IReadOnlyList<DebugLogItem> Logs
@@ -87,6 +99,7 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 		IsBusy = true;
 		try
 		{
+			RefreshPerformance();
 			await RefreshDiagnosticCoreAsync(cancellationToken).ConfigureAwait(true);
 			await RefreshLogsCoreAsync(cancellationToken).ConfigureAwait(true);
 		}
@@ -101,6 +114,24 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 	{
 		await RefreshLogsCoreAsync(cancellationToken).ConfigureAwait(true);
 	}
+
+	/// <summary>读取已有渲染统计。失败留在快照里，不伪装成成功。</summary>
+	public void RefreshPerformance(DateTime? utcNow = null)
+	{
+		PerformanceReadCount++;
+		try
+		{
+			Performance = Service.ReadLive2DPerformance(utcNow ?? DateTime.UtcNow);
+		}
+		catch (Exception exception)
+		{
+			Performance = Live2DPerformanceSnapshot.ReadFailed(exception);
+		}
+	}
+
+	/// <summary>把当前性能面板复制到剪贴板。</summary>
+	public Task CopyPerformanceAsync(CancellationToken cancellationToken = default) =>
+		CopyTextAsync(Live2DPerformanceText.Present(Performance).CopyText, cancellationToken);
 
 	/// <summary>刷新诊断信息。</summary>
 	public async Task RefreshDiagnosticAsync(CancellationToken cancellationToken = default)

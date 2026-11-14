@@ -45,10 +45,15 @@ public sealed class PetRuntime
 	private readonly Queue<double> _frameTimesMs = new();
 	private readonly Queue<double> _maskTimesMs = new();
 	private const int MetricsWindowSize = 120;
+	/// <summary>安全模式拒绝自动加载模型时写入 <see cref="LastModelLoadError"/> 的固定说明。</summary>
+	internal const string SafeModeModelLoadMessage = "安全模式已禁用伴侣模型自动加载";
 	private int _droppedFrames;
 	private bool _shadowApplied;
 	private bool _offscreenRendering;
 	private bool _renderVisible;
+	private bool _surfaceStateKnown;
+	private DateTime? _lastFrameSampleUtc;
+	private PetRenderRecoveryPhase _recoveryPhase;
 	private int _appliedMaskBufferSize;
 	private bool _maskResizeFailureLogged;
 
@@ -214,6 +219,11 @@ public sealed class PetRuntime
 					ShadowApplied = _shadowApplied,
 					OffscreenRendering = _offscreenRendering,
 					Visible = _renderVisible,
+					FrameSampleCount = _frameTimesMs.Count,
+					MaskSampleCount = _maskTimesMs.Count,
+					LastFrameSampleUtc = _lastFrameSampleUtc,
+					SurfaceStateKnown = _surfaceStateKnown,
+					Recovery = _recoveryPhase,
 				};
 			}
 		}
@@ -253,7 +263,11 @@ public sealed class PetRuntime
 	{
 		if (frameTimeMs > 0 && double.IsFinite(frameTimeMs))
 		{
-			lock (_metricsGate) AddMetric(_frameTimesMs, frameTimeMs);
+			lock (_metricsGate)
+			{
+				AddMetric(_frameTimesMs, frameTimeMs);
+				_lastFrameSampleUtc = DateTime.UtcNow;
+			}
 			lock (_qualityGate) _qualityPolicy.ObserveFrame(frameTimeMs);
 		}
 		if (maskCostMs > 0 && double.IsFinite(maskCostMs))
@@ -276,7 +290,20 @@ public sealed class PetRuntime
 			_offscreenRendering = offscreenRendering;
 			_shadowApplied = shadowApplied;
 			_renderVisible = visible;
+			_surfaceStateKnown = true;
 		}
+	}
+
+	/// <summary>记录渲染表面已经发生的故障或恢复。不启动渲染，也不清除加载失败。</summary>
+	internal void NoteRenderRecovery(PetRenderRecoveryPhase phase)
+	{
+		lock (_metricsGate) _recoveryPhase = phase;
+	}
+
+	/// <summary>当前渲染表面阶段。</summary>
+	internal PetRenderRecoveryPhase RenderRecovery
+	{
+		get { lock (_metricsGate) return _recoveryPhase; }
 	}
 
 	private static void AddMetric(Queue<double> values, double value)
@@ -312,7 +339,7 @@ public sealed class PetRuntime
 		LoadConfigs();
 		if (_services.SafeMode)
 		{
-			LastModelLoadError = "安全模式已禁用伴侣模型自动加载";
+			LastModelLoadError = SafeModeModelLoadMessage;
 			return;
 		}
 		RequestModelLoad(_currentModelId);

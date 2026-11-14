@@ -169,6 +169,17 @@ public class AutonomousMotionPlannerTests
 		Assert.Equal(1, planner.Tick(Frame(now: 10, random: false)).Motion?.Index);
 	}
 
+	[Theory]
+	[InlineData("Idle", MotionPriority.Force, true)]
+	[InlineData("Idle", MotionPriority.Idle, true)]
+	[InlineData("IdleLoop", MotionPriority.Idle, true)]
+	[InlineData("IdleLoop", MotionPriority.Force, false)]
+	[InlineData("TapBody", MotionPriority.Force, false)]
+	public void 关闭待机只停自主的非字面待机组(string group, MotionPriority priority, bool stop)
+	{
+		Assert.Equal(stop, AnimatedModel.ShouldStopIdle(group, priority));
+	}
+
 	[Fact]
 	public void 整组都闭眼时仍然可以播放()
 	{

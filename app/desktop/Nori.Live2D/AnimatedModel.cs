@@ -136,13 +136,24 @@ public sealed class AnimatedModel : IDisposable
 	}
 
 	/// <summary>
+	/// 字面 Idle 保持原有停止规则。其他 idle 前缀组只停止自主待机，
+	/// 手动 Force 播放不被关掉待机动画打断。
+	/// </summary>
+	internal static bool ShouldStopIdle(string? group, MotionPriority priority)
+	{
+		if (!MotionGroupNames.IsIdle(group)) return false;
+		if (string.Equals(group, IdleGroup, StringComparison.OrdinalIgnoreCase)) return true;
+		return priority < MotionPriority.Force;
+	}
+
+	/// <summary>
 	/// 关闭待机时取消待机组并恢复其眼开合基线；在动作更新及宿主表情等效果之前调用。
 	/// 其他参数保留动作快照，互动和语音动作不受影响。
 	/// </summary>
 	public void StopIdleMotion()
 	{
 		ObjectDisposedException.ThrowIf(_disposed, this);
-		if (!MotionGroupNames.IsIdle(CurrentMotionGroup)) return;
+		if (!ShouldStopIdle(CurrentMotionGroup, CurrentMotionPriority)) return;
 		if (_idleEyeParameters.Count > 0)
 		{
 			// 先载入动作基线，避免把上一帧的表情、呼吸或物理结果保存进去。

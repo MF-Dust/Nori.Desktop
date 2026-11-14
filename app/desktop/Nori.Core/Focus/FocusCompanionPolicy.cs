@@ -17,6 +17,14 @@ public static class FocusCompanionPolicy
 	/// <summary>静默提醒不播放挥手这类非必要动作。专注之外保持原来的动作。</summary>
 	public static bool AllowsReminderAnimation(FocusPresence presence) => !presence.Active || !presence.SilentReminders;
 
+	/// <summary>界面真正播出前再收紧一次。只关掉已经放行的朗读，不把静默提醒重新打开。</summary>
+	public static bool StillAllowsSpeech(bool messageAllows, FocusPresence presence) =>
+		messageAllows && AllowsReminderSpeech(presence);
+
+	/// <summary>界面真正播出前再收紧一次。只关掉已经放行的动作，不把静默提醒重新打开。</summary>
+	public static bool StillAllowsAnimation(bool messageAllows, FocusPresence presence) =>
+		messageAllows && AllowsReminderAnimation(presence);
+
 	/// <summary>用户自己打开的对话不受专注开关影响。</summary>
 	public static bool AllowsUserChat() => true;
 

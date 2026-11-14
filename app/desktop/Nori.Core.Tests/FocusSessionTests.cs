@@ -262,6 +262,58 @@ public sealed class FocusSessionTests : IDisposable
 		Assert.False(FocusCompanionPolicy.AllowsAmbientMotion(userEnabled: false, focusQuiet: false));
 	}
 
+	[Fact]
+	public void 到点后暂停会记成完成并只通知一次()
+	{
+		ManualFocusClock clock = new();
+		using FocusSession session = Create(clock);
+		session.Start(1, notifyOnComplete: true, silentReminders: true);
+		clock.Now = 60_000;
+		session.Pause();
+		Assert.Equal("completed", session.View().Phase);
+		Assert.Equal(1, session.View().CompletedCount);
+		Assert.Equal(0, session.View().RemainingSeconds);
+		Assert.Equal("这段专注结束了。", session.ConsumeCompletionNotice(false));
+		Assert.Null(session.ConsumeCompletionNotice(false));
+		Assert.False(FocusCompanionPolicy.StillAllowsSpeech(true, new FocusPresence(true, true)));
+		Assert.False(FocusCompanionPolicy.StillAllowsAnimation(true, new FocusPresence(true, true)));
+		Assert.True(FocusCompanionPolicy.StillAllowsSpeech(true, default));
+		Assert.False(FocusCompanionPolicy.StillAllowsSpeech(false, default));
+	}
+
+	[Fact]
+	public void 专注期间回来再离开会在结束后重新挂机关怀()
+	{
+		string databasePath = Path.Combine(_root, "idle-reset.db");
+		using NoriDatabase database = NoriDatabase.Open(databasePath);
+		ConfigStore config = new(database);
+		config.InitDefaults("test");
+		config.Set("language", new ConfigValue.Text("zh-CN"));
+		config.Set("proactive_daily_greeting", new ConfigValue.Boolean(false));
+		config.Set("proactive_idle_enabled", new ConfigValue.Boolean(true));
+		config.Set("proactive_idle_minutes", new ConfigValue.Integer(1));
+		using FileLogger logger = new(Path.Combine(_root, "idle-logs"));
+		using FocusSession focus = new(StatePath("idle-reset"), new ManualFocusClock(), background: true);
+		double? idle = 120;
+		using ProactiveScheduler scheduler = new(new ReminderStore(database), config, logger, () => idle, () => focus.Presence, focus.Checkpoint);
+		List<ProactiveMessage> messages = [];
+		scheduler.Message += messages.Add;
+		DateTimeOffset now = DateTimeOffset.UnixEpoch.AddHours(3);
+
+		scheduler.Tick(now.UtcDateTime);
+		Assert.Single(messages);
+		focus.Start(25, notifyOnComplete: false, silentReminders: true);
+		idle = 0;
+		scheduler.Tick(now.AddMinutes(1).UtcDateTime);
+		idle = 120;
+		scheduler.Tick(now.AddMinutes(2).UtcDateTime);
+		Assert.Single(messages);
+		focus.End();
+		scheduler.Tick(now.AddMinutes(3).UtcDateTime);
+		Assert.Equal(2, messages.Count);
+		Assert.True(messages[1].AllowSpeech);
+	}
+
 	public void Dispose()
 	{
 		if (Directory.Exists(_root)) Directory.Delete(_root, true);

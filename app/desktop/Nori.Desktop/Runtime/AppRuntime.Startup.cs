@@ -153,7 +153,10 @@ public sealed partial class AppRuntime
 	private void OnProactiveMessage(ProactiveMessage message)
 	{
 		bool autoTts = ParseBoolFlag(Services.Config.GetStringOr("tts_auto_play", "")) ?? false;
-		if (Nori.Core.Focus.FocusCompanionPolicy.ShouldAnimateProactive(message.AllowAnimation))
+		Nori.Core.Focus.FocusPresence presence = Focus.Presence;
+		bool allowSpeech = Nori.Core.Focus.FocusCompanionPolicy.StillAllowsSpeech(message.AllowSpeech, presence);
+		bool allowAnimation = Nori.Core.Focus.FocusCompanionPolicy.StillAllowsAnimation(message.AllowAnimation, presence);
+		if (Nori.Core.Focus.FocusCompanionPolicy.ShouldAnimateProactive(allowAnimation))
 		{
 			try
 			{
@@ -165,7 +168,7 @@ public sealed partial class AppRuntime
 				/* 伴侣未加载时忽略 */
 			}
 		}
-		if (Nori.Core.Focus.FocusCompanionPolicy.ShouldShowProactiveText(message.AllowSpeech))
+		if (Nori.Core.Focus.FocusCompanionPolicy.ShouldShowProactiveText(allowSpeech))
 		{
 			try { Services.Windows.ShowPetSpeech(message.Text); }
 			catch
@@ -173,7 +176,7 @@ public sealed partial class AppRuntime
 				/* 伴侣窗口还没建好时忽略 */
 			}
 		}
-		if (Nori.Core.Focus.FocusCompanionPolicy.ShouldSpeakProactive(message.AllowSpeech, autoTts))
+		if (Nori.Core.Focus.FocusCompanionPolicy.ShouldSpeakProactive(allowSpeech, autoTts))
 			_ = SpeakSafelyAsync(message.Text);
 	}
 

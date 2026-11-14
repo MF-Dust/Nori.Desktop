@@ -33,6 +33,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 	private bool _presentationActive;
 	private bool _clockClosed;
 	private int _focusClockBusy;
+	private int _focusRevision;
 	private string _focusPhase = "idle";
 	private bool _adding;
 	private bool _refreshing;
@@ -127,7 +128,9 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 	{
 		base.ApplySnapshot(snapshot);
 		_safeMode = SettingsSnapshotReader.Boolean(snapshot, false, "app", "safeMode");
-		_focusPhase = SettingsSnapshotReader.String(snapshot, "idle", "focus", "phase");
+		string focusPhase = SettingsSnapshotReader.String(snapshot, "idle", "focus", "phase");
+		if (!string.Equals(focusPhase, _focusPhase, StringComparison.Ordinal)) _focusRevision++;
+		_focusPhase = focusPhase;
 		_safeModeNotice.IsVisible = _safeMode;
 		UpdateFocusDraftReadOnly();
 		RefreshFocusActions();
@@ -334,10 +337,11 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 	internal async Task RefreshPresentedClockAsync()
 	{
 		if (_clockClosed || Interlocked.Exchange(ref _focusClockBusy, 1) != 0) return;
+		int revision = _focusRevision;
 		try
 		{
 			JsonElement view = await ExecuteAsync("focus_view", cancellationToken: LifetimeToken).ConfigureAwait(true);
-			if (_clockClosed) return;
+			if (_clockClosed || revision != _focusRevision) return;
 			_focusPhase = SettingsSnapshotReader.String(view, _focusPhase, "phase");
 			_focusStatus.Text = SettingsSnapshotReader.String(view, _focusStatus.Text, "statusText");
 			_focusRecent.Text = SettingsSnapshotReader.String(view, _focusRecent.Text, "recentText");
@@ -389,6 +393,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 	{
 		if (_focusBusy) return;
 		_focusBusy = true;
+		_focusRevision++;
 		UpdateFocusDraftReadOnly();
 		RefreshFocusActions();
 		try

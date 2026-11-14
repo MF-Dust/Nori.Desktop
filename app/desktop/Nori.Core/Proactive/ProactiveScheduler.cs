@@ -328,7 +328,12 @@ public sealed class ProactiveScheduler : IDisposable
 		}
 		FocusPresence presence = _focus?.Invoke() ?? default;
 		FireDueReminders(instant.ToUnixTimeMilliseconds(), presence);
-		if (!FocusCompanionPolicy.AllowsProactiveCare(presence)) return;
+		if (!FocusCompanionPolicy.AllowsProactiveCare(presence))
+		{
+			// 专注期间不发挂机关怀，但仍要看见用户回来，否则上一轮标记会把结束后的新挂机吃掉。
+			ObserveIdleActivity();
+			return;
+		}
 		CheckDailyGreetings(instant);
 		CheckIdle();
 	}
@@ -382,20 +387,31 @@ public sealed class ProactiveScheduler : IDisposable
 		}
 	}
 
+	/// <summary>用户回来就结束上一轮挂机。专注期间也要调用，但不要在这里发消息。</summary>
+	private void ObserveIdleActivity()
+	{
+		bool enabled = ParseBool(_config.GetStringOr("proactive_idle_enabled", "true")) ?? true;
+		if (!enabled)
+		{
+			Interlocked.Exchange(ref _idleSessionFired, 0);
+			return;
+		}
+		double thresholdSeconds = Math.Max(1,
+			ReadNumberConfig(_config, "proactive_idle_minutes", DefaultIdleMinutes) * 60);
+		double? idleSeconds = _idleSecondsProvider();
+		if (idleSeconds is not { } idle || idle < thresholdSeconds)
+			Interlocked.Exchange(ref _idleSessionFired, 0);
+	}
+
 	private void CheckIdle()
 	{
+		ObserveIdleActivity();
 		bool enabled = ParseBool(_config.GetStringOr("proactive_idle_enabled", "true")) ?? true;
 		if (!enabled) return;
 		double thresholdSeconds = Math.Max(1,
 			ReadNumberConfig(_config, "proactive_idle_minutes", DefaultIdleMinutes) * 60);
-
 		double? idleSeconds = _idleSecondsProvider();
-		if (idleSeconds is not { } idle || idle < thresholdSeconds)
-		{
-			// 任意一次真实活动都结束上一轮挂机 session。
-			Interlocked.Exchange(ref _idleSessionFired, 0);
-			return;
-		}
+		if (idleSeconds is not { } idle || idle < thresholdSeconds) return;
 		if (Interlocked.Exchange(ref _idleSessionFired, 1) != 0) return;
 
 		string[] texts = IsEnglish()

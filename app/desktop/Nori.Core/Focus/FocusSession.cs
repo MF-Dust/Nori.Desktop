@@ -78,6 +78,7 @@ public sealed class FocusSession : IDisposable
 	private int _completedCount;
 	private double _totalSeconds;
 	private List<FocusRecord> _recent = [];
+	private bool _unsaved;
 	private bool _disposed;
 
 	/// <summary>阶段、累计时长或完成通知发生变化。</summary>
@@ -147,11 +148,15 @@ public sealed class FocusSession : IDisposable
 		{
 			ThrowIfDisposed();
 			if (_phase != FocusPhase.Running) throw new InvalidOperationException("当前没有进行中的专注。");
-			CommitElapsed();
-			_phase = FocusPhase.Paused;
-			_runStamp = 0;
-			Disarm();
-			Save();
+			if (IsDue()) CompleteUnlocked();
+			else
+			{
+				CommitElapsed();
+				_phase = FocusPhase.Paused;
+				_runStamp = 0;
+				Disarm();
+				Save();
+			}
 			changed = Changed;
 		}
 		Notify(changed);
@@ -207,7 +212,7 @@ public sealed class FocusSession : IDisposable
 		lock (_gate)
 		{
 			if (_disposed || _phase != FocusPhase.Running) return;
-			if (CommitElapsed() + 0.001 < _durationSeconds)
+			if (!IsDue())
 			{
 				Arm(Math.Max(0, _durationSeconds - _accumulatedSeconds));
 				return;
@@ -224,8 +229,13 @@ public sealed class FocusSession : IDisposable
 		Action? changed = null;
 		lock (_gate)
 		{
-			if (_disposed || _phase != FocusPhase.Running) return;
-			if (CommitElapsed() + 0.001 >= _durationSeconds)
+			if (_disposed) return;
+			if (_phase != FocusPhase.Running)
+			{
+				if (_unsaved) Save();
+				return;
+			}
+			if (IsDue())
 			{
 				CompleteUnlocked();
 				changed = Changed;
@@ -279,9 +289,17 @@ public sealed class FocusSession : IDisposable
 			if (_disposed) return;
 			if (_phase == FocusPhase.Running)
 			{
-				CommitElapsed();
-				_phase = FocusPhase.Paused;
-				_runStamp = 0;
+				if (IsDue()) CompleteUnlocked();
+				else
+				{
+					CommitElapsed();
+					_phase = FocusPhase.Paused;
+					_runStamp = 0;
+					Save();
+				}
+			}
+			else if (_unsaved)
+			{
 				Save();
 			}
 			_disposed = true;
@@ -291,6 +309,8 @@ public sealed class FocusSession : IDisposable
 		}
 		timer?.Dispose();
 	}
+
+	private bool IsDue() => CommitElapsed() + 0.001 >= _durationSeconds;
 
 	private void EnsureInteractive()
 	{
@@ -466,10 +486,12 @@ public sealed class FocusSession : IDisposable
 			string temporary = _path + ".tmp";
 			File.WriteAllText(temporary, json);
 			File.Move(temporary, _path, overwrite: true);
+			_unsaved = false;
 		}
 		catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
 		{
-			// 这一轮写盘失败时内存状态仍在；下次暂停、继续或检查点会再试。
+			// 内存状态保留。检查点和退出会再写，已完成或已通知的一场也不例外。
+			_unsaved = true;
 		}
 	}
 

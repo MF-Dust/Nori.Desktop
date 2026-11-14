@@ -62,17 +62,25 @@ internal static class AutonomousPacing
 
 	public static bool TryNormalize(string? value, bool strict, out string normalized)
 	{
-		normalized = value?.Trim().ToLowerInvariant() switch
+		string token = value?.Trim().ToLowerInvariant() ?? "";
+		if (token is Sparse or Normal or Lively)
 		{
-			Sparse => Sparse,
-			Normal => Normal,
-			Lively => Lively,
-			"low" or "slow" when !strict => Sparse,
-			"medium" or "default" when !strict => Normal,
-			"high" or "fast" when !strict => Lively,
-			_ => "",
-		};
-		if (normalized.Length > 0) return true;
+			normalized = token;
+			return true;
+		}
+
+		if (!strict)
+		{
+			normalized = token switch
+			{
+				"low" or "slow" => Sparse,
+				"medium" or "default" => Normal,
+				"high" or "fast" => Lively,
+				_ => "",
+			};
+			if (normalized.Length > 0) return true;
+		}
+
 		normalized = Normal;
 		return false;
 	}

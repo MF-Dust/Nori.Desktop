@@ -95,11 +95,12 @@ public sealed class MainWindow : Window
 		Opened += (_, _) => StartRefreshing();
 		Closing += (_, args) =>
 		{
-			if (AllowClose) return;
-			args.Cancel = true;
 			// 没有托盘时不能藏掉最后的入口；最小化后仍可从任务栏恢复。
-			if (_services.Runtime is { TrayAvailable: false }) WindowState = WindowState.Minimized;
-			else Hide();
+			WindowClose.CancelAndHide(args, AllowClose, () =>
+			{
+				if (_services.Runtime is { TrayAvailable: false }) WindowState = WindowState.Minimized;
+				else Hide();
+			}, exception => _services.Logger.Write(LogSource.Backend, "warn", "隐藏主窗口失败", exception: exception));
 		};
 		PropertyChanged += (_, args) =>
 		{

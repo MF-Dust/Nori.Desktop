@@ -73,6 +73,27 @@ public partial class BridgeCommandsTests
 	});
 
 	[Fact]
+	public Task 背景材质失败不会阻止窗口打开() => WithSettingsUiAsync(() =>
+	{
+		WindowBackdropController.EligibilityOverride = _ => throw new FileNotFoundException();
+		using WindowBackdropController controller = new();
+		Window window = new();
+		try
+		{
+			controller.Register(window);
+			window.Show();
+			Assert.True(window.IsVisible);
+			Assert.NotNull(window.PlatformImpl);
+		}
+		finally
+		{
+			WindowBackdropController.EligibilityOverride = null;
+			window.Close();
+		}
+		return Task.CompletedTask;
+	});
+
+	[Fact]
 	public Task BackgroundBlurUnsupportedBackendPreservesEnabledPreference() => WithSettingsUiAsync(async () =>
 	{
 		_config.Set(ConfigStore.KeyBackgroundBlurEnabled, new ConfigValue.Boolean(true));

@@ -14,17 +14,29 @@ internal sealed class WindowBackdropController : IDisposable
 	private readonly HashSet<Window> _windows = [];
 	private readonly HashSet<Window> _openingWindows = [];
 	private readonly IDisposable _openedSubscription;
+	private readonly Action<Exception>? _onFailure;
 	private bool _enabled;
 	private bool _disposed;
 	private int _preferenceRevision;
 
-	internal WindowBackdropController(bool enabled = true)
+	/// <summary>测试可让资格判断抛异常，确认打开窗口不会被材质回调打断。</summary>
+	internal static Func<Window, bool>? EligibilityOverride { get; set; }
+
+	internal WindowBackdropController(bool enabled = true, Action<Exception>? onFailure = null)
 	{
 		_enabled = enabled;
+		_onFailure = onFailure;
 		_openedSubscription = Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) => ObserveOpening(window));
 	}
 
 	private void ObserveOpening(Window window)
+	{
+		if (_disposed) return;
+		try { ObserveOpeningCore(window); }
+		catch (Exception exception) when (exception is not OutOfMemoryException) { _onFailure?.Invoke(exception); }
+	}
+
+	private void ObserveOpeningCore(Window window)
 	{
 		if (_disposed || !IsEligible(window) || _windows.Contains(window)) return;
 		if (window.Owner is Window owner && _windows.Contains(owner)) { Register(window); return; }
@@ -72,6 +84,12 @@ internal sealed class WindowBackdropController : IDisposable
 	internal void Register(Window window)
 	{
 		Dispatcher.UIThread.VerifyAccess();
+		try { RegisterCore(window); }
+		catch (Exception exception) when (exception is not OutOfMemoryException) { _onFailure?.Invoke(exception); }
+	}
+
+	private void RegisterCore(Window window)
+	{
 		if (_disposed || !IsEligible(window) || !_windows.Add(window)) return;
 		window.PropertyChanged += OnWindowPropertyChanged;
 		window.Opened += OnWindowOpened;
@@ -80,7 +98,8 @@ internal sealed class WindowBackdropController : IDisposable
 		foreach (Window child in window.OwnedWindows) Register(child);
 	}
 
-	internal static bool IsEligible(Window window) => window is not PetWindow and not QuickChatWindow;
+	internal static bool IsEligible(Window window) =>
+		EligibilityOverride is { } hook ? hook(window) : window is not PetWindow and not QuickChatWindow;
 
 	internal void SetEnabled(bool enabled)
 	{

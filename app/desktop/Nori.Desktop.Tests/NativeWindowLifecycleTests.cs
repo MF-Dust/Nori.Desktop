@@ -106,6 +106,75 @@ public partial class BridgeCommandsTests
 		return Task.CompletedTask;
 	});
 
+	[Fact]
+	public Task 已销毁的主窗口可被显示路径重新创建() => WithSettingsUiAsync(() =>
+	{
+		using BridgeCommandsTests fixture = new(safeMode: true);
+		WindowManager manager = new(_ => { });
+		fixture._services.Windows = manager;
+		const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+		typeof(WindowManager).GetField("_services", flags)!.SetValue(manager, fixture._services);
+		MainWindow main = new(WindowDefinition.All.Single(item => item.Label == WindowLabels.Main), fixture._services);
+		RegisterNativeTestWindow(manager, WindowLabels.Main, main);
+		try
+		{
+			manager.Show(WindowLabels.Main);
+			main.AllowClose = true;
+			main.Close();
+			Assert.Null(main.PlatformImpl);
+			Assert.Same(main, manager.Get(WindowLabels.Main));
+
+			manager.Show(WindowLabels.Main);
+
+			MainWindow revived = Assert.IsType<MainWindow>(manager.Get(WindowLabels.Main));
+			Assert.NotSame(main, revived);
+			Assert.True(manager.IsWindowVisible(WindowLabels.Main));
+			Assert.NotNull(revived.PlatformImpl);
+		}
+		finally
+		{
+			if (manager.Get(WindowLabels.Main) is MainWindow current)
+			{
+				current.AllowClose = true;
+				current.Close();
+			}
+		}
+		return Task.CompletedTask;
+	});
+
+	[Fact]
+	public Task 关闭时隐藏失败不会销毁窗口() => WithSettingsUiAsync(() =>
+	{
+		HideFailsWindow window = new();
+		int closed = 0;
+		window.Closed += (_, _) => closed++;
+		try
+		{
+			window.Show();
+			window.Close();
+			Assert.Equal(0, closed);
+			Assert.NotNull(window.PlatformImpl);
+		}
+		finally
+		{
+			window.AllowClose = true;
+			window.Close();
+		}
+		return Task.CompletedTask;
+	});
+
+	private sealed class HideFailsWindow : Window
+	{
+		public bool AllowClose { get; set; }
+
+		public HideFailsWindow()
+		{
+			Closing += (_, args) => WindowClose.CancelAndHide(args, AllowClose, Hide);
+		}
+
+		public override void Hide() => throw new InvalidOperationException("隐藏失败");
+	}
+
 	[Theory]
 	[InlineData(WindowState.Minimized, false, WindowState.Normal)]
 	[InlineData(WindowState.Minimized, true, WindowState.Normal)]

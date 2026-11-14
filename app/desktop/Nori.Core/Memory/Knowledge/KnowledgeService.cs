@@ -192,11 +192,16 @@ public sealed class KnowledgeService : IAsyncDisposable
 
 	private void OnFileChanged(object sender, FileSystemEventArgs args)
 	{
+		CancellationTokenSource next = new();
+		CancellationTokenSource? retired;
 		lock (_gate)
 		{
-			if (_disposed != 0) return;
-			_watchDebounce?.Cancel();
-			CancellationTokenSource next = new();
+			if (_disposed != 0)
+			{
+				next.Dispose();
+				return;
+			}
+			retired = _watchDebounce;
 			_watchDebounce = next;
 			Task? previousTask = _watchTask;
 			// 串联所有在途任务，避免旧索引覆盖新内容，并让关闭等待整条任务链。
@@ -210,16 +215,34 @@ public sealed class KnowledgeService : IAsyncDisposable
 				}
 				catch (OperationCanceledException) { }
 				catch (Exception exception) { SetStatus(new MemoryIndexStatus {State = MemoryIndexState.Failed, LastError = exception.Message}); }
-				finally
-				{
-					lock (_gate)
-					{
-						if (ReferenceEquals(_watchDebounce, next)) _watchDebounce = null;
-						next.Dispose();
-					}
-				}
+				finally { ReleaseWatch(next); }
 			});
 		}
+		// 取消必须在锁外。任务延续可能在 Cancel 里同步回来，再去锁里 Dispose 就会抛 ObjectDisposedException（NORI-33）。
+		RetireWatch(retired);
+	}
+
+	/// <summary>任务结束时只释放自己仍持有的取消源。</summary>
+	private void ReleaseWatch(CancellationTokenSource source)
+	{
+		bool owned;
+		lock (_gate)
+		{
+			owned = ReferenceEquals(_watchDebounce, source);
+			if (owned) _watchDebounce = null;
+		}
+		if (owned) source.Dispose();
+	}
+
+	/// <summary>取消并释放已经被换下的取消源。取消回调不能再碰这把锁。</summary>
+	private static void RetireWatch(CancellationTokenSource? source)
+	{
+		if (source is null) return;
+		try { source.Cancel(); }
+		catch (ObjectDisposedException) { }
+		// 同步延续可能已经把这个取消源释放掉。
+		try { source.Dispose(); }
+		catch (ObjectDisposedException) { }
 	}
 
 	private string ResolvePath()
@@ -377,6 +400,7 @@ public sealed class KnowledgeService : IAsyncDisposable
 	public async ValueTask DisposeAsync()
 	{
 		FileSystemWatcher? watcher;
+		CancellationTokenSource? debounce;
 		Task? watchTask;
 		lock (_gate)
 		{
@@ -384,11 +408,13 @@ public sealed class KnowledgeService : IAsyncDisposable
 			_disposed = 1;
 			watcher = _watcher;
 			_watcher = null;
-			_watchDebounce?.Cancel();
+			debounce = _watchDebounce;
+			_watchDebounce = null;
 			watchTask = _watchTask;
 			_watchTask = null;
 		}
 		watcher?.Dispose();
+		RetireWatch(debounce);
 		if (watchTask is not null) await watchTask.ConfigureAwait(false);
 	}
 

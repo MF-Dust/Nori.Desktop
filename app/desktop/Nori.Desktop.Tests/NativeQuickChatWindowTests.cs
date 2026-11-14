@@ -33,6 +33,8 @@ public partial class BridgeCommandsTests
 			presenter.PreeditText = "你好";
 			composer.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
 			Assert.Equal(0, sends);
+			composer.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Back });
+			Assert.Equal("草稿", composer.Text);
 			presenter.PreeditText = "";
 			composer.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
 			Assert.Equal(1, sends);

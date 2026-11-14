@@ -140,7 +140,7 @@ public static class TrayMenu
 		 * 退出单独隔一条线。原来它紧贴着上一条, 而上一条是常点的 —— 手一滑就退了,
 		 * 而退出没有确认也没有撤销。 */
 		NativeMenuItem toggle = _toggleItem = new(ToggleLabel(services.Windows.IsWindowVisible(WindowLabels.Pet), english));
-		toggle.Click += (_, _) =>
+		toggle.Click += (_, _) => RunTrayAction(services, "托盘切换伴侣窗口失败", () =>
 		{
 			services.Logger.Write(LogSource.Backend, "info", "托盘菜单：切换 Nori 显示");
 			if (!services.Windows.IsWindowVisible(WindowLabels.Pet) && !CanShowPet(services))
@@ -150,7 +150,7 @@ public static class TrayMenu
 				return;
 			}
 			services.Windows.TogglePet();
-		};
+		});
 
 		NativeMenuItem quickChat = _quickChatItem = new(QuickChatLabel(services.Config.GetQuickChatEnabled(), english));
 		quickChat.Click += async (_, _) =>
@@ -170,20 +170,20 @@ public static class TrayMenu
 		openMain.Click += (_, _) => ShowMain(services);
 
 		NativeMenuItem openSettings = _settingsItem = new(SettingsLabel(english));
-		openSettings.Click += (_, _) => services.Windows.ShowSettings();
+		openSettings.Click += (_, _) => RunTrayAction(services, "托盘打开设置失败", () => services.Windows.ShowSettings());
 
 		NativeMenuItem account = _accountItem = new(CurrentAccountLabel(services, english));
-		account.Click += (_, _) => OnAccountClick(services);
+		account.Click += (_, _) => RunTrayAction(services, "托盘打开账户失败", () => OnAccountClick(services));
 
 		NativeMenuItem sync = _syncItem = new(SyncLabel(english)) {IsVisible = IsSignedIn(services)};
-		sync.Click += (_, _) => services.Windows.ShowCloudSync();
+		sync.Click += (_, _) => RunTrayAction(services, "托盘打开云端同步失败", () => services.Windows.ShowCloudSync());
 
 		NativeMenuItem quit = _quitItem = new(QuitLabel(english));
-		quit.Click += (_, _) =>
+		quit.Click += (_, _) => RunTrayAction(services, "托盘退出失败", () =>
 		{
 			services.Logger.Write(LogSource.Backend, "info", "托盘菜单：退出应用");
 			services.Windows.Shutdown();
-		};
+		});
 
 		try
 		{
@@ -301,12 +301,23 @@ public static class TrayMenu
 	}
 
 	/// <summary>
-	/// 显示主窗口
+	/// 显示主窗口。
+	/// 托盘回调跑在 Win32 窗口过程里，异常会变成进程级未处理异常（NORI-A）。
 	/// </summary>
-	private static void ShowMain(AppServices services)
+	private static void ShowMain(AppServices services) =>
+		RunTrayAction(services, "托盘打开主界面失败", () =>
+		{
+			services.Logger.Write(LogSource.Backend, "info", "托盘操作：已显示主窗口");
+			services.Windows.Show(WindowLabels.Main);
+		});
+
+	private static void RunTrayAction(AppServices services, string failure, Action action)
 	{
-		services.Logger.Write(LogSource.Backend, "info", "托盘操作：已显示主窗口");
-		services.Windows.Show(WindowLabels.Main);
+		try { action(); }
+		catch (Exception exception) when (exception is not OutOfMemoryException)
+		{
+			services.Logger.Write(LogSource.Backend, "warn", failure, exception: exception);
+		}
 	}
 
 	/// <summary>

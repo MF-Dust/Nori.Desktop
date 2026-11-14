@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Nori.Core.Live2D;
+using Nori.Desktop.Live2D;
 using Nori.Desktop.Memory;
 using static Nori.Desktop.SnapshotJson;
 using Nori.Desktop.Appearance;
@@ -12,7 +13,7 @@ namespace Nori.Desktop.Windows;
 
 public sealed partial class ModelsWindow
 {
-	internal static readonly string[] BehaviorKeys = ["clickInteraction", "aiInteraction", "autoBlink", "eyeTracking", "idleEyeAnimation", "idleAnimation", "expressionEnabled", "lipSync", "beatSync"];
+	internal static readonly string[] BehaviorKeys = ["clickInteraction", "aiInteraction", "autoBlink", "eyeTracking", "idleEyeAnimation", "idleAnimation", "expressionEnabled", "lipSync", "beatSync", "autonomousBehavior", "autonomousRandom"];
 	private readonly ContentControl _selectedDisplay = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch };
 	private string _displayFor = "";
 	private bool _selectedDisplayHasMetadata;
@@ -67,9 +68,11 @@ public sealed partial class ModelsWindow
 	private Control BuildBehaviorPage() => Stack(BuildBehaviorGroups(), _selectedDisplay);
 	private Control BuildBehaviorGroups()
 	{
+		StackPanel gaze = (StackPanel)BuildBehaviorControls(["autoBlink", "eyeTracking", "idleEyeAnimation", "idleAnimation", "expressionEnabled", "autonomousBehavior", "autonomousRandom"]);
+		gaze.Children.Add(BuildFrequencyControl());
 		var groups = Stack(
 			Card(() => T("触碰与回应", "Touch & response"), BuildBehaviorControls(["clickInteraction", "aiInteraction"])),
-			Card(() => T("目光与动作", "Gaze & movement"), BuildBehaviorControls(["autoBlink", "eyeTracking", "idleEyeAnimation", "idleAnimation", "expressionEnabled"])),
+			Card(() => T("目光与动作", "Gaze & movement"), gaze),
 			Card(() => T("声音与律动", "Voice & rhythm"), BuildBehaviorControls(["lipSync", "beatSync"])));
 		groups.Spacing = 18;
 		return groups;
@@ -95,8 +98,44 @@ public sealed partial class ModelsWindow
 	{
 		"clickInteraction" => T("点击互动", "Click interaction"), "aiInteraction" => T("AI 互动", "AI interaction"),
 		"autoBlink" => T("自动眨眼", "Auto blink"), "eyeTracking" => T("视线跟随", "Eye tracking"), "idleEyeAnimation" => T("待机眼部动画", "Idle eye animation"),
-		"idleAnimation" => T("待机动画", "Idle animation"), "expressionEnabled" => T("表情行为", "Expression behavior"), "lipSync" => T("口型同步", "Lip sync"), _ => T("节拍同步", "Beat sync"),
+		"idleAnimation" => T("待机动画", "Idle animation"), "expressionEnabled" => T("表情行为", "Expression behavior"),
+		"autonomousBehavior" => T("自主行为", "Autonomous behavior"), "autonomousRandom" => T("随机动作", "Random motions"),
+		"lipSync" => T("口型同步", "Lip sync"), _ => T("节拍同步", "Beat sync"),
 	};
+	private Control BuildFrequencyControl()
+	{
+		MemorySettingDraft draft = Draft(
+			BehaviorKey("autonomousFrequency"),
+			AutonomousPacing.Normalize(S(P(_snapshot, "behaviors"), "autonomousFrequency", AutonomousPacing.Normal)),
+			"model_set_behavior",
+			value => new Dictionary<string, object> { ["autonomousFrequency"] = value });
+		var selector = new ComboBox { Name = "ModelsBehavior_autonomousFrequency", MinWidth = 112, HorizontalAlignment = HorizontalAlignment.Right };
+		Localize(() => selector.ItemsSource = new[] { T("稀疏", "Sparse"), T("自然", "Natural"), T("活跃", "Lively") });
+		selector.SelectionChanged += async (_, _) =>
+		{
+			if (_applying || selector.SelectedIndex < 0) return;
+			string value = selector.SelectedIndex switch
+			{
+				0 => AutonomousPacing.Sparse,
+				2 => AutonomousPacing.Lively,
+				_ => AutonomousPacing.Normal,
+			};
+			_revision++;
+			draft.Set(value);
+			await draft.FlushAsync();
+		};
+		Bind(() => selector.SelectedIndex = (draft.Value as string) switch
+		{
+			AutonomousPacing.Sparse => 0,
+			AutonomousPacing.Lively => 2,
+			_ => 1,
+		});
+		return SettingLine(
+			() => T("行为频率", "Behavior frequency"),
+			() => T("两次自主动作之间的间隔。", "How long she waits between autonomous motions."),
+			selector);
+	}
+
 	private string BehaviorHint(string field) => field switch
 	{
 		"clickInteraction" => T("点击模型时播放动作与表情。", "Play actions and expressions when the model is clicked."),
@@ -104,7 +143,9 @@ public sealed partial class ModelsWindow
 		"autoBlink" => T("自然地自动眨眼。", "Blink naturally at intervals."),
 		"eyeTracking" => T("视线跟随鼠标位置。", "Follow the pointer with Nori’s gaze."),
 		"idleEyeAnimation" => T("待机时随机转动眼睛与头部。", "Random eye saccades and head movement while idle."),
-		"idleAnimation" => T("静候时保持轻柔的待机动作。", "Play gentle movements while waiting."),
+		"idleAnimation" => T("自主行为开启时播放待机。关掉会停掉当前待机。", "Plays idle motions while autonomous behavior is on. Turning this off stops the current idle motion."),
+		"autonomousBehavior" => T("空闲时按频率自己做动作。关掉后不会再开始新的自主动作。", "She moves on her own while idle. Turning this off stops new autonomous motions."),
+		"autonomousRandom" => T("在模型现有的待机动作里随机挑选，并避开刚播过的。关掉后固定播放第一个合适的待机。", "Pick at random from this model's idle motions and skip the ones just played. Off keeps the first suitable idle motion."),
 		"expressionEnabled" => T("启用 exp3 表情解析与叠加。", "Enable exp3 expression parsing and stacking."),
 		"lipSync" => T("说话时根据音量同步口型。", "Animate the mouth with speech volume."),
 		_ => T("随节拍律动，需要外部节拍音源。", "Dance to beats; an external beat source is required."),

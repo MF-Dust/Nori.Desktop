@@ -20,6 +20,7 @@ public sealed class LipSyncBehavior : IBehaviorPlugin
 
 	public void SetMouthOpen(float value) => _mouthOpenSize = Math.Clamp(value, 0.0f, 1.0f);
 	public void SetNowSpeaking(bool speaking) => _nowSpeaking = speaking;
+	internal bool IsSpeaking => _nowSpeaking;
 
 	private static float Smoothstep(float t) => t * t * (3.0f - 2.0f * t);
 

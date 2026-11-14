@@ -5,6 +5,7 @@ using Nori.Core.Configuration;
 using Nori.Core.Logging;
 using Nori.Core.Live2D;
 using Nori.Core.Mcp;
+using Nori.Desktop.Live2D;
 using Nori.Core.Resources;
 using Nori.Core.Tools;
 using Nori.Desktop.Windows;
@@ -217,10 +218,25 @@ public sealed partial class BridgeCommands
 		SetBehaviorKey(args, "expressionEnabled", "l2d_expression_enabled");
 		SetBehaviorKey(args, "lipSync", "l2d_lip_sync");
 		SetBehaviorKey(args, "beatSync", "l2d_beat_sync");
+		SetBehaviorKey(args, "autonomousBehavior", Live2DModelConfig.AutonomousBehaviorKey);
+		SetBehaviorKey(args, "autonomousRandom", Live2DModelConfig.AutonomousRandomKey);
+		SetBehaviorFrequency(args);
 		SetBehaviorKey(args, "aiInteraction", PetInteractionConfig.AiEnabledKey);
 		await Task.CompletedTask;
 		Runtime.InvalidateSnapshot();
 		return null;
+	}
+
+	/// <summary>行为频率只接受 sparse、normal、lively，并立刻作用到当前伴侣。</summary>
+	private void SetBehaviorFrequency(JsonElement args)
+	{
+		if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty("autonomousFrequency", out JsonElement value))
+			return;
+		string raw = value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
+		if (!AutonomousPacing.TryNormalize(raw, strict: true, out string frequency))
+			throw new InvalidOperationException("行为频率只能是 sparse、normal 或 lively");
+		UpdateConfigDirect(Live2DModelConfig.AutonomousFrequencyKey, frequency);
+		ApplyPetConfig(Live2DModelConfig.AutonomousFrequencyKey, frequency);
 	}
 
 	// ===================================================================

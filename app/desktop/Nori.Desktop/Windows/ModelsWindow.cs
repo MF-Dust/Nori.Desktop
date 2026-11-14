@@ -14,6 +14,7 @@ using Nori.Desktop.Memory;
 using Nori.Desktop.Models;
 using static Nori.Desktop.SnapshotJson;
 using Nori.Desktop.Appearance;
+using Nori.Desktop.Live2D;
 
 namespace Nori.Desktop.Windows;
 
@@ -116,6 +117,8 @@ public sealed partial class ModelsWindow : Window
 			foreach (var pair in metadata) { _metadata[pair.Key] = pair.Value; AcceptModelSnapshot(pair.Key, pair.Value); }
 			foreach (string key in BehaviorKeys)
 				if (_drafts.TryGetValue(BehaviorKey(key), out var draft)) draft.AcceptSnapshot(B(P(snapshot, "behaviors"), key));
+			if (_drafts.TryGetValue(BehaviorKey("autonomousFrequency"), out MemorySettingDraft? frequency))
+				frequency.AcceptSnapshot(AutonomousPacing.Normalize(S(P(snapshot, "behaviors"), "autonomousFrequency", AutonomousPacing.Normal)));
 			string language = S(P(snapshot, "general"), "language", _language);
 			if (_language != language) { _language = language; ApplyLanguage(); }
 			UpdateSelectedDisplay();

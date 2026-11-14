@@ -19,6 +19,7 @@ public sealed class AnimatedModel : IDisposable
 	public ModelDefinition Definition { get; }
 	public bool RandomMotion { get; set; } = true;
 	public bool IsMotionFinished => _motions.IsFinished;
+	public MotionPriority CurrentMotionPriority => _motions.CurrentPriority;
 	public string? CurrentMotionGroup { get; private set; }
 	public event Action<string>? MotionEvent;
 	public Action? BeforeEffects { get; set; }
@@ -110,6 +111,15 @@ public sealed class AnimatedModel : IDisposable
 			else _idleEyeParameters.Clear();
 		}
 		return playback;
+	}
+
+	/// <summary>该动作是否全程闭眼。组或下标不存在时返回 false，调用方可以跳过它。</summary>
+	public bool MotionKeepsEyesClosed(string group, int index)
+	{
+		ObjectDisposedException.ThrowIf(_disposed, this);
+		string? key = ResolveGroup(group);
+		if (key is null || (uint)index >= (uint)_groups[key].Length) return false;
+		return _groups[key][index].EyesClosed;
 	}
 
 	public MotionPlayback? StartRandomMotion(string group, MotionPriority priority, Action? finished = null)

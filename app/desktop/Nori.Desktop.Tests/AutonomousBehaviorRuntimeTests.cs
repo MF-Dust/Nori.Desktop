@@ -83,6 +83,34 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
+	public async Task 合法布尔和非法频率一起提交时配置与运行时都保持原值()
+	{
+		using BridgeCommandsTests fixture = new();
+		PetRuntime runtime = new(fixture._services);
+		fixture._services.PetRuntime = runtime;
+		await fixture.CreateCommands().InvokeAsync(
+			new NativeModelTestSource(),
+			"model_set_behavior",
+			Args(new { clickInteraction = true, autonomousBehavior = true, autonomousFrequency = "lively" }));
+		Assert.True(runtime.ClickInteraction);
+		Assert.True(runtime.AutonomousBehaviorEnabled);
+		Assert.Equal(AutonomousPacing.Lively, runtime.AutonomousFrequency);
+
+		InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.CreateCommands().InvokeAsync(
+			new NativeModelTestSource(),
+			"model_set_behavior",
+			Args(new { clickInteraction = false, autonomousBehavior = false, autonomousFrequency = "weekly" })));
+
+		Assert.Contains("行为频率", error.Message, StringComparison.Ordinal);
+		Assert.True(runtime.ClickInteraction);
+		Assert.True(runtime.AutonomousBehaviorEnabled);
+		Assert.Equal(AutonomousPacing.Lively, runtime.AutonomousFrequency);
+		Assert.True(fixture._config.GetBoolOr("l2d_click_interaction", false));
+		Assert.True(fixture._config.GetBoolOr(Live2DModelConfig.AutonomousBehaviorKey, false));
+		Assert.Equal(AutonomousPacing.Lively, fixture._config.GetStringOr(Live2DModelConfig.AutonomousFrequencyKey, ""));
+	}
+
+	[Fact]
 	public void 预览安全模式和隐藏窗口不启动自主动作()
 	{
 		using BridgeCommandsTests fixture = new();

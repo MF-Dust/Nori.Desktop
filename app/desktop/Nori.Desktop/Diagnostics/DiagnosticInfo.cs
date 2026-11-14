@@ -20,11 +20,10 @@ public static class DiagnosticInfo
 	public static Dictionary<string, string> Build(PetRuntime? pet, AppStoragePaths paths, bool safeMode = false)
 	{
 		string version = Nori.Core.ProductVersion.Current;
-		PetRenderMetrics? render = pet?.RenderMetrics;
 		ArgumentNullException.ThrowIfNull(paths);
 		AppStoragePaths storage = paths;
 		long dbBytes = FileSizeOrDefault(storage.DatabasePath);
-		return new Dictionary<string, string>
+		Dictionary<string, string> info = new()
 		{
 			["app_version"] = version,
 			["safe_mode"] = safeMode.ToString().ToLowerInvariant(),
@@ -38,14 +37,10 @@ public static class DiagnosticInfo
 			["log_dir"] = SensitiveDataRedactor.Redact(storage.LogsDirectory),
 			["database_path"] = SensitiveDataRedactor.Redact(storage.DatabasePath),
 			["database_size"] = dbBytes < 0 ? "不存在" : FormatSize(dbBytes),
-			["live2d_effective_quality"] = render?.EffectiveQuality ?? "unknown",
-			["live2d_effective_fps"] = render?.EffectiveFps.ToString() ?? "0",
-			["live2d_render_scale"] = render?.EffectiveRenderScale.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) ?? "0",
-			["live2d_frame_time_p95_ms"] = render?.FrameTimeP95Ms.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) ?? "0",
-			["live2d_mask_cost_p95_ms"] = render?.MaskCostP95Ms.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) ?? "0",
-			["live2d_dropped_frames"] = render?.DroppedFrames.ToString() ?? "0",
-			["live2d_shadow_applied"] = render?.ShadowApplied.ToString() ?? "false",
 		};
+		foreach ((string key, string value) in Live2DPerformanceSnapshot.Capture(pet, safeMode, DateTime.UtcNow, Live2DPerformanceSnapshot.TryWorkingSet()).ToDiagnosticValues())
+			info[key] = value;
+		return info;
 	}
 
 	/// <summary>

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
 using Nori.Desktop.Bridge;
+using Nori.Desktop.Diagnostics;
 
 namespace Nori.Desktop.Settings;
 
@@ -362,6 +363,13 @@ public sealed class SettingsService : IDisposable
 		string json = JsonSerializer.Serialize(value, BridgeJson.Options);
 		using JsonDocument document = JsonDocument.Parse(json);
 		return document.RootElement.Clone();
+	}
+
+	/// <summary>读取已有伴侣渲染统计。不加载模型，不创建视窗，也不启动渲染。</summary>
+	internal Live2DPerformanceSnapshot ReadLive2DPerformance(DateTime utcNow)
+	{
+		ThrowIfDisposed();
+		return Live2DPerformanceSnapshot.Capture(_services.PetRuntime, _services.SafeMode, utcNow, Live2DPerformanceSnapshot.TryWorkingSet());
 	}
 
 	private void ThrowIfDisposed()

@@ -107,6 +107,8 @@ public sealed class PetGlControl : OpenGlControlBase
 				_sceneSurface = new NativeGlSurface(_glApi);
 				_hitMaskSurface = new NativeGlSurface(_glApi);
 				_runtime.OnGlInit(_glApi);
+				if (_runtime.RenderRecovery is PetRenderRecoveryPhase.ContextLost or PetRenderRecoveryPhase.Rebuilding or PetRenderRecoveryPhase.Failed)
+					_runtime.NoteRenderRecovery(PetRenderRecoveryPhase.Restored);
 				_runtime.SetRenderSurfaceState(false, false, _renderActive);
 				StartRenderLoop();
 			}
@@ -119,6 +121,7 @@ public sealed class PetGlControl : OpenGlControlBase
 				_glApi = null;
 				// 初始化失败后 Avalonia 不会再请求帧；设备刚出过故障时按退避重建，否则保持原有失败语义。
 				if (_gpuBackoff.IsRecovering(Now())) Dispatcher.UIThread.Post(() => ScheduleGpuRecovery("gpu.init_failed"));
+				else _runtime.NoteRenderRecovery(PetRenderRecoveryPhase.Failed);
 				throw;
 			}
 		});
@@ -129,6 +132,7 @@ public sealed class PetGlControl : OpenGlControlBase
 	{
 		StopRenderLoop();
 		_runtime.RunSynchronized(AbandonGlState);
+		_runtime.NoteRenderRecovery(PetRenderRecoveryPhase.ContextLost);
 		_runtime.WriteRenderSurfaceLog("warn", "伴侣 OpenGL 上下文丢失, 已丢弃失效资源并等待重建", "gl.context_lost");
 		base.OnOpenGlLost();
 	}
@@ -610,6 +614,7 @@ public sealed class PetGlControl : OpenGlControlBase
 	private void ScheduleGpuRecovery(string eventId)
 	{
 		if (!_attached) return;
+		_runtime.NoteRenderRecovery(PetRenderRecoveryPhase.Rebuilding);
 		_gpuSuspended = true;
 		Interlocked.Exchange(ref _framePending, 0);
 		StopRenderLoop();

@@ -82,10 +82,10 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 			_ => _focusSilent?.Boolean ?? true, true, (_, _) => Task.FromResult(default(JsonElement)));
 		_focusRecent = AddField(focus, "focusRecent", new("最近记录", "Recent sessions"), new("次数和时长只保存在本机数据目录，默认不上传。", "Counts and durations stay in the local data directory and are not uploaded by default."), SettingsEditorKind.Multiline,
 			snapshot => SettingsSnapshotReader.String(snapshot, Text("还没有专注记录。", "No sessions yet."), "focus", "recentText"), string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
-		_focusStartCommand = new SettingsCommand(_ => _ = StartFocusAsync(), _ => CanStartFocus());
-		_focusPauseCommand = new SettingsCommand(_ => _ = PauseFocusAsync(), _ => _focusPhase == "running" && !_focusBusy);
-		_focusResumeCommand = new SettingsCommand(_ => _ = ResumeFocusAsync(), _ => CanResumeFocus());
-		_focusEndCommand = new SettingsCommand(_ => _ = EndFocusAsync(), _ => _focusPhase is "running" or "paused" or "completed" && !_focusBusy);
+		_focusStartCommand = new SettingsCommand(command => _ = StartFocusAsync(), canExecute => CanStartFocus());
+		_focusPauseCommand = new SettingsCommand(command => _ = PauseFocusAsync(), canExecute => _focusPhase == "running" && !_focusBusy);
+		_focusResumeCommand = new SettingsCommand(command => _ = ResumeFocusAsync(), canExecute => CanResumeFocus());
+		_focusEndCommand = new SettingsCommand(command => _ = EndFocusAsync(), canExecute => _focusPhase is "running" or "paused" or "completed" && !_focusBusy);
 		AddAction(focus, "focusStart", new("开始专注", "Start focus"), new("立刻暂停问候和挂机关怀，并减少待机动作。", "Pause greetings and idle care right away, and quiet idle motion."), _focusStartCommand);
 		AddAction(focus, "focusPause", new("暂停", "Pause"), new("暂停后不再累计时间。", "Elapsed time stops increasing."), _focusPauseCommand);
 		AddAction(focus, "focusResume", new("继续", "Resume"), new("从上次停下的时间继续。", "Continue from the saved elapsed time."), _focusResumeCommand);

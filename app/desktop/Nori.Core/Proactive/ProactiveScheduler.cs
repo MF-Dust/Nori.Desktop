@@ -383,7 +383,7 @@ public sealed class ProactiveScheduler : IDisposable
 			if (occurrence is null || occurrence > localNow || localNow - occurrence > TimeSpan.FromMinutes(15)) continue;
 			string occurrenceValue = occurrence.Value.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
 			if (!_store.TryClaimOccurrence(slot.Key, occurrenceValue)) continue;
-			Message?.Invoke(new ProactiveMessage(slot.Text(IsEnglish()), slot.Motion, slot.Expression));
+			Message?.Invoke(new ProactiveMessage(slot.Text(IsEnglish()), slot.Motion, slot.Expression) { Care = true });
 		}
 	}
 
@@ -428,7 +428,7 @@ public sealed class ProactiveScheduler : IDisposable
 		string[] motions = ["think", "smile", "wave"];
 		string[] expressions = ["Sad", "Smile", "Sleepy"];
 		int pick = Random.Shared.Next(texts.Length);
-		Message?.Invoke(new ProactiveMessage(texts[pick], motions[pick], expressions[pick]));
+		Message?.Invoke(new ProactiveMessage(texts[pick], motions[pick], expressions[pick]) { Care = true });
 	}
 
 	private static bool? ParseBool(string raw) => raw switch
@@ -492,4 +492,7 @@ public sealed record ProactiveMessage(string Text, string Motion, string Express
 
 	/// <summary>为假时不播放这条消息附带的动作和表情。</summary>
 	public bool AllowAnimation { get; init; } = true;
+
+	/// <summary>问候或挂机关怀。已经排进界面后如果进入专注，就整条丢掉，不留文字。</summary>
+	public bool Care { get; init; }
 }

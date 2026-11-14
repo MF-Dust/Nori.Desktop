@@ -236,6 +236,8 @@ public sealed class FocusSessionTests : IDisposable
 		scheduler.Tick(morning.UtcDateTime);
 		Assert.Equal(2, messages.Count);
 		Assert.Contains("早安", messages[1].Text, StringComparison.Ordinal);
+		Assert.True(messages[1].Care);
+		Assert.False(reminder.Care);
 		Assert.True(messages[1].AllowSpeech);
 		Assert.True(messages[1].AllowAnimation);
 
@@ -279,6 +281,10 @@ public sealed class FocusSessionTests : IDisposable
 		Assert.False(FocusCompanionPolicy.StillAllowsAnimation(true, new FocusPresence(true, true)));
 		Assert.True(FocusCompanionPolicy.StillAllowsSpeech(true, default));
 		Assert.False(FocusCompanionPolicy.StillAllowsSpeech(false, default));
+		Assert.False(FocusCompanionPolicy.ShouldDeliver(care: true, new FocusPresence(true, true)));
+		Assert.False(FocusCompanionPolicy.ShouldDeliver(care: true, new FocusPresence(true, false)));
+		Assert.True(FocusCompanionPolicy.ShouldDeliver(care: true, default));
+		Assert.True(FocusCompanionPolicy.ShouldDeliver(care: false, new FocusPresence(true, true)));
 	}
 
 	[Fact]

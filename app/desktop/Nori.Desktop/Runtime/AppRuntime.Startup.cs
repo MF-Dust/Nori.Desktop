@@ -154,6 +154,7 @@ public sealed partial class AppRuntime
 	{
 		bool autoTts = ParseBoolFlag(Services.Config.GetStringOr("tts_auto_play", "")) ?? false;
 		Nori.Core.Focus.FocusPresence presence = Focus.Presence;
+		if (!Nori.Core.Focus.FocusCompanionPolicy.ShouldDeliver(message.Care, presence)) return;
 		bool allowSpeech = Nori.Core.Focus.FocusCompanionPolicy.StillAllowsSpeech(message.AllowSpeech, presence);
 		bool allowAnimation = Nori.Core.Focus.FocusCompanionPolicy.StillAllowsAnimation(message.AllowAnimation, presence);
 		if (Nori.Core.Focus.FocusCompanionPolicy.ShouldAnimateProactive(allowAnimation))

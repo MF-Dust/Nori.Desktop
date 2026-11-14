@@ -11,6 +11,9 @@ public static class FocusCompanionPolicy
 	/// <summary>问候和挂机关怀在专注期间不发出。结束后下一次调度可以照常判断，也不改写用户保存的开关。</summary>
 	public static bool AllowsProactiveCare(FocusPresence presence) => !presence.Active;
 
+	/// <summary>已经排队的问候和挂机关怀，在播出前如果进入专注就整条丢掉。定时提醒仍然播出。</summary>
+	public static bool ShouldDeliver(bool care, FocusPresence presence) => !care || AllowsProactiveCare(presence);
+
 	/// <summary>定时提醒照常触发。只有专注中且用户选择静默时才不朗读。</summary>
 	public static bool AllowsReminderSpeech(FocusPresence presence) => !presence.Active || !presence.SilentReminders;
 

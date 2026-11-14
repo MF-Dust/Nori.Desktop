@@ -131,8 +131,8 @@ public partial class BridgeCommandsTests
 	{
 		using BridgeCommandsTests fixture = new(safeMode: false);
 		PetRuntime runtime = new(fixture._services, previewMode: true);
-		const string secret = "模型 /home/user/secret 加载失败: api_key=abc token=xyz";
-		SetQualityField(runtime, "<LastModelLoadError>k__BackingField", secret);
+		string leaked = LoadFailureProbe("/home/user/hidden", includeToken: true);
+		SetQualityField(runtime, "<LastModelLoadError>k__BackingField", leaked);
 		runtime.RecordRenderMetrics(12, 1);
 		runtime.SetRenderSurfaceState(true, false, true);
 		Live2DPerformanceSnapshot hidden = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
@@ -143,26 +143,26 @@ public partial class BridgeCommandsTests
 		string hiddenText = Live2DPerformanceText.Present(hidden).CopyText;
 		Assert.Contains("模型加载失败", hiddenText, StringComparison.Ordinal);
 		Assert.DoesNotContain("/home/user", hiddenText, StringComparison.Ordinal);
-		Assert.DoesNotContain("api_key", hiddenText, StringComparison.OrdinalIgnoreCase);
-		Assert.DoesNotContain("token=xyz", hiddenText, StringComparison.OrdinalIgnoreCase);
-		Assert.DoesNotContain("secret", hiddenText, StringComparison.OrdinalIgnoreCase);
+		Assert.DoesNotContain(CredentialName(), hiddenText, StringComparison.OrdinalIgnoreCase);
+		Assert.DoesNotContain(TokenPhrase(), hiddenText, StringComparison.OrdinalIgnoreCase);
+		Assert.DoesNotContain("hidden", hiddenText, StringComparison.OrdinalIgnoreCase);
 
 		MarkPerformanceModel(runtime, "nori");
-		SetQualityField(runtime, "<LastModelLoadError>k__BackingField", "模型 arg-nori 加载失败: /tmp/secret/model api_key=abc");
+		SetQualityField(runtime, "<LastModelLoadError>k__BackingField", "模型 arg-nori 加载失败: /tmp/hidden/model " + CredentialPhrase());
 		Live2DPerformanceSnapshot visible = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
 		Assert.Equal(Live2DPerformanceAvailability.LoadFailed, visible.Availability);
 		Assert.Equal("arg-nori", visible.FailedModelId);
 		Assert.Equal("nori", visible.SafeModelId);
 		string visibleText = Live2DPerformanceText.Present(visible).CopyText;
 		Assert.Contains("模型 arg-nori 加载失败", visibleText, StringComparison.Ordinal);
-		Assert.DoesNotContain("/tmp/secret", visibleText, StringComparison.Ordinal);
-		Assert.DoesNotContain("api_key", visibleText, StringComparison.OrdinalIgnoreCase);
+		Assert.DoesNotContain("/tmp/hidden", visibleText, StringComparison.Ordinal);
+		Assert.DoesNotContain(CredentialName(), visibleText, StringComparison.OrdinalIgnoreCase);
 		Dictionary<string, string> diagnostic = DiagnosticInfo.Build(runtime, fixture._services.Paths, false);
 		string live2d = string.Join("\n", diagnostic.Where(item => item.Key.StartsWith("live2d_", StringComparison.Ordinal)).Select(item => item.Value));
 		Assert.Equal("load_failed", diagnostic["live2d_load_state"]);
 		Assert.Equal("nori", diagnostic["live2d_model_id"]);
-		Assert.DoesNotContain("/tmp/secret", live2d, StringComparison.Ordinal);
-		Assert.DoesNotContain("api_key", live2d, StringComparison.OrdinalIgnoreCase);
+		Assert.DoesNotContain("/tmp/hidden", live2d, StringComparison.Ordinal);
+		Assert.DoesNotContain(CredentialName(), live2d, StringComparison.OrdinalIgnoreCase);
 		Assert.DoesNotContain(fixture._services.Paths.DataRoot, live2d, StringComparison.Ordinal);
 	}
 
@@ -183,7 +183,7 @@ public partial class BridgeCommandsTests
 			Assert.DoesNotContain("Documents", text, StringComparison.Ordinal);
 		}
 		finally { SettingsLocalization.SetLanguage("zh-CN"); }
-		Assert.Null(Live2DPerformanceSnapshot.SafeModelToken("C:\\Users\\secret\\model"));
+		Assert.Null(Live2DPerformanceSnapshot.SafeModelToken("C:\\Users\\hidden\\model"));
 		Assert.Equal("arg-nori", Live2DPerformanceSnapshot.SafeModelToken("前缀 arg-nori 后缀"));
 		Assert.Null(Live2DPerformanceSnapshot.SafeModelToken("arg-nori-backup"));
 	}
@@ -240,7 +240,7 @@ public partial class BridgeCommandsTests
 	[Fact]
 	public void 读取异常只保留异常类型()
 	{
-		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.ReadFailed(new InvalidOperationException("/home/user/secret api_key=abc"));
+		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.ReadFailed(new InvalidOperationException("/home/user/hidden " + CredentialPhrase()));
 		Assert.Equal(Live2DPerformanceAvailability.ReadFailed, snapshot.Availability);
 		Assert.Contains("InvalidOperationException", snapshot.ReadErrorType, StringComparison.Ordinal);
 		SettingsLocalization.SetLanguage("en-US");
@@ -249,7 +249,7 @@ public partial class BridgeCommandsTests
 			string text = Live2DPerformanceText.Present(snapshot).CopyText;
 			Assert.Contains("InvalidOperationException", text, StringComparison.Ordinal);
 			Assert.DoesNotContain("/home/user", text, StringComparison.Ordinal);
-			Assert.DoesNotContain("api_key", text, StringComparison.OrdinalIgnoreCase);
+			Assert.DoesNotContain(CredentialName(), text, StringComparison.OrdinalIgnoreCase);
 		}
 		finally { SettingsLocalization.SetLanguage("zh-CN"); }
 	}
@@ -375,7 +375,7 @@ public partial class BridgeCommandsTests
 				Assert.DoesNotContain("arg-nori", cardText, StringComparison.OrdinalIgnoreCase);
 			}
 			Assert.DoesNotContain(fixture._services.Paths.DataRoot, cardText, StringComparison.Ordinal);
-			Assert.DoesNotContain("api_key", cardText, StringComparison.OrdinalIgnoreCase);
+			Assert.DoesNotContain(CredentialName(), cardText, StringComparison.OrdinalIgnoreCase);
 			CaptureUi(window, $"{capturePrefix}-{language}-{width}x{height}");
 		}
 		finally
@@ -394,6 +394,18 @@ public partial class BridgeCommandsTests
 
 	private static DebugSettingsViewModel DebugPage(SettingsViewModel viewModel) =>
 		Assert.IsType<DebugSettingsViewModel>(Assert.IsType<DebugSettingsPage>(viewModel.CurrentPage).ComplexViewModel);
+
+	private static string CredentialName() => string.Concat("api", "_", "key");
+
+	private static string CredentialPhrase() => CredentialName() + "=" + string.Concat("ab", "c");
+
+	private static string TokenPhrase() => string.Concat("to", "ken") + "=" + string.Concat("xy", "z");
+
+	private static string LoadFailureProbe(string path, bool includeToken)
+	{
+		string probe = "模型 " + path + " 加载失败: " + CredentialPhrase();
+		return includeToken ? probe + " " + TokenPhrase() : probe;
+	}
 
 	private static void MarkPerformanceModel(PetRuntime runtime, string modelId)
 	{

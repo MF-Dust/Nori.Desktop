@@ -115,7 +115,8 @@ public sealed partial class AppRuntime
 		text = Nori.Core.Chat.Images.GeneratedImageStore.StripReferences(text);
 		if (string.IsNullOrWhiteSpace(text)) return;
 		bool autoTts = ParseBoolFlag(Services.Config.GetStringOr("tts_auto_play", "")) ?? false;
-		if (!autoTts || Services.SafeMode || ct.IsCancellationRequested) return;
+		// 用户自己发起的对话不看专注状态，仍只按自动朗读和安全模式决定是否出声。
+		if (!Nori.Core.Focus.FocusCompanionPolicy.ShouldSpeakUserReply(autoTts, Services.SafeMode) || ct.IsCancellationRequested) return;
 
 		// 情绪自动推断：优先本条 AI 回复自带情绪，否则用全局情绪状态机当前值；
 		// 都没有 (或为 neutral) 时不传情绪，让 TTS 用音色自带情绪。

@@ -52,7 +52,7 @@ public static class StorageBootstrapper
 	private static void CreateLayout(string root)
 	{
 		string[] directories = [
-			"core/database", "core/security", "knowledge/documents", "resources/installed/live2d", "resources/cache", "resources/temp/import",
+			"core/database", "core/security", "core/focus", "knowledge/documents", "resources/installed/live2d", "resources/cache", "resources/temp/import",
 			"plugins/installed", "plugins/data", "plugins/cache/packages/inbox", "plugins/temp/staging",
 			"automation/temp/browser", "diagnostics/logs",
 		];

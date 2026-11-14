@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text.Json;
+using Avalonia.Threading;
 
 namespace Nori.Desktop.Settings;
 
@@ -14,9 +15,25 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 	private readonly SettingsFieldViewModel _repeatDaily;
 	private readonly SettingsFieldViewModel _safeModeNotice;
 	private readonly SettingsSectionViewModel _behaviorSection;
+	private readonly SettingsFieldViewModel _focusStatus;
+	private readonly SettingsFieldViewModel _focusPreset;
+	private readonly SettingsFieldViewModel _focusMinutes;
+	private readonly SettingsFieldViewModel _focusNotify;
+	private readonly SettingsFieldViewModel _focusSilent;
+	private readonly SettingsFieldViewModel _focusRecent;
 	private readonly SettingsCommand _addCommand;
 	private readonly SettingsCommand _refreshCommand;
+	private readonly SettingsCommand _focusStartCommand;
+	private readonly SettingsCommand _focusPauseCommand;
+	private readonly SettingsCommand _focusResumeCommand;
+	private readonly SettingsCommand _focusEndCommand;
+	private DispatcherTimer? _focusClock;
 	private bool _safeMode;
+	private bool _focusBusy;
+	private bool _presentationActive;
+	private bool _clockClosed;
+	private int _focusClockBusy;
+	private string _focusPhase = "idle";
 	private bool _adding;
 	private bool _refreshing;
 	private bool _cancelling;
@@ -25,7 +42,7 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 
 	/// <summary>创建主动互动设置页。</summary>
 	public ProactiveSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "proactive", "self", new("主动互动", "Proactive"), new("控制空闲互动、每日问候和提醒。", "Control idle interactions, daily greetings and reminders."), lifetimeToken)
+		: base(service, "proactive", "self", new("主动互动", "Proactive"), new("控制专注陪伴、空闲互动、每日问候和提醒。", "Control focus sessions, idle interactions, daily greetings and reminders."), lifetimeToken)
 	{
 		SettingsSectionViewModel behavior = _behaviorSection = AddSection(new("自动互动", "Automatic interaction"));
 		_safeModeNotice = AddField(behavior, "safeModeNotice", new("安全模式", "Safe mode"), new("安全模式下暂停主动互动和新提醒，可继续查看及取消已有提醒。", "Safe mode pauses proactive interaction and new reminders. Existing reminders can still be viewed or cancelled."), SettingsEditorKind.Text,
@@ -42,6 +59,37 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 			(value, token) => SaveBehaviorAsync(new {dailyGreeting = Convert.ToBoolean(value)}, token));
 		AddField(behavior, "dailySchedule", new("问候时刻", "Greeting schedule"), new("每日固定时段，应用运行时生效。", "Fixed daily times while the application is running."), SettingsEditorKind.Multiline,
 			_ => Text("早安 08:30\n午餐 12:00\n晚安 23:00", "Morning 08:30\nLunch 12:00\nEvening 23:00"), string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
+
+		SettingsSectionViewModel focus = AddSection(new("专注陪伴", "Focus"));
+		_focusStatus = AddField(focus, "focusStatus", new("当前专注", "Current session"), new("计时使用单调时钟，不受系统校时影响。退出应用会暂停并保留已用时间；问候和挂机关怀先停着，直到继续或结束。结束不会改你保存的互动开关。", "The timer uses a monotonic clock and ignores system clock changes. Leaving the app pauses it and keeps the elapsed time. Greetings and idle care stay paused until you resume or end. Ending does not change your saved interaction switches."), SettingsEditorKind.Multiline,
+			snapshot => SettingsSnapshotReader.String(snapshot, Text("未开始。", "Not started."), "focus", "statusText"), string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
+		_focusPreset = AddField(focus, "focusPreset", new("专注时长", "Duration"), new("选一段常用时长，或自己填分钟数。", "Choose a preset or enter a custom number of minutes."), SettingsEditorKind.Choice,
+			_ => _focusPreset?.Selected ?? "25", "25", (_, _) => Task.FromResult(default(JsonElement)), options:
+			[
+				new("25", new("25 分钟", "25 minutes")), new("45", new("45 分钟", "45 minutes")),
+				new("60", new("60 分钟", "60 minutes")), new("custom", new("自定义", "Custom")),
+			]);
+		_focusMinutes = AddField(focus, "focusMinutes", new("自定义分钟数", "Custom minutes"), new("允许 1 到 180 分钟。", "Between 1 and 180 minutes."), SettingsEditorKind.Number,
+			_ => _focusMinutes?.Number ?? 25d, 25d, (_, _) => Task.FromResult(default(JsonElement)), minimum: 1, maximum: 180, increment: 1);
+		_focusMinutes.IsVisible = false;
+		_focusPreset.PropertyChanged += (_, args) =>
+		{
+			if (args.PropertyName == nameof(SettingsFieldViewModel.Selected)) _focusMinutes.IsVisible = _focusPreset.Selected == "custom";
+		};
+		_focusNotify = AddField(focus, "focusNotify", new("完成时通知", "Notify when complete"), new("到点后提示一次。已经打开自动朗读时，会同时把这句话说出来。", "Show one notice when time is up. If auto speech is already on, Nori says it too."), SettingsEditorKind.Boolean,
+			_ => _focusNotify?.Boolean ?? true, true, (_, _) => Task.FromResult(default(JsonElement)));
+		_focusSilent = AddField(focus, "focusSilent", new("提醒保持静默", "Keep reminders quiet"), new("到点的提醒仍然触发，只显示文字，不朗读、不播动作。问候和挂机关怀会先暂停。", "Due reminders still fire as text. They are not spoken or animated, and greetings plus idle care stay paused."), SettingsEditorKind.Boolean,
+			_ => _focusSilent?.Boolean ?? true, true, (_, _) => Task.FromResult(default(JsonElement)));
+		_focusRecent = AddField(focus, "focusRecent", new("最近记录", "Recent sessions"), new("次数和时长只保存在本机数据目录，默认不上传。", "Counts and durations stay in the local data directory and are not uploaded by default."), SettingsEditorKind.Multiline,
+			snapshot => SettingsSnapshotReader.String(snapshot, Text("还没有专注记录。", "No sessions yet."), "focus", "recentText"), string.Empty, (_, _) => Task.FromResult(default(JsonElement)), readOnly: true);
+		_focusStartCommand = new SettingsCommand(_ => _ = StartFocusAsync(), _ => CanStartFocus());
+		_focusPauseCommand = new SettingsCommand(_ => _ = PauseFocusAsync(), _ => _focusPhase == "running" && !_focusBusy);
+		_focusResumeCommand = new SettingsCommand(_ => _ = ResumeFocusAsync(), _ => CanResumeFocus());
+		_focusEndCommand = new SettingsCommand(_ => _ = EndFocusAsync(), _ => _focusPhase is "running" or "paused" or "completed" && !_focusBusy);
+		AddAction(focus, "focusStart", new("开始专注", "Start focus"), new("立刻暂停问候和挂机关怀，并减少待机动作。", "Pause greetings and idle care right away, and quiet idle motion."), _focusStartCommand);
+		AddAction(focus, "focusPause", new("暂停", "Pause"), new("暂停后不再累计时间。", "Elapsed time stops increasing."), _focusPauseCommand);
+		AddAction(focus, "focusResume", new("继续", "Resume"), new("从上次停下的时间继续。", "Continue from the saved elapsed time."), _focusResumeCommand);
+		AddAction(focus, "focusEnd", new("结束", "End"), new("结束会恢复原来的互动，不覆盖你保存的开关。", "Ending restores interaction without overwriting your saved switches."), _focusEndCommand);
 
 		SettingsSectionViewModel reminders = AddSection(new("添加提醒", "Add a reminder"));
 		_newReminderText = AddField(reminders, "newReminderText", new("提醒内容", "Reminder text"), new("最多 200 个字符，提醒会持久保存并在重启后恢复。", "Up to 200 characters. Reminders are saved and restored after restart."), SettingsEditorKind.Text,
@@ -79,7 +127,11 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 	{
 		base.ApplySnapshot(snapshot);
 		_safeMode = SettingsSnapshotReader.Boolean(snapshot, false, "app", "safeMode");
+		_focusPhase = SettingsSnapshotReader.String(snapshot, "idle", "focus", "phase");
 		_safeModeNotice.IsVisible = _safeMode;
+		UpdateFocusDraftReadOnly();
+		RefreshFocusActions();
+		SyncFocusClock();
 		foreach (SettingsFieldViewModel field in _behaviorSection.Fields)
 			if (field.Key is "idleEnabled" or "idleMinutes" or "dailyGreeting") field.IsReadOnly = _safeMode;
 		UpdateDraftReadOnly();
@@ -262,6 +314,157 @@ public sealed class ProactiveSettingsPage : SettingsPageBase
 	{
 		_addCommand.RaiseCanExecuteChanged();
 		_refreshCommand.RaiseCanExecuteChanged();
+		RefreshFocusActions();
+	}
+
+	/// <summary>只有主动互动页正在显示时才按秒刷新倒计时。计时本身不靠这个轮询。</summary>
+	internal void SetPresentationActive(bool active)
+	{
+		if (_clockClosed) return;
+		if (!Dispatcher.UIThread.CheckAccess())
+		{
+			Dispatcher.UIThread.Post(() => SetPresentationActive(active));
+			return;
+		}
+		_presentationActive = active;
+		SyncFocusClock();
+	}
+
+	/// <summary>读一次专注状态并更新本页倒计时。测试也可以直接调用。</summary>
+	internal async Task RefreshPresentedClockAsync()
+	{
+		if (_clockClosed || Interlocked.Exchange(ref _focusClockBusy, 1) != 0) return;
+		try
+		{
+			JsonElement view = await ExecuteAsync("focus_view", cancellationToken: LifetimeToken).ConfigureAwait(true);
+			if (_clockClosed) return;
+			_focusPhase = SettingsSnapshotReader.String(view, _focusPhase, "phase");
+			_focusStatus.Text = SettingsSnapshotReader.String(view, _focusStatus.Text, "statusText");
+			_focusRecent.Text = SettingsSnapshotReader.String(view, _focusRecent.Text, "recentText");
+			UpdateFocusDraftReadOnly();
+			RefreshFocusActions();
+			SyncFocusClock();
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (Exception)
+		{
+			// 下一秒再读。完成事件仍会刷新整页快照，这里不把短暂失败写成页面错误。
+		}
+		finally
+		{
+			Interlocked.Exchange(ref _focusClockBusy, 0);
+		}
+	}
+
+	private void UpdateFocusDraftReadOnly()
+	{
+		bool locked = _safeMode || _focusBusy || _focusPhase is "running" or "paused";
+		_focusPreset.IsReadOnly = locked;
+		_focusMinutes.IsReadOnly = locked;
+		_focusNotify.IsReadOnly = locked;
+		_focusSilent.IsReadOnly = locked;
+	}
+
+	private bool CanStartFocus() => !_safeMode && !_focusBusy && _focusPhase is "idle" or "completed";
+
+	private bool CanResumeFocus() => !_safeMode && !_focusBusy && _focusPhase == "paused";
+
+	private void RefreshFocusActions()
+	{
+		_focusStartCommand.RaiseCanExecuteChanged();
+		_focusPauseCommand.RaiseCanExecuteChanged();
+		_focusResumeCommand.RaiseCanExecuteChanged();
+		_focusEndCommand.RaiseCanExecuteChanged();
+	}
+
+	private int SelectedFocusMinutes()
+	{
+		if (_focusPreset.Selected == "custom") return (int)Math.Round(_focusMinutes.Number);
+		return int.TryParse(_focusPreset.Selected, NumberStyles.None, CultureInfo.InvariantCulture, out int preset) ? preset : 0;
+	}
+
+	private async Task RunFocusAsync(string command, object? args, string successChinese, string successEnglish)
+	{
+		if (_focusBusy) return;
+		_focusBusy = true;
+		UpdateFocusDraftReadOnly();
+		RefreshFocusActions();
+		try
+		{
+			await ExecuteAsync(command, args, LifetimeToken).ConfigureAwait(true);
+			SetStatus(Text(successChinese, successEnglish));
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (Exception exception)
+		{
+			SetStatus(exception);
+		}
+		finally
+		{
+			_focusBusy = false;
+			UpdateFocusDraftReadOnly();
+			RefreshFocusActions();
+			SyncFocusClock();
+		}
+	}
+
+	private Task StartFocusAsync()
+	{
+		int minutes = SelectedFocusMinutes();
+		if (minutes < 1 || minutes > 180)
+		{
+			SetStatus(Text("专注时长需要在 1 到 180 分钟之间。", "Focus duration must be between 1 and 180 minutes."));
+			return Task.CompletedTask;
+		}
+		return RunFocusAsync("focus_start", new { minutes, notify = _focusNotify.Boolean, silentReminders = _focusSilent.Boolean }, "专注已开始。", "Focus started.");
+	}
+
+	private Task PauseFocusAsync() => RunFocusAsync("focus_pause", null, "专注已暂停。", "Focus paused.");
+
+	private Task ResumeFocusAsync() => RunFocusAsync("focus_resume", null, "专注已继续。", "Focus resumed.");
+
+	private Task EndFocusAsync() => RunFocusAsync("focus_end", null, "专注已结束。", "Focus ended.");
+
+	private void SyncFocusClock()
+	{
+		if (!Dispatcher.UIThread.CheckAccess())
+		{
+			Dispatcher.UIThread.Post(SyncFocusClock);
+			return;
+		}
+		bool run = !_clockClosed && _presentationActive && _focusPhase == "running";
+		if (!run)
+		{
+			_focusClock?.Stop();
+			return;
+		}
+		_focusClock ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+		_focusClock.Tick -= OnFocusClockTick;
+		_focusClock.Tick += OnFocusClockTick;
+		if (!_focusClock.IsEnabled) _focusClock.Start();
+	}
+
+	private void OnFocusClockTick(object? sender, EventArgs args) => _ = RefreshPresentedClockAsync();
+
+	/// <inheritdoc />
+	public override async Task PrepareShutdownAsync(CancellationToken cancellationToken = default)
+	{
+		_clockClosed = true;
+		_focusClock?.Stop();
+		await base.PrepareShutdownAsync(cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <inheritdoc />
+	protected override void OnDisposed()
+	{
+		_clockClosed = true;
+		_focusClock?.Stop();
+		_focusClock = null;
+		base.OnDisposed();
 	}
 
 	internal void ReportActionFailure(Exception exception) => SetStatus(exception);

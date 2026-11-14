@@ -18,12 +18,23 @@ public sealed class SettingsPagePresenter : ContentControl
 	private TextBlock? _status;
 	private NativeSettingsPagePresenter? _complex;
 	private SettingsBrushPalette? _palette;
+	private bool _attached;
 
 	/// <summary>创建页面呈现器。</summary>
 	public SettingsPagePresenter()
 	{
 		DataContextChanged += OnDataContextChanged;
-		AttachedToVisualTree += (_, _) => Build();
+		AttachedToVisualTree += (_, _) =>
+		{
+			_attached = true;
+			Build();
+			UpdateFocusPresentation();
+		};
+		DetachedFromVisualTree += (_, _) =>
+		{
+			_attached = false;
+			UpdateFocusPresentation();
+		};
 		HorizontalContentAlignment = HorizontalAlignment.Stretch;
 		VerticalContentAlignment = VerticalAlignment.Stretch;
 	}
@@ -36,7 +47,12 @@ public sealed class SettingsPagePresenter : ContentControl
 
 	private void OnDataContextChanged(object? sender, EventArgs args)
 	{
-		if (ReferenceEquals(_page, DataContext) && Content is not null) return;
+		if (ReferenceEquals(_page, DataContext) && Content is not null)
+		{
+			UpdateFocusPresentation();
+			return;
+		}
+		if (_page is ProactiveSettingsPage previous) previous.SetPresentationActive(false);
 		_complex?.Dispose();
 		_complex = null;
 		if (_page is not null) _page.PropertyChanged -= OnPagePropertyChanged;
@@ -46,6 +62,7 @@ public sealed class SettingsPagePresenter : ContentControl
 		if (_page is null)
 		{
 			Content = null;
+			UpdateFocusPresentation();
 			return;
 		}
 		if (_page is PluginSettingsPage plugin)
@@ -63,16 +80,24 @@ public sealed class SettingsPagePresenter : ContentControl
 					Foreground = Brush("SettingsErrorBrush"), TextWrapping = TextWrapping.Wrap,
 				};
 			}
+			UpdateFocusPresentation();
 			return;
 		}
 		if (_page is NativeSettingsPageBase native)
 		{
 			_complex = new NativeSettingsPagePresenter {DataContext = native};
 			Content = _complex;
+			UpdateFocusPresentation();
 			return;
 		}
 		_page.PropertyChanged += OnPagePropertyChanged;
 		Build();
+		UpdateFocusPresentation();
+	}
+
+	private void UpdateFocusPresentation()
+	{
+		if (_page is ProactiveSettingsPage proactive) proactive.SetPresentationActive(_attached);
 	}
 
 	private void Build()

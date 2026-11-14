@@ -401,6 +401,7 @@ public sealed partial class AppRuntime
 					snoozedUntil = item.SnoozedUntil,
 				}).ToArray(),
 			},
+			focus = Nori.Core.Focus.FocusText.Describe(Focus.View(), UiLanguage.IsEnglish(config)),
 			skills = Skills.GetInstalled().Select(skill => new
 			{
 				id = skill.Id, name = skill.Name, description = skill.Description, author = skill.Author,

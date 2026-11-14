@@ -22,7 +22,7 @@ Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12
   - Host dispatches commands through `BridgeCommands.cs`.
   - Commands throw exceptions with human-readable Chinese messages on failure.
 - **Storage Layout (`<PackageRoot>/data`)**:
-  - Governed strictly by immutable `AppStoragePaths`. Subdirectories: `core/database` (`nori.db`), `core/security` (`secret.key`), `knowledge/documents` (`Memory.md`), `resources/installed`, `plugins`, and `diagnostics/logs`.
+  - Governed strictly by immutable `AppStoragePaths`. Subdirectories: `core/database` (`nori.db`), `core/security` (`secret.key`), `core/focus` (`state.json`, local focus stats, excluded from the cloud-save whitelist), `knowledge/documents` (`Memory.md`), `resources/installed`, `plugins`, and `diagnostics/logs`.
   - Zero fallback to OS system directories. If `<PackageRoot>/data` is unwritable, startup fails explicitly.
   - Runtime data resides only in `<PackageRoot>/data`; the package does not read legacy application-data directories.
 - **Plugin System (`Nori.PluginRuntime` & `Nori.PluginSDK`)**:
@@ -36,12 +36,12 @@ Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12
   - Master keys are stored via platform keystores (Windows DPAPI, macOS Keychain, Linux libsecret, or 0600 file fallback).
   - Legacy formats (`enc:dpapi:`, `nsec1:`, plaintext) still read for migration; `ConfigStore.GetSecretIssue` / `SecretIssueCategory` surfaces unreadable items (`LegacyUnsupported`, `KeyStoreUnavailable`, `CorruptCiphertext`) so the UI can ask the user to re-enter that key without wiping other config.
 - **Safe Mode (`--safe-mode`)**:
-  - Manual CLI flag that skips MCP auto-connection, Proactive/Reflection schedulers, background memory maintenance, AI pet interactions, and Live2D model auto-load, while disabling external network provider calls.
+  - Manual CLI flag that skips MCP auto-connection, Proactive/Reflection schedulers, focus timer scheduling, background memory maintenance, AI pet interactions, and Live2D model auto-load, while disabling external network provider calls.
 
 ### Stabilization Contracts
 
 - **Product version**: Controlled by the build environment; defaults to `Dev` when not injected. Release uses a manual codename; numeric versions must not be reused across release tags. Inject stable version via `NORI_PRODUCT_VERSION` and informational version via `NORI_PRODUCT_INFORMATIONAL_VERSION` (with `NORI_COMMIT_SHA` short hash). CLR/File/NuGet versions stay numeric; `ProductVersion.Current` keeps the full `v<version>-<codename>+<shortsha>` informational string and feeds snapshot, smoke readiness, diagnostics, crash reports, and MCP `clientInfo`. Do not add a `0.1.0` fallback.
-- **`--safe-mode`**: Manual CLI only; no auto-recovery. Keeps UI, logs, diagnostics, and local manual repair; skips MCP auto-connect, Proactive/Reflection, knowledge/memory background maintenance, AI pet interaction, Live2D auto model load, and remote model download; bridge entry also rejects interactive networking and external Provider/MCP/voice operations.
+- **`--safe-mode`**: Manual CLI only; no auto-recovery. Keeps UI, logs, diagnostics, and local manual repair; skips MCP auto-connect, Proactive/Reflection, focus timer scheduling, knowledge/memory background maintenance, AI pet interaction, Live2D auto model load, and remote model download; bridge entry also rejects interactive networking and external Provider/MCP/voice operations. Focus state can still be read or ended locally.
 - **`readiness.json` schema v2**: Must include `product_version`, `database_schema_version`, `config_schema_version`, and `safe_mode`. Windows CI covers first-run, initialized, and initialized safe-mode profiles.
 - **`export_diagnostics`**: Size-limited, redacted whitelist ZIP only; must not contain database, chat/memory/prompts, tool args/results, request bodies, recordings, resources, credentials, or real user paths. Provider connection tests send fixed probes and do not persist config or content.
 - **Pre-migration backup**: Uses `VACUUM INTO`, 64 MiB per-file cap, keep at most 3 copies; new migrations must preserve this protection.

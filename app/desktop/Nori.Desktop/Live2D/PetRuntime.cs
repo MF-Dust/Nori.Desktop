@@ -6,6 +6,7 @@ using System.Numerics;
 using Nori.Live2D;
 using Nori.Desktop.Live2D.Gl;
 using Nori.Core.Configuration;
+using Nori.Core.Focus;
 using Nori.Core.Data;
 using Nori.Core.Live2D;
 using Nori.Core.Logging;
@@ -92,6 +93,13 @@ public sealed class PetRuntime
 	public bool BeatSyncEnabled { get; set; }
 	public bool ClickInteraction { get; set; } = true;
 	public bool ClickThroughEnabled { get; set; }
+	/// <summary>专注期间暂时压低氛围动作。只活在这一次运行里，不写回用户保存的待机开关。</summary>
+	private volatile bool _focusQuiet;
+	public bool FocusQuiet
+	{
+		get => _focusQuiet;
+		set => _focusQuiet = value;
+	}
 	public float RenderScale { get; private set; } = Live2DRenderSettings.DefaultRenderScale;
 	public string QualityMode { get; private set; } = Live2DRenderSettings.DefaultQualityMode;
 	public int MaxFps { get; private set; }
@@ -939,10 +947,11 @@ public sealed class PetRuntime
 		ctx.AutoBlinkEnabled = AutoBlinkEnabled;
 		ctx.EyeTrackingEnabled = EyeTrackingEnabled;
 		ctx.EyeFocusSourceActive = EyeTrackingEnabled && model.HasPointerInput;
-		ctx.IdleEyeAnimationEnabled = IdleEyeAnimationEnabled;
-		ctx.IdleAnimationEnabled = IdleAnimationEnabled;
-		ctx.ForceIdleEyeAnimation = IdleEyeAnimationEnabled;
-		ctx.BeatSyncEnabled = BeatSyncEnabled;
+		bool ambientMotion = FocusCompanionPolicy.AllowsAmbientMotion(true, FocusQuiet);
+		ctx.IdleEyeAnimationEnabled = FocusCompanionPolicy.AllowsAmbientMotion(IdleEyeAnimationEnabled, FocusQuiet);
+		ctx.IdleAnimationEnabled = FocusCompanionPolicy.AllowsAmbientMotion(IdleAnimationEnabled, FocusQuiet);
+		ctx.ForceIdleEyeAnimation = IdleEyeAnimationEnabled && ambientMotion;
+		ctx.BeatSyncEnabled = FocusCompanionPolicy.AllowsAmbientMotion(BeatSyncEnabled, FocusQuiet);
 		ctx.LipSyncEnabled = LipSyncEnabled;
 		ctx.ExpressionEnabled = ExpressionEnabled;
 		ctx.ClickInteraction = ClickInteraction;
@@ -1016,8 +1025,9 @@ public sealed class PetRuntime
 		float canvasUnitW = (_currentModel.Model.CanvasSize.X / _currentModel.Model.PixelsPerUnit);
 		float canvasUnitH = (_currentModel.Model.CanvasSize.Y / _currentModel.Model.PixelsPerUnit);
 
-		_currentModel.Animation.RandomMotion = IdleAnimationEnabled;
-		if (!IdleAnimationEnabled) _currentModel.Animation.StopIdleMotion();
+		bool ambientMotion = FocusCompanionPolicy.AllowsAmbientMotion(IdleAnimationEnabled, FocusQuiet);
+		_currentModel.Animation.RandomMotion = ambientMotion;
+		if (!ambientMotion) _currentModel.Animation.StopIdleMotion();
 		_currentModel.Update(deltaTime);
 
 		float modelScaleX = _currentModel.ModelMatrix.M11;

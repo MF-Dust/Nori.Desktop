@@ -3,6 +3,7 @@ using Nori.Core.Agent;
 using Nori.Core.Automation;
 using Nori.Core.Configuration;
 using Nori.Core.Emotion;
+using Nori.Core.Focus;
 using Nori.Core.Logging;
 using Nori.Core.Live2D;
 using Nori.Core.Memory;
@@ -93,6 +94,11 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	public EmotionManager Emotion { get; }
 
 	public ProactiveScheduler Proactive { get; }
+
+	/// <summary>专注计时。记录只在包内 data。退出时进行中的一场写成暂停，不改用户保存的互动开关。</summary>
+	public FocusSession Focus { get; }
+
+	private bool _focusSubscribed;
 
 	public MemoryService Memory { get; }
 
@@ -208,9 +214,12 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		Emotion = new EmotionManager(config);
 
 		ReminderStore reminderStore = new(services.Database);
+		Focus = new FocusSession(services.Paths.FocusStatePath, new SystemFocusClock(), background: !services.SafeMode);
 		Proactive = new ProactiveScheduler(
 			reminderStore, config, services.Logger,
-			GetIdleSecondsSafe);
+			GetIdleSecondsSafe,
+			() => Focus.Presence,
+			Focus.Checkpoint);
 
 		// 三平台都直接推声卡。旧的 audio_backend=webview 配置不再读取。
 		_playback = Audio.NativeAudioFactory.CreatePlayback();
@@ -346,7 +355,9 @@ public sealed partial class AppRuntime : IAsyncDisposable
 
 		try { await _reflectionWorker.DisposeAsync().ConfigureAwait(false); } catch { }
 		try { await Knowledge.DisposeAsync().ConfigureAwait(false); } catch { }
+		try { if (_focusSubscribed) Focus.Changed -= OnFocusChanged; } catch { }
 		try { Proactive.Dispose(); } catch { }
+		try { Focus.Dispose(); } catch { }
 		try { Emotion.Dispose(); } catch { }
 		// Voice.Dispose 会逆向释放 _playback; 录音票据要单独作废
 		try { _recorder.Dispose(); } catch { }

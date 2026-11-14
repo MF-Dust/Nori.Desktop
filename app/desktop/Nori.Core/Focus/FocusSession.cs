@@ -434,6 +434,7 @@ public sealed class FocusSession : IDisposable
 		_notifyOnComplete = stored.NotifyOnComplete;
 		_silentReminders = stored.SilentReminders;
 		_completionNotified = stored.CompletionNotified;
+		_pendingNotice = stored.PendingNotice;
 		_completedCount = Math.Max(0, stored.CompletedCount);
 		_totalSeconds = double.IsFinite(stored.TotalSeconds) ? Math.Max(0, stored.TotalSeconds) : 0;
 		_recent = stored.Recent?.Where(item => item is not null)
@@ -447,7 +448,6 @@ public sealed class FocusSession : IDisposable
 			_phase = FocusPhase.Idle;
 			_durationSeconds = 0;
 			_accumulatedSeconds = 0;
-			_pendingNotice = false;
 			if (storedPhase != FocusPhase.Idle) Save();
 			return;
 		}
@@ -480,6 +480,7 @@ public sealed class FocusSession : IDisposable
 				NotifyOnComplete = _notifyOnComplete,
 				SilentReminders = _silentReminders,
 				CompletionNotified = _completionNotified,
+				PendingNotice = _pendingNotice,
 				CompletedCount = _completedCount,
 				TotalSeconds = _totalSeconds,
 				Recent = _recent.Select(item => new StoredRecord
@@ -545,6 +546,7 @@ public sealed class FocusSession : IDisposable
 		public bool NotifyOnComplete { get; set; } = true;
 		public bool SilentReminders { get; set; } = true;
 		public bool CompletionNotified { get; set; }
+		public bool PendingNotice { get; set; }
 		public int CompletedCount { get; set; }
 		public double TotalSeconds { get; set; }
 		public List<StoredRecord> Recent { get; set; } = [];

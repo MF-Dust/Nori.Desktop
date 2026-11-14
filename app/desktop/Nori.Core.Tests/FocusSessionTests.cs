@@ -285,6 +285,39 @@ public sealed class FocusSessionTests : IDisposable
 	}
 
 	[Fact]
+	public void 安全模式结束未通知的完成场后下次正常启动仍通知一次()
+	{
+		ManualFocusClock clock = new();
+		string path = StatePath("safe-end-notice");
+		using (FocusSession session = new(path, clock, background: true))
+		{
+			session.Start(1, notifyOnComplete: true, silentReminders: true);
+			clock.Now = 60_000;
+			session.Evaluate();
+		}
+
+		using (FocusSession safe = new(path, new ManualFocusClock(), background: false))
+		{
+			Assert.Equal("completed", safe.View().Phase);
+			Assert.Null(safe.ConsumeCompletionNotice(false));
+			safe.End();
+			Assert.Equal("idle", safe.View().Phase);
+			Assert.Null(safe.ConsumeCompletionNotice(false));
+		}
+
+		using (FocusSession normal = new(path, new ManualFocusClock(), background: true))
+		{
+			Assert.Equal("idle", normal.View().Phase);
+			Assert.Equal(1, normal.View().CompletedCount);
+			Assert.Equal("这段专注结束了。", normal.ConsumeCompletionNotice(false));
+			Assert.Null(normal.ConsumeCompletionNotice(false));
+		}
+
+		using FocusSession again = new(path, new ManualFocusClock(), background: true);
+		Assert.Null(again.ConsumeCompletionNotice(false));
+	}
+
+	[Fact]
 	public void 到点后暂停会记成完成并只通知一次()
 	{
 		ManualFocusClock clock = new();

@@ -69,7 +69,7 @@ public partial class BridgeCommandsTests
 		using HttpClient http = new(handler);
 		await using AppRuntime runtime = CreateNativeChatRuntime(http);
 		_config.Set("tts_auto_play", new ConfigValue.Boolean(false));
-		using Window owner = new();
+		Window owner = new();
 		using NativeChatService service = new(_services, owner);
 		TaskCompletionSource<JsonElement> first = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		TaskCompletionSource<JsonElement> newest = new(TaskCreationOptions.RunContinuationsAsynchronously);

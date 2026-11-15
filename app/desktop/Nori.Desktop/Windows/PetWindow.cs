@@ -146,6 +146,8 @@ public sealed class PetWindow : Window
 
 		Opened += OnOpened;
 		Closed += OnClosed;
+		// 平台窗口重建时，新的运行时诞生在专注已经开始之后。补上当前阶段，不改已保存的动作开关。
+		_services.Runtime?.ApplyFocusQuiet();
 	}
 
 	/// <summary>

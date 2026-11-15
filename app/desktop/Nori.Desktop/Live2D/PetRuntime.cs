@@ -199,6 +199,31 @@ public sealed class PetRuntime
 	/// <summary>预览、安全模式、隐藏或尚未装上模型时，不开始自主动作。</summary>
 	internal bool AutonomousSuspended => _previewMode || _services.SafeMode || !IsRenderVisible || _currentModel is null;
 
+	/// <summary>这一帧是否询问自主动作。专注只暂停决定，不把预览、安全模式或隐藏算成可播放。</summary>
+	internal bool ShouldRunAutonomousTick => !_previewMode && !_services.SafeMode && IsRenderVisible;
+
+	/// <summary>
+	/// 按当前专注和动作状态做一次决定。不播放，也不要求模型已经装上。
+	/// 显式 Force 会挡住待机和语音；专注只把这一帧标成暂停，不改已保存的频率和开关。
+	/// </summary>
+	internal AutonomousDecision DecideAutonomousMotion(
+		double now,
+		bool speaking,
+		bool motionFinished,
+		MotionPriority priority,
+		string? group) =>
+		_autonomous.Tick(new AutonomousFrame(
+			now,
+			AutonomousBehaviorEnabled,
+			AutonomousRandomEnabled,
+			AutonomousFrequency,
+			Suspended: FocusQuiet,
+			speaking,
+			motionFinished,
+			priority,
+			group,
+			IdleAnimationEnabled));
+
 	internal AutonomousMotionPlanner AutonomousMotions => _autonomous;
 
 	/// <summary>只串行当前实例的模型操作，宠物和预览不再共享 SDK 全局状态。</summary>
@@ -1136,7 +1161,7 @@ public sealed class PetRuntime
 		_currentModel.Animation.RandomMotion = false;
 		if (!FocusCompanionPolicy.AllowsAmbientMotion(IdleAnimationEnabled, FocusQuiet))
 			_currentModel.Animation.StopIdleMotion();
-		if (!_previewMode && !_services.SafeMode && IsRenderVisible)
+		if (ShouldRunAutonomousTick)
 			TryStartAutonomousMotion();
 		_currentModel.Update(deltaTime);
 
@@ -1690,17 +1715,12 @@ public sealed class PetRuntime
 		if (_currentModel is null) return;
 		// 冷却只跟单调计数走。系统时间被校前或校后时，不能把下一次待机提前，也不能把它拖过整个间隔。
 		double now = AutonomousTime.Seconds(Stopwatch.GetTimestamp());
-		AutonomousDecision decision = _autonomous.Tick(new AutonomousFrame(
+		AutonomousDecision decision = DecideAutonomousMotion(
 			now,
-			AutonomousBehaviorEnabled,
-			AutonomousRandomEnabled,
-			AutonomousFrequency,
-			Suspended: FocusQuiet,
 			_lipSync.IsSpeaking,
 			_currentModel.Animation.IsMotionFinished,
 			_currentModel.Animation.CurrentMotionPriority,
-			_currentModel.Animation.CurrentMotionGroup,
-			IdleAnimationEnabled));
+			_currentModel.Animation.CurrentMotionGroup);
 		if (decision.Motion is not { } motion) return;
 		if (_currentModel.Animation.StartMotion(motion.Group, motion.Index, decision.Priority) is null) return;
 		_autonomous.Commit(motion, decision.Priority, now, AutonomousFrequency);

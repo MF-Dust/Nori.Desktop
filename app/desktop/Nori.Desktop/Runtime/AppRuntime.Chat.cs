@@ -98,6 +98,7 @@ public sealed partial class AppRuntime
 		{
 			object terminal;
 			ProtocolMessage? final = null;
+			bool failed = false;
 			try
 			{
 				using ITelemetryTransaction operation = Services.Telemetry.StartTransaction("agent.run");
@@ -113,9 +114,14 @@ public sealed partial class AppRuntime
 					message = new {text = final.Text, emotion = final.Emotion, expression = final.Expression, action = final.Action},
 				};
 			}
-			catch (OperationCanceledException) { terminal = new {type = "cancelled", sessionId}; }
+			catch (OperationCanceledException)
+			{
+				failed = true;
+				terminal = new {type = "cancelled", sessionId};
+			}
 			catch (Exception exception)
 			{
+				failed = true;
 				terminal = new {type = "error", sessionId, error = SensitiveDataRedactor.Redact(exception.Message)};
 			}
 			finally
@@ -134,6 +140,8 @@ public sealed partial class AppRuntime
 				if (voiceTurn is null) await AutoSpeakAsync(final.Text, final.Emotion, lifetimeToken);
 				else await AutoSpeakAsync(final.Text, final.Emotion, voiceTurn.CancellationToken, voiceTurn.Generation);
 			}
+			if (failed && voiceTurn is not null && !voiceTurn.CancellationToken.IsCancellationRequested)
+				throw new InvalidOperationException("实时语音的 AI 对话未能完成");
 		});
 		session.Worker = worker;
 		TrackTask(worker);

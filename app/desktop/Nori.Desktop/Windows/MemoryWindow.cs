@@ -20,8 +20,8 @@ namespace Nori.Desktop.Windows;
 /// <summary>独立的原生记忆管理窗口，保留各分区草稿及未完成写入。</summary>
 public sealed partial class MemoryWindow : Window
 {
-	private static readonly string[] Sections = ["overview", "memories", "atoms", "knowledge", "archive", "transfer", "debugger", "advanced"];
-	private static readonly string[] Kinds = ["general", "factual", "preference", "relational", "planned", "identity"];
+	private static readonly string[] Sections = ["overview", "memories", "timeline", "atoms", "knowledge", "archive", "transfer", "debugger", "advanced"];
+	private static readonly string[] Kinds = ["general", "episodic", "factual", "preference", "relational", "planned", "identity"];
 	private readonly MemoryService _service;
 	private readonly CancellationTokenSource _lifetime = new();
 	private readonly Dictionary<string, Control> _pages = [];
@@ -49,7 +49,7 @@ public sealed partial class MemoryWindow : Window
 	private int _saveBarrierDepth;
 	private readonly Dictionary<Control, bool> _saveBarrierSurfaces = [];
 
-	/// <summary>创建具有八个分区的深色原生记忆窗口。</summary>
+	/// <summary>创建深色原生记忆窗口，含列表、时间线、原子、知识库与归档。</summary>
 	public MemoryWindow(AppServices services)
 	{
 		_service = new MemoryService(services, this);
@@ -68,7 +68,14 @@ public sealed partial class MemoryWindow : Window
 		{
 			if (args.Property != IsVisibleProperty) return;
 			if (IsVisible) QueueRefresh();
-			else { _pageRequest++; _snapshotRequest++; _detailRequest++; _debugRequest++; }
+			else
+			{
+				_pageRequest++;
+				_snapshotRequest++;
+				_detailRequest++;
+				_debugRequest++;
+				CancelTimelineQuery();
+			}
 		};
 		Closing += OnClosing;
 	}
@@ -79,14 +86,17 @@ public sealed partial class MemoryWindow : Window
 	/// <summary>切换分区；各页输入控件与草稿保留在窗口中。</summary>
 	public void Navigate(string? page)
 	{
+		string previous = _section;
 		_section = page is null ? _section : Sections.Contains(page) ? page : "overview";
 		_pageRequest++;
 		_detailRequest++;
+		if (previous == "timeline" && _section != "timeline") CancelTimelineQuery();
 		_presenter.Content = _pages[_section];
 		_heading.Text = L("tabs." + _section);
 		_description.Text = PageDescription();
 		foreach (var pair in _navigation) pair.Value.Classes.Set("selected", pair.Key == _section);
 		_scroll.Offset = default;
+		FitTimeline();
 		if (IsVisible) _ = RefreshAsync();
 	}
 
@@ -195,6 +205,7 @@ public sealed partial class MemoryWindow : Window
 
 	protected override void OnClosed(EventArgs e)
 	{
+		CancelTimelineQuery();
 		_lifetime.Cancel();
 		_service.StateChanged -= OnStateChanged;
 		_service.Dispose();
@@ -255,6 +266,7 @@ public sealed partial class MemoryWindow : Window
 			if (args.Property != ScrollViewer.ViewportProperty || _scroll.Viewport.Width <= 0) return;
 			_presenter.Width = Math.Min(960, _scroll.Viewport.Width);
 			if (_overviewStats is not null) _overviewStats.Columns = _scroll.Viewport.Width >= 600 ? 4 : 2;
+			FitTimeline();
 		};
 		Grid.SetRow(_scroll, 1); main.Children.Add(_scroll);
 		var footer = new DockPanel { Margin = new Thickness(24, 10, 24, 12), LastChildFill = true };
@@ -271,6 +283,7 @@ public sealed partial class MemoryWindow : Window
 		{
 			"overview" => "M 4,4 L 10,4 10,10 4,10 Z M 14,4 L 20,4 20,10 14,10 Z M 4,14 L 10,14 10,20 4,20 Z M 14,14 L 20,14 20,20 14,20 Z",
 			"memories" => "M 4,5 Q 8,3 12,6 Q 16,3 20,5 L 20,20 Q 16,18 12,21 Q 8,18 4,20 Z M 12,6 L 12,21",
+			"timeline" => "M 6,3 L 6,21 M 4,6 L 8,6 M 4,12 L 8,12 M 4,18 L 8,18 M 11,6 L 20,6 M 11,12 L 20,12 M 11,18 L 17,18",
 			"atoms" => "M 12,3 L 21,8 21,17 12,22 3,17 3,8 Z M 3,8 L 12,13 21,8 M 12,13 L 12,22",
 			"knowledge" => "M 6,3 L 15,3 20,8 20,21 6,21 Z M 15,3 L 15,8 20,8 M 9,12 L 16,12 M 9,16 L 16,16",
 			"archive" => "M 3,4 L 21,4 21,9 3,9 Z M 5,9 L 5,21 19,21 19,9 M 10,13 L 14,13",
@@ -290,6 +303,7 @@ public sealed partial class MemoryWindow : Window
 	{
 		"overview" => T("浏览记忆资产，管理 Nori 记住与回想的方式。", "Your memory library at a glance, and how Nori remembers."),
 		"memories" => T("收藏偏好、重要事实与约定，让每一次相处都有迹可循。", "Review the preferences, facts and promises Nori remembers."),
+		"timeline" => T("按真实创建日期浏览记忆。时间缺失会标成未知，遗忘只会归档。", "Browse memories by the real creation date. Missing times stay unknown, and forgetting only archives."),
 		"atoms" => T("查看从长期记忆中提炼的事实，以及它们的来源。", "Explore the facts distilled from memories and their origins."),
 		"knowledge" => T("管理 Memory.md 知识文件及其检索索引。", "Manage your Memory.md knowledge file and search index."),
 		"archive" => T("暂存不再参与日常检索的记忆，随时恢复。", "Memories set aside from everyday recall, ready to restore."),

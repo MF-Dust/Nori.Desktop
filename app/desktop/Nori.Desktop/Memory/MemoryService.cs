@@ -2,6 +2,7 @@ using System.Collections.Frozen;
 using System.Text.Json;
 using Avalonia.Controls;
 using Nori.Core.Logging;
+using Nori.Core.Memory;
 using Nori.Desktop.Bridge;
 
 namespace Nori.Desktop.Memory;
@@ -72,6 +73,35 @@ public sealed class MemoryService : IDisposable
 			if (IsStateChangingCommand(command) && (_services.Runtime is null || _services.Runtime.SnapshotVersion == snapshotVersion))
 				RaiseStateChanged();
 			return JsonSerializer.SerializeToElement(result, BridgeJson.Options);
+		}
+		finally { EndOperation(); }
+	}
+
+	/// <summary>后台分页读取记忆时间线。关闭或新筛选会取消尚未返回的读取。</summary>
+	public async Task<MemoryTimelinePage> QueryTimelineAsync(MemoryTimelineQuery query, TimeZoneInfo zone, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(query);
+		ArgumentNullException.ThrowIfNull(zone);
+		CancellationToken backgroundToken = BeginOperation();
+		try
+		{
+			using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _services.ShutdownToken, backgroundToken);
+			MemoryStore store = (_services.Runtime ?? throw new InvalidOperationException("应用运行时尚未就绪")).Memory.Store;
+			return await Task.Run(() => store.QueryTimeline(query, zone, linked.Token), linked.Token).ConfigureAwait(false);
+		}
+		finally { EndOperation(); }
+	}
+
+	/// <summary>后台读取一条时间线详情，只返回库中已有的字段。</summary>
+	public async Task<MemoryTimelineDetail> GetTimelineDetailAsync(long id, TimeZoneInfo zone, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(zone);
+		CancellationToken backgroundToken = BeginOperation();
+		try
+		{
+			using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _services.ShutdownToken, backgroundToken);
+			Nori.Core.Memory.MemoryService memory = (_services.Runtime ?? throw new InvalidOperationException("应用运行时尚未就绪")).Memory;
+			return await Task.Run(() => memory.GetTimelineDetail(id, zone, linked.Token), linked.Token).ConfigureAwait(false);
 		}
 		finally { EndOperation(); }
 	}

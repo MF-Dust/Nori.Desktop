@@ -293,6 +293,251 @@ public sealed class MemoryStore
 		return ReadItems(command);
 	});
 
+	/// <summary>测试可在读取前等待；回调发生在数据库锁之外，便于取消旧查询。</summary>
+	internal Action<CancellationToken>? BeforeTimelineRead { get; set; }
+
+	/// <summary>最近一次时间线查询实际装载的完整记忆行数，不含只读时间戳的候选。</summary>
+	internal int TimelineItemMaterializations { get; private set; }
+
+	/// <summary>
+	/// 按创建时间分页读取时间线。
+	/// 先只取编号和创建时间，筛完再装载当前页，避免把整库正文读进界面。
+	/// </summary>
+	public MemoryTimelinePage QueryTimeline(MemoryTimelineQuery query, TimeZoneInfo zone, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(query);
+		ArgumentNullException.ThrowIfNull(zone);
+		MemoryTimelineQuery normalized = query.Normalize();
+		cancellationToken.ThrowIfCancellationRequested();
+		BeforeTimelineRead?.Invoke(cancellationToken);
+		cancellationToken.ThrowIfCancellationRequested();
+		try
+		{
+			return _database.Locked(connection => QueryTimelineLocked(connection, normalized, zone, cancellationToken));
+		}
+		catch (SqliteException exception) when (cancellationToken.IsCancellationRequested && exception.SqliteErrorCode == 9)
+		{
+			throw new OperationCanceledException("记忆时间线读取已取消", exception, cancellationToken);
+		}
+	}
+
+	/// <summary>读取一条时间线详情。没有这条记忆时返回 null，不编造相关内容。</summary>
+	public MemoryTimelineDetail? GetTimelineDetail(long id, TimeZoneInfo zone, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(zone);
+		cancellationToken.ThrowIfCancellationRequested();
+		BeforeTimelineRead?.Invoke(cancellationToken);
+		cancellationToken.ThrowIfCancellationRequested();
+		try
+		{
+			return _database.Locked(connection => ReadTimelineDetail(connection, id, zone, cancellationToken));
+		}
+		catch (SqliteException exception) when (cancellationToken.IsCancellationRequested && exception.SqliteErrorCode == 9)
+		{
+			throw new OperationCanceledException("记忆时间线读取已取消", exception, cancellationToken);
+		}
+	}
+
+	private MemoryTimelinePage QueryTimelineLocked(SqliteConnection connection, MemoryTimelineQuery query, TimeZoneInfo zone, CancellationToken cancellationToken)
+	{
+		TimelineItemMaterializations = 0;
+		List<TimelineCandidate> candidates = [];
+		using (SqliteCommand command = connection.CreateCommand())
+		{
+			command.CommandText = """
+				SELECT id, created_at FROM memories
+				WHERE ($kind IS NULL OR kind = $kind)
+				  AND (
+				      $activity = 'all'
+				      OR ($activity = 'archived' AND status = 'archived')
+				      OR ($activity = 'active' AND ifnull(status, '') <> 'archived')
+				  )
+				  AND (
+				      $keyword = ''
+				      OR lower(content) LIKE lower($pattern) ESCAPE '\'
+				      OR lower(ifnull(canonical_summary, '')) LIKE lower($pattern) ESCAPE '\'
+				      OR lower(ifnull(persona_summary, '')) LIKE lower($pattern) ESCAPE '\'
+				      OR lower(ifnull(tags, '')) LIKE lower($pattern) ESCAPE '\'
+				  )
+				""";
+			AddParameter(command, "$kind", query.Kind);
+			AddParameter(command, "$activity", query.Activity switch
+			{
+				MemoryTimelineActivity.Active => "active",
+				MemoryTimelineActivity.Archived => "archived",
+				_ => "all",
+			});
+			AddParameter(command, "$keyword", query.Keyword ?? "");
+			AddParameter(command, "$pattern", TimelineLikePattern(query.Keyword));
+			using CancellationTokenRegistration registration = cancellationToken.Register(static state => CancelTimelineCommand(state), command);
+			using SqliteDataReader reader = command.ExecuteReader();
+			while (reader.Read())
+			{
+				if ((candidates.Count & 255) == 0) cancellationToken.ThrowIfCancellationRequested();
+				long id = reader.GetInt64(0);
+				string createdAt = reader.IsDBNull(1) ? "" : reader.GetString(1);
+				MemoryCreatedStamp created = MemoryTimelineTime.Classify(createdAt, zone);
+				if (!MemoryTimelineTime.InRange(created, query.From, query.To)) continue;
+				candidates.Add(new TimelineCandidate(id, created));
+			}
+		}
+		cancellationToken.ThrowIfCancellationRequested();
+		candidates.Sort(static (left, right) => MemoryTimelineTime.Compare(left.Created, left.Id, right.Created, right.Id));
+		int total = candidates.Count;
+		if (query.Offset >= total || query.Limit == 0)
+			return new MemoryTimelinePage { Items = [], Total = total, Limit = query.Limit, Offset = query.Offset };
+		int count = Math.Min(query.Limit, total - query.Offset);
+		long[] ids = new long[count];
+		MemoryCreatedStamp[] stamps = new MemoryCreatedStamp[count];
+		for (int index = 0; index < count; index++)
+		{
+			TimelineCandidate candidate = candidates[query.Offset + index];
+			ids[index] = candidate.Id;
+			stamps[index] = candidate.Created;
+		}
+		Dictionary<long, MemoryItem> items = ReadItemsByIds(connection, ids, cancellationToken);
+		TimelineItemMaterializations = items.Count;
+		List<MemoryTimelineEntry> page = new(count);
+		foreach (int index in Enumerable.Range(0, count))
+		{
+			if (!items.TryGetValue(ids[index], out MemoryItem? item)) continue;
+			page.Add(new MemoryTimelineEntry { Item = item, Created = stamps[index] });
+		}
+		return new MemoryTimelinePage { Items = page, Total = total, Limit = query.Limit, Offset = query.Offset };
+	}
+
+	private MemoryTimelineDetail? ReadTimelineDetail(SqliteConnection connection, long id, TimeZoneInfo zone, CancellationToken cancellationToken)
+	{
+		cancellationToken.ThrowIfCancellationRequested();
+		using SqliteCommand command = connection.CreateCommand();
+		command.CommandText = SelectByIdSql; // nosemgrep
+		AddParameter(command, "$id", id);
+		using CancellationTokenRegistration registration = cancellationToken.Register(static state => CancelTimelineCommand(state), command);
+		MemoryItem? item;
+		using (SqliteDataReader reader = command.ExecuteReader())
+		{
+			if (!reader.Read()) return null;
+			item = ReadRow(reader);
+		}
+		List<MemorySource> sources = [];
+		using (SqliteCommand sourceCommand = connection.CreateCommand())
+		{
+			sourceCommand.CommandText = "SELECT id, memory_id, role, content, message_time, sequence FROM memory_sources WHERE memory_id = $id ORDER BY sequence ASC, id ASC";
+			AddParameter(sourceCommand, "$id", id);
+			using SqliteDataReader reader = sourceCommand.ExecuteReader();
+			while (reader.Read())
+			{
+				sources.Add(new MemorySource
+				{
+					Id = reader.GetInt64(0),
+					MemoryId = reader.GetInt64(1),
+					Role = reader.GetString(2),
+					Content = reader.GetString(3),
+					MessageTime = reader.IsDBNull(4) ? null : reader.GetString(4),
+					Sequence = reader.GetInt32(5),
+				});
+			}
+		}
+		List<MemoryTimelineRelation> related = [];
+		bool truncated = false;
+		if (item.SupersededBy is long successor && successor != item.Id)
+			related.Add(ReadRelation(connection, successor, "superseded-by") ?? UnresolvedRelation(successor, "superseded-by"));
+		using (SqliteCommand previous = connection.CreateCommand())
+		{
+			previous.CommandText = """
+				SELECT id, content, canonical_summary, kind, status, created_at
+				FROM memories
+				WHERE superseded_by = $id AND id <> $id
+				ORDER BY id DESC
+				LIMIT 21
+				""";
+			AddParameter(previous, "$id", id);
+			using SqliteDataReader reader = previous.ExecuteReader();
+			while (reader.Read())
+			{
+				if (related.Count(item => item.Link == "supersedes") == 20)
+				{
+					truncated = true;
+					break;
+				}
+				related.Add(ReadRelationRow(reader, "supersedes"));
+			}
+		}
+		return new MemoryTimelineDetail
+		{
+			Item = item,
+			Created = MemoryTimelineTime.Classify(item.CreatedAt, zone),
+			Updated = MemoryTimelineTime.Classify(item.UpdatedAt, zone),
+			Sources = sources,
+			Related = related,
+			RelatedTruncated = truncated,
+		};
+	}
+
+	private static MemoryTimelineRelation? ReadRelation(SqliteConnection connection, long id, string link)
+	{
+		using SqliteCommand command = connection.CreateCommand();
+		command.CommandText = "SELECT id, content, canonical_summary, kind, status, created_at FROM memories WHERE id = $id";
+		AddParameter(command, "$id", id);
+		using SqliteDataReader reader = command.ExecuteReader();
+		return reader.Read() ? ReadRelationRow(reader, link) : null;
+	}
+
+	private static MemoryTimelineRelation ReadRelationRow(SqliteDataReader reader, string link) => new()
+	{
+		Id = reader.GetInt64(0),
+		Link = link,
+		Resolved = true,
+		Content = reader.IsDBNull(1) ? null : reader.GetString(1),
+		CanonicalSummary = reader.IsDBNull(2) ? null : reader.GetString(2),
+		Kind = reader.IsDBNull(3) ? null : reader.GetString(3),
+		Status = reader.IsDBNull(4) ? null : reader.GetString(4),
+		CreatedAt = reader.IsDBNull(5) ? null : reader.GetString(5),
+	};
+
+	private static MemoryTimelineRelation UnresolvedRelation(long id, string link) => new()
+	{
+		Id = id,
+		Link = link,
+		Resolved = false,
+	};
+
+	private Dictionary<long, MemoryItem> ReadItemsByIds(SqliteConnection connection, IReadOnlyList<long> ids, CancellationToken cancellationToken)
+	{
+		Dictionary<long, MemoryItem> result = [];
+		if (ids.Count == 0) return result;
+		cancellationToken.ThrowIfCancellationRequested();
+		using SqliteCommand command = connection.CreateCommand();
+		string[] names = new string[ids.Count];
+		for (int index = 0; index < ids.Count; index++)
+		{
+			names[index] = "$page" + index.ToString(CultureInfo.InvariantCulture);
+			AddParameter(command, names[index], ids[index]);
+		}
+		// 编号只来自上一查询，参数名由本方法生成。
+		command.CommandText = BaseSelect + " WHERE id IN (" + string.Join(", ", names) + ")"; // nosemgrep
+		foreach (MemoryItem item in ReadItems(command)) result[item.Id] = item;
+		return result;
+	}
+
+	private static string TimelineLikePattern(string? keyword)
+	{
+		if (string.IsNullOrEmpty(keyword)) return "%";
+		string escaped = keyword.Replace("\\", "\\\\", StringComparison.Ordinal)
+			.Replace("%", "\\%", StringComparison.Ordinal)
+			.Replace("_", "\\_", StringComparison.Ordinal);
+		return "%" + escaped + "%";
+	}
+
+	private static void CancelTimelineCommand(object? state)
+	{
+		if (state is not SqliteCommand command) return;
+		try { command.Cancel(); }
+		catch (ObjectDisposedException) { }
+	}
+
+	private readonly record struct TimelineCandidate(long Id, MemoryCreatedStamp Created);
+
 	/// <summary>按游标读取待嵌入记忆；传入 fingerprint 时也包含过期向量。</summary>
 	public IReadOnlyList<MemoryItem> GetUnembedded(int limit = 100, long afterId = 0, string? fingerprint = null) => _database.Locked(connection =>
 	{

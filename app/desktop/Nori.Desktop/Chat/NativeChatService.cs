@@ -3,6 +3,7 @@ using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Nori.Core.Logging;
+using Nori.Core.Voice.Realtime;
 using Nori.Core.Security;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Windows;
@@ -55,6 +56,16 @@ public sealed class NativeChatService : IDisposable
 	internal long HistoryRevision => _services.Runtime?.ChatHistoryRevision ?? 0;
 
 	internal bool IsRecording => _services.Runtime?.Voice.IsRecording == true;
+
+	/// <summary>仅供真实原生聊天窗口的实时语音入口使用，返回既有 Agent 会话及完成任务。</summary>
+	internal (string SessionId, Task Completion) StartRealtimeChat(RealtimeVoiceTurn turn)
+	{
+		ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+		turn.CancellationToken.ThrowIfCancellationRequested();
+		ValidateSourceCommand(_context, "chat_start");
+		return (_services.Runtime ?? throw new InvalidOperationException("应用运行时尚未就绪"))
+			.StartRealtimeChat(_context, turn);
+	}
 
 	/// <summary>检查是否属于原生对话权限范围。</summary>
 	public static bool IsCommandAllowed(string command) => !string.IsNullOrWhiteSpace(command) && AllowedCommands.Contains(command);

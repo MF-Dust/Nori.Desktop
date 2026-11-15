@@ -39,7 +39,11 @@ public sealed partial class AppRuntime
 		/* ── 档位 ──────────────────────────────────────────────────────────
 		 * 判定在**发事件之前**。放在之后（发了卡片再自动点掉）会让界面闪一下
 		 * 又消失，用户以为自己看漏了什么。 */
-		if (Permissions.Decide(EffectiveGear, sessionId, request.ToolName, request.PermissionLevel)
+		// 实时语音可能接收到周围人声：需确认的工具不继承 Trusted、Bypass 或本轮授权。
+		// safe 仍按原注册表策略放行；原生来源、用户批准与取消检查保持不变。
+		bool voiceOrigin = _sessions.TryGetValue(sessionId, out AgentSessionState? active) && active.VoiceOrigin;
+		PermissionGear authorizationGear = voiceOrigin ? PermissionGear.Ask : EffectiveGear;
+		if (Permissions.Decide(authorizationGear, sessionId, request.ToolName, request.PermissionLevel)
 			== PermissionDecision.Allow)
 		{
 			// 自动放行也要留痕：出事时要答得出「她什么时候做的、按的哪一档」。
@@ -95,7 +99,8 @@ public sealed partial class AppRuntime
 		HideApprovalNotice(approval.RequestId);
 		// 只有用户**真的按了允许**才记。超时、取消、拒绝都不是同意 —— 把它们也记进来，
 		// 等于一次没人看见的超时换来后面整轮的静默放行。
-		if (approved) Permissions.Remember(approval.SessionId, approval.ToolName);
+		if (approved && (!_sessions.TryGetValue(approval.SessionId, out AgentSessionState? active) || !active.VoiceOrigin))
+			Permissions.Remember(approval.SessionId, approval.ToolName);
 		PostAgentEvent(approval.Source, new
 		{
 			type = "approval-result", sessionId = approval.SessionId, requestId = approval.RequestId, approved, reason,

@@ -3,10 +3,13 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Avalonia.Controls;
+using Nori.Desktop.Chat;
 using Nori.Core.Agent;
 using Nori.Core.Chat.LuoLiCore;
 using Nori.Core.Configuration;
 using Nori.Core.Tools;
+using Nori.Core.Voice.Realtime;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Runtime;
 using Nori.Desktop.Windows;
@@ -58,6 +61,151 @@ public partial class BridgeCommandsTests
 		_services.Runtime = runtime;
 		return runtime;
 	}
+
+	[Fact]
+	public Task RealtimeVoiceFirstTurnWaitsForSupersedingRefreshAndHistory() => WithSettingsUiAsync(async () =>
+	{
+		NativeChatHttpHandler handler = new();
+		using HttpClient http = new(handler);
+		await using AppRuntime runtime = CreateNativeChatRuntime(http);
+		_config.Set("tts_auto_play", new ConfigValue.Boolean(false));
+		Window owner = new();
+		using NativeChatService service = new(_services, owner);
+		TaskCompletionSource<JsonElement> first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource<JsonElement> newest = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		JsonElement snapshot = JsonSerializer.SerializeToElement(new
+		{
+			chat = new { configured = true },
+			app = new { safeMode = false },
+			general = new { language = "zh-CN" },
+		});
+		int snapshotCalls = 0;
+		int historyCalls = 0;
+		Task<JsonElement> GetSnapshot(CancellationToken _) => Interlocked.Increment(ref snapshotCalls) switch
+		{
+			1 => first.Task,
+			2 => newest.Task,
+			_ => Task.FromResult(snapshot),
+		};
+		Task<JsonElement> Execute(string command, object? _, CancellationToken cancellationToken)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			if (command != "chat_history_page") throw new InvalidOperationException("意外调用");
+			Interlocked.Increment(ref historyCalls);
+			return Task.FromResult(JsonSerializer.SerializeToElement(Array.Empty<object>()));
+		}
+		using ChatView view = new(service, Execute, GetSnapshot);
+		owner.Content = view;
+		owner.Show();
+
+		Task voice = view.SendRealtimeTurnAsync(new RealtimeVoiceTurn(81, "第一轮语音", CancellationToken.None));
+		Assert.Equal(1, snapshotCalls);
+		Task superseding = view.RefreshAsync();
+		Assert.Equal(2, snapshotCalls);
+		first.TrySetResult(snapshot);
+		await Task.Yield();
+		Assert.False(voice.IsCompleted);
+		Assert.Equal(0, historyCalls);
+
+		newest.TrySetResult(snapshot);
+		await superseding.WaitAsync(TimeSpan.FromSeconds(3));
+		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		handler.ReleaseStream.TrySetResult();
+		await voice.WaitAsync(TimeSpan.FromSeconds(3));
+		Assert.True(view.HistoryLoaded);
+		Assert.Equal(1, historyCalls);
+		Assert.Contains(_services.Chat.GetHistory(), message => message.Content == "第一轮语音");
+		owner.Close();
+	});
+
+	[Fact]
+	public void RealtimeVoiceAgentRejectsUntrustedSource()
+	{
+		RealtimeVoiceTurn turn = new(1, "测试", CancellationToken.None);
+		Assert.Throws<InvalidOperationException>(() => _runtime.StartRealtimeChat(new FakeBridgeSource(WindowLabels.Main), turn));
+		Assert.Throws<InvalidOperationException>(() => _runtime.StartRealtimeChat(new FakeBridgeSource(WindowLabels.Chat), turn));
+		using NativeChatTestSource mislabelled = new(WindowLabels.Main);
+		Assert.Throws<InvalidOperationException>(() => _runtime.StartRealtimeChat(mislabelled, turn));
+	}
+
+	[Theory]
+	[InlineData("trusted")]
+	[InlineData("bypass")]
+	[InlineData("session")]
+	public Task RealtimeVoiceToolApprovalAlwaysRequiresFreshConsent(string gear) => WithSettingsUiAsync(async () =>
+	{
+		NativeChatHttpHandler handler = new();
+		using HttpClient http = new(handler);
+		await using AppRuntime runtime = CreateNativeChatRuntime(http);
+		_config.Set(ToolPermissionPolicy.KeyGear, new ConfigValue.Text(gear));
+		if (gear == "bypass")
+			_config.Set(ToolPermissionPolicy.KeyBypassUntil,
+				new ConfigValue.Text(ToolPermissionPolicy.FormatDeadline(DateTimeOffset.UtcNow.AddMinutes(10))));
+		using NativeChatTestSource source = new();
+		var started = runtime.StartRealtimeChat(source, new RealtimeVoiceTurn(90, "语音请求", CancellationToken.None));
+		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		for (int index = 0; index < 2; index++)
+		{
+			ToolApprovalRequest approval = new()
+			{
+				RequestId = $"voice-approval-{gear}-{index}",
+				ToolName = "writeFile",
+				PermissionLevel = "confirm",
+			};
+			Task<bool> pending = runtime.RequestApprovalAsync(source, started.SessionId, approval, CancellationToken.None);
+			Assert.False(pending.IsCompleted);
+			Assert.Contains(source.Events, item =>
+				item.GetProperty("type").GetString() == "approval-request"
+				&& item.GetProperty("requestId").GetString() == approval.RequestId);
+			Assert.True(runtime.RespondApproval(source, approval.RequestId, true));
+			Assert.True(await pending.WaitAsync(TimeSpan.FromSeconds(3)));
+			Assert.False(runtime.Permissions.Remembered(started.SessionId, "writeFile"));
+		}
+		handler.ReleaseStream.TrySetResult();
+		await started.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+	});
+
+	[Fact]
+	public Task RealtimeVoiceTurnUsesExistingNativeAgentAndCompletesBeforeReturning() => WithSettingsUiAsync(async () =>
+	{
+		NativeChatHttpHandler handler = new();
+		using HttpClient http = new(handler);
+		await using AppRuntime runtime = CreateNativeChatRuntime(http);
+		_config.Set("tts_auto_play", new ConfigValue.Boolean(false));
+		using NativeChatTestSource source = new();
+		RealtimeVoiceTurn turn = new(7, "语音提问", CancellationToken.None);
+		var started = runtime.StartRealtimeChat(source, turn);
+		Assert.True(runtime.IsSessionActive(started.SessionId));
+		Assert.Throws<AgentSessionBusyException>(() => runtime.StartRealtimeChat(source, turn));
+		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		handler.ReleaseStream.TrySetResult();
+		await started.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+		Assert.False(runtime.IsSessionActive(started.SessionId));
+		Assert.Contains(source.Events, item => item.GetProperty("type").GetString() == "complete"
+			&& item.GetProperty("sessionId").GetString() == started.SessionId);
+		Assert.Equal("服务端最终文本", _services.Chat.GetHistory()[^1].Content);
+	});
+
+	[Fact]
+	public Task RealtimeVoiceInterruptCancelsLinkedAgentWithoutReplayingTurn() => WithSettingsUiAsync(async () =>
+	{
+		NativeChatHttpHandler handler = new();
+		using HttpClient http = new(handler);
+		await using AppRuntime runtime = CreateNativeChatRuntime(http);
+		_config.Set("tts_auto_play", new ConfigValue.Boolean(false));
+		using NativeChatTestSource source = new();
+		using CancellationTokenSource interrupt = new();
+		RealtimeVoiceTurn turn = new(8, "可被打断的输入", interrupt.Token);
+		var started = runtime.StartRealtimeChat(source, turn);
+		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		interrupt.Cancel();
+		await started.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+		Assert.False(runtime.IsSessionActive(started.SessionId));
+		Assert.DoesNotContain(source.Events, item => item.GetProperty("type").GetString() == "complete");
+		Assert.Empty(_services.Chat.GetHistory());
+		Assert.ThrowsAny<OperationCanceledException>(() => runtime.StartRealtimeChat(source, turn));
+		using AgentSessionLease lease = runtime.Engine.ReserveSession("after-realtime-cancel");
+	});
 
 	[Fact]
 	public Task NativeChatClearCannotRaceAcceptedGenerationAndCompleteReleasesBeforeSpeech() => WithSettingsUiAsync(async () =>

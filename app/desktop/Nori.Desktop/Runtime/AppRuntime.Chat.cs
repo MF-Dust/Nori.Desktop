@@ -16,13 +16,13 @@ public sealed partial class AppRuntime
 	// ===================================================================
 
 	/// <summary>
-	/// 将用户主动监听后识别出的文字交给原生聊天草稿，用户确认后再发送。
-	/// 不在后台替用户调用 Agent、工具或自动朗读。
+	/// 由用户主动开启的语音监听将最终转写送入原生对话。
+	/// 不创建独立 Agent；会话和授权仍绑定到真正的原生聊天来源。
 	/// </summary>
-	private async Task DeliverRealtimeVoiceTranscriptAsync(RealtimeVoiceTurn turn)
+	private async Task HandleRealtimeVoiceTurnAsync(RealtimeVoiceTurn turn)
 	{
 		turn.CancellationToken.ThrowIfCancellationRequested();
-		await Dispatcher.UIThread.InvokeAsync(() =>
+		Task running = await Dispatcher.UIThread.InvokeAsync<Task>(() =>
 		{
 			turn.CancellationToken.ThrowIfCancellationRequested();
 			if (Services.SafeMode || Volatile.Read(ref _disposed) != 0)
@@ -30,15 +30,28 @@ public sealed partial class AppRuntime
 			Services.Windows.ShowChat();
 			if (Services.Windows.Get(WindowLabels.Chat) is not ChatWindow chat || !chat.IsVisible)
 				throw new InvalidOperationException("原生对话窗口未能打开");
-			chat.Body.AcceptRealtimeTranscript(turn.Text);
-		});
+			return chat.Body.SendRealtimeTurnAsync(turn);
+		}).GetTask().WaitAsync(turn.CancellationToken).ConfigureAwait(false);
+		await running.WaitAsync(turn.CancellationToken).ConfigureAwait(false);
 	}
 
 
 	/// <summary>
 	/// 启动一次 Agent 会话; 返回 sessionId 供取消/授权关联
 	/// </summary>
-	public string StartChat(IBridgeSource source, string text)
+	public string StartChat(IBridgeSource source, string text) => StartChatCore(source, text, null).SessionId;
+
+	/// <summary>原生聊天来源专用的语音请求；沿用同一 Agent 闸门与权限，额外关联这一轮的取消。</summary>
+	internal (string SessionId, Task Completion) StartRealtimeChat(IBridgeSource source, RealtimeVoiceTurn turn)
+	{
+		ArgumentNullException.ThrowIfNull(turn);
+		turn.CancellationToken.ThrowIfCancellationRequested();
+		if (source is not INativeChatSource native || !Nori.Desktop.Chat.NativeChatService.IsTrustedSource(native))
+			throw new InvalidOperationException("实时语音必须从可信原生对话窗口发起");
+		return StartChatCore(source, turn.Text, turn);
+	}
+
+	private (string SessionId, Task Completion) StartChatCore(IBridgeSource source, string text, RealtimeVoiceTurn? voiceTurn)
 	{
 		if (Volatile.Read(ref _disposed) != 0) throw new InvalidOperationException("应用正在退出");
 		if (Services.SafeMode) throw new InvalidOperationException("安全模式已禁用联网和外部服务");
@@ -48,7 +61,7 @@ public sealed partial class AppRuntime
 		if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("消息内容不能为空");
 		string sessionId = $"agent-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x}-{Interlocked.Increment(ref _sessionCounter):x}";
 		CancellationToken lifetimeToken = _lifetimeCts.Token;
-		AgentSessionState session = new(source, lifetimeToken);
+		AgentSessionState session = new(source, lifetimeToken, voiceTurn?.CancellationToken ?? CancellationToken.None, voiceTurn is not null);
 		AgentSessionLease lease;
 		try
 		{
@@ -87,6 +100,7 @@ public sealed partial class AppRuntime
 		{
 			object terminal;
 			ProtocolMessage? final = null;
+			bool failed = false;
 			try
 			{
 				using ITelemetryTransaction operation = Services.Telemetry.StartTransaction("agent.run");
@@ -102,9 +116,14 @@ public sealed partial class AppRuntime
 					message = new {text = final.Text, emotion = final.Emotion, expression = final.Expression, action = final.Action},
 				};
 			}
-			catch (OperationCanceledException) { terminal = new {type = "cancelled", sessionId}; }
+			catch (OperationCanceledException)
+			{
+				failed = true;
+				terminal = new {type = "cancelled", sessionId};
+			}
 			catch (Exception exception)
 			{
+				failed = true;
 				terminal = new {type = "error", sessionId, error = SensitiveDataRedactor.Redact(exception.Message)};
 			}
 			finally
@@ -118,11 +137,17 @@ public sealed partial class AppRuntime
 			// 终结事件意味着引擎与落库已结束，清空/下一轮不再被自动朗读占用。
 			PostAgentEvent(session.Source, terminal);
 			NotifyChatHistoryChanged();
-			if (final is not null) await AutoSpeakAsync(final.Text, final.Emotion, lifetimeToken);
+			if (final is not null)
+			{
+				if (voiceTurn is null) await AutoSpeakAsync(final.Text, final.Emotion, lifetimeToken);
+				else await AutoSpeakAsync(final.Text, final.Emotion, voiceTurn.CancellationToken, voiceTurn.Generation);
+			}
+			if (failed && voiceTurn is not null && !voiceTurn.CancellationToken.IsCancellationRequested)
+				throw new InvalidOperationException("实时语音的 AI 对话未能完成");
 		});
 		session.Worker = worker;
 		TrackTask(worker);
-		return sessionId;
+		return (sessionId, worker);
 	}
 	internal long ChatHistoryRevision => Interlocked.Read(ref _chatHistoryRevision);
 	internal void NotifyChatHistoryChanged()
@@ -131,7 +156,7 @@ public sealed partial class AppRuntime
 		InvalidateSnapshot();
 	}
 
-	private async Task AutoSpeakAsync(string text, string? messageEmotion, CancellationToken ct)
+	private async Task AutoSpeakAsync(string text, string? messageEmotion, CancellationToken ct, long? realtimeGeneration = null)
 	{
 		// 生成图片的引用不是要读出来的内容。
 		text = Nori.Core.Chat.Images.GeneratedImageStore.StripReferences(text);
@@ -144,6 +169,7 @@ public sealed partial class AppRuntime
 		// 都没有 (或为 neutral) 时不传情绪，让 TTS 用音色自带情绪。
 		string? emotion = string.IsNullOrWhiteSpace(messageEmotion) ? Emotion.CurrentType : messageEmotion.Trim();
 		TtsSynthesizeOptions speechOptions = new() {EmotionText = emotion};
+		if (realtimeGeneration is { } generation && !RealtimeVoice.TryBeginSpeaking(generation)) return;
 		try
 		{
 			await Voice.SpeakAsync(text, speechOptions, ct);
@@ -151,6 +177,10 @@ public sealed partial class AppRuntime
 		catch
 		{
 			/* 自动朗读失败不阻断完成事件 */
+		}
+		finally
+		{
+			if (realtimeGeneration is { } completedGeneration) RealtimeVoice.CompleteSpeaking(completedGeneration);
 		}
 	}
 

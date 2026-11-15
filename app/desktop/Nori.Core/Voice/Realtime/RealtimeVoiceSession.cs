@@ -655,10 +655,12 @@ public sealed class RealtimeVoiceSession : IDisposable
 		CancellationToken token,
 		Func<RealtimeVoiceTurn, Task> handler)
 	{
+		bool transcribed = false;
 		try
 		{
 			string text = _transcribe is null ? "" : await _transcribe(audio, token).ConfigureAwait(false);
 			if (!StillTurn(generation, RealtimeVoicePhase.Transcribing)) return;
+			transcribed = true;
 			if (string.IsNullOrWhiteSpace(text))
 			{
 				FinishQuiet(generation);
@@ -693,7 +695,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 			{
 				if (generation != _generation) return;
 				ClearAudioLocked();
-				_error = "语音识别连接已断开，本轮已结束";
+				_error = transcribed ? "实时语音对话失败，本轮已结束" : "语音识别连接已断开，本轮已结束";
 				SetPhaseLocked(RealtimeVoicePhase.Error);
 			}
 			StopDevice();

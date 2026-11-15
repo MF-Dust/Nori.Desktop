@@ -395,12 +395,13 @@ public sealed class RealtimeVoiceSessionTests
 	{
 		int frame = SampleRate / 50;
 		int total = Math.Max(frame, SampleRate * milliseconds / 1000);
+		bool silent = amplitude <= 0f;
 		for (int offset = 0; offset < total; offset += frame)
 		{
 			int count = Math.Min(frame, total - offset);
 			float[] samples = new float[count];
 			for (int index = 0; index < count; index++)
-				samples[index] = amplitude == 0 ? 0 : amplitude * MathF.Sin((offset + index) * 0.17f);
+				samples[index] = silent ? 0f : amplitude * MathF.Sin((offset + index) * 0.17f);
 			session.Observe(samples, 1, SampleRate);
 		}
 	}

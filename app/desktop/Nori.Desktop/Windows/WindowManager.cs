@@ -302,6 +302,19 @@ public sealed class WindowManager : IWindowManager
 	{
 		KeyModifiers modifier = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
 		if (args.Key == Key.K && args.KeyModifiers == modifier && _quickChat?.FocusComposer() == true) args.Handled = true;
+		if (!IsRealtimeInterruptGesture(args.Key, args.KeyModifiers)) return;
+		// 朗读期间麦克风检测是停着的，快捷键仍然可以打断。没在朗读时不吃掉按键。
+		if (_services?.Runtime?.RealtimeVoice.Interrupt() == true) args.Handled = true;
+	}
+
+	/// <summary>
+	/// 实时语音的主动打断快捷键。Windows 和 Linux 是 Ctrl+Shift+.，macOS 是 Command+Shift+.。
+	/// 不用 Ctrl+Shift+Esc，那是 Windows 任务管理器。只在 Nori 窗口有焦点时生效，不是系统全局热键。
+	/// </summary>
+	internal static bool IsRealtimeInterruptGesture(Key key, KeyModifiers modifiers)
+	{
+		KeyModifiers primary = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
+		return key == Key.OemPeriod && modifiers == (primary | KeyModifiers.Shift);
 	}
 
 	/// <inheritdoc />

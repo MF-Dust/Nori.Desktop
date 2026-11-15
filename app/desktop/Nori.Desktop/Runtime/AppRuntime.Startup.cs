@@ -110,6 +110,15 @@ public sealed partial class AppRuntime
 			{
 				/* 伴侣未加载时忽略 */
 			}
+			try
+			{
+				// 普通朗读和试听也会进麦克风。实时监听在播放期间暂停，播完再恢复。
+				RealtimeVoice.SetPlaybackHold(playing);
+			}
+			catch
+			{
+				/* 会话已释放时忽略 */
+			}
 		};
 		Voice.SpeakingChanged += _ => InvalidateSnapshot();
 
@@ -195,7 +204,8 @@ public sealed partial class AppRuntime
 		});
 	}
 
-	private void ApplyFocusQuiet()
+	/// <summary>把当前专注阶段写到已有伴侣运行时。不改用户保存的待机和自主动作开关。</summary>
+	internal void ApplyFocusQuiet()
 	{
 		try
 		{

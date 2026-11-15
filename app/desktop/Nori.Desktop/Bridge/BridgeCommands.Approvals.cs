@@ -30,6 +30,7 @@ public sealed partial class BridgeCommands
 			or "tts_test"
 			or "stt_start"
 			or "stt_stop"
+			or "realtime_voice_start"
 			or "open_url") return true;
 
 		// 安全模式仍允许手动保存不自动连接的 MCP 配置，但不能借此触发自动连接。

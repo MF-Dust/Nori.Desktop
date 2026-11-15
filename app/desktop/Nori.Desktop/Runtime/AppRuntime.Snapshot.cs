@@ -6,6 +6,7 @@ using Nori.Core.Proactive;
 using Nori.Core.Sandbox;
 using Nori.Core.Security;
 using Nori.Core.Tools;
+using Nori.Core.Voice.Realtime;
 using Nori.Desktop.Appearance;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Live2D;
@@ -83,6 +84,8 @@ public sealed partial class AppRuntime
 		AiEmbeddingSettingsSnapshot embeddingSnapshot = AiEmbeddingSettingsSnapshot.From(aiSettings.Embedding);
 		AiImageSettingsSnapshot imageSnapshot = AiImageSettingsSnapshot.From(aiSettings.Image, AiSettingsStore.ResolveImage(aiSettings));
 		string contextLimit = config.GetStringOr(Nori.Core.Agent.ContextWindowPlanner.KeyContextLimit, "auto").Trim().ToLowerInvariant();
+		RealtimeVoiceSettings realtimeSettings = RealtimeVoiceSettings.Read(config);
+		RealtimeVoiceStatus realtimeStatus = RealtimeVoice.Status();
 
 		var models = ModelCatalogIds().Select(id => new
 		{
@@ -386,6 +389,17 @@ public sealed partial class AppRuntime
 				hasSttApiKey = config.GetStringOr("stt_api_key", "").Length > 0,
 				noticePending = config.GetStringOr("voice_notice_pending", "") == "1",
 				speaking = Voice.IsSpeaking,
+				realtimeEnabled = realtimeSettings.Enabled,
+				realtimeContinuous = realtimeSettings.Continuous,
+				realtimeSensitivity = realtimeSettings.Sensitivity,
+				realtimeSilenceMs = realtimeSettings.SilenceMilliseconds,
+				realtimeInterruptEnabled = realtimeSettings.InterruptEnabled,
+				realtimeInputDevice = realtimeSettings.InputDeviceId,
+				realtimePhase = realtimeStatus.Phase.ToString().ToLowerInvariant(),
+				realtimeError = realtimeStatus.Error,
+				realtimeCapturePaused = realtimeStatus.CapturePaused,
+				realtimeStreaming = realtimeStatus.Streaming,
+				realtimeBargeIn = realtimeStatus.VoiceBargeInSupported,
 			},
 			embedding = embeddingSnapshot,
 			proactive = new

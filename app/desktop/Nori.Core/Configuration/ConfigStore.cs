@@ -527,6 +527,13 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 				("memory_debug_retrieval", new ConfigValue.Boolean(false)),
 				// 对话自动朗读: 默认关闭, 用户手动开启后持久化。前后端读缺省值保持一致 (false)。
 				("tts_auto_play", new ConfigValue.Boolean(false)),
+				// 实时语音默认关闭。补上缺项不会打开麦克风，也不会覆盖用户后来改过的值。
+				("realtime_voice_enabled", new ConfigValue.Boolean(false)),
+				("realtime_voice_continuous", new ConfigValue.Boolean(false)),
+				("realtime_voice_vad_sensitivity", new ConfigValue.Text("0.5")),
+				("realtime_voice_silence_ms", new ConfigValue.Integer(700)),
+				("realtime_voice_interrupt_enabled", new ConfigValue.Boolean(true)),
+				("realtime_voice_input_device", new ConfigValue.Text("")),
 				(KeyAutomationEnabled, new ConfigValue.Boolean(false)),
 				(KeyAutomationAllowPointer, new ConfigValue.Boolean(false)),
 				(KeyAutomationAllowKeyboard, new ConfigValue.Boolean(false)),

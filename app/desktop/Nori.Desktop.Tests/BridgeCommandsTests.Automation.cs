@@ -318,7 +318,7 @@ public partial class BridgeCommandsTests
 			"llm_fetch_models", "ai_test_connection", "chat_start",
 			"memory_reembed_all", "memory_recall_debug", "memory_knowledge_reindex",
 			"skills_install_url", "mcp_connect_server", "mcp_test_server",
-			"mcp_call_tool", "mcp_import_url", "tts_test", "stt_start", "stt_stop", "open_url",
+			"mcp_call_tool", "mcp_import_url", "tts_test", "stt_start", "stt_stop", "realtime_voice_start", "open_url",
 		];
 
 		foreach (string command in networkCommands)

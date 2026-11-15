@@ -178,6 +178,26 @@ public sealed class NativeMicrophoneRecorderTests
 	}
 
 	[Fact]
+	public async Task 同一占用不能同时打开两路录音()
+	{
+		CaptureOwnership ownership = new();
+		FakeMicrophone firstMic = new(new AudioFormat(16000, 1), Tone(1600, 1)) {BlockWhenDrained = true};
+		FakeMicrophone secondMic = new(new AudioFormat(16000, 1), Tone(1600, 1)) {BlockWhenDrained = true};
+		using NativeMicrophoneRecorder first = new(() => firstMic, ownership);
+		using NativeMicrophoneRecorder second = new(() => secondMic, ownership);
+
+		await first.StartAsync();
+		InvalidOperationException busy = await Assert.ThrowsAsync<InvalidOperationException>(() => second.StartAsync());
+		Assert.Contains("占用", busy.Message, StringComparison.Ordinal);
+		Assert.False(secondMic.Opened);
+
+		await first.StopAsync();
+		await second.StartAsync();
+		await second.StopAsync();
+		Assert.True(secondMic.Opened);
+	}
+
+	[Fact]
 	public async Task 重复开始会报错()
 	{
 		FakeMicrophone microphone = new(new AudioFormat(48000, 1), Tone(4800, 1)) {BlockWhenDrained = true};

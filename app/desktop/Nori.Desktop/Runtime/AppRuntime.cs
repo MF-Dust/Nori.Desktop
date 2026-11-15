@@ -245,7 +245,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			WhisperUtteranceTranscriber.SupportsStreaming,
 			_lifetimeCts.Token);
 		RealtimeVoice.PhaseChanged += OnRealtimeVoicePhaseChanged;
-		RealtimeVoice.TurnAccepted = DeliverRealtimeVoiceTranscriptAsync;
+		RealtimeVoice.TurnAccepted = HandleRealtimeVoiceTurnAsync;
 		_petInteractionService = new PetInteractionReactionService(services.Http, config, customProviders: services.Chat.CustomProviders);
 
 		Tools = BuildToolRegistry(true);
@@ -470,12 +470,12 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	}
 
 	/// <summary>活动 Agent 会话状态</summary>
-	private sealed class AgentSessionState(IBridgeSource source, CancellationToken lifetimeToken) : IDisposable
+	private sealed class AgentSessionState(IBridgeSource source, CancellationToken lifetimeToken, CancellationToken turnToken) : IDisposable
 	{
 		public IBridgeSource Source { get; } = source;
 
 		public CancellationTokenSource Cts { get; } = CancellationTokenSource.CreateLinkedTokenSource(
-			lifetimeToken, source is INativeChatSource native ? native.LifetimeToken : CancellationToken.None);
+			lifetimeToken, turnToken, source is INativeChatSource native ? native.LifetimeToken : CancellationToken.None);
 
 		public Task? Worker { get; set; }
 

@@ -191,6 +191,90 @@ public sealed class RealtimeVoiceSessionTests
 	}
 
 	[Fact]
+	public async Task 连续模式在外部播放时保持监听()
+	{
+		Harness harness = Harness.Open();
+		harness.Settings = harness.Settings with { Continuous = true };
+		using RealtimeVoiceSession session = harness.Session;
+		await session.StartAsync();
+		Feed(session, 300, 0.4f);
+		Feed(session, 800, 0);
+		RealtimeVoiceTurn turn = await harness.TurnGate.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.True(session.TryBeginSpeaking(turn.Generation));
+		session.SetPlaybackHold(true);
+		session.CompleteSpeaking(turn.Generation);
+		harness.ReleaseTurn.TrySetResult();
+		await harness.TurnFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.Equal(RealtimeVoicePhase.Listening, session.Phase);
+		Assert.True(session.Status().CapturePaused);
+		int calls = harness.TranscribeCalls;
+		Feed(session, 1_000, 0.4f);
+		Assert.Equal(calls, harness.TranscribeCalls);
+		session.SetPlaybackHold(false);
+		Feed(session, 300, 0.4f);
+		Feed(session, 800, 0);
+		await harness.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.Equal(2, harness.ToolRuns);
+	}
+
+	[Fact]
+	public async Task 打开设备时开始播放不会变成启动失败()
+	{
+		TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		HoldOpenCapture capture = new(entered, release);
+		using RealtimeVoiceSession session = new(
+			() => new RealtimeVoiceSettings(true, true, 0.5, 700, true, "", false),
+			false,
+			null,
+			() => capture,
+			(_, _) => Task.FromResult(""),
+			() => { },
+			false);
+		Task starting = session.StartAsync();
+		await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		session.SetPlaybackHold(true);
+		release.TrySetResult();
+		await starting.WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.Equal(RealtimeVoicePhase.Listening, session.Phase);
+		Assert.True(session.Status().CapturePaused);
+		Assert.NotEqual(RealtimeVoicePhase.Error, session.Phase);
+		session.SetPlaybackHold(false);
+		await session.StopAsync();
+	}
+
+	[Fact]
+	public async Task 上一轮还在收尾时取消启动不会再打开麦克风()
+	{
+		int opened = 0;
+		HoldDisposeCapture capture = new();
+		using RealtimeVoiceSession session = new(
+			() => new RealtimeVoiceSettings(true, false, 0.5, 700, true, "", false),
+			false,
+			null,
+			() =>
+			{
+				opened++;
+				return opened == 1 ? capture : new BlockingCapture();
+			},
+			(_, _) => Task.FromResult(""),
+			() => { },
+			false);
+		await session.StartAsync();
+		Task stopping = session.StopAsync();
+		await capture.DisposeEntered.WaitAsync(TimeSpan.FromSeconds(2));
+		using CancellationTokenSource cancelled = new();
+		Task starting = session.StartAsync(cancelled.Token);
+		await Task.Delay(30);
+		cancelled.Cancel();
+		await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
+		Assert.Equal(1, opened);
+		Assert.Equal(RealtimeVoicePhase.Idle, session.Phase);
+		capture.ReleaseDispose();
+		await stopping.WaitAsync(TimeSpan.FromSeconds(2));
+	}
+
+	[Fact]
 	public async Task 播放尚未结束时开始监听不会打开麦克风()
 	{
 		Harness harness = Harness.Open();
@@ -543,6 +627,54 @@ public sealed class RealtimeVoiceSessionTests
 			{
 				TurnFinished.TrySetResult();
 			}
+		}
+	}
+
+	private sealed class HoldOpenCapture(TaskCompletionSource entered, TaskCompletionSource release) : IAudioCaptureDevice
+	{
+		public AudioFormat Open()
+		{
+			entered.TrySetResult();
+			Assert.True(release.Task.Wait(TimeSpan.FromSeconds(5)));
+			return new AudioFormat(SampleRate, 1);
+		}
+
+		public int Read(Span<float> buffer, CancellationToken cancellationToken)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			return 0;
+		}
+
+		public void Stop() { }
+
+		public void Dispose() { }
+	}
+
+	private sealed class HoldDisposeCapture : IAudioCaptureDevice
+	{
+		private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+		public Task DisposeEntered => _entered.Task;
+
+		public void ReleaseDispose() => _release.TrySetResult();
+
+		public AudioFormat Open() => new(SampleRate, 1);
+
+		public int Read(Span<float> buffer, CancellationToken cancellationToken)
+		{
+			if (!cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(5)))
+				throw new TimeoutException("麦克风读取没有被取消");
+			cancellationToken.ThrowIfCancellationRequested();
+			return 0;
+		}
+
+		public void Stop() { }
+
+		public void Dispose()
+		{
+			_entered.TrySetResult();
+			Assert.True(_release.Task.Wait(TimeSpan.FromSeconds(5)));
 		}
 	}
 

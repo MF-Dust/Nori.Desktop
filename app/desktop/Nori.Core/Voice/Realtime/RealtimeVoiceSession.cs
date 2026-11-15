@@ -181,7 +181,22 @@ public sealed class RealtimeVoiceSession : IDisposable
 				? _listenTask
 				: null;
 		}
-		if (draining is not null) await WaitQuietlyAsync(draining).ConfigureAwait(false);
+		if (draining is not null)
+		{
+			try
+			{
+				await draining.WaitAsync(cancellationToken).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+			{
+				throw;
+			}
+			catch
+			{
+				// 上一轮收尾失败不阻止这次启动。调用方取消仍要停在启动之前。
+			}
+		}
+		cancellationToken.ThrowIfCancellationRequested();
 
 		Task ready;
 		CancellationTokenSource listen;
@@ -278,13 +293,13 @@ public sealed class RealtimeVoiceSession : IDisposable
 		lock (_gate)
 		{
 			if (_phase != RealtimeVoicePhase.Interrupting) return true;
-			resume = CanResumeLocked() && !_externalPlayback;
+			resume = CanResumeLocked();
 			_capturePaused = _externalPlayback;
 			_error = "";
 			SetPhaseLocked(resume ? RealtimeVoicePhase.Listening : RealtimeVoicePhase.Idle);
 			if (resume) _activity.ResetSpeech();
 		}
-		if (resume) RequestResume();
+		if (resume && !_capturePaused) RequestResume();
 		PublishPhase();
 		return true;
 	}
@@ -355,11 +370,11 @@ public sealed class RealtimeVoiceSession : IDisposable
 		{
 			if (generation != _generation || _phase != RealtimeVoicePhase.Speaking) return;
 			_capturePaused = _externalPlayback;
-			resume = CanResumeLocked() && !_externalPlayback;
+			resume = CanResumeLocked();
 			SetPhaseLocked(resume ? RealtimeVoicePhase.Listening : RealtimeVoicePhase.Idle);
 			if (resume) _activity.ResetSpeech();
 		}
-		if (resume) RequestResume();
+		if (resume && !_capturePaused) RequestResume();
 		PublishPhase();
 	}
 
@@ -473,7 +488,28 @@ public sealed class RealtimeVoiceSession : IDisposable
 		}
 		catch (Exception exception)
 		{
-			FailOpen(ready, exception);
+			bool pausedByPlayback;
+			bool alreadyLeft;
+			lock (_gate)
+			{
+				pausedByPlayback = exception is OperationCanceledException
+					&& _externalPlayback
+					&& _phase == RealtimeVoicePhase.Listening;
+				alreadyLeft = _phase is RealtimeVoicePhase.Idle or RealtimeVoicePhase.Error;
+			}
+			if (pausedByPlayback)
+			{
+				// 打开设备时外面开始播放，这是暂停，不是启动失败。播完后再打开。
+				ready.TrySetResult();
+			}
+			else if (!alreadyLeft)
+			{
+				FailOpen(ready, exception);
+			}
+			else
+			{
+				ready.TrySetCanceled(listen.Token);
+			}
 		}
 		finally
 		{

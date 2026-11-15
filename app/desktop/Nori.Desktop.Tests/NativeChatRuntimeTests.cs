@@ -3,6 +3,8 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Avalonia.Controls;
+using Nori.Desktop.Chat;
 using Nori.Core.Agent;
 using Nori.Core.Chat.LuoLiCore;
 using Nori.Core.Configuration;
@@ -59,6 +61,62 @@ public partial class BridgeCommandsTests
 		_services.Runtime = runtime;
 		return runtime;
 	}
+
+	[Fact]
+	public Task RealtimeVoiceFirstTurnWaitsForSupersedingRefreshAndHistory() => WithSettingsUiAsync(async () =>
+	{
+		NativeChatHttpHandler handler = new();
+		using HttpClient http = new(handler);
+		await using AppRuntime runtime = CreateNativeChatRuntime(http);
+		_config.Set("tts_auto_play", new ConfigValue.Boolean(false));
+		using Window owner = new();
+		using NativeChatService service = new(_services, owner);
+		TaskCompletionSource<JsonElement> first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource<JsonElement> newest = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		JsonElement snapshot = JsonSerializer.SerializeToElement(new
+		{
+			chat = new { configured = true },
+			app = new { safeMode = false },
+			general = new { language = "zh-CN" },
+		});
+		int snapshotCalls = 0;
+		int historyCalls = 0;
+		Task<JsonElement> GetSnapshot(CancellationToken _) => Interlocked.Increment(ref snapshotCalls) switch
+		{
+			1 => first.Task,
+			2 => newest.Task,
+			_ => Task.FromResult(snapshot),
+		};
+		Task<JsonElement> Execute(string command, object? _, CancellationToken cancellationToken)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			if (command != "chat_history_page") throw new InvalidOperationException("意外调用");
+			Interlocked.Increment(ref historyCalls);
+			return Task.FromResult(JsonSerializer.SerializeToElement(Array.Empty<object>()));
+		}
+		using ChatView view = new(service, Execute, GetSnapshot);
+		owner.Content = view;
+		owner.Show();
+
+		Task voice = view.SendRealtimeTurnAsync(new RealtimeVoiceTurn(81, "第一轮语音", CancellationToken.None));
+		Assert.Equal(1, snapshotCalls);
+		Task superseding = view.RefreshAsync();
+		Assert.Equal(2, snapshotCalls);
+		first.TrySetResult(snapshot);
+		await Task.Yield();
+		Assert.False(voice.IsCompleted);
+		Assert.Equal(0, historyCalls);
+
+		newest.TrySetResult(snapshot);
+		await superseding.WaitAsync(TimeSpan.FromSeconds(3));
+		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		handler.ReleaseStream.TrySetResult();
+		await voice.WaitAsync(TimeSpan.FromSeconds(3));
+		Assert.True(view.HistoryLoaded);
+		Assert.Equal(1, historyCalls);
+		Assert.Contains(_services.Chat.GetHistory(), message => message.Content == "第一轮语音");
+		owner.Close();
+	});
 
 	[Fact]
 	public void RealtimeVoiceAgentRejectsUntrustedSource()

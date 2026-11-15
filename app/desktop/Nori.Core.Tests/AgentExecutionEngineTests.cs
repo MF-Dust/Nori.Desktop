@@ -69,8 +69,24 @@ public sealed class AgentExecutionEngineTests : IDisposable
 		int arrived = 0;
 		Task run = RunAsync(journal,
 			[
-				Tool("readA", "safe", async () => { if (Interlocked.Increment(ref arrived) == 2) both.TrySetResult(); await first.Task; return "a"; }),
-				Tool("readB", "safe", async () => { if (Interlocked.Increment(ref arrived) == 2) both.TrySetResult(); await second.Task; return "b"; }),
+				Tool("readA", "safe", async () =>
+				{
+					if (Interlocked.Increment(ref arrived) == 2)
+					{
+						both.TrySetResult();
+					}
+					await first.Task;
+					return "a";
+				}),
+				Tool("readB", "safe", async () =>
+				{
+					if (Interlocked.Increment(ref arrived) == 2)
+					{
+						both.TrySetResult();
+					}
+					await second.Task;
+					return "b";
+				}),
 			],
 			ToolCall("readA") + "\n" + ToolCall("readB"));
 		await both.Task.WaitAsync(TimeSpan.FromSeconds(5));

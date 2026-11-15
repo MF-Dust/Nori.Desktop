@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
+using Nori.Core.Data;
 using Nori.Core.Logging;
 
 namespace Nori.Core.Tests;
@@ -82,7 +83,7 @@ public class FileLoggerTests : IDisposable
 		_logger.Initialize();
 		_logger.Write(LogSource.Backend, "warn", "清空前的一条");
 		Assert.True(await _logger.FlushAsync(TimeSpan.FromSeconds(10)));
-		string file = Assert.Single(Directory.GetFiles(_directory, "*.jsonl"));
+		string file = Assert.Single(Directory.GetFiles(LogDirectory(_directory), "*.jsonl"));
 
 		_logger.ClearRecentLogs();
 
@@ -179,8 +180,9 @@ public class FileLoggerTests : IDisposable
 		logger.Write(LogSource.Backend, "warn", "退出事件");
 		await logger.DisposeAsync();
 		await logger.DisposeAsync();
-		Assert.Single(ReadLines(_directory));
-		string file = Assert.Single(Directory.GetFiles(_directory, "*.jsonl"));
+		string directory = LogDirectory(_directory);
+		Assert.Single(ReadLines(directory));
+		string file = Assert.Single(Directory.GetFiles(directory, "*.jsonl"));
 		using FileStream exclusive = File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 		logger.Write(LogSource.Backend, "warn", "迟到事件");
 		Assert.Equal(1, logger.GetStatus().DroppedCount);
@@ -212,7 +214,7 @@ public class FileLoggerTests : IDisposable
 		for (int index = 0; index < 80; index++) logger.Write(LogSource.Backend, "info", new string('a', 900));
 		Assert.True(await logger.FlushAsync(TimeSpan.FromSeconds(5)));
 		Assert.True(File.Exists(unrelated)); Assert.True(File.Exists(old)); Assert.False(File.Exists(expired));
-		FileInfo[] files = new DirectoryInfo(_directory).GetFiles("nori_*.jsonl");
+		FileInfo[] files = new DirectoryInfo(LogDirectory(_directory)).GetFiles("nori_*.jsonl");
 		Assert.True(files.Length > 1);
 		Assert.True(files.Sum(file => file.Length) <= 8192);
 		foreach (string line in ReadLines(_directory))
@@ -271,10 +273,17 @@ public class FileLoggerTests : IDisposable
 		Assert.Contains("InvalidOperationException", line);
 	}
 
-	private static string[] ReadLines(string directory) => Directory.GetFiles(directory, "nori_*.jsonl").SelectMany(file =>
+	/// <summary>与 <see cref="FileLogger"/> 相同，先解开 macOS 的 /var 等系统链接再读。</summary>
+	private static string LogDirectory(string directory) => AppStoragePaths.ResolvePhysicalPath(directory);
+
+	private static string[] ReadLines(string directory)
 	{
-		using FileStream stream = new(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-		using StreamReader reader = new(stream);
-		return reader.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries);
-	}).ToArray();
+		directory = LogDirectory(directory);
+		return Directory.GetFiles(directory, "nori_*.jsonl").SelectMany(file =>
+		{
+			using FileStream stream = new(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+			using StreamReader reader = new(stream);
+			return reader.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+		}).ToArray();
+	}
 }

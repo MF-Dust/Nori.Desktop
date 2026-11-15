@@ -61,6 +61,8 @@ public sealed class PetGlControl : OpenGlControlBase
 	private volatile bool _gpuSuspended;
 	/// <summary>正在为 GPU 恢复摘下并放回控件；此时的 Deinit 需要在重建后恢复模型。</summary>
 	private bool _rebuildingSurface;
+	/// <summary>无法重挂表面时，下一帧成功绘制沿用现有上下文，不把阶段留在重建中。</summary>
+	private volatile bool _resumeExistingContext;
 	private bool _attached;
 
 	public PetGlControl(PetRuntime runtime)
@@ -107,6 +109,8 @@ public sealed class PetGlControl : OpenGlControlBase
 				_sceneSurface = new NativeGlSurface(_glApi);
 				_hitMaskSurface = new NativeGlSurface(_glApi);
 				_runtime.OnGlInit(_glApi);
+				if (_runtime.RenderRecovery is PetRenderRecoveryPhase.ContextLost or PetRenderRecoveryPhase.Rebuilding or PetRenderRecoveryPhase.Failed)
+					_runtime.NoteRenderRecovery(PetRenderRecoveryPhase.Restored);
 				_runtime.SetRenderSurfaceState(false, false, _renderActive);
 				StartRenderLoop();
 			}
@@ -119,6 +123,7 @@ public sealed class PetGlControl : OpenGlControlBase
 				_glApi = null;
 				// 初始化失败后 Avalonia 不会再请求帧；设备刚出过故障时按退避重建，否则保持原有失败语义。
 				if (_gpuBackoff.IsRecovering(Now())) Dispatcher.UIThread.Post(() => ScheduleGpuRecovery("gpu.init_failed"));
+				else _runtime.NoteRenderRecovery(PetRenderRecoveryPhase.Failed);
 				throw;
 			}
 		});
@@ -129,6 +134,7 @@ public sealed class PetGlControl : OpenGlControlBase
 	{
 		StopRenderLoop();
 		_runtime.RunSynchronized(AbandonGlState);
+		_runtime.NoteRenderRecovery(PetRenderRecoveryPhase.ContextLost);
 		_runtime.WriteRenderSurfaceLog("warn", "伴侣 OpenGL 上下文丢失, 已丢弃失效资源并等待重建", "gl.context_lost");
 		base.OnOpenGlLost();
 	}
@@ -259,6 +265,19 @@ public sealed class PetGlControl : OpenGlControlBase
 		{
 			_runtime.RecordRenderMetrics(ElapsedMilliseconds(frameStart), 0);
 		}
+		ObserveSuccessfulFrame();
+	}
+
+	/// <summary>标记下一帧若绘制成功，就结束“沿用现有上下文”的重建阶段。</summary>
+	internal void ArmExistingContextResume() => _resumeExistingContext = true;
+
+	/// <summary>成功绘制一帧后，只把沿用现有上下文的重建阶段收成已恢复。</summary>
+	internal void ObserveSuccessfulFrame()
+	{
+		if (!_resumeExistingContext) return;
+		_resumeExistingContext = false;
+		if (_runtime.RenderRecovery == PetRenderRecoveryPhase.Rebuilding)
+			_runtime.NoteRenderRecovery(PetRenderRecoveryPhase.Restored);
 	}
 
 	private unsafe void SampleAlphaMask(int viewportW, int viewportH, int defaultFramebuffer)
@@ -610,6 +629,8 @@ public sealed class PetGlControl : OpenGlControlBase
 	private void ScheduleGpuRecovery(string eventId)
 	{
 		if (!_attached) return;
+		_resumeExistingContext = false;
+		_runtime.NoteRenderRecovery(PetRenderRecoveryPhase.Rebuilding);
 		_gpuSuspended = true;
 		Interlocked.Exchange(ref _framePending, 0);
 		StopRenderLoop();
@@ -637,7 +658,8 @@ public sealed class PetGlControl : OpenGlControlBase
 		_gpuSuspended = false;
 		_runtime.WriteRenderSurfaceLog("info", "重建伴侣渲染表面", "gl.surface_rebuild");
 		if (RebuildSurface()) return;
-		// 无法重挂时交给 Avalonia 的丢失检测：恢复帧请求，上下文已丢失会在下一帧自动重建。
+		// 无法重挂时沿用还在的上下文；下一帧绘制成功才结束重建。上下文已经没了则交给 Avalonia 重建。
+		_resumeExistingContext = _glApi is not null;
 		if (_glApi is not null) StartRenderLoop();
 		RequestNextFrameRendering();
 	}

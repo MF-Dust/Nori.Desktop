@@ -89,7 +89,7 @@ public sealed class DebugSettingsPage : NativeSettingsPageBase
 {
 	/// <summary>创建调试与诊断页面。</summary>
 	public DebugSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
-		: base(service, "debug", "app", new("调试与诊断", "Debug & Diagnostics"), new("查看日志、导出脱敏诊断并检查运行状态。", "Inspect logs, export redacted diagnostics and check runtime status."), new DebugSettingsViewModel(service), lifetimeToken)
+		: base(service, "debug", "app", new("调试与诊断", "Debug & Diagnostics"), new("查看渲染性能和日志，并导出脱敏诊断。", "Inspect render performance and logs, and export redacted diagnostics."), new DebugSettingsViewModel(service), lifetimeToken)
 	{
 	}
 }

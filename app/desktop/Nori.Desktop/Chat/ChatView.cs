@@ -222,6 +222,40 @@ public sealed partial class ChatView : UserControl, IDisposable
 		FlushRender();
 	}
 
+	/// <summary>
+	/// 实时语音自动进入现有 Agent 管线，保留用户未发送的草稿。
+	/// 仅由宿主在真实原生聊天窗口的 UI 线程调用。
+	/// </summary>
+	internal async Task SendRealtimeTurnAsync(Nori.Core.Voice.Realtime.RealtimeVoiceTurn turn)
+	{
+		Dispatcher.UIThread.VerifyAccess();
+		turn.CancellationToken.ThrowIfCancellationRequested();
+		if (_disposed || _preparing || _clearing || _modal.IsVisible)
+			throw new InvalidOperationException("对话窗口暂时无法开始语音会话");
+		if (!_loadedHistory) await RefreshAsync();
+		turn.CancellationToken.ThrowIfCancellationRequested();
+		if (!_configured || !_loadedHistory || _safeMode)
+			throw new InvalidOperationException("聊天服务尚未准备好，无法发送语音转写");
+		if (!_state.BeginSend(turn.Text))
+			throw new InvalidOperationException("已有对话正在进行，语音不会重复提交");
+		ScrollToLatest();
+		FlushRender();
+		Task completion;
+		try
+		{
+			(string sessionId, completion) = _service.StartRealtimeChat(turn);
+			_state.AttachSession(sessionId);
+		}
+		catch (Exception exception)
+		{
+			_state.StartFailed(exception);
+			FlushRender();
+			throw;
+		}
+		FlushRender();
+		await completion.WaitAsync(turn.CancellationToken);
+	}
+
 	internal Task SendAsync(string? text = null)
 	{
 		if (!_configured || !_loadedHistory || _safeMode || _preparing || _clearing || _modal.IsVisible) return Task.CompletedTask;

@@ -47,13 +47,15 @@ public sealed class EnergyVoiceActivity
 		double rms = RootMeanSquare(interleaved);
 		if (elapsed <= 0) return new EnergyVoiceDecision(false, false, _latched, rms);
 
-		double clampedSensitivity = Math.Clamp(sensitivity, 0, 1);
+		double finiteSensitivity = double.IsFinite(sensitivity) ? sensitivity : RealtimeVoiceLimits.DefaultSensitivity;
+		double clampedSensitivity = Math.Clamp(finiteSensitivity, 0, 1);
 		int silence = Math.Clamp(silenceMilliseconds, RealtimeVoiceLimits.MinimumSilenceMilliseconds, RealtimeVoiceLimits.MaximumSilenceMilliseconds);
 		double absolute = 0.09 - (clampedSensitivity * 0.075);
 		double multiplier = 4.5 - (clampedSensitivity * 2.8);
 		double threshold = Math.Max(absolute, _noiseFloor * multiplier);
 		bool hot = rms >= threshold;
-		AdaptNoise(rms, hot);
+		// 开口期间不能把当前声音学成噪声，否则持续说话会被自己抬高的门槛切断。
+		if (!hot) AdaptNoise(rms);
 
 		if (hot)
 		{
@@ -83,11 +85,9 @@ public sealed class EnergyVoiceActivity
 		return new EnergyVoiceDecision(false, true, false, rms);
 	}
 
-	private void AdaptNoise(double rms, bool hot)
+	private void AdaptNoise(double rms)
 	{
-		_noiseFloor = hot
-			? (_noiseFloor * 0.98) + (rms * 0.02)
-			: (_noiseFloor * 0.90) + (rms * 0.10);
+		_noiseFloor = (_noiseFloor * 0.90) + (rms * 0.10);
 		_noiseFloor = Math.Clamp(_noiseFloor, 0.001, 0.2);
 	}
 

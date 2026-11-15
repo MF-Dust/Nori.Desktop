@@ -56,6 +56,18 @@ public sealed class EnergyVoiceActivityTests
 	}
 
 	[Fact]
+	public void 持续说话不会被噪声底提前切断()
+	{
+		EnergyVoiceActivity activity = new();
+		int starts = 0;
+		int ends = 0;
+		Feed(activity, 30_000, 0.4f, 0.5, 700, ref starts, ref ends);
+		Assert.Equal(1, starts);
+		Assert.Equal(0, ends);
+		Assert.True(activity.InSpeech);
+	}
+
+	[Fact]
 	public void 持续噪声最多收成一句()
 	{
 		EnergyVoiceActivity activity = new();

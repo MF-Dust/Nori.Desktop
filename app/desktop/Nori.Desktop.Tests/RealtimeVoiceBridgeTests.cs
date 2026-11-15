@@ -62,6 +62,17 @@ public partial class BridgeCommandsTests
 		Assert.Contains("默认", device.Message, StringComparison.Ordinal);
 		Assert.DoesNotContain("hw:1", device.Message, StringComparison.Ordinal);
 
+		_config.Set(RealtimeVoiceSettings.EnabledKey, new ConfigValue.Boolean(true));
+		InvalidOperationException partial = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			CreateCommands().InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "settings_update_voice", Args(new
+			{
+				realtimeEnabled = false,
+				realtimeInputDevice = "mic\nsecret",
+			})));
+		Assert.Contains("无效", partial.Message, StringComparison.Ordinal);
+		Assert.True(_config.GetBoolOr(RealtimeVoiceSettings.EnabledKey, false));
+		Assert.Equal("hw:1", _config.GetStringOr(RealtimeVoiceSettings.InputDeviceKey, ""));
+
 		JsonElement idle = JsonSerializer.SerializeToElement(await CreateCommands().InvokeAsync(
 			new FakeBridgeSource(WindowLabels.Main), "realtime_voice_interrupt", Args(new { })));
 		Assert.False(idle.GetProperty("interrupted").GetBoolean());
@@ -92,7 +103,7 @@ public partial class BridgeCommandsTests
 			SettingsFieldViewModel interrupt = page.Sections.SelectMany(section => section.Fields).Single(field => field.Key == "realtimeInterrupt");
 			Assert.True(status.IsReadOnly);
 			Assert.Contains(language == "en-US" ? "Not listening" : "未监听", status.Text, StringComparison.Ordinal);
-			Assert.Contains(language == "en-US" ? "Command+Shift+Esc" : "Ctrl+Shift+Esc", interrupt.Description, StringComparison.Ordinal);
+			Assert.Contains(language == "en-US" ? "Command+Shift+." : "Ctrl+Shift+.", interrupt.Description, StringComparison.Ordinal);
 
 			SettingsPagePresenter presenter = Assert.IsType<SettingsPagePresenter>(window.FindControl<SettingsPagePresenter>("PagePresenter"));
 			Button button = presenter.GetVisualDescendants().OfType<Button>().Single(item =>
@@ -116,8 +127,9 @@ public partial class BridgeCommandsTests
 	public void 打断快捷键区分平台且不是单独的Esc()
 	{
 		KeyModifiers primary = System.OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
-		Assert.True(WindowManager.IsRealtimeInterruptGesture(Key.Escape, primary | KeyModifiers.Shift));
-		Assert.False(WindowManager.IsRealtimeInterruptGesture(Key.Escape, KeyModifiers.None));
+		Assert.True(WindowManager.IsRealtimeInterruptGesture(Key.OemPeriod, primary | KeyModifiers.Shift));
+		Assert.False(WindowManager.IsRealtimeInterruptGesture(Key.Escape, primary | KeyModifiers.Shift));
+		Assert.False(WindowManager.IsRealtimeInterruptGesture(Key.OemPeriod, KeyModifiers.None));
 		Assert.False(WindowManager.IsRealtimeInterruptGesture(Key.K, primary));
 	}
 

@@ -122,6 +122,7 @@ public sealed partial class BridgeCommands
 		"settings_update_voice" => RequireMain(source, () =>
 			Run(() =>
 			{
+				ValidateRealtimeInputDevice(args);
 				UpdateOptionalConfig(args, "volume", "audio_volume");
 				UpdateOptionalConfig(args, "ttsProvider", "tts_provider");
 				UpdateOptionalConfig(args, "ttsBaseUrl", "tts_base_url");

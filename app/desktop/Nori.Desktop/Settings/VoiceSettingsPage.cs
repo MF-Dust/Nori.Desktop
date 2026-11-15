@@ -31,6 +31,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	private bool _previewing;
 	private bool _cloning;
 	private bool _speaking;
+	private int _realtimeRequest;
 
 	/// <summary>创建语音设置页。</summary>
 	public VoiceSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
@@ -127,7 +128,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeInputDevice = Convert.ToString(value)?.Trim() ?? string.Empty }, token));
 		AddAction(live, "realtimeStart", new("开始监听", "Start listening"), new("打开麦克风并用本地静音检测分段。这段语音还不会上传识别，也还不会回答。聊天里的麦克风按钮仍是按住说话，两边不能同时占用麦克风。", "Open the microphone and segment speech locally. Audio is not uploaded yet, and there is no reply yet. The chat microphone button remains push-to-talk, and the two cannot hold the microphone together."), new SettingsCommand(command => _ = StartRealtimeAsync()));
 		AddAction(live, "realtimeStop", new("停止监听", "Stop listening"), new("关闭实时监听并放开麦克风。", "Stop live listening and release the microphone."), new SettingsCommand(command => _ = StopRealtimeAsync()));
-		AddAction(live, "realtimeInterrupt", new("打断朗读", "Interrupt speech"), new("立刻停止播放。朗读时麦克风是暂停的，说话不会打断；请用这个按钮，或在 Nori 窗口按 Ctrl+Shift+Esc（macOS 为 Command+Shift+Esc）。这不是系统全局热键。", "Stop playback immediately. The microphone pauses during speech, so talking does not interrupt; use this button or Ctrl+Shift+Esc in a Nori window (Command+Shift+Esc on macOS). This is not a system-wide hotkey."), new SettingsCommand(command => _ = InterruptRealtimeAsync()));
+		AddAction(live, "realtimeInterrupt", new("打断朗读", "Interrupt speech"), new("立刻停止播放。朗读时麦克风是暂停的，说话不会打断；请用这个按钮，或在 Nori 窗口按 Ctrl+Shift+.（macOS 为 Command+Shift+.）。这不是系统全局热键。", "Stop playback immediately. The microphone pauses during speech, so talking does not interrupt; use this button or Ctrl+Shift+. in a Nori window (Command+Shift+. on macOS). This is not a system-wide hotkey."), new SettingsCommand(command => _ = InterruptRealtimeAsync()));
 		_ttsProvider.PropertyChanged += (_, args) =>
 		{
 			if (args.PropertyName == nameof(SettingsFieldViewModel.Selected)) UpdateProviderVisibility();
@@ -231,7 +232,9 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	{
 		try
 		{
+			int request = Interlocked.Increment(ref _realtimeRequest);
 			if (!await FlushPendingSavesAsync(LifetimeToken).ConfigureAwait(true)) return;
+			if (request != Volatile.Read(ref _realtimeRequest)) return;
 			await ExecuteAsync("realtime_voice_start", cancellationToken: LifetimeToken).ConfigureAwait(true);
 			SetStatus(Text("已开始监听。", "Listening started."));
 		}
@@ -243,6 +246,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	{
 		try
 		{
+			Interlocked.Increment(ref _realtimeRequest);
 			await ExecuteAsync("realtime_voice_stop", cancellationToken: LifetimeToken).ConfigureAwait(true);
 			SetStatus(Text("已停止监听。", "Listening stopped."));
 		}

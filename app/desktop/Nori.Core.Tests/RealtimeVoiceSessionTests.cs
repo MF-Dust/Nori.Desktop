@@ -40,6 +40,10 @@ public sealed class RealtimeVoiceSessionTests
 		RealtimeVoiceSettings kept = RealtimeVoiceSettings.Read(config);
 		Assert.True(kept.Enabled);
 		Assert.Equal(900, kept.SilenceMilliseconds);
+		config.Set(RealtimeVoiceSettings.SensitivityKey, new ConfigValue.Text("NaN"));
+		Assert.Equal(RealtimeVoiceLimits.DefaultSensitivity, RealtimeVoiceSettings.Read(config).Sensitivity);
+		Assert.Equal(2_880_000, RealtimeVoiceLimits.MaximumSamples(48_000, 2));
+		Assert.Equal(2_646_000, RealtimeVoiceLimits.MaximumSamples(44_100, 2));
 		Assert.True(RealtimeVoiceSettings.IsInvalidDevice("bad\nid"));
 		Assert.True(RealtimeVoiceSettings.IsInvalidDevice(new string('a', 129)));
 		Assert.False(RealtimeVoiceSettings.IsInvalidDevice(" default "));
@@ -184,6 +188,62 @@ public sealed class RealtimeVoiceSessionTests
 		Assert.Equal(RealtimeVoicePhase.Speaking, session.Phase);
 		session.CompleteSpeaking(turn.Generation);
 		harness.ReleaseTurn.TrySetResult();
+	}
+
+	[Fact]
+	public async Task 播放尚未结束时开始监听不会打开麦克风()
+	{
+		Harness harness = Harness.Open();
+		using RealtimeVoiceSession session = harness.Session;
+		session.SetPlaybackHold(true);
+		await session.StartAsync();
+		Assert.Equal(RealtimeVoicePhase.Listening, session.Phase);
+		Assert.True(session.Status().CapturePaused);
+		Feed(session, 1_000, 0.4f);
+		Assert.Equal(0, harness.TranscribeCalls);
+		session.SetPlaybackHold(false);
+		Feed(session, 300, 0.4f);
+		Feed(session, 800, 0);
+		await harness.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.Equal(1, harness.ToolRuns);
+	}
+
+	[Fact]
+	public async Task 打断后迟到的识别结果不会覆盖新一轮()
+	{
+		TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		int tools = 0;
+		RealtimeVoicePhase? replaced = null;
+		using RealtimeVoiceSession session = new(
+			() => new RealtimeVoiceSettings(true, false, 0.5, 700, true, "", false),
+			false,
+			null,
+			null,
+			async (_, _) =>
+			{
+				await release.Task.ConfigureAwait(false);
+				return "旧回答";
+			},
+			() => { },
+			false);
+		session.TurnAccepted = turn =>
+		{
+			tools++;
+			replaced = session.Phase;
+			return Task.CompletedTask;
+		};
+		await session.StartAsync();
+		Feed(session, 300, 0.4f);
+		Feed(session, 800, 0);
+		await WaitForPhase(session, RealtimeVoicePhase.Transcribing);
+		Assert.True(session.Interrupt());
+		await session.StartAsync();
+		RealtimeVoicePhase listening = session.Phase;
+		release.TrySetResult();
+		await Task.Delay(50);
+		Assert.Equal(0, tools);
+		Assert.Equal(listening, session.Phase);
+		Assert.Null(replaced);
 	}
 
 	[Fact]

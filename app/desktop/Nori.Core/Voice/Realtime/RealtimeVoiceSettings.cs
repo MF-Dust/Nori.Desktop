@@ -50,7 +50,8 @@ public sealed record RealtimeVoiceSettings
 	{
 		Enabled = enabled;
 		Continuous = continuous;
-		Sensitivity = Math.Clamp(sensitivity, 0, 1);
+		double finiteSensitivity = double.IsFinite(sensitivity) ? sensitivity : RealtimeVoiceLimits.DefaultSensitivity;
+		Sensitivity = Math.Clamp(finiteSensitivity, 0, 1);
 		SilenceMilliseconds = Math.Clamp(
 			silenceMilliseconds,
 			RealtimeVoiceLimits.MinimumSilenceMilliseconds,

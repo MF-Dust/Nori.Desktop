@@ -110,6 +110,15 @@ public sealed partial class AppRuntime
 			{
 				/* 伴侣未加载时忽略 */
 			}
+			try
+			{
+				// 普通朗读和试听也会进麦克风。实时监听在播放期间暂停，播完再恢复。
+				RealtimeVoice.SetPlaybackHold(playing);
+			}
+			catch
+			{
+				/* 会话已释放时忽略 */
+			}
 		};
 		Voice.SpeakingChanged += _ => InvalidateSnapshot();
 

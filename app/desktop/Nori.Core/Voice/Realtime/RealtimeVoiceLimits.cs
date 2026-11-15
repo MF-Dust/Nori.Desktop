@@ -26,4 +26,16 @@ public static class RealtimeVoiceLimits
 
 	/// <summary>输入设备标识的最大长度。空字符串表示系统默认设备。</summary>
 	public const int MaximumInputDeviceLength = 128;
+
+	/// <summary>
+	/// 这一轮最多保留多少交错样本。乘法用 64 位，避免 48 kHz 立体声溢出成负数或 1。
+	/// </summary>
+	public static int MaximumSamples(int sampleRate, int channels)
+	{
+		if (sampleRate <= 0 || channels <= 0) return 1;
+		long samples = (long)sampleRate * channels * MaximumUtteranceMilliseconds / 1000L;
+		if (samples < 1) return 1;
+		if (samples > int.MaxValue) return int.MaxValue;
+		return (int)samples;
+	}
 }

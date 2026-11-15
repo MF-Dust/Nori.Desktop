@@ -61,13 +61,27 @@ public sealed partial class BridgeCommands
 		};
 	}
 
-	/// <summary>保存输入设备标识。非法值直接拒绝，不把原文写进异常。</summary>
+	/// <summary>在写入任何语音配置之前拒绝非法设备标识，避免半截保存。</summary>
+	private static void ValidateRealtimeInputDevice(JsonElement args)
+	{
+		if (!TryReadRealtimeInputDevice(args, out string text)) return;
+		if (RealtimeVoiceSettings.IsInvalidDevice(text)) throw new InvalidOperationException("麦克风标识无效");
+	}
+
+	/// <summary>保存输入设备标识。调用前须先通过 <see cref="ValidateRealtimeInputDevice"/>。</summary>
 	private void UpdateRealtimeInputDevice(JsonElement args)
 	{
-		if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty("realtimeInputDevice", out JsonElement value)) return;
-		if (value.ValueKind != JsonValueKind.String) return;
-		string text = value.GetString() ?? "";
+		if (!TryReadRealtimeInputDevice(args, out string text)) return;
 		if (RealtimeVoiceSettings.IsInvalidDevice(text)) throw new InvalidOperationException("麦克风标识无效");
 		UpdateConfigDirect(RealtimeVoiceSettings.InputDeviceKey, text.Trim());
+	}
+
+	private static bool TryReadRealtimeInputDevice(JsonElement args, out string text)
+	{
+		text = "";
+		if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty("realtimeInputDevice", out JsonElement value)) return false;
+		if (value.ValueKind != JsonValueKind.String) return false;
+		text = value.GetString() ?? "";
+		return true;
 	}
 }

@@ -62,6 +62,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 	private long _generation;
 	private string _error = "";
 	private bool _capturePaused;
+	private bool _externalPlayback;
 	private bool _pushHeld;
 	private bool _capturing;
 	private bool _loopRunning;
@@ -172,8 +173,19 @@ public sealed class RealtimeVoiceSession : IDisposable
 	public async Task StartAsync(CancellationToken cancellationToken = default)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
+		Task? draining;
+		lock (_gate)
+		{
+			draining = _phase is RealtimeVoicePhase.Idle or RealtimeVoicePhase.Error
+				&& _listenTask is { IsCompleted: false }
+				? _listenTask
+				: null;
+		}
+		if (draining is not null) await WaitQuietlyAsync(draining).ConfigureAwait(false);
+
 		Task ready;
 		CancellationTokenSource listen;
+		bool openCapture;
 		lock (_gate)
 		{
 			ObjectDisposedException.ThrowIf(_disposed, this);
@@ -184,7 +196,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 			_generation++;
 			CancelTurnLocked();
 			_error = "";
-			_capturePaused = false;
+			_capturePaused = _externalPlayback;
 			_pushHeld = false;
 			_turnScheduled = false;
 			_activity.ResetAll();
@@ -192,10 +204,11 @@ public sealed class RealtimeVoiceSession : IDisposable
 			listen = CancellationTokenSource.CreateLinkedTokenSource(_lifetime);
 			ReplaceListenLocked(listen);
 			SetPhaseLocked(RealtimeVoicePhase.Listening);
-			ready = _openDevice is null ? Task.CompletedTask : StartLoopLocked(listen);
+			openCapture = _openDevice is not null && !_externalPlayback;
+			ready = openCapture ? StartLoopLocked(listen) : Task.CompletedTask;
 		}
 		PublishPhase();
-		if (_openDevice is null) return;
+		if (!openCapture) return;
 
 		// 只把取消绑在“还没打开”这一段。命令返回后令牌会被释放，不能因此关掉已经开始的监听。
 		try
@@ -204,7 +217,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		}
 		catch
 		{
-			StopDevice();
+			StopCaptured(listen);
 			await WaitQuietlyAsync(_listenTask).ConfigureAwait(false);
 			throw;
 		}
@@ -216,22 +229,27 @@ public sealed class RealtimeVoiceSession : IDisposable
 		Task? loop;
 		Task? turn;
 		bool stopSpeech;
+		IAudioCaptureDevice? device;
+		CancellationTokenSource? listen;
 		lock (_gate)
 		{
 			if (_disposed) return;
 			stopSpeech = _phase is RealtimeVoicePhase.Speaking or RealtimeVoicePhase.Interrupting;
 			_generation++;
 			CancelTurnLocked();
-			_capturePaused = false;
+			_capturePaused = _externalPlayback;
 			_pushHeld = false;
 			_turnScheduled = false;
 			ClearAudioLocked();
 			loop = _listenTask;
 			turn = _turnTask;
+			device = _device;
+			listen = _listenCts;
+			_device = null;
 			SetPhaseLocked(RealtimeVoicePhase.Idle);
 			_error = "";
 		}
-		StopDevice();
+		StopCaptured(listen, device);
 		if (stopSpeech) _stopSpeech();
 		await WaitQuietlyAsync(loop).ConfigureAwait(false);
 		await WaitQuietlyAsync(turn).ConfigureAwait(false);
@@ -260,8 +278,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 		lock (_gate)
 		{
 			if (_phase != RealtimeVoicePhase.Interrupting) return true;
-			resume = CanResumeLocked();
-			_capturePaused = false;
+			resume = CanResumeLocked() && !_externalPlayback;
+			_capturePaused = _externalPlayback;
 			_error = "";
 			SetPhaseLocked(resume ? RealtimeVoicePhase.Listening : RealtimeVoicePhase.Idle);
 			if (resume) _activity.ResetSpeech();
@@ -292,14 +310,24 @@ public sealed class RealtimeVoiceSession : IDisposable
 	public void SetPlaybackHold(bool held)
 	{
 		bool resume = false;
+		IAudioCaptureDevice? device = null;
+		CancellationTokenSource? listen = null;
 		lock (_gate)
 		{
-			if (_phase is RealtimeVoicePhase.Speaking or RealtimeVoicePhase.Interrupting) return;
+			_externalPlayback = held;
+			if (_phase is RealtimeVoicePhase.Speaking or RealtimeVoicePhase.Interrupting)
+				return;
 			_capturePaused = held;
-			if (held) _pushHeld = false;
+			if (held)
+			{
+				_pushHeld = false;
+				device = _device;
+				listen = _listenCts;
+				_device = null;
+			}
 			else resume = _phase == RealtimeVoicePhase.Listening;
 		}
-		if (held) StopDevice();
+		if (held) StopCaptured(listen, device);
 		else if (resume) RequestResume();
 		PublishPhase(force: true);
 	}
@@ -326,8 +354,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 		lock (_gate)
 		{
 			if (generation != _generation || _phase != RealtimeVoicePhase.Speaking) return;
-			_capturePaused = false;
-			resume = CanResumeLocked();
+			_capturePaused = _externalPlayback;
+			resume = CanResumeLocked() && !_externalPlayback;
 			SetPhaseLocked(resume ? RealtimeVoicePhase.Listening : RealtimeVoicePhase.Idle);
 			if (resume) _activity.ResetSpeech();
 		}
@@ -685,7 +713,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 
 	private void EnsureFormatLocked(int sampleRate, int channels)
 	{
-		int capacity = Math.Max(1, sampleRate * channels * RealtimeVoiceLimits.PrerollMilliseconds / 1000);
+		long rawCapacity = (long)sampleRate * channels * RealtimeVoiceLimits.PrerollMilliseconds / 1000L;
+		int capacity = (int)Math.Clamp(rawCapacity, 1, int.MaxValue);
 		if (_sampleRate == sampleRate && _channels == channels && _ring.Length == capacity) return;
 		_sampleRate = sampleRate;
 		_channels = channels;
@@ -715,8 +744,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		}
 	}
 
-	private int MaximumSamplesLocked() =>
-		Math.Max(1, _sampleRate * _channels * RealtimeVoiceLimits.MaximumUtteranceMilliseconds / 1000);
+	private int MaximumSamplesLocked() => RealtimeVoiceLimits.MaximumSamples(_sampleRate, _channels);
 
 	private void ClearAudioLocked()
 	{
@@ -771,7 +799,14 @@ public sealed class RealtimeVoiceSession : IDisposable
 		{
 			device = _device;
 			listen = _listenCts;
+			_device = null;
 		}
+		StopCaptured(listen, device);
+	}
+
+	/// <summary>只停调用方已经摘下的那一路，避免停到停止之后新打开的监听。</summary>
+	private static void StopCaptured(CancellationTokenSource? listen, IAudioCaptureDevice? device = null)
+	{
 		try { listen?.Cancel(); }
 		catch (ObjectDisposedException) { }
 		try { device?.Stop(); }

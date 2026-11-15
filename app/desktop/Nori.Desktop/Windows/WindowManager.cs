@@ -308,13 +308,13 @@ public sealed class WindowManager : IWindowManager
 	}
 
 	/// <summary>
-	/// 实时语音的主动打断快捷键。Windows 和 Linux 是 Ctrl+Shift+Esc，macOS 是 Command+Shift+Esc。
-	/// 只在 Nori 窗口有焦点时生效，不是系统全局热键。
+	/// 实时语音的主动打断快捷键。Windows 和 Linux 是 Ctrl+Shift+.，macOS 是 Command+Shift+.。
+	/// 不用 Ctrl+Shift+Esc，那是 Windows 任务管理器。只在 Nori 窗口有焦点时生效，不是系统全局热键。
 	/// </summary>
 	internal static bool IsRealtimeInterruptGesture(Key key, KeyModifiers modifiers)
 	{
 		KeyModifiers primary = OperatingSystem.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
-		return key == Key.Escape && modifiers == (primary | KeyModifiers.Shift);
+		return key == Key.OemPeriod && modifiers == (primary | KeyModifiers.Shift);
 	}
 
 	/// <inheritdoc />

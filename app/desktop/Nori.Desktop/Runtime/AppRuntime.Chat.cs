@@ -22,7 +22,7 @@ public sealed partial class AppRuntime
 	private async Task HandleRealtimeVoiceTurnAsync(RealtimeVoiceTurn turn)
 	{
 		turn.CancellationToken.ThrowIfCancellationRequested();
-		Task running = await Dispatcher.UIThread.InvokeAsync(() =>
+		Task running = await Dispatcher.UIThread.InvokeAsync<Task>(() =>
 		{
 			turn.CancellationToken.ThrowIfCancellationRequested();
 			if (Services.SafeMode || Volatile.Read(ref _disposed) != 0)

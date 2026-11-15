@@ -470,9 +470,12 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	}
 
 	/// <summary>活动 Agent 会话状态</summary>
-	private sealed class AgentSessionState(IBridgeSource source, CancellationToken lifetimeToken, CancellationToken turnToken) : IDisposable
+	private sealed class AgentSessionState(IBridgeSource source, CancellationToken lifetimeToken, CancellationToken turnToken, bool voiceOrigin) : IDisposable
 	{
 		public IBridgeSource Source { get; } = source;
+
+		/// <summary>只有本次会话来自用户明确开启的实时语音时才为 true。</summary>
+		public bool VoiceOrigin { get; } = voiceOrigin;
 
 		public CancellationTokenSource Cts { get; } = CancellationTokenSource.CreateLinkedTokenSource(
 			lifetimeToken, turnToken, source is INativeChatSource native ? native.LifetimeToken : CancellationToken.None);

@@ -7,6 +7,7 @@ using Nori.Core.Live2D;
 using Nori.Core.Memory;
 using Nori.Core.Resources;
 using Nori.Core.Skills;
+using Nori.Core.Voice.Realtime;
 using Nori.Desktop.Appearance;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Diagnostics;
@@ -138,6 +139,12 @@ public sealed partial class BridgeCommands
 				UpdateOptionalConfig(args, "sttProvider", "stt_provider");
 				UpdateOptionalConfig(args, "sttBaseUrl", "stt_base_url");
 				UpdateSecretConfig(args, "sttApiKey", "stt_api_key");
+				UpdateBoolConfig(args, "realtimeEnabled", RealtimeVoiceSettings.EnabledKey);
+				UpdateBoolConfig(args, "realtimeContinuous", RealtimeVoiceSettings.ContinuousKey);
+				UpdateOptionalConfig(args, "realtimeSensitivity", RealtimeVoiceSettings.SensitivityKey);
+				UpdateOptionalConfig(args, "realtimeSilenceMs", RealtimeVoiceSettings.SilenceKey);
+				UpdateBoolConfig(args, "realtimeInterruptEnabled", RealtimeVoiceSettings.InterruptKey);
+				UpdateRealtimeInputDevice(args);
 				if (_services.Runtime?.Voice is not null)
 				{
 					string raw = _services.Config.GetStringOr("audio_volume", "1");
@@ -146,6 +153,7 @@ public sealed partial class BridgeCommands
 						_services.Runtime.Voice.SetVolume(vol);
 					}
 					if (HasTtsConfigurationChange(args) || HasString(args, "ttsModel")) _services.Runtime.Voice.NotifyConfigurationChanged();
+					_services.Runtime.RealtimeVoice.ApplySettingsAsync(RealtimeVoiceSettings.Read(_services.Config)).GetAwaiter().GetResult();
 				}
 				Runtime.InvalidateSnapshot();
 			})),
@@ -685,6 +693,30 @@ public sealed partial class BridgeCommands
 
 		// invoke("stt_stop") → {text}
 		"stt_stop" => await SttStopAsync(source, cancellationToken),
+
+		/// <summary>
+		/// 开始实时监听。只有用户主动调用才会打开麦克风。
+		/// 前端调用：invoke("realtime_voice_start")
+		/// </summary>
+		"realtime_voice_start" => await RealtimeVoiceStartAsync(source, cancellationToken),
+
+		/// <summary>
+		/// 停止实时监听，并放开麦克风。
+		/// 前端调用：invoke("realtime_voice_stop")
+		/// </summary>
+		"realtime_voice_stop" => await RealtimeVoiceStopAsync(source),
+
+		/// <summary>
+		/// 打断当前朗读。麦克风暂停时仍然可用；不能靠对着播放中的声音打断。
+		/// 前端调用：invoke("realtime_voice_interrupt") → {interrupted}
+		/// </summary>
+		"realtime_voice_interrupt" => RequireMain(source, () => RealtimeVoiceInterrupt()),
+
+		/// <summary>
+		/// 读取实时语音状态。不含录音、识别正文或密钥。
+		/// 前端调用：invoke("realtime_voice_status")
+		/// </summary>
+		"realtime_voice_status" => RequireMain(source, () => RealtimeVoiceStatusPayload()),
 
 		// ---- 插件替代 ----
 		// invoke("open_url", {url: "https://..."})

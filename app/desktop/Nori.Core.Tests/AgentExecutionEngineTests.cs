@@ -100,8 +100,12 @@ public sealed class AgentExecutionEngineTests : IDisposable
 		Assert.Equal(left.RequestId, right.RequestId);
 		Assert.Equal(left.Round, right.Round);
 		Assert.NotEqual(left.ToolCallId, right.ToolCallId);
-		Assert.False(journal.TryFinish(left.RequestId, left.Round!.Value, right.ToolCallId!, "readB", 1, AgentExecutionStatus.Failed, "tool_error", false));
+		// 传入引擎登记时的原始键，避免对已 HMAC 的 ToolCallId 再哈希一次而测空槽。
+		Assert.False(journal.TryFinish(left.RequestId, left.Round!.Value,
+			ToolExecutionTracker.Key("call-readB", "readB", null), "readB", 1, AgentExecutionStatus.Failed, "tool_error", false));
 		Assert.Equal(AgentExecutionStatus.Success, journal.Snapshot().Events.Single(ev => ev.Sequence == right.Sequence).Status);
+		Assert.Contains(journal.Snapshot().Events, ev =>
+			ev.Late && ev.ToolCallId == right.ToolCallId && ev.Status == AgentExecutionStatus.Failed);
 		Assert.Equal(2, snapshot.Summary.RealExecutions);
 	}
 
@@ -122,7 +126,10 @@ public sealed class AgentExecutionEngineTests : IDisposable
 		AgentExecutionEvent tool = Assert.Single(snapshot.Events, ev => ev.Kind == AgentExecutionKind.Tool && ev.Status == AgentExecutionStatus.Cancelled && !ev.Late);
 		Assert.False(tool.SideEffectsCommitted);
 		Assert.Contains(snapshot.Events, ev => ev.Kind == AgentExecutionKind.Session && ev.Status == AgentExecutionStatus.Cancelled);
-		Assert.False(journal.TryFinish(tool.RequestId, tool.Round!.Value, tool.ToolCallId!, "wait", 3, AgentExecutionStatus.Success, null, true));
+		Assert.False(journal.TryFinish(tool.RequestId, tool.Round!.Value,
+			ToolExecutionTracker.Key("call-wait", "wait", null), "wait", 3, AgentExecutionStatus.Success, null, true));
+		Assert.Contains(journal.Snapshot().Events, ev =>
+			ev.Late && ev.ToolCallId == tool.ToolCallId && ev.Status == AgentExecutionStatus.Success);
 		Assert.DoesNotContain(journal.Snapshot().Events, ev => ev.ToolCallId == tool.ToolCallId && ev.Status == AgentExecutionStatus.Success && !ev.Late);
 	}
 

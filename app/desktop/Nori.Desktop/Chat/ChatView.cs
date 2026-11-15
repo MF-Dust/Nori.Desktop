@@ -243,8 +243,9 @@ public sealed partial class ChatView : UserControl, IDisposable
 		Task completion;
 		try
 		{
-			(string sessionId, completion) = _service.StartRealtimeChat(turn);
-			_state.AttachSession(sessionId);
+			var started = _service.StartRealtimeChat(turn);
+			completion = started.Completion;
+			_state.AttachSession(started.SessionId);
 		}
 		catch (Exception exception)
 		{

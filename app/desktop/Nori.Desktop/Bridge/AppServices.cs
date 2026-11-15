@@ -246,6 +246,9 @@ public sealed class AppServices : IAsyncDisposable
 	/// <summary>有界的 Agent 性能 Trace；只保存阶段/用量元数据，不保存正文。</summary>
 	public AgentTraceCollector AgentTrace { get; } = new();
 
+	/// <summary>有界的内存执行记录。不落盘，也不保存提示词、参数或结果。</summary>
+	public AgentExecutionJournal AgentExecution { get; } = new();
+
 	/// <summary>窗口调度, 窗口建好后回填</summary>
 	public IWindowManager Windows { get; set; } = null!;
 

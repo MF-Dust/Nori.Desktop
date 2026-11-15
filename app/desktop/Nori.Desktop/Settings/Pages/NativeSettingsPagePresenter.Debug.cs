@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -5,6 +6,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System.Collections.ObjectModel;
+using Nori.Core.Agent;
 
 namespace Nori.Desktop.Settings.Pages;
 
@@ -29,6 +31,14 @@ public sealed partial class NativeSettingsPagePresenter
 	private TextBlock? _performanceDetail;
 	private Button? _performanceCopy;
 	private readonly Dictionary<string, TextBlock> _performanceRowText = new(StringComparer.Ordinal);
+	private TextBlock? _executionSummary;
+	private TextBlock? _executionEmpty;
+	private Button? _executionCopy;
+	private ListBox? _executionItems;
+	private readonly ObservableCollection<AgentExecutionLine> _executionRows = [];
+	private long _executionRevision = -1;
+	private Action? _executionSignal;
+	private int _executionRefreshQueued;
 
 	/// <summary>调试页自动刷新间隔。性能读取与原有日志刷新共用这一次低频计时。</summary>
 	internal static readonly TimeSpan DebugRefreshInterval = TimeSpan.FromSeconds(2);
@@ -63,6 +73,46 @@ public sealed partial class NativeSettingsPagePresenter
 		_performanceRows = new StackPanel {Spacing = 4, Name = "Live2DPerformanceRows"};
 		performance.Children.Add(_performanceRows);
 		root.Children.Add(WrapCard(performance));
+
+		StackPanel execution = CardBody(NativeSettingsResources.Get("exec.title"), NativeSettingsResources.Get("exec.subtitle"));
+		execution.Name = "AgentExecutionCard";
+		_executionCopy = Button(NativeSettingsResources.Get("common.copy"), () => _ = RunAsync(() => viewModel.CopyExecutionAsync()));
+		_executionCopy.Name = "AgentExecutionCopy";
+		AutomationProperties.SetName(_executionCopy, NativeSettingsResources.Get("exec.copy"));
+		execution.Children.Add(ActionGroup(_executionCopy));
+		_executionSummary = new TextBlock
+		{
+			Name = "AgentExecutionSummary",
+			TextWrapping = TextWrapping.Wrap,
+			Foreground = Brush("SettingsSecondaryBrush"),
+		};
+		execution.Children.Add(_executionSummary);
+		_executionRows.Clear();
+		_executionRevision = -1;
+		ListBox executionItems = new()
+		{
+			Name = "AgentExecutionList",
+			Height = 220,
+			ItemsSource = _executionRows,
+			Focusable = true,
+			ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
+			ItemTemplate = new FuncDataTemplate<AgentExecutionLine>((item, _) => new TextBlock
+			{
+				Text = item?.Text,
+				TextWrapping = TextWrapping.Wrap,
+				Foreground = item?.Attention == true ? Brush("SettingsErrorBrush") : Brush("SettingsPrimaryBrush"),
+			}),
+		};
+		AutomationProperties.SetName(executionItems, NativeSettingsResources.Get("exec.list"));
+		ScrollViewer.SetHorizontalScrollBarVisibility(executionItems, Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled);
+		ScrollViewer.SetVerticalScrollBarVisibility(executionItems, Avalonia.Controls.Primitives.ScrollBarVisibility.Auto);
+		_executionItems = executionItems;
+		_executionEmpty = Empty(NativeSettingsResources.Get("exec.empty"));
+		_executionEmpty.Name = "AgentExecutionEmpty";
+		_executionEmpty.HorizontalAlignment = HorizontalAlignment.Center;
+		_executionEmpty.IsHitTestVisible = false;
+		execution.Children.Add(new Grid { Children = { executionItems, _executionEmpty } });
+		root.Children.Add(WrapCard(execution));
 
 		StackPanel diagnostic = CardBody(NativeSettingsResources.Get("debug.diagnostic"), null);
 		_debugCopyDiagnostic = Button(NativeSettingsResources.Get("common.copy"), () => _ = RunAsync(() => viewModel.CopyDiagnosticAsync()));
@@ -213,6 +263,7 @@ public sealed partial class NativeSettingsPagePresenter
 			_performanceDetail.IsVisible = !string.IsNullOrWhiteSpace(presentation.Detail);
 		}
 		if (_performanceCopy is not null) _performanceCopy.IsEnabled = presentation.CopyText.Length > 0;
+		UpdateExecution(viewModel);
 		if (_performanceRows is null) return;
 		HashSet<string> keys = presentation.Rows.Select(row => row.Key).ToHashSet(StringComparer.Ordinal);
 		foreach (string key in _performanceRowText.Keys.Where(key => !keys.Contains(key)).ToArray())
@@ -243,6 +294,33 @@ public sealed partial class NativeSettingsPagePresenter
 		}
 	}
 
+	private void UpdateExecution(DebugSettingsViewModel viewModel)
+	{
+		AgentExecutionPresentation presentation = AgentExecutionText.Present(viewModel.Execution);
+		if (_executionSummary is not null) _executionSummary.Text = presentation.Summary;
+		if (_executionCopy is not null) _executionCopy.IsEnabled = presentation.Lines.Count > 0;
+		if (_executionEmpty is not null) _executionEmpty.IsVisible = presentation.Lines.Count == 0;
+		if (_executionItems is null || presentation.Lines.Count == _executionRows.Count
+			&& presentation.Lines.Select(line => line.Sequence).SequenceEqual(_executionRows.Select(line => line.Sequence))
+			&& viewModel.Execution.Revision == _executionRevision)
+		{
+			_executionRevision = viewModel.Execution.Revision;
+			return;
+		}
+		_executionRevision = viewModel.Execution.Revision;
+		HashSet<long> sequences = presentation.Lines.Select(line => line.Sequence).ToHashSet();
+		for (int index = _executionRows.Count - 1; index >= 0; index--)
+			if (!sequences.Contains(_executionRows[index].Sequence)) _executionRows.RemoveAt(index);
+		for (int index = 0; index < presentation.Lines.Count; index++)
+		{
+			AgentExecutionLine line = presentation.Lines[index];
+			if (index >= _executionRows.Count || _executionRows[index].Sequence != line.Sequence)
+				_executionRows.Insert(index, line);
+			else if (_executionRows[index].Text != line.Text)
+				_executionRows[index] = line;
+		}
+	}
+
 	private bool IsDebugPanelVisible()
 	{
 		if (_disposed || !IsVisible) return false;
@@ -253,7 +331,16 @@ public sealed partial class NativeSettingsPagePresenter
 	private void StartDebugRefresh()
 	{
 		if (_disposed || _viewModel is not DebugSettingsViewModel || TopLevel.GetTopLevel(this) is null) return;
-		if (IsDebugPanelVisible() && _viewModel is DebugSettingsViewModel visible) visible.RefreshPerformance();
+		if (IsDebugPanelVisible() && _viewModel is DebugSettingsViewModel visible)
+		{
+			visible.RefreshPerformance();
+			visible.RefreshExecution();
+		}
+		if (_executionSignal is null && _viewModel is DebugSettingsViewModel debug)
+		{
+			_executionSignal = QueueExecutionRefresh;
+			debug.ExecutionChanged += _executionSignal;
+		}
 		if (_debugRefreshTimer is not null) return;
 		_debugRefreshLifetime = new CancellationTokenSource();
 		CancellationToken token = _debugRefreshLifetime.Token;
@@ -264,15 +351,34 @@ public sealed partial class NativeSettingsPagePresenter
 
 	private void OnDebugRefreshTick(CancellationToken token)
 	{
-		if (_disposed || _viewModel is not DebugSettingsViewModel debug || !IsDebugPanelVisible()) return;
+		if (_disposed || _viewModel is not DebugSettingsViewModel debug || !IsDebugPanelVisible() || token.IsCancellationRequested) return;
 		debug.RefreshPerformance();
-		if (!debug.AutoRefresh || token.IsCancellationRequested) return;
+		debug.RefreshExecution();
+		if (!debug.AutoRefresh) return;
 		_ = RunAsync(() => debug.RefreshLogsAsync(token));
+	}
+
+	private void QueueExecutionRefresh()
+	{
+		// Changed 可能来自后台线程；可见性检查只在 UI 线程回调里做。
+		if (_disposed) return;
+		if (Interlocked.Exchange(ref _executionRefreshQueued, 1) == 1) return;
+		Dispatcher.UIThread.Post(() =>
+		{
+			_executionRefreshQueued = 0;
+			if (_disposed || _debugRefreshLifetime is { IsCancellationRequested: true }) return;
+			if (!IsDebugPanelVisible() || _viewModel is not DebugSettingsViewModel debug) return;
+			debug.RefreshExecution();
+		}, DispatcherPriority.Background);
 	}
 
 	private void StopDebugRefresh()
 	{
 		_debugRefreshTimer?.Stop(); _debugRefreshTimer = null;
 		_debugRefreshLifetime?.Cancel(); _debugRefreshLifetime?.Dispose(); _debugRefreshLifetime = null;
+		if (_executionSignal is not null && _viewModel is DebugSettingsViewModel debug)
+			debug.ExecutionChanged -= _executionSignal;
+		_executionSignal = null;
+		_executionRefreshQueued = 0;
 	}
 }

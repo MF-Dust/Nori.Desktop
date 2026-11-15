@@ -268,6 +268,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			motionNames: () => FlattenMotionNames(),
 			expressionNames: () => services.PetRuntime?.Expressions ?? [],
 			trace: services.AgentTrace,
+			executionJournal: services.AgentExecution,
 			// 未启用时这条路完全不参与，桌宠照旧走本机 agent。
 			luoLiCore: new Nori.Core.Chat.LuoLiCore.LuoLiCoreConversation(
 				new Nori.Core.Chat.LuoLiCore.LuoLiCoreSettingsStore(config),

@@ -44,7 +44,7 @@ public sealed partial class BridgeCommands
 
 		if (string.IsNullOrWhiteSpace(targetPath)) return null;
 		DiagnosticExporter.Result result = await Task.Run(
-			() => DiagnosticExporter.Export(targetPath, _services.Logger, _services.PetRuntime, _services.Paths, _services.SafeMode, cancellationToken, _services.AgentTrace),
+			() => DiagnosticExporter.Export(targetPath, _services.Logger, _services.PetRuntime, _services.Paths, _services.SafeMode, cancellationToken, _services.AgentTrace, _services.AgentExecution),
 			cancellationToken);
 		return new {fileName = result.FileName, bytes = result.Bytes, skipped = result.Skipped};
 	}

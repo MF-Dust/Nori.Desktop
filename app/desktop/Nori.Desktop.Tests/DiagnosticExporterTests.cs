@@ -39,7 +39,7 @@ public sealed class DiagnosticExporterTests : IDisposable
 		using ZipArchive archive = ZipFile.OpenRead(target);
 		string[] names = archive.Entries.Select(entry => entry.FullName).OrderBy(name => name).ToArray();
 		Assert.Equal(
-			["agent-trace.json", "diagnostics.json", "manifest.json", "README.txt", "recent-logs.json", "runtime.json"],
+			["agent-execution.json", "agent-trace.json", "diagnostics.json", "manifest.json", "README.txt", "recent-logs.json", "runtime.json"],
 			names);
 		string logs = ReadEntry(archive, "recent-logs.json");
 		Assert.DoesNotContain("secret-value", logs, StringComparison.Ordinal);
@@ -49,7 +49,7 @@ public sealed class DiagnosticExporterTests : IDisposable
 		using JsonDocument manifest = JsonDocument.Parse(ReadEntry(archive, "manifest.json"));
 		Assert.Equal(1, manifest.RootElement.GetProperty("formatVersion").GetInt32());
 		Assert.Equal(
-			["diagnostics.json", "runtime.json", "recent-logs.json", "agent-trace.json", "README.txt"],
+			["diagnostics.json", "runtime.json", "recent-logs.json", "agent-trace.json", "agent-execution.json", "README.txt"],
 			manifest.RootElement.GetProperty("files").EnumerateArray().Select(item => item.GetString() ?? "").ToArray());
 		Assert.Equal(
 			["diagnostics.data_dir", "diagnostics.resources_dir", "diagnostics.log_dir", "diagnostics.database_path"],

@@ -125,6 +125,7 @@ public sealed class AgentEngine
 	}
 	private readonly AgentSessionCoordinator _sessionCoordinator;
 	private readonly AgentTraceSink _trace;
+	private readonly AgentExecutionJournal? _execution;
 	private readonly Func<LlmProvider, HttpClient, ILlmAdapter> _adapterFactory;
 
 	/// <summary>
@@ -178,6 +179,7 @@ public sealed class AgentEngine
 		int maxToolIterations = DefaultToolIterations,
 		AgentSessionCoordinator? sessionCoordinator = null,
 		AgentTraceSink? trace = null,
+		AgentExecutionJournal? executionJournal = null,
 		Func<LlmProvider, HttpClient, ILlmAdapter>? adapterFactory = null,
 		Chat.LuoLiCore.LuoLiCoreConversation? luoLiCore = null,
 		ReplyReactionService? replyReaction = null,
@@ -200,6 +202,7 @@ public sealed class AgentEngine
 		_maxToolIterations = maxToolIterations;
 		_sessionCoordinator = sessionCoordinator ?? new AgentSessionCoordinator();
 		_trace = trace ?? AgentTraceSink.Noop;
+		_execution = executionJournal;
 		_adapterFactory = adapterFactory ?? LlmClient.CreateAdapter;
 		_luoLiCore = luoLiCore;
 		_replyReaction = replyReaction;
@@ -228,10 +231,18 @@ public sealed class AgentEngine
 		CancellationToken runToken = session.CancellationToken;
 		Stopwatch runClock = Stopwatch.StartNew();
 		WriteTrace(sessionId, "run", 0, null, null, "started");
+		AgentExecutionRequest execution = _execution?.Open(sessionId) ?? AgentExecutionRequest.Inactive;
 
 		void SetState(AgentRunState state) => callbacks.OnState?.Invoke(state);
+		void FinishExecution(long durationMs, AgentExecutionStatus status, string? failureCategory)
+		{
+			if (execution.HasEnded) return;
+			execution.End(durationMs, status, failureCategory);
+		}
 
 		SetState(AgentRunState.Thinking);
+		try
+		{
 
 		// 0. 对话是否交给 LuoLiCore。
 		//
@@ -239,7 +250,7 @@ public sealed class AgentEngine
 		// 而只配了 LuoLiCore 的实例本来就没有这三项，放在后面会先被那条检查挡掉。
 		if (_luoLiCore is { IsActive: true })
 		{
-			return await RunViaLuoLiCoreAsync(userText, sessionId, callbacks, runToken, runClock, cancellationToken);
+			return await RunViaLuoLiCoreAsync(userText, sessionId, callbacks, runToken, runClock, cancellationToken, execution);
 		}
 
 		// 1. 读取 AI 与用户自定义人设配置 (秘密只在后端流转)
@@ -254,6 +265,7 @@ public sealed class AgentEngine
 		if (!chatSettings.IsConfigured)
 		{
 			WriteTrace(sessionId, "config", configClock.ElapsedMilliseconds, null, null, "error", "invalid_config");
+			FinishExecution(configClock.ElapsedMilliseconds, AgentExecutionStatus.Failed, "invalid_config");
 			throw new InvalidOperationException("尚未配置完整的 LLM 参数 (API Base, API Key 或 Model 缺失)");
 		}
 		Chat.Catalog.ModelCapabilities? capabilities = customProvider
@@ -280,6 +292,9 @@ public sealed class AgentEngine
 		catch (Exception exception)
 		{
 			WriteTrace(sessionId, "context", contextClock.ElapsedMilliseconds, null, null, "error", FailureCategory(exception));
+			FinishExecution(contextClock.ElapsedMilliseconds,
+				exception is OperationCanceledException ? AgentExecutionStatus.Cancelled : AgentExecutionStatus.Failed,
+				FailureCategory(exception));
 			throw;
 		}
 		string currentEmotion = _emotion.CurrentType;
@@ -370,31 +385,46 @@ public sealed class AgentEngine
 		ProtocolMessage finalMessage = new("", null, null, null);
 		int currentIteration = -1;
 		DateTimeOffset? callDeadlineUtc = null;
-		try
-		{
 			async Task<ToolResult> ExecuteToolAsync(string name, JsonNode? arguments, CancellationToken token, string? callId = null)
 			{
 				runToken.ThrowIfCancellationRequested();
+				int round = currentIteration < 0 ? 0 : currentIteration;
 				string executionKey = ToolExecutionTracker.Key(callId, name, arguments);
-				if (executionTracker.TryGetCompleted(executionKey, out ToolResult? previous)) return previous;
+				if (executionTracker.TryGetCompleted(executionKey, out ToolResult? previous))
+				{
+					execution.Deduplicated(round, executionKey, name);
+					return previous;
+				}
 				if (!executionTracker.TryStart(executionKey))
 				{
 					WriteTrace(sessionId, "tool", 0, currentIteration, name, "blocked", "duplicate");
+					execution.Deduplicated(round, executionKey, name);
 					return new ToolResult(null, $"工具调用 {name} 已执行过，已阻止重复副作用");
 				}
 
 				Stopwatch toolClock = Stopwatch.StartNew();
 				WriteTrace(sessionId, "tool", 0, currentIteration, name, "started");
+				execution.ToolStarted(round, executionKey, name);
+				AgentExecutionStatus? approvalStatus = null;
+				string? approvalCategory = null;
+				bool recorded = false;
 				try
 				{
 					callbacks.OnToolExecuting?.Invoke(name, arguments);
+					RegisteredTool? registered = _tools.Get(name);
+					bool needsApproval = registered?.PermissionLevel is "confirm" or "dangerous";
 					ToolResult result = await _tools.ExecuteAsync(name, arguments, new ToolContext
 					{
 						SessionId = sessionId,
 						CancellationToken = token,
 						DeadlineUtc = callDeadlineUtc,
 						Approve = callbacks.RequestApproval is { } approve
-							? request => approve(request)
+							? request => ObserveApprovalAsync(execution, round, executionKey, name, request, approve, token,
+								(status, category) =>
+								{
+									approvalStatus = status;
+									approvalCategory = category;
+								})
 							: null,
 					});
 					executionTracker.Complete(executionKey, result);
@@ -402,6 +432,10 @@ public sealed class AgentEngine
 					{
 						lock (generatedImages) generatedImages.Add(image.Markdown);
 					}
+					(AgentExecutionStatus toolStatus, string? toolCategory, bool committed) = ClassifyToolObservation(
+						result, approvalStatus, approvalCategory, needsApproval, callbacks.RequestApproval is null);
+					execution.FinishTool(round, executionKey, name, toolClock.ElapsedMilliseconds, toolStatus, toolCategory, committed);
+					recorded = true;
 					callbacks.OnToolExecuted?.Invoke(name, result.Result, result.Error);
 					WriteTrace(sessionId, "tool", toolClock.ElapsedMilliseconds, currentIteration, name,
 						result.Error is null ? "completed" : "error",
@@ -411,6 +445,12 @@ public sealed class AgentEngine
 				catch (Exception exception)
 				{
 					WriteTrace(sessionId, "tool", toolClock.ElapsedMilliseconds, currentIteration, name, "error", FailureCategory(exception));
+					if (!recorded)
+					{
+						execution.FinishTool(round, executionKey, name, toolClock.ElapsedMilliseconds,
+							exception is OperationCanceledException ? AgentExecutionStatus.Cancelled : AgentExecutionStatus.Failed,
+							FailureCategory(exception), false);
+					}
 					throw;
 				}
 			}
@@ -427,6 +467,9 @@ public sealed class AgentEngine
 			async Task<IReadOnlyList<ToolResult>> ExecuteCallsAsync(
 				IReadOnlyList<ProtocolToolCall> calls, CancellationToken token)
 			{
+				int round = currentIteration < 0 ? 0 : currentIteration;
+				foreach (ProtocolToolCall queued in calls)
+					execution.ToolPending(round, ToolExecutionTracker.Key(queued.Id, queued.Name, queued.Arguments), queued.Name);
 				ToolResult[] results = new ToolResult[calls.Count];
 				int index = 0;
 				while (index < calls.Count)
@@ -452,6 +495,11 @@ public sealed class AgentEngine
 						{
 							task = ExecuteToolAsync(call.Name, call.Arguments, token, call.Id);
 							pending.Add(key, task);
+						}
+						else
+						{
+							// 同批复用已启动任务：只记一次压制，不另开真实执行。
+							execution.Deduplicated(round, key, call.Name);
 						}
 						batch[offset] = task;
 					}
@@ -542,9 +590,13 @@ public sealed class AgentEngine
 				catch (Exception exception)
 				{
 					WriteTrace(sessionId, "llm", llmClock.ElapsedMilliseconds, iteration, null, "error", FailureCategory(exception), traceUsage);
+					execution.Model(iteration, llmClock.ElapsedMilliseconds,
+						exception is OperationCanceledException ? AgentExecutionStatus.Cancelled : AgentExecutionStatus.Failed,
+						FailureCategory(exception), traceUsage);
 					throw;
 				}
 				WriteTrace(sessionId, "llm", llmClock.ElapsedMilliseconds, iteration, null, "completed", null, traceUsage);
+				execution.Model(iteration, llmClock.ElapsedMilliseconds, AgentExecutionStatus.Success, null, traceUsage);
 
 				if (await coalescer.FlushAsync(timeout.Token) is {Length: > 0} finalBatch) EmitText(finalBatch);
 				runToken.ThrowIfCancellationRequested();
@@ -631,24 +683,28 @@ public sealed class AgentEngine
 			_chat.SaveMessage("assistant", finalMessage.Text);
 			callbacks.OnComplete?.Invoke(finalMessage);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "completed");
+			FinishExecution(runClock.ElapsedMilliseconds, AgentExecutionStatus.Success, null);
 			return finalMessage;
 		}
 		catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
 		{
 			// 非用户取消的超时: 转成可读错误而不是当作正常中止
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", "timeout");
+			FinishExecution(runClock.ElapsedMilliseconds, AgentExecutionStatus.Failed, "timeout");
 			throw new ChatException($"回复超时 ({CallTimeoutSeconds}s), 请稍后重试");
 		}
 		catch (OperationCanceledException)
 		{
 			SetState(AgentRunState.Idle);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "cancelled", "cancelled");
+			FinishExecution(runClock.ElapsedMilliseconds, AgentExecutionStatus.Cancelled, "cancelled");
 			throw;
 		}
 		catch (Exception exception)
 		{
 			SetState(AgentRunState.Error);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", FailureCategory(exception));
+			FinishExecution(runClock.ElapsedMilliseconds, AgentExecutionStatus.Failed, FailureCategory(exception));
 			throw;
 		}
 	}
@@ -669,9 +725,11 @@ public sealed class AgentEngine
 		AgentCallbacks callbacks,
 		CancellationToken runToken,
 		Stopwatch runClock,
-		CancellationToken cancellationToken)
+		CancellationToken cancellationToken,
+		AgentExecutionRequest execution)
 	{
 		void SetState(AgentRunState state) => callbacks.OnState?.Invoke(state);
+		int remoteToolOrdinal = 0;
 
 		try
 		{
@@ -706,6 +764,9 @@ public sealed class AgentEngine
 					streaming = false;
 					SetState(AgentRunState.ToolExecuting);
 					callbacks.OnToolExecuting?.Invoke(name, null);
+					// 远端没有完成事件，不能补一个成功。调用标识只用来区分同一次请求里的多次开始。
+					int ordinal = Interlocked.Increment(ref remoteToolOrdinal);
+					execution.ToolStarted(0, "remote-" + ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture), name);
 				},
 				runToken);
 
@@ -731,23 +792,27 @@ public sealed class AgentEngine
 			DispatchEffects(message);
 			callbacks.OnComplete?.Invoke(message);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "completed");
+			execution.End(runClock.ElapsedMilliseconds, AgentExecutionStatus.Success, null);
 			return message;
 		}
 		catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
 		{
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", "timeout");
+			execution.End(runClock.ElapsedMilliseconds, AgentExecutionStatus.Failed, "timeout");
 			throw new ChatException("LuoLiCore 这一轮超时了, 请稍后重试");
 		}
 		catch (OperationCanceledException)
 		{
 			SetState(AgentRunState.Idle);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "cancelled", "cancelled");
+			execution.End(runClock.ElapsedMilliseconds, AgentExecutionStatus.Cancelled, "cancelled");
 			throw;
 		}
 		catch (Exception exception)
 		{
 			SetState(AgentRunState.Error);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", FailureCategory(exception));
+			execution.End(runClock.ElapsedMilliseconds, AgentExecutionStatus.Failed, FailureCategory(exception));
 			throw;
 		}
 	}
@@ -906,6 +971,69 @@ public sealed class AgentEngine
 		ConfigValue.Text text => text.Value,
 		_ => null,
 	};
+
+	/// <summary>
+	/// 观察已有授权回调的申请和结果。返回值原样交回，不改变允许或拒绝。
+	/// </summary>
+	private static async Task<bool> ObserveApprovalAsync(
+		AgentExecutionRequest execution,
+		int round,
+		string callId,
+		string toolName,
+		ToolApprovalRequest request,
+		Func<ToolApprovalRequest, Task<bool>> approve,
+		CancellationToken token,
+		Action<AgentExecutionStatus, string?> observed)
+	{
+		execution.Permission(round, callId, toolName, request.PermissionLevel, AgentExecutionStatus.Pending, "requested");
+		try
+		{
+			bool approved = await approve(request).ConfigureAwait(false);
+			if (approved)
+			{
+				observed(AgentExecutionStatus.Success, "allowed");
+				execution.Permission(round, callId, toolName, request.PermissionLevel, AgentExecutionStatus.Success, "allowed");
+				return true;
+			}
+			bool cancelled = token.IsCancellationRequested || request.CancellationToken.IsCancellationRequested;
+			bool timedOut = !cancelled && request.DeadlineUtc is { } deadline && DateTimeOffset.UtcNow >= deadline;
+			AgentExecutionStatus status = cancelled ? AgentExecutionStatus.Cancelled : AgentExecutionStatus.Denied;
+			string category = cancelled ? "cancelled" : timedOut ? "approval_timeout" : "denied";
+			observed(status, category);
+			execution.Permission(round, callId, toolName, request.PermissionLevel, status, category);
+			return false;
+		}
+		catch (OperationCanceledException)
+		{
+			observed(AgentExecutionStatus.Cancelled, "cancelled");
+			execution.Permission(round, callId, toolName, request.PermissionLevel, AgentExecutionStatus.Cancelled, "cancelled");
+			throw;
+		}
+		catch (Exception)
+		{
+			observed(AgentExecutionStatus.Failed, "approval_failed");
+			execution.Permission(round, callId, toolName, request.PermissionLevel, AgentExecutionStatus.Failed, "approval_failed");
+			throw;
+		}
+	}
+
+	/// <summary>
+	/// 把工具结果收成时间线状态。不读取错误正文。
+	/// 成功才算观察到副作用；拒绝和取消都不记成成功。
+	/// </summary>
+	private static (AgentExecutionStatus Status, string? Category, bool Committed) ClassifyToolObservation(
+		ToolResult result,
+		AgentExecutionStatus? approvalStatus,
+		string? approvalCategory,
+		bool needsApproval,
+		bool approvalMissing)
+	{
+		if (result.Error is null) return (AgentExecutionStatus.Success, null, true);
+		if (approvalStatus is AgentExecutionStatus.Denied or AgentExecutionStatus.Cancelled or AgentExecutionStatus.Failed)
+			return (approvalStatus.Value, approvalCategory, false);
+		if (needsApproval && approvalMissing) return (AgentExecutionStatus.Denied, "approval_unavailable", false);
+		return (AgentExecutionStatus.Failed, result.Diagnostic?.Category ?? "tool_error", false);
+	}
 
 	private void WriteTrace(
 		string sessionId,

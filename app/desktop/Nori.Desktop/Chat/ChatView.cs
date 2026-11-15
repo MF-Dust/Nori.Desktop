@@ -13,6 +13,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 {
 	private readonly NativeChatService _service;
 	private readonly Func<string, object?, CancellationToken, Task<JsonElement>> _execute;
+	private readonly Func<CancellationToken, Task<JsonElement>> _getSnapshot;
 	private readonly CancellationTokenSource _lifetime = new();
 	private readonly NativeChatState _state = new();
 	private readonly List<Action> _localize = [];
@@ -32,6 +33,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 	private bool _clearing;
 	private long _snapshotRequest;
 	private long _historyRevision = -1;
+	private TaskCompletionSource<bool> _initialReadiness = NewInitialReadiness();
 	private Task? _startOperation;
 	private Task? _voiceOperation;
 	private string _voiceState = "idle";
@@ -40,9 +42,10 @@ public sealed partial class ChatView : UserControl, IDisposable
 	/// <summary>连接宿主服务；订阅先于快照和第一条消息，避免启动事件竞态。</summary>
 	public ChatView(NativeChatService service) : this(service, service.ExecuteAsync) { }
 
-	internal ChatView(NativeChatService service, Func<string, object?, CancellationToken, Task<JsonElement>> execute)
+	internal ChatView(NativeChatService service, Func<string, object?, CancellationToken, Task<JsonElement>> execute,
+		Func<CancellationToken, Task<JsonElement>>? getSnapshot = null)
 	{
-		_service = service; _execute = execute;
+		_service = service; _execute = execute; _getSnapshot = getSnapshot ?? service.GetSnapshotAsync;
 		InstallResources();
 		Styles.Add(new StyleInclude(new Uri("avares://Nori.Desktop/")) { Source = new Uri("avares://Nori.Desktop/Chat/ChatTheme.axaml") });
 		BuildShell(); BuildDialogs();
@@ -69,6 +72,8 @@ public sealed partial class ChatView : UserControl, IDisposable
 	internal bool HistoryLoaded => _loadedHistory;
 	private Task<JsonElement> ExecuteAsync(string command, object? args = null, CancellationToken cancellationToken = default) => _execute(command, args, cancellationToken);
 
+	private static TaskCompletionSource<bool> NewInitialReadiness() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
 	private ChatMarkdownImages? _generatedImages;
 
 	/// <summary>生成图片的读取与打开：经对话命令白名单访问宿主，不直接读文件。</summary>
@@ -91,7 +96,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 		long request = ++_snapshotRequest;
 		try
 		{
-			JsonElement snapshot = await _service.GetSnapshotAsync(_lifetime.Token);
+			JsonElement snapshot = await _getSnapshot(_lifetime.Token);
 			if (_disposed || request != _snapshotRequest) return;
 			ApplySnapshot(snapshot);
 			if (!_loadedHistory && !_state.LoadingHistory && !_state.Sending)
@@ -113,7 +118,19 @@ public sealed partial class ChatView : UserControl, IDisposable
 			}
 		}
 		catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-		catch (Exception exception) { if (!_disposed && request == _snapshotRequest) ReportFailure(exception); }
+		catch (Exception exception)
+		{
+			if (!_disposed && request == _snapshotRequest)
+			{
+				ReportFailure(exception);
+				if (!_loadedHistory) _initialReadiness.TrySetResult(false);
+			}
+		}
+		finally
+		{
+			// 只有快照和首次历史都完成才算可发送。旧请求被替换时不提前发信号。
+			if (_loadedHistory) _initialReadiness.TrySetResult(true);
+		}
 	}
 
 	internal void ApplySnapshot(JsonElement snapshot)
@@ -226,30 +243,25 @@ public sealed partial class ChatView : UserControl, IDisposable
 	/// 实时语音自动进入现有 Agent 管线，保留用户未发送的草稿。
 	/// 仅由宿主在真实原生聊天窗口的 UI 线程调用。
 	/// </summary>
+	/// <summary>首次就绪需要完整快照和历史。并发刷新替换旧请求时等待最新请求完成。</summary>
+	private async Task WaitForInitialReadinessAsync(CancellationToken cancellationToken)
+	{
+		if (_loadedHistory) return;
+		if (_initialReadiness.Task.IsCompleted) _initialReadiness = NewInitialReadiness();
+		Task<bool> readiness = _initialReadiness.Task;
+		await RefreshAsync();
+		bool ready = await readiness.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
+		if (!ready || !_loadedHistory)
+			throw new InvalidOperationException("原生对话首次加载失败，无法提交语音");
+	}
+
 	internal async Task SendRealtimeTurnAsync(Nori.Core.Voice.Realtime.RealtimeVoiceTurn turn)
 	{
 		Dispatcher.UIThread.VerifyAccess();
 		turn.CancellationToken.ThrowIfCancellationRequested();
 		if (_disposed || _preparing || _clearing || _modal.IsVisible)
 			throw new InvalidOperationException("对话窗口暂时无法开始语音会话");
-		if (!_loadedHistory) await RefreshAsync();
-		// 首次显示窗口会并行加载历史；等正在进行的请求结束，避免误报尚未就绪。
-		if (!_loadedHistory && _state.LoadingHistory)
-		{
-			TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
-			void HistoryChanged()
-			{
-				if (!_state.LoadingHistory) ready.TrySetResult();
-			}
-			_state.Changed += HistoryChanged;
-			try
-			{
-				HistoryChanged();
-				await ready.Task.WaitAsync(TimeSpan.FromSeconds(15), turn.CancellationToken);
-			}
-			finally { _state.Changed -= HistoryChanged; }
-			if (!_loadedHistory) await RefreshAsync();
-		}
+		await WaitForInitialReadinessAsync(turn.CancellationToken);
 		turn.CancellationToken.ThrowIfCancellationRequested();
 		if (!_configured || !_loadedHistory || _safeMode)
 			throw new InvalidOperationException("聊天服务尚未准备好，无法发送语音转写");
@@ -392,7 +404,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 	public void Dispose()
 	{
 		if (_disposed) return;
-		_disposed = true; _lifetime.Cancel(); _renderTimer.Stop(); _clock.Stop();
+		_disposed = true; _lifetime.Cancel(); _initialReadiness.TrySetResult(false); _renderTimer.Stop(); _clock.Stop();
 		_service.EventReceived -= OnHostEvent; _service.StateChanged -= OnHostStateChanged;
 		_state.Changed -= QueueRender; _state.Messages.CollectionChanged -= OnMessagesChanged;
 		_composer.PropertyChanged -= OnComposerPropertyChanged;

@@ -44,6 +44,7 @@ public sealed class MotionPlayer
 	}
 
 	public bool IsFinished => _playing.Count == 0;
+	public MotionPriority CurrentPriority => _playing.Count == 0 ? MotionPriority.None : _playing[^1].Priority;
 	public event Action<string>? EventFired;
 
 	public MotionPlayback? Start(MotionClip clip, MotionPriority priority, Action? finished = null,
@@ -53,7 +54,7 @@ public sealed class MotionPlayer
 		float incomingFade = fadeIn ?? clip.FadeIn, outgoingFade = fadeOut ?? clip.FadeOut;
 		if (!float.IsFinite(incomingFade) || incomingFade < 0 || !float.IsFinite(outgoingFade) || outgoingFade < 0)
 			throw new ArgumentOutOfRangeException(nameof(fadeIn), "动作淡化时间必须为非负有限值。");
-		MotionPriority current = _playing.Count == 0 ? MotionPriority.None : _playing[^1].Priority;
+		MotionPriority current = CurrentPriority;
 		if (priority != MotionPriority.Force && priority <= current) return null;
 		if (!_bindings.ContainsKey(clip))
 		{

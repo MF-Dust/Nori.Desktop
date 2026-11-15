@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Cronos;
 using Nori.Core.Configuration;
+using Nori.Core.Focus;
 using Nori.Core.Logging;
 using Nori.Core.Tools;
 
@@ -27,6 +28,8 @@ public sealed class ProactiveScheduler : IDisposable
 	private readonly ConfigStore _config;
 	private readonly FileLogger _logger;
 	private readonly Func<double?> _idleSecondsProvider;
+	private readonly Func<FocusPresence>? _focus;
+	private readonly Action? _checkpoint;
 
 	private readonly Lock _gate = new();
 	private System.Threading.Timer? _tickTimer;
@@ -43,12 +46,20 @@ public sealed class ProactiveScheduler : IDisposable
 	/// <summary>主动发声事件</summary>
 	public event Action<ProactiveMessage>? Message;
 
-	public ProactiveScheduler(ReminderStore store, ConfigStore config, FileLogger logger, Func<double?> idleSecondsProvider)
+	public ProactiveScheduler(
+		ReminderStore store,
+		ConfigStore config,
+		FileLogger logger,
+		Func<double?> idleSecondsProvider,
+		Func<FocusPresence>? focus = null,
+		Action? checkpoint = null)
 	{
 		_store = store;
 		_config = config;
 		_logger = logger;
 		_idleSecondsProvider = idleSecondsProvider;
+		_focus = focus;
+		_checkpoint = checkpoint;
 	}
 
 	/// <summary>启动调度循环 (30s 粒度)</summary>
@@ -309,12 +320,25 @@ public sealed class ProactiveScheduler : IDisposable
 	internal void Tick(DateTimeOffset? now = null)
 	{
 		DateTimeOffset instant = now ?? DateTimeOffset.UtcNow;
-		FireDueReminders(instant.ToUnixTimeMilliseconds());
+		// 先把专注的已用时长顺手写盘。写盘失败不能挡住已经到期的提醒。
+		try { _checkpoint?.Invoke(); }
+		catch
+		{
+			// 专注写盘失败时，这一轮提醒和问候仍按当前状态继续。
+		}
+		FocusPresence presence = _focus?.Invoke() ?? default;
+		FireDueReminders(instant.ToUnixTimeMilliseconds(), presence);
+		if (!FocusCompanionPolicy.AllowsProactiveCare(presence))
+		{
+			// 专注期间不发挂机关怀，但仍要看见用户回来，否则上一轮标记会把结束后的新挂机吃掉。
+			ObserveIdleActivity();
+			return;
+		}
 		CheckDailyGreetings(instant);
 		CheckIdle();
 	}
 
-	private void FireDueReminders(long nowMs)
+	private void FireDueReminders(long nowMs, FocusPresence presence)
 	{
 		foreach (ReminderItem reminder in _store.TakeDue(nowMs))
 		{
@@ -323,7 +347,11 @@ public sealed class ProactiveScheduler : IDisposable
 				: $"提醒时间到了：{reminder.Content}";
 			try
 			{
-				Message?.Invoke(new ProactiveMessage(text, "wave", "Surprised"));
+				Message?.Invoke(new ProactiveMessage(text, "wave", "Surprised")
+				{
+					AllowSpeech = FocusCompanionPolicy.AllowsReminderSpeech(presence),
+					AllowAnimation = FocusCompanionPolicy.AllowsReminderAnimation(presence),
+				});
 				_store.MarkFired(reminder.Id);
 			}
 			catch
@@ -355,24 +383,35 @@ public sealed class ProactiveScheduler : IDisposable
 			if (occurrence is null || occurrence > localNow || localNow - occurrence > TimeSpan.FromMinutes(15)) continue;
 			string occurrenceValue = occurrence.Value.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
 			if (!_store.TryClaimOccurrence(slot.Key, occurrenceValue)) continue;
-			Message?.Invoke(new ProactiveMessage(slot.Text(IsEnglish()), slot.Motion, slot.Expression));
+			Message?.Invoke(new ProactiveMessage(slot.Text(IsEnglish()), slot.Motion, slot.Expression) { Care = true });
 		}
+	}
+
+	/// <summary>用户回来就结束上一轮挂机。专注期间也要调用，但不要在这里发消息。</summary>
+	private void ObserveIdleActivity()
+	{
+		bool enabled = ParseBool(_config.GetStringOr("proactive_idle_enabled", "true")) ?? true;
+		if (!enabled)
+		{
+			Interlocked.Exchange(ref _idleSessionFired, 0);
+			return;
+		}
+		double thresholdSeconds = Math.Max(1,
+			ReadNumberConfig(_config, "proactive_idle_minutes", DefaultIdleMinutes) * 60);
+		double? idleSeconds = _idleSecondsProvider();
+		if (idleSeconds is not { } idle || idle < thresholdSeconds)
+			Interlocked.Exchange(ref _idleSessionFired, 0);
 	}
 
 	private void CheckIdle()
 	{
+		ObserveIdleActivity();
 		bool enabled = ParseBool(_config.GetStringOr("proactive_idle_enabled", "true")) ?? true;
 		if (!enabled) return;
 		double thresholdSeconds = Math.Max(1,
 			ReadNumberConfig(_config, "proactive_idle_minutes", DefaultIdleMinutes) * 60);
-
 		double? idleSeconds = _idleSecondsProvider();
-		if (idleSeconds is not { } idle || idle < thresholdSeconds)
-		{
-			// 任意一次真实活动都结束上一轮挂机 session。
-			Interlocked.Exchange(ref _idleSessionFired, 0);
-			return;
-		}
+		if (idleSeconds is not { } idle || idle < thresholdSeconds) return;
 		if (Interlocked.Exchange(ref _idleSessionFired, 1) != 0) return;
 
 		string[] texts = IsEnglish()
@@ -389,7 +428,7 @@ public sealed class ProactiveScheduler : IDisposable
 		string[] motions = ["think", "smile", "wave"];
 		string[] expressions = ["Sad", "Smile", "Sleepy"];
 		int pick = Random.Shared.Next(texts.Length);
-		Message?.Invoke(new ProactiveMessage(texts[pick], motions[pick], expressions[pick]));
+		Message?.Invoke(new ProactiveMessage(texts[pick], motions[pick], expressions[pick]) { Care = true });
 	}
 
 	private static bool? ParseBool(string raw) => raw switch
@@ -445,5 +484,15 @@ public sealed class ProactiveScheduler : IDisposable
 	}
 }
 
-/// <summary>主动发声消息</summary>
-public sealed record ProactiveMessage(string Text, string Motion, string Expression);
+/// <summary>主动发声消息。专注中的静默提醒仍会送来文本，只是不朗读、不播动作。</summary>
+public sealed record ProactiveMessage(string Text, string Motion, string Expression)
+{
+	/// <summary>为假时宿主只显示文字，不调用语音。</summary>
+	public bool AllowSpeech { get; init; } = true;
+
+	/// <summary>为假时不播放这条消息附带的动作和表情。</summary>
+	public bool AllowAnimation { get; init; } = true;
+
+	/// <summary>问候或挂机关怀。已经排进界面后如果进入专注，就整条丢掉，不留文字。</summary>
+	public bool Care { get; init; }
+}

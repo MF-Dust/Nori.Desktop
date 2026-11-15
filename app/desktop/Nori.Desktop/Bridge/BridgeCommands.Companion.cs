@@ -5,6 +5,7 @@ using Nori.Core.Configuration;
 using Nori.Core.Logging;
 using Nori.Core.Live2D;
 using Nori.Core.Mcp;
+using Nori.Desktop.Live2D;
 using Nori.Core.Resources;
 using Nori.Core.Tools;
 using Nori.Desktop.Windows;
@@ -204,10 +205,11 @@ public sealed partial class BridgeCommands
 		ApplyPetConfig(key, storage);
 	}
 
-	/// <summary>行为开关批量写入并热应用</summary>
+	/// <summary>行为开关批量写入并热应用。整批先校验，任一字段非法时不写库、也不热更新。</summary>
 	private async Task<object?> ModelSetBehaviorAsync(IBridgeSource source, JsonElement args)
 	{
 		RequireMainVoid(source);
+		ValidateBehaviorUpdate(args);
 		SetBehaviorKey(args, "clickInteraction", "l2d_click_interaction");
 		SetBehaviorKey(args, "clickThrough", "l2d_click_through");
 		SetBehaviorKey(args, "autoBlink", "l2d_auto_blink");
@@ -217,10 +219,59 @@ public sealed partial class BridgeCommands
 		SetBehaviorKey(args, "expressionEnabled", "l2d_expression_enabled");
 		SetBehaviorKey(args, "lipSync", "l2d_lip_sync");
 		SetBehaviorKey(args, "beatSync", "l2d_beat_sync");
+		SetBehaviorKey(args, "autonomousBehavior", Live2DModelConfig.AutonomousBehaviorKey);
+		SetBehaviorKey(args, "autonomousRandom", Live2DModelConfig.AutonomousRandomKey);
+		SetBehaviorFrequency(args);
 		SetBehaviorKey(args, "aiInteraction", PetInteractionConfig.AiEnabledKey);
 		await Task.CompletedTask;
 		Runtime.InvalidateSnapshot();
 		return null;
+	}
+
+	/// <summary>本次出现的开关和频率都合法后才允许写入。</summary>
+	private static void ValidateBehaviorUpdate(JsonElement args)
+	{
+		RequireBehaviorBool(args, "clickInteraction");
+		RequireBehaviorBool(args, "clickThrough");
+		RequireBehaviorBool(args, "autoBlink");
+		RequireBehaviorBool(args, "eyeTracking");
+		RequireBehaviorBool(args, "idleEyeAnimation");
+		RequireBehaviorBool(args, "idleAnimation");
+		RequireBehaviorBool(args, "expressionEnabled");
+		RequireBehaviorBool(args, "lipSync");
+		RequireBehaviorBool(args, "beatSync");
+		RequireBehaviorBool(args, "autonomousBehavior");
+		RequireBehaviorBool(args, "autonomousRandom");
+		RequireBehaviorFrequency(args);
+		RequireBehaviorBool(args, "aiInteraction");
+	}
+
+	private static void RequireBehaviorBool(JsonElement args, string argName)
+	{
+		if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty(argName, out JsonElement value)) return;
+		if (value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+			throw new InvalidOperationException($"{argName} 必须是布尔值");
+	}
+
+	private static void RequireBehaviorFrequency(JsonElement args)
+	{
+		if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty("autonomousFrequency", out JsonElement value))
+			return;
+		string raw = value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
+		if (!AutonomousPacing.TryNormalize(raw, strict: true, out _))
+			throw new InvalidOperationException("行为频率只能是 sparse、normal 或 lively");
+	}
+
+	/// <summary>行为频率只接受 sparse、normal、lively，并立刻作用到当前伴侣。</summary>
+	private void SetBehaviorFrequency(JsonElement args)
+	{
+		if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty("autonomousFrequency", out JsonElement value))
+			return;
+		string raw = value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
+		if (!AutonomousPacing.TryNormalize(raw, strict: true, out string frequency))
+			throw new InvalidOperationException("行为频率只能是 sparse、normal 或 lively");
+		UpdateConfigDirect(Live2DModelConfig.AutonomousFrequencyKey, frequency);
+		ApplyPetConfig(Live2DModelConfig.AutonomousFrequencyKey, frequency);
 	}
 
 	// ===================================================================

@@ -8,6 +8,7 @@ using Nori.Core.Security;
 using Nori.Core.Tools;
 using Nori.Desktop.Appearance;
 using Nori.Desktop.Bridge;
+using Nori.Desktop.Live2D;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Runtime;
@@ -323,6 +324,9 @@ public sealed partial class AppRuntime
 				lipSync = ParseBoolFlag(config.GetStringOr("l2d_lip_sync", "true")) ?? true,
 				shadow = modelRenderSettings.ShadowEnabled,
 				beatSync = ParseBoolFlag(config.GetStringOr("l2d_beat_sync", "")) ?? false,
+				autonomousBehavior = ParseBoolFlag(config.GetStringOr(Live2DModelConfig.AutonomousBehaviorKey, "true")) ?? true,
+				autonomousRandom = ParseBoolFlag(config.GetStringOr(Live2DModelConfig.AutonomousRandomKey, "true")) ?? true,
+				autonomousFrequency = AutonomousPacing.Normalize(config.GetStringOr(Live2DModelConfig.AutonomousFrequencyKey, "")),
 				aiInteraction = !Services.SafeMode && (ParseBoolFlag(config.GetStringOr(PetInteractionConfig.AiEnabledKey, "")) ?? false),
 				opacity = modelRenderSettings.Opacity,
 				renderScale = modelRenderSettings.RenderScale,
@@ -401,6 +405,7 @@ public sealed partial class AppRuntime
 					snoozedUntil = item.SnoozedUntil,
 				}).ToArray(),
 			},
+			focus = Nori.Core.Focus.FocusText.Describe(Focus.View(), UiLanguage.IsEnglish(config)),
 			skills = Skills.GetInstalled().Select(skill => new
 			{
 				id = skill.Id, name = skill.Name, description = skill.Description, author = skill.Author,

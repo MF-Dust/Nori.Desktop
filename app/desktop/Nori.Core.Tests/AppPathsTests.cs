@@ -15,6 +15,8 @@ public sealed class AppPathsTests : IDisposable
 		Assert.Equal(Path.Combine(_root, "data"), paths.DataRoot);
 		Assert.Equal(Path.Combine(paths.DataRoot, "core", "database", "nori.db"), paths.DatabasePath);
 		Assert.Equal(Path.Combine(paths.DataRoot, "core", "security", "secret.key"), paths.SecretPath);
+		Assert.Equal(Path.Combine(paths.DataRoot, "core", "focus", "state.json"), paths.FocusStatePath);
+		Assert.True(AppStoragePaths.IsContained(paths.FocusStatePath, paths.DataRoot));
 		Assert.Equal(Path.Combine(paths.DataRoot, "knowledge", "documents", "Memory.md"), paths.KnowledgePath);
 		Assert.True(AppStoragePaths.IsContained(paths.DatabasePath, paths.DataRoot));
 		Assert.True(AppStoragePaths.IsContained(paths.ResourcesInstalledDirectory, paths.DataRoot));
@@ -29,6 +31,7 @@ public sealed class AppPathsTests : IDisposable
 		paths.EnsureCreated();
 
 		Assert.True(Directory.Exists(paths.DatabaseDirectory));
+		Assert.True(Directory.Exists(paths.FocusDirectory));
 		Assert.True(Directory.Exists(paths.PluginsStagingDirectory));
 		Assert.True(Directory.Exists(paths.LogsDirectory));
 	}

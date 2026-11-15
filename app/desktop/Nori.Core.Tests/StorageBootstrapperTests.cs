@@ -15,6 +15,7 @@ public sealed class StorageBootstrapperTests : IDisposable
 
 		Assert.True(File.Exists(paths.MarkerPath));
 		Assert.True(Directory.Exists(paths.DatabaseDirectory));
+		Assert.True(Directory.Exists(paths.FocusDirectory));
 		Assert.True(Directory.Exists(paths.KnowledgeDirectory));
 		Assert.True(Directory.Exists(paths.PluginsStagingDirectory));
 		Assert.False(Directory.Exists(Path.Combine(paths.DataRoot, "legacy")));

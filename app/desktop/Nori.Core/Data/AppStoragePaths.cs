@@ -23,6 +23,8 @@ public sealed class AppStoragePaths
 		DatabaseShmPath = DatabasePath + "-shm";
 		SecretDirectory = Path.Combine(DataRoot, "core", "security");
 		SecretPath = Path.Combine(SecretDirectory, "secret.key");
+		FocusDirectory = Path.Combine(DataRoot, "core", "focus");
+		FocusStatePath = Path.Combine(FocusDirectory, "state.json");
 		KnowledgeDirectory = Path.Combine(DataRoot, "knowledge", "documents");
 		KnowledgePath = Path.Combine(KnowledgeDirectory, "Memory.md");
 		ResourcesDirectory = Path.Combine(DataRoot, "resources");
@@ -58,6 +60,10 @@ public sealed class AppStoragePaths
 	public string DatabaseShmPath { get; }
 	public string SecretDirectory { get; }
 	public string SecretPath { get; }
+	/// <summary>专注记录目录。只留在包内 data，不进入云端存档白名单。</summary>
+	public string FocusDirectory { get; }
+	/// <summary>专注计时与最近记录。</summary>
+	public string FocusStatePath { get; }
 	public string KnowledgeDirectory { get; }
 	public string KnowledgePath { get; }
 	public string ResourcesDirectory { get; }
@@ -95,6 +101,7 @@ public sealed class AppStoragePaths
 		EnsureDirectory(DataRoot);
 		EnsureDirectory(DatabaseDirectory);
 		EnsureDirectory(SecretDirectory);
+		EnsureDirectory(FocusDirectory);
 		EnsureDirectory(KnowledgeDirectory);
 		EnsureDirectory(Live2DDirectory);
 		EnsureDirectory(ResourcesCacheDirectory);

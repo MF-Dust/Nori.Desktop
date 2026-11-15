@@ -390,6 +390,8 @@ public sealed class ModelPreviewControl : UserControl, IDisposable
 			"expressionEnabled" => "l2d_expression_enabled",
 			"lipSync" => "l2d_lip_sync",
 			"beatSync" => "l2d_beat_sync",
+			"autonomousBehavior" => Live2DModelConfig.AutonomousBehaviorKey,
+			"autonomousRandom" => Live2DModelConfig.AutonomousRandomKey,
 			"clickInteraction" => "l2d_click_interaction",
 			_ => null,
 		};

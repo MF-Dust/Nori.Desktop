@@ -128,6 +128,43 @@ public partial class BridgeCommandsTests
 		Assert.Throws<InvalidOperationException>(() => _runtime.StartRealtimeChat(mislabelled, turn));
 	}
 
+	[Theory]
+	[InlineData("trusted")]
+	[InlineData("bypass")]
+	[InlineData("session")]
+	public Task RealtimeVoiceToolApprovalAlwaysRequiresFreshConsent(string gear) => WithSettingsUiAsync(async () =>
+	{
+		NativeChatHttpHandler handler = new();
+		using HttpClient http = new(handler);
+		await using AppRuntime runtime = CreateNativeChatRuntime(http);
+		_config.Set(ToolPermissionPolicy.KeyGear, new ConfigValue.Text(gear));
+		if (gear == "bypass")
+			_config.Set(ToolPermissionPolicy.KeyBypassUntil,
+				new ConfigValue.Text(ToolPermissionPolicy.FormatDeadline(DateTimeOffset.UtcNow.AddMinutes(10))));
+		using NativeChatTestSource source = new();
+		var started = runtime.StartRealtimeChat(source, new RealtimeVoiceTurn(90, "语音请求", CancellationToken.None));
+		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		for (int index = 0; index < 2; index++)
+		{
+			ToolApprovalRequest approval = new()
+			{
+				RequestId = $"voice-approval-{gear}-{index}",
+				ToolName = "writeFile",
+				PermissionLevel = "confirm",
+			};
+			Task<bool> pending = runtime.RequestApprovalAsync(source, started.SessionId, approval, CancellationToken.None);
+			Assert.False(pending.IsCompleted);
+			Assert.Contains(source.Events, item =>
+				item.GetProperty("type").GetString() == "approval-request"
+				&& item.GetProperty("requestId").GetString() == approval.RequestId);
+			Assert.True(runtime.RespondApproval(source, approval.RequestId, true));
+			Assert.True(await pending.WaitAsync(TimeSpan.FromSeconds(3)));
+			Assert.False(runtime.Permissions.Remembered(started.SessionId, "writeFile"));
+		}
+		handler.ReleaseStream.TrySetResult();
+		await started.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+	});
+
 	[Fact]
 	public Task RealtimeVoiceTurnUsesExistingNativeAgentAndCompletesBeforeReturning() => WithSettingsUiAsync(async () =>
 	{

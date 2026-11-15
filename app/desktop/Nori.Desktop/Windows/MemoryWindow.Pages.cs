@@ -40,6 +40,7 @@ public sealed partial class MemoryWindow
 			SettingToggle("enabled", "header.title", true), SettingToggle("reflectionEnabled", "overview.reflection", true),
 			SettingToggle("decayEnabled", "overview.decay", true), SettingToggle("archiveEnabled", "overview.archive", true)));
 		_pages["memories"] = BuildListPage("memories");
+		_pages["timeline"] = BuildTimelinePage();
 		_pages["archive"] = BuildListPage("archive");
 		_results["atoms"] = Stack();
 		_pages["atoms"] = Stack(Row(Button("list.retryLoad", RefreshPageAsync)), _results["atoms"]);
@@ -258,6 +259,10 @@ public sealed partial class MemoryWindow
 				state.Results.Children.Clear();
 				foreach (JsonElement item in Items(P(data, "items"))) state.Results.Children.Add(MemoryCard(item));
 				if (state.Results.Children.Count == 0) state.Results.Children.Add(Text(L(!string.IsNullOrWhiteSpace(state.Search.Text) ? "list.emptySearch" : section == "archive" ? "list.emptyArchive" : "list.empty")));
+			}
+			else if (section == "timeline")
+			{
+				if (!await RefreshTimelineAsync(request)) return;
 			}
 			else if (section == "atoms")
 			{

@@ -416,6 +416,15 @@ public sealed class MemoryService : IAsyncDisposable
 
 	public bool Archive(long id) => _store.Archive(id);
 	public bool Restore(long id) => _store.Restore(id);
+
+	/// <summary>分页读取记忆时间线。筛选在存储层完成，不走召回检索。</summary>
+	public MemoryTimelinePage QueryTimeline(MemoryTimelineQuery query, TimeZoneInfo zone, CancellationToken cancellationToken = default) =>
+		_store.QueryTimeline(query, zone, cancellationToken);
+
+	/// <summary>读取时间线详情。找不到记忆时用中文说明，不返回空对象。</summary>
+	public MemoryTimelineDetail GetTimelineDetail(long id, TimeZoneInfo zone, CancellationToken cancellationToken = default) =>
+		_store.GetTimelineDetail(id, zone, cancellationToken) ?? throw new InvalidOperationException("未找到记忆");
+
 	public bool Delete(long id) => _store.Delete(id);
 	public void Clear() => _store.Clear();
 	public MemoryItem? Get(long id) => _store.Get(id);

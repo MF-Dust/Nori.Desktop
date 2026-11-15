@@ -31,6 +31,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	private bool _previewing;
 	private bool _cloning;
 	private bool _speaking;
+	private int _realtimeRequest;
 
 	/// <summary>创建语音设置页。</summary>
 	public VoiceSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
@@ -101,6 +102,33 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 		AddField(stt, "sttApiKey", new("识别密钥", "STT API key"), new("保存成功后输入框自动清空。", "The input is cleared after a successful save."), SettingsEditorKind.Password,
 			snapshot => SettingsSnapshotReader.SecretConfigured(snapshot, "voice", "hasSttApiKey"), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_voice", new { sttApiKey = Convert.ToString(value)?.Trim() ?? string.Empty }, token), secret: true);
+
+		SettingsSectionViewModel live = AddSection(new("实时语音", "Live voice"));
+		AddField(live, "realtimeStatus", new("当前状态", "Status"), new("状态只说明阶段。不会显示识别正文，也不会保存原始录音。", "Status shows the phase only. Transcripts are not shown, and raw audio is not stored."), SettingsEditorKind.Text,
+			StatusText, "", (_, _) => Task.FromResult<JsonElement>(default), readOnly: true);
+		AddField(live, "realtimeEnabled", new("允许实时语音", "Allow live voice"), new("保存这个开关不会打开麦克风，启动时也不会自动监听。", "Saving this switch does not open the microphone, and listening does not start at launch."), SettingsEditorKind.Boolean,
+			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "voice", "realtimeEnabled"), false,
+			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeEnabled = Convert.ToBoolean(value) }, token));
+		AddField(live, "realtimeContinuous", new("连续对话", "Continuous"), new("一轮结束后继续听。这一项还没有接上回答和朗读。", "Keep listening after a turn. Replies and read-aloud are not connected yet."), SettingsEditorKind.Boolean,
+			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "voice", "realtimeContinuous"), false,
+			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeContinuous = Convert.ToBoolean(value) }, token));
+		AddField(live, "realtimeSensitivity", new("检测灵敏度", "Detection sensitivity"), new("0 更钝，1 更灵。只用本地音量，不会把检测发给云端。", "0 is less sensitive and 1 is more sensitive. Detection stays on this computer."), SettingsEditorKind.Slider,
+			snapshot => SettingsSnapshotReader.Number(snapshot, 0.5, "voice", "realtimeSensitivity"), 0.5,
+			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeSensitivity = Convert.ToDouble(value).ToString(System.Globalization.CultureInfo.InvariantCulture) }, token),
+			minimum: 0, maximum: 1, increment: 0.05);
+		AddField(live, "realtimeSilenceMs", new("静音结束", "Silence before end"), new("安静持续这么久就结束这一句，范围 200 到 3000 毫秒。", "End the utterance after this much silence, from 200 to 3000 milliseconds."), SettingsEditorKind.Number,
+			snapshot => SettingsSnapshotReader.Number(snapshot, 700, "voice", "realtimeSilenceMs"), 700,
+			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeSilenceMs = Math.Round(Convert.ToDouble(value)).ToString(System.Globalization.CultureInfo.InvariantCulture) }, token),
+			minimum: 200, maximum: 3000, increment: 50);
+		AddField(live, "realtimeInterruptEnabled", new("允许打断", "Allow interrupt"), new("关掉后，打断按钮和快捷键都不会停止朗读。", "When off, the interrupt button and shortcut leave playback running."), SettingsEditorKind.Boolean,
+			snapshot => SettingsSnapshotReader.Boolean(snapshot, true, "voice", "realtimeInterruptEnabled"), true,
+			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeInterruptEnabled = Convert.ToBoolean(value) }, token));
+		AddField(live, "realtimeInputDevice", new("麦克风", "Microphone"), new("留空使用系统默认输入。当前采集不能按设备名切换，填了别的标识会拒绝开始。", "Leave empty for the system default. Capture cannot switch by device name; another id is rejected."), SettingsEditorKind.Text,
+			snapshot => SettingsSnapshotReader.String(snapshot, string.Empty, "voice", "realtimeInputDevice"), string.Empty,
+			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeInputDevice = Convert.ToString(value)?.Trim() ?? string.Empty }, token));
+		AddAction(live, "realtimeStart", new("开始监听", "Start listening"), new("打开麦克风并用本地静音检测分段。这段语音还不会上传识别，也还不会回答。聊天里的麦克风按钮仍是按住说话，两边不能同时占用麦克风。", "Open the microphone and segment speech locally. Audio is not uploaded yet, and there is no reply yet. The chat microphone button remains push-to-talk, and the two cannot hold the microphone together."), new SettingsCommand(command => _ = StartRealtimeAsync()));
+		AddAction(live, "realtimeStop", new("停止监听", "Stop listening"), new("关闭实时监听并放开麦克风。", "Stop live listening and release the microphone."), new SettingsCommand(command => _ = StopRealtimeAsync()));
+		AddAction(live, "realtimeInterrupt", new("打断朗读", "Interrupt speech"), new("立刻停止播放。朗读时麦克风是暂停的，说话不会打断；请用这个按钮，或在 Nori 窗口按 Ctrl+Shift+.（macOS 为 Command+Shift+.）。这不是系统全局热键。", "Stop playback immediately. The microphone pauses during speech, so talking does not interrupt; use this button or Ctrl+Shift+. in a Nori window (Command+Shift+. on macOS). This is not a system-wide hotkey."), new SettingsCommand(command => _ = InterruptRealtimeAsync()));
 		_ttsProvider.PropertyChanged += (_, args) =>
 		{
 			if (args.PropertyName == nameof(SettingsFieldViewModel.Selected)) UpdateProviderVisibility();
@@ -178,6 +206,68 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			if (voice is "male-qn-qingse" or "Kore") voice = "nova";
 		}
 		return (baseUrl, model, voice);
+	}
+
+	private static object StatusText(JsonElement snapshot)
+	{
+		string phase = SettingsSnapshotReader.String(snapshot, "idle", "voice", "realtimePhase");
+		string error = SettingsSnapshotReader.String(snapshot, string.Empty, "voice", "realtimeError");
+		bool paused = SettingsSnapshotReader.Boolean(snapshot, false, "voice", "realtimeCapturePaused");
+		bool english = SettingsLocalization.IsEnglish;
+		string label = phase switch
+		{
+			"listening" when paused => english ? "Listening is paused while audio plays" : "播放时已暂停监听",
+			"listening" => english ? "Listening" : "正在听",
+			"transcribing" => english ? "Transcribing" : "正在识别",
+			"thinking" => english ? "Thinking" : "正在思考",
+			"speaking" => english ? "Speaking. The microphone is paused" : "正在朗读，麦克风已暂停",
+			"interrupting" => english ? "Interrupting" : "正在打断",
+			"error" => english ? "Stopped" : "已停止",
+			_ => english ? "Not listening" : "未监听",
+		};
+		return error.Length == 0 ? label : label + "。 " + error;
+	}
+
+	private async Task StartRealtimeAsync()
+	{
+		try
+		{
+			int request = Interlocked.Increment(ref _realtimeRequest);
+			if (!await FlushPendingSavesAsync(LifetimeToken).ConfigureAwait(true)) return;
+			if (request != Volatile.Read(ref _realtimeRequest)) return;
+			await ExecuteAsync("realtime_voice_start", cancellationToken: LifetimeToken).ConfigureAwait(true);
+			SetStatus(Text("已开始监听。", "Listening started."));
+		}
+		catch (OperationCanceledException) { }
+		catch (Exception exception) { SetStatus(exception); }
+	}
+
+	private async Task StopRealtimeAsync()
+	{
+		try
+		{
+			Interlocked.Increment(ref _realtimeRequest);
+			await ExecuteAsync("realtime_voice_stop", cancellationToken: LifetimeToken).ConfigureAwait(true);
+			SetStatus(Text("已停止监听。", "Listening stopped."));
+		}
+		catch (OperationCanceledException) { }
+		catch (Exception exception) { SetStatus(exception); }
+	}
+
+	private async Task InterruptRealtimeAsync()
+	{
+		try
+		{
+			JsonElement result = await ExecuteAsync("realtime_voice_interrupt", cancellationToken: LifetimeToken).ConfigureAwait(true);
+			bool interrupted = result.ValueKind == JsonValueKind.Object
+				&& result.TryGetProperty("interrupted", out JsonElement value)
+				&& value.ValueKind == JsonValueKind.True;
+			SetStatus(interrupted
+				? Text("已打断朗读。", "Speech interrupted.")
+				: Text("现在没有可打断的朗读。对着正在播放的声音说话不会打断。", "Nothing is speaking. Talking over playback does not interrupt."));
+		}
+		catch (OperationCanceledException) { }
+		catch (Exception exception) { SetStatus(exception); }
 	}
 
 	private static string Text(string chinese, string english) => SettingsLocalization.IsEnglish ? english : chinese;

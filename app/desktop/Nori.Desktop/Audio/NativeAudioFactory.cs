@@ -19,8 +19,10 @@ internal static class NativeAudioFactory
 	internal static IAudioPlayback CreatePlayback() =>
 		new NativeAudioPlayback(OpenOutput, Decode);
 
-	internal static IMicrophoneRecorder CreateRecorder() =>
-		new NativeMicrophoneRecorder(OpenInput);
+	internal static IMicrophoneRecorder CreateRecorder(CaptureOwnership? ownership = null) =>
+		new NativeMicrophoneRecorder(OpenInput, ownership);
+
+	internal static IAudioCaptureDevice OpenCapture() => OpenInput();
 
 	private static IAudioDevice OpenOutput()
 	{

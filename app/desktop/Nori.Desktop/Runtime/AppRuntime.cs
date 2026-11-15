@@ -17,6 +17,8 @@ using Nori.Core.Expression;
 using Nori.Desktop.Expression;
 using Nori.Desktop.Observation;
 using Nori.Core.Voice;
+using Nori.Core.Voice.Audio;
+using Nori.Core.Voice.Realtime;
 using Nori.Desktop.Audio;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Telemetry;
@@ -68,6 +70,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	/// <summary>实际在用的播放后端。三平台都是原生设备。</summary>
 	private readonly IAudioPlayback _playback;
 	private readonly IMicrophoneRecorder _recorder;
+	private readonly CaptureOwnership _captureOwnership = new();
 
 	private readonly ReflectionWorker _reflectionWorker;
 	private readonly PetInteractionReactionService _petInteractionService;
@@ -107,6 +110,9 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	public MemoryLifecycleService Lifecycle { get; }
 
 	public VoiceService Voice { get; }
+
+	/// <summary>实时语音会话。构造后保持空闲，只有用户主动开始才会打开麦克风。</summary>
+	public RealtimeVoiceSession RealtimeVoice { get; }
 
 	public AgentEngine Engine { get; }
 
@@ -223,12 +229,22 @@ public sealed partial class AppRuntime : IAsyncDisposable
 
 		// 三平台都直接推声卡。旧的 audio_backend=webview 配置不再读取。
 		_playback = Audio.NativeAudioFactory.CreatePlayback();
-		_recorder = Audio.NativeAudioFactory.CreateRecorder();
+		_recorder = Audio.NativeAudioFactory.CreateRecorder(_captureOwnership);
 		AudioBackendName = "native";
 		services.Logger.Write(LogSource.Backend, "info", "音频后端：原生设备");
 
 		Voice = new VoiceService(services.Http, config, _playback,
 			() => VoiceRetired() ? null : _recorder, services.Paths);
+		RealtimeVoice = new RealtimeVoiceSession(
+			() => RealtimeVoiceSettings.Read(config),
+			services.SafeMode,
+			_captureOwnership,
+			Audio.NativeAudioFactory.OpenCapture,
+			(audio, token) => WhisperUtteranceTranscriber.TranscribeAsync(services.Http, config, audio, token),
+			() => Voice.Stop(),
+			WhisperUtteranceTranscriber.SupportsStreaming,
+			_lifetimeCts.Token);
+		RealtimeVoice.PhaseChanged += OnRealtimeVoicePhaseChanged;
 		_petInteractionService = new PetInteractionReactionService(services.Http, config, customProviders: services.Chat.CustomProviders);
 
 		Tools = BuildToolRegistry(true);
@@ -297,6 +313,8 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	/// <summary>Agent 事件通道名</summary>
 	public const string AgentEventName = "nori:agent-event";
 
+	private void OnRealtimeVoicePhaseChanged(RealtimeVoicePhase _) => InvalidateSnapshot();
+
 	private static bool? ParseBoolFlag(string raw) => Live2DModelConfig.ParseBool(raw);
 
 	private static float? ReadFloat(ConfigStore config, string key) =>
@@ -307,6 +325,8 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	{
 		if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 		_lifetimeCts.Cancel();
+		RealtimeVoice.PhaseChanged -= OnRealtimeVoicePhaseChanged;
+		try { RealtimeVoice.Dispose(); } catch { /* 实时语音收尾失败不挡住其余释放。 */ }
 		// 先于插件运行时释放：同步注销租约并取消进行中的插件请求，再进入异步清理。
 		if (Services.PluginRuntime is { } pluginRuntime) pluginRuntime.ContributionsChanged -= InvalidateSnapshot;
 		try { _pluginChatProviders?.Dispose(); } catch { }

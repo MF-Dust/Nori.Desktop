@@ -12,7 +12,7 @@ namespace Nori.Core.Voice.Audio;
 /// 采集设备那一层是 <see cref="IAudioCaptureDevice"/>，只有它需要原生实现；
 /// 这里的编排（攒缓冲、下混、重采样、封 WAV）全是普通托管代码。
 /// </summary>
-public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevice) : IMicrophoneRecorder
+public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevice, CaptureOwnership? ownership = null) : IMicrophoneRecorder
 {
 	/// <summary>上传给 Whisper 的采样率。</summary>
 	public const int TargetSampleRate = 16000;
@@ -27,6 +27,7 @@ public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevic
 
 	private readonly Lock _gate = new();
 	private RecordingState _state;
+	private int _ownershipHeld;
 	private IAudioCaptureDevice? _device;
 	private Task<PcmAudio>? _pump;
 	private CancellationTokenSource? _cancelling;
@@ -46,16 +47,36 @@ public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevic
 			ObjectDisposedException.ThrowIf(_state == RecordingState.Disposed, this);
 			if (_state != RecordingState.Idle) throw new InvalidOperationException("已经在录音或正在停止");
 			cancellationToken.ThrowIfCancellationRequested();
-			CancellationTokenSource cancelling = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-			TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
-			// 先预留，再打开设备；两个 Start 不能同时越过空闲检查。
-			_state = RecordingState.Starting;
-			_cancelling = cancelling;
-			_pump = Task.Run(() => Capture(cancelling, started), CancellationToken.None);
-			// Start 失败或调用方只 Dispose 时，也观察后台故障；Stop 仍从原任务取得异常。
-			_ = _pump.ContinueWith(static task => { _ = task.Exception; }, CancellationToken.None,
-				TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-			return started.Task;
+			if (ownership is not null && !ownership.TryAcquire())
+				throw new InvalidOperationException("麦克风正被占用");
+			_ownershipHeld = ownership is not null ? 1 : 0;
+			bool pumpStarted = false;
+			try
+			{
+				CancellationTokenSource cancelling = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+				TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+				// 先预留，再打开设备；两个 Start 不能同时越过空闲检查。
+				_state = RecordingState.Starting;
+				_cancelling = cancelling;
+				_pump = Task.Run(() => Capture(cancelling, started), CancellationToken.None);
+				pumpStarted = true;
+				// Start 失败或调用方只 Dispose 时，也观察后台故障；Stop 仍从原任务取得异常。
+				_ = _pump.ContinueWith(static task => { _ = task.Exception; }, CancellationToken.None,
+					TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+				return started.Task;
+			}
+			catch
+			{
+				// 采集任务已经启动时由它自己释放占用，避免和这里重复放开。
+				if (!pumpStarted)
+				{
+					ReleaseOwnership();
+					_cancelling = null;
+					_pump = null;
+					if (_state != RecordingState.Disposed) _state = RecordingState.Idle;
+				}
+				throw;
+			}
 		}
 	}
 
@@ -126,6 +147,7 @@ public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevic
 				try { device?.Dispose(); }
 				finally
 				{
+					ReleaseOwnership();
 					lock (_gate)
 					{
 						_cancelling = null;
@@ -214,6 +236,11 @@ public sealed class NativeMicrophoneRecorder(Func<IAudioCaptureDevice> openDevic
 		}
 
 		return new PcmAudio {Samples = output, SampleRate = targetRate, Channels = 1};
+	}
+
+	private void ReleaseOwnership()
+	{
+		if (Interlocked.Exchange(ref _ownershipHeld, 0) == 1) ownership?.Release();
 	}
 
 	public void Dispose()

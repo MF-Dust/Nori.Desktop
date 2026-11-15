@@ -61,7 +61,7 @@ public sealed partial class AppRuntime
 		if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("消息内容不能为空");
 		string sessionId = $"agent-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x}-{Interlocked.Increment(ref _sessionCounter):x}";
 		CancellationToken lifetimeToken = _lifetimeCts.Token;
-		AgentSessionState session = new(source, lifetimeToken, voiceTurn?.CancellationToken ?? CancellationToken.None);
+		AgentSessionState session = new(source, lifetimeToken, voiceTurn?.CancellationToken ?? CancellationToken.None, voiceTurn is not null);
 		AgentSessionLease lease;
 		try
 		{

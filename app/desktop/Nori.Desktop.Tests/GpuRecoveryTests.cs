@@ -64,7 +64,7 @@ public partial class BridgeCommandsTests
 			Assert.True(CrashReporter.TryHandleGpuFailure(new PlatformGraphicsContextLostException(), "gpu_render", requestRecovery: true));
 			Assert.True(control.GpuRecoveryPending);
 			Assert.Equal(PetRenderRecoveryPhase.Rebuilding, runtime.RenderRecovery);
-			Live2DPerformanceSnapshot whileRecovering = Live2DPerformanceSnapshot.Capture(runtime, true, DateTime.UtcNow, null);
+			Live2DPerformanceSnapshot whileRecovering = Live2DPerformanceSnapshot.Capture(runtime, true, null);
 			Assert.Equal(Live2DPerformanceAvailability.Recovering, whileRecovering.Availability);
 			Assert.Null(whileRecovering.FrameTimeP95Ms);
 			Assert.Null(whileRecovering.TargetFps);
@@ -75,7 +75,7 @@ public partial class BridgeCommandsTests
 			control.RecoverFromGpuFailureNow();
 
 			Assert.False(control.GpuRecoveryPending);
-			Live2DPerformanceSnapshot afterRebuild = Live2DPerformanceSnapshot.Capture(runtime, true, DateTime.UtcNow, null);
+			Live2DPerformanceSnapshot afterRebuild = Live2DPerformanceSnapshot.Capture(runtime, true, null);
 			Assert.NotEqual(Live2DPerformanceAvailability.Live, afterRebuild.Availability);
 			Assert.Null(afterRebuild.FrameTimeP95Ms);
 			Assert.Null(afterRebuild.DroppedFrames);

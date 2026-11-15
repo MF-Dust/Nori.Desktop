@@ -116,12 +116,12 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 	}
 
 	/// <summary>读取已有渲染统计。失败留在快照里，不伪装成成功。</summary>
-	public void RefreshPerformance(DateTime? utcNow = null)
+	public void RefreshPerformance()
 	{
 		PerformanceReadCount++;
 		try
 		{
-			Performance = Service.ReadLive2DPerformance(utcNow ?? DateTime.UtcNow);
+			Performance = Service.ReadLive2DPerformance();
 		}
 		catch (Exception exception)
 		{

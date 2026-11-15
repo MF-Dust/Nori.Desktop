@@ -366,10 +366,10 @@ public sealed class SettingsService : IDisposable
 	}
 
 	/// <summary>读取已有伴侣渲染统计。不加载模型，不创建视窗，也不启动渲染。</summary>
-	internal Live2DPerformanceSnapshot ReadLive2DPerformance(DateTime utcNow)
+	internal Live2DPerformanceSnapshot ReadLive2DPerformance()
 	{
 		ThrowIfDisposed();
-		return Live2DPerformanceSnapshot.Capture(_services.PetRuntime, _services.SafeMode, utcNow, Live2DPerformanceSnapshot.TryWorkingSet());
+		return Live2DPerformanceSnapshot.Capture(_services.PetRuntime, _services.SafeMode, Live2DPerformanceSnapshot.TryWorkingSet());
 	}
 
 	private void ThrowIfDisposed()

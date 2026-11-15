@@ -140,7 +140,7 @@ public sealed class Live2DPerformanceSnapshot
 	}
 
 	/// <summary>整理当前运行时。只读已有字段。</summary>
-	public static Live2DPerformanceSnapshot Capture(PetRuntime? pet, bool safeMode, DateTime utcNow, long? workingSetBytes)
+	public static Live2DPerformanceSnapshot Capture(PetRuntime? pet, bool safeMode, long? workingSetBytes)
 	{
 		if (workingSetBytes is <= 0) workingSetBytes = null;
 		if (pet is null)
@@ -158,7 +158,7 @@ public sealed class Live2DPerformanceSnapshot
 		string? error = pet.LastModelLoadError;
 		bool safeMessage = string.Equals(error, PetRuntime.SafeModeModelLoadMessage, StringComparison.Ordinal);
 		bool loadFailed = !string.IsNullOrWhiteSpace(error) && !safeMessage;
-		Live2DPerformanceAvailability availability = ResolveAvailability(safeMode, modelLoaded, loadFailed, metrics, utcNow);
+		Live2DPerformanceAvailability availability = ResolveAvailability(safeMode, modelLoaded, loadFailed, metrics);
 		bool hideWithoutModel = !modelLoaded;
 		bool showFrames = modelLoaded
 			&& metrics.FrameSampleCount > 0
@@ -249,8 +249,7 @@ public sealed class Live2DPerformanceSnapshot
 		bool safeMode,
 		bool modelLoaded,
 		bool loadFailed,
-		PetRenderMetrics metrics,
-		DateTime utcNow)
+		PetRenderMetrics metrics)
 	{
 		if (metrics.Recovery == PetRenderRecoveryPhase.Failed) return Live2DPerformanceAvailability.RenderFailed;
 		if (metrics.Recovery is PetRenderRecoveryPhase.ContextLost or PetRenderRecoveryPhase.Rebuilding)
@@ -267,9 +266,7 @@ public sealed class Live2DPerformanceSnapshot
 			return Live2DPerformanceAvailability.Unavailable;
 		if (!metrics.Visible && metrics.SurfaceStateKnown)
 			return Live2DPerformanceAvailability.Paused;
-		if (metrics.FrameSampleCount > 0
-			&& metrics.LastFrameSampleUtc is DateTime sampled
-			&& utcNow - sampled > StaleAfter)
+		if (metrics.FrameSampleCount > 0 && metrics.SampleAge is TimeSpan age && age > StaleAfter)
 			return Live2DPerformanceAvailability.Stale;
 		if (metrics.FrameSampleCount > 0 && metrics.Visible)
 			return Live2DPerformanceAvailability.Live;

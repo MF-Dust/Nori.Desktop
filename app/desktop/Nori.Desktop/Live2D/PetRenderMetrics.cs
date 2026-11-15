@@ -39,8 +39,11 @@ public sealed record PetRenderMetrics
 	/// <summary>遮罩耗时窗口里的真实样本数。为 0 时百分位没有意义。</summary>
 	public int MaskSampleCount { get; init; }
 
-	/// <summary>最近一次成功记入帧时间的 UTC 时刻。没有帧样本时为空。</summary>
+	/// <summary>最近一次成功记入帧时间的 UTC 时刻，只用于展示。没有帧样本时为空。</summary>
 	public DateTime? LastFrameSampleUtc { get; init; }
+
+	/// <summary>距离最近一帧样本的单调时间。新鲜度用它判断，不受系统时间回拨影响。</summary>
+	public TimeSpan? SampleAge { get; init; }
 
 	/// <summary>渲染表面是否至少发布过一次状态。</summary>
 	public bool SurfaceStateKnown { get; init; }

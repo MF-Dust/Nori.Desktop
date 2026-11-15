@@ -38,7 +38,7 @@ public static class DiagnosticInfo
 			["database_path"] = SensitiveDataRedactor.Redact(storage.DatabasePath),
 			["database_size"] = dbBytes < 0 ? "不存在" : FormatSize(dbBytes),
 		};
-		foreach ((string key, string value) in Live2DPerformanceSnapshot.Capture(pet, safeMode, DateTime.UtcNow, Live2DPerformanceSnapshot.TryWorkingSet()).ToDiagnosticValues())
+		foreach ((string key, string value) in Live2DPerformanceSnapshot.Capture(pet, safeMode, Live2DPerformanceSnapshot.TryWorkingSet()).ToDiagnosticValues())
 			info[key] = value;
 		return info;
 	}

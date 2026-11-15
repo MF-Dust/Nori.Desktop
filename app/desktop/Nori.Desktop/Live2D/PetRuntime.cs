@@ -53,6 +53,7 @@ public sealed class PetRuntime
 	private bool _renderVisible;
 	private bool _surfaceStateKnown;
 	private DateTime? _lastFrameSampleUtc;
+	private long _lastFrameSampleTimestamp;
 	private PetRenderRecoveryPhase _recoveryPhase;
 	private int _appliedMaskBufferSize;
 	private bool _maskResizeFailureLogged;
@@ -222,6 +223,7 @@ public sealed class PetRuntime
 					FrameSampleCount = _frameTimesMs.Count,
 					MaskSampleCount = _maskTimesMs.Count,
 					LastFrameSampleUtc = _lastFrameSampleUtc,
+					SampleAge = _lastFrameSampleTimestamp == 0 ? null : System.Diagnostics.Stopwatch.GetElapsedTime(_lastFrameSampleTimestamp),
 					SurfaceStateKnown = _surfaceStateKnown,
 					Recovery = _recoveryPhase,
 				};
@@ -267,6 +269,7 @@ public sealed class PetRuntime
 			{
 				AddMetric(_frameTimesMs, frameTimeMs);
 				_lastFrameSampleUtc = DateTime.UtcNow;
+				_lastFrameSampleTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
 			}
 			lock (_qualityGate) _qualityPolicy.ObserveFrame(frameTimeMs);
 		}
@@ -276,7 +279,22 @@ public sealed class PetRuntime
 		}
 	}
 
-	/// <summary>记录调度器因已有请求未完成而跳过的帧。</summary>
+	/// <summary>
+	/// 清空当前模型的帧时间与遮罩样本。
+	/// 丢帧数是进程累计，不随模型切换或上下文失效清零。
+	/// </summary>
+	internal void ResetRenderSampleWindow()
+	{
+		lock (_metricsGate)
+		{
+			_frameTimesMs.Clear();
+			_maskTimesMs.Clear();
+			_lastFrameSampleUtc = null;
+			_lastFrameSampleTimestamp = 0;
+		}
+	}
+
+	/// <summary>记录调度器因已有请求未完成而跳过的帧。计数在进程存活期间累计。</summary>
 	public void RecordDroppedFrame()
 	{
 		lock (_metricsGate) _droppedFrames++;
@@ -367,6 +385,7 @@ public sealed class PetRuntime
 		_presentationGeometry = null;
 		lock (_interactionGate) _viewportMapping = null;
 		_gl = null;
+		ResetRenderSampleWindow();
 		if (contextLost) previous?.Abandon();
 		else previous?.Dispose();
 	}
@@ -887,6 +906,7 @@ public sealed class PetRuntime
 			return;
 		}
 
+		ResetRenderSampleWindow();
 		try { _services.Logger.Write(LogSource.Backend, "info", $"成功加载 Live2D 模型: {prepared.ModelId}"); } catch { }
 		try { ModelChanged?.Invoke(); }
 		catch (Exception exception) { WriteLive2DLog($"模型变更事件处理异常: {exception.Message}"); }

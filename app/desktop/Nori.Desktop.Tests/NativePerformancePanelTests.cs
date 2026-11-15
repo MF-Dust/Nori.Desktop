@@ -22,8 +22,7 @@ public partial class BridgeCommandsTests
 		PetRuntime runtime = new(fixture._services, previewMode: false);
 		Assert.Equal("arg-nori", runtime.CurrentModelId);
 		Assert.Null(runtime.CurrentModel);
-		DateTime now = DateTime.UtcNow;
-		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, true, now, null);
+		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, true, null);
 		Assert.Equal(Live2DPerformanceAvailability.SafeMode, snapshot.Availability);
 		Assert.Null(snapshot.SafeModelId);
 		Assert.Null(snapshot.TargetFps);
@@ -49,6 +48,38 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
+	public void 切换模型后未产生新帧时不沿用旧样本()
+	{
+		using BridgeCommandsTests fixture = new(safeMode: false);
+		PetRuntime runtime = new(fixture._services, previewMode: true);
+		MarkPerformanceModel(runtime, "nori");
+		runtime.RecordRenderMetrics(40, 9);
+		runtime.RecordDroppedFrame();
+		runtime.SetRenderSurfaceState(true, false, true);
+		Assert.Equal(40, runtime.RenderMetrics.FrameTimeP95Ms);
+		Assert.Equal(9, runtime.RenderMetrics.MaskCostP95Ms);
+
+		runtime.ResetRenderSampleWindow();
+		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, null);
+		Assert.Equal(Live2DPerformanceAvailability.Unavailable, snapshot.Availability);
+		Assert.Null(snapshot.FrameTimeP95Ms);
+		Assert.Null(snapshot.MaskCostP95Ms);
+		Assert.Null(snapshot.SampledAtUtc);
+		Assert.Equal(1, snapshot.DroppedFrames);
+		Assert.Equal("unavailable", snapshot.ToDiagnosticValues()["live2d_frame_time_p95_ms"]);
+		Assert.Equal("unavailable", snapshot.ToDiagnosticValues()["live2d_mask_cost_p95_ms"]);
+
+		PetRuntime released = new(fixture._services, previewMode: true);
+		released.RecordRenderMetrics(33, 4);
+		released.RecordDroppedFrame();
+		released.OnGlDeinit();
+		Assert.Equal(0, released.RenderMetrics.FrameSampleCount);
+		Assert.Equal(0, released.RenderMetrics.MaskSampleCount);
+		Assert.Null(released.RenderMetrics.LastFrameSampleUtc);
+		Assert.Equal(1, released.RenderMetrics.DroppedFrames);
+	}
+
+	[Fact]
 	public void 没有模型时可见采样不算正在渲染()
 	{
 		using BridgeCommandsTests fixture = new(safeMode: false);
@@ -56,7 +87,7 @@ public partial class BridgeCommandsTests
 		Assert.Null(runtime.CurrentModel);
 		runtime.RecordRenderMetrics(16.7, 1.2);
 		runtime.SetRenderSurfaceState(true, true, true);
-		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, null);
 		Assert.Equal(Live2DPerformanceAvailability.Unavailable, snapshot.Availability);
 		Assert.Null(snapshot.TargetFps);
 		Assert.Null(snapshot.FrameTimeP95Ms);
@@ -91,7 +122,7 @@ public partial class BridgeCommandsTests
 		MarkPerformanceModel(runtime, "nori");
 		runtime.RecordRenderMetrics(16, 1);
 		runtime.SetRenderSurfaceState(true, false, true);
-		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, null);
 		Assert.Equal(Live2DPerformanceAvailability.Live, snapshot.Availability);
 		Assert.True(snapshot.SurfaceRestored);
 	}
@@ -105,8 +136,7 @@ public partial class BridgeCommandsTests
 		runtime.RecordRenderMetrics(16.7, 1.25);
 		runtime.RecordRenderMetrics(double.NaN, 0);
 		runtime.SetRenderSurfaceState(true, true, true);
-		DateTime now = DateTime.UtcNow;
-		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, now, 42 * 1024 * 1024);
+		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, 42 * 1024 * 1024);
 		Assert.Equal(Live2DPerformanceAvailability.Live, snapshot.Availability);
 		Assert.Equal("arg-nori", snapshot.SafeModelId);
 		Assert.Equal(60, snapshot.TargetFps);
@@ -142,33 +172,36 @@ public partial class BridgeCommandsTests
 		MarkPerformanceModel(runtime, "nori");
 		runtime.RecordRenderMetrics(20, 2);
 		runtime.SetRenderSurfaceState(false, false, true);
-		SetQualityField(runtime, "_lastFrameSampleUtc", DateTime.UtcNow - TimeSpan.FromSeconds(30));
+		SetQualityField(runtime, "_lastFrameSampleTimestamp", System.Diagnostics.Stopwatch.GetTimestamp() - System.Diagnostics.Stopwatch.Frequency * 30);
+		SetQualityField(runtime, "_lastFrameSampleUtc", DateTime.UtcNow.AddHours(1));
 		SettingsLocalization.SetLanguage("zh-CN");
-		Live2DPerformanceSnapshot stale = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot stale = Live2DPerformanceSnapshot.Capture(runtime, false, null);
 		Assert.Equal(Live2DPerformanceAvailability.Stale, stale.Availability);
+		Assert.True(stale.SampledAtUtc > DateTime.UtcNow);
 		Assert.Equal(20, stale.FrameTimeP95Ms);
 		Assert.Contains("采样已过期", Live2DPerformanceText.Present(stale).Status, StringComparison.Ordinal);
 
 		runtime.SetRenderSurfaceState(false, false, false);
-		Live2DPerformanceSnapshot paused = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot paused = Live2DPerformanceSnapshot.Capture(runtime, false, null);
 		Assert.Equal(Live2DPerformanceAvailability.Paused, paused.Availability);
 		Assert.Contains("渲染已暂停", Live2DPerformanceText.Present(paused).CopyText, StringComparison.Ordinal);
 
 		runtime.NoteRenderRecovery(PetRenderRecoveryPhase.ContextLost);
-		Live2DPerformanceSnapshot lost = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot lost = Live2DPerformanceSnapshot.Capture(runtime, false, null);
 		Assert.Equal(Live2DPerformanceAvailability.Recovering, lost.Availability);
 		Assert.Contains("上下文已丢失", Live2DPerformanceText.Present(lost).CopyText, StringComparison.Ordinal);
 		Assert.DoesNotContain("正在渲染", Live2DPerformanceText.Present(lost).Status, StringComparison.Ordinal);
 
 		runtime.NoteRenderRecovery(PetRenderRecoveryPhase.Failed);
-		Live2DPerformanceSnapshot failed = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot failed = Live2DPerformanceSnapshot.Capture(runtime, false, null);
 		Assert.Equal(Live2DPerformanceAvailability.RenderFailed, failed.Availability);
 		Assert.Contains("渲染初始化失败", Live2DPerformanceText.Present(failed).Status, StringComparison.Ordinal);
 
 		runtime.NoteRenderRecovery(PetRenderRecoveryPhase.Restored);
 		runtime.SetRenderSurfaceState(true, false, true);
+		SetQualityField(runtime, "_lastFrameSampleTimestamp", System.Diagnostics.Stopwatch.GetTimestamp());
 		SetQualityField(runtime, "_lastFrameSampleUtc", DateTime.UtcNow);
-		Live2DPerformanceSnapshot restored = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot restored = Live2DPerformanceSnapshot.Capture(runtime, false, null);
 		Assert.Equal(Live2DPerformanceAvailability.Live, restored.Availability);
 		Assert.True(restored.SurfaceRestored);
 		Assert.Contains("已从故障中恢复", Live2DPerformanceText.Present(restored).CopyText, StringComparison.Ordinal);
@@ -183,7 +216,7 @@ public partial class BridgeCommandsTests
 		SetQualityField(runtime, "<LastModelLoadError>k__BackingField", leaked);
 		runtime.RecordRenderMetrics(12, 1);
 		runtime.SetRenderSurfaceState(true, false, true);
-		Live2DPerformanceSnapshot hidden = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot hidden = Live2DPerformanceSnapshot.Capture(runtime, false, null);
 		Assert.Equal(Live2DPerformanceAvailability.LoadFailed, hidden.Availability);
 		Assert.Null(hidden.FrameTimeP95Ms);
 		Assert.Null(hidden.SafeModelId);
@@ -197,7 +230,7 @@ public partial class BridgeCommandsTests
 
 		MarkPerformanceModel(runtime, "nori");
 		SetQualityField(runtime, "<LastModelLoadError>k__BackingField", "模型 arg-nori 加载失败: /tmp/hidden/model " + CredentialPhrase());
-		Live2DPerformanceSnapshot visible = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot visible = Live2DPerformanceSnapshot.Capture(runtime, false, null);
 		Assert.Equal(Live2DPerformanceAvailability.LoadFailed, visible.Availability);
 		Assert.Equal("arg-nori", visible.FailedModelId);
 		Assert.Equal("nori", visible.SafeModelId);
@@ -221,7 +254,7 @@ public partial class BridgeCommandsTests
 		PetRuntime runtime = new(fixture._services, previewMode: true);
 		MarkPerformanceModel(runtime, "/home/user/Documents/nori");
 		runtime.SetRenderSurfaceState(true, false, true);
-		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, null);
 		Assert.Null(snapshot.SafeModelId);
 		SettingsLocalization.SetLanguage("en-US");
 		try
@@ -254,7 +287,7 @@ public partial class BridgeCommandsTests
 		}));
 		Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
 		Stopwatch watch = Stopwatch.StartNew();
-		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, true, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, true, null);
 		watch.Stop();
 		release.Set();
 		await worker.WaitAsync(TimeSpan.FromSeconds(5));
@@ -277,7 +310,7 @@ public partial class BridgeCommandsTests
 		Assert.Equal(0, requested);
 		Assert.Null(runtime.CurrentModel);
 		Assert.Equal(PetRuntime.SafeModeModelLoadMessage, runtime.LastModelLoadError);
-		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, true, DateTime.UtcNow, null);
+		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, true, null);
 		Assert.Equal(Live2DPerformanceAvailability.SafeMode, snapshot.Availability);
 		Assert.Null(snapshot.SafeModelId);
 		Assert.Null(snapshot.TargetFps);

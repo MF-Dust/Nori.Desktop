@@ -46,6 +46,8 @@ public sealed partial class AppRuntime
 	{
 		ArgumentNullException.ThrowIfNull(turn);
 		turn.CancellationToken.ThrowIfCancellationRequested();
+		if (source is not INativeChatSource native || !Nori.Desktop.Chat.NativeChatService.IsTrustedSource(native))
+			throw new InvalidOperationException("实时语音必须从可信原生对话窗口发起");
 		return StartChatCore(source, turn.Text, turn);
 	}
 

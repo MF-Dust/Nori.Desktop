@@ -170,7 +170,7 @@ public sealed partial class AppRuntime
 		}
 		finally
 		{
-			if (realtimeGeneration is { } generation) RealtimeVoice.CompleteSpeaking(generation);
+			if (realtimeGeneration is { } completedGeneration) RealtimeVoice.CompleteSpeaking(completedGeneration);
 		}
 	}
 

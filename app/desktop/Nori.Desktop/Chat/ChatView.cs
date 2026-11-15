@@ -213,6 +213,15 @@ public sealed partial class ChatView : UserControl, IDisposable
 		FlushMessages();
 	}
 
+	/// <summary>仅把实时语音的最终识别文字加入可编辑草稿，不自动提交 AI 请求。</summary>
+	internal void AcceptRealtimeTranscript(string transcript)
+	{
+		Dispatcher.UIThread.VerifyAccess();
+		if (_disposed || _preparing) throw new InvalidOperationException("对话窗口正在关闭，无法接收语音转写");
+		_state.AppendTranscript(transcript);
+		FlushRender();
+	}
+
 	internal Task SendAsync(string? text = null)
 	{
 		if (!_configured || !_loadedHistory || _safeMode || _preparing || _clearing || _modal.IsVisible) return Task.CompletedTask;
@@ -302,11 +311,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 		{
 			JsonElement result = await ExecuteAsync("stt_stop", cancellationToken: _lifetime.Token);
 			string transcript = S(result, "text");
-			if (transcript.Length > 0)
-			{
-				_state.Draft = string.IsNullOrWhiteSpace(_state.Draft) ? transcript : _state.Draft + " " + transcript;
-				_state.SetStatus("transcript");
-			}
+			_state.AppendTranscript(transcript);
 			_voiceState = "idle";
 		}
 		catch

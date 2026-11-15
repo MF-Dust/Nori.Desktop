@@ -134,6 +134,15 @@ internal sealed class NativeChatState
 	}
 	internal void CancelFailed(Exception exception) { CancelRequested = false; SetError(exception.Message); }
 	internal void SetError(string error) { Error = error; Changed?.Invoke(); }
+	/// <summary>将用户主动开启实时监听后得到的最终转写加入草稿，保留原有输入供确认。</summary>
+	internal void AppendTranscript(string transcript)
+	{
+		if (string.IsNullOrWhiteSpace(transcript)) return;
+		string text = transcript.Trim();
+		Draft = string.IsNullOrWhiteSpace(Draft) ? text : Draft.TrimEnd() + " " + text;
+		SetStatus("transcript");
+	}
+
 	internal void SetStatus(string status) { Error = ""; Status = status; Changed?.Invoke(); }
 	internal void ResolveApproval(string requestId)
 	{

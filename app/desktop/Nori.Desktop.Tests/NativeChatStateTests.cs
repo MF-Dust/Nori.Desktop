@@ -9,6 +9,21 @@ public sealed class NativeChatStateTests
 	private static JsonElement Event(object value) => JsonSerializer.SerializeToElement(value);
 
 	[Fact]
+	public void 实时转写只补充草稿且保留已有输入()
+	{
+		NativeChatState state = new() { Draft = "原有草稿  " };
+		state.AppendTranscript("  你好 Nori  ");
+		Assert.Equal("原有草稿 你好 Nori", state.Draft);
+		Assert.Equal("transcript", state.Status);
+		Assert.False(state.Sending);
+		Assert.Empty(state.Messages);
+		state.AppendTranscript("  ");
+		Assert.Equal("原有草稿 你好 Nori", state.Draft);
+		state.AppendTranscript("继续提问");
+		Assert.Equal("原有草稿 你好 Nori 继续提问", state.Draft);
+	}
+
+	[Fact]
 	public void EarlyEventsReplayOnlyForTheReturnedSessionAndCompleteReplacesPreview()
 	{
 		NativeChatState state = new() { Draft = "  你好  " };

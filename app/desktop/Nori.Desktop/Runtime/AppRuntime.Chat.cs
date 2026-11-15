@@ -2,6 +2,8 @@ using Nori.Core.Agent;
 using Nori.Core.Security;
 using Nori.Core.Telemetry;
 using Nori.Core.Voice;
+using Nori.Core.Voice.Realtime;
+using Avalonia.Threading;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Windows;
 
@@ -12,6 +14,26 @@ public sealed partial class AppRuntime
 	// ===================================================================
 	// 聊天会话
 	// ===================================================================
+
+	/// <summary>
+	/// 将用户主动监听后识别出的文字交给原生聊天草稿，用户确认后再发送。
+	/// 不在后台替用户调用 Agent、工具或自动朗读。
+	/// </summary>
+	private async Task DeliverRealtimeVoiceTranscriptAsync(RealtimeVoiceTurn turn)
+	{
+		turn.CancellationToken.ThrowIfCancellationRequested();
+		await Dispatcher.UIThread.InvokeAsync(() =>
+		{
+			turn.CancellationToken.ThrowIfCancellationRequested();
+			if (Services.SafeMode || Volatile.Read(ref _disposed) != 0)
+				throw new InvalidOperationException("应用已停止接收实时语音");
+			Services.Windows.ShowChat();
+			if (Services.Windows.Get(WindowLabels.Chat) is not ChatWindow chat || !chat.IsVisible)
+				throw new InvalidOperationException("原生对话窗口未能打开");
+			chat.Body.AcceptRealtimeTranscript(turn.Text);
+		});
+	}
+
 
 	/// <summary>
 	/// 启动一次 Agent 会话; 返回 sessionId 供取消/授权关联

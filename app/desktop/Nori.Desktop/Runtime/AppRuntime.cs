@@ -245,6 +245,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			WhisperUtteranceTranscriber.SupportsStreaming,
 			_lifetimeCts.Token);
 		RealtimeVoice.PhaseChanged += OnRealtimeVoicePhaseChanged;
+		RealtimeVoice.TurnAccepted = DeliverRealtimeVoiceTranscriptAsync;
 		_petInteractionService = new PetInteractionReactionService(services.Http, config, customProviders: services.Chat.CustomProviders);
 
 		Tools = BuildToolRegistry(true);

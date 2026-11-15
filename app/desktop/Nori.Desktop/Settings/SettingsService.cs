@@ -2,6 +2,7 @@ using System.Collections.Frozen;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Avalonia.Controls;
+using Nori.Core.Agent;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Diagnostics;
 
@@ -116,10 +117,14 @@ public sealed class SettingsService : IDisposable
 	private readonly AppServices _services;
 	private readonly SettingsContext _context;
 	private readonly BridgeCommandRouter _router;
+	private readonly Action _executionChanged;
 	private int _disposed;
 
 	/// <summary>设置状态变化通知；调用方负责在 UI 线程刷新控件。</summary>
 	public event Action? StateChanged;
+
+	/// <summary>执行记录有新事件。可能在后台线程触发，界面必须自行切回 UI 线程。</summary>
+	public event Action? AgentExecutionChanged;
 
 	/// <summary>创建与指定原生窗口绑定的设置服务。</summary>
 	public SettingsService(AppServices services, Window owner)
@@ -127,6 +132,8 @@ public sealed class SettingsService : IDisposable
 		_services = services ?? throw new ArgumentNullException(nameof(services));
 		_context = new SettingsContext(owner ?? throw new ArgumentNullException(nameof(owner)));
 		_router = new BridgeCommandRouter(services);
+		_executionChanged = () => AgentExecutionChanged?.Invoke();
+		services.AgentExecution.Changed += _executionChanged;
 		if (services.Runtime is { } runtime) runtime.StateChanged += OnRuntimeStateChanged;
 		if (services.PluginRuntime is { } plugins) plugins.ContributionsChanged += OnRuntimeStateChanged;
 	}
@@ -370,6 +377,13 @@ public sealed class SettingsService : IDisposable
 		return document.RootElement.Clone();
 	}
 
+	/// <summary>读取当前内存中的执行记录。不触发模型或网络。</summary>
+	internal AgentExecutionSnapshot ReadAgentExecution()
+	{
+		ThrowIfDisposed();
+		return _services.AgentExecution.Snapshot();
+	}
+
 	/// <summary>读取已有伴侣渲染统计。不加载模型，不创建视窗，也不启动渲染。</summary>
 	internal Live2DPerformanceSnapshot ReadLive2DPerformance()
 	{
@@ -385,6 +399,8 @@ public sealed class SettingsService : IDisposable
 	public void Dispose()
 	{
 		if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+		_services.AgentExecution.Changed -= _executionChanged;
+		AgentExecutionChanged = null;
 		if (_services.Runtime is { } runtime) runtime.StateChanged -= OnRuntimeStateChanged;
 		if (_services.PluginRuntime is { } plugins) plugins.ContributionsChanged -= OnRuntimeStateChanged;
 		_context.Dispose();

@@ -30,7 +30,8 @@ public static class DiagnosticExporter
 		AppStoragePaths paths,
 		bool safeMode,
 		CancellationToken cancellationToken = default,
-		AgentTraceCollector? trace = null)
+		AgentTraceCollector? trace = null,
+		AgentExecutionJournal? execution = null)
 	{
 		ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
 		ArgumentNullException.ThrowIfNull(logger);
@@ -53,6 +54,7 @@ public static class DiagnosticExporter
 			}
 			IReadOnlyList<LogEntry> logs = logger.RecentLogs();
 			IReadOnlyList<AgentTraceRecord> traces = trace?.Snapshot() ?? [];
+			AgentExecutionSnapshot executionSnapshot = execution?.Snapshot() ?? AgentExecutionSnapshot.Empty;
 			var runtime = new
 			{
 				productVersion = Nori.Core.ProductVersion.Current,
@@ -60,6 +62,7 @@ public static class DiagnosticExporter
 				generatedAt = DateTimeOffset.UtcNow.ToString("O"),
 				logCount = Math.Min(logs.Count, MaxLogEntries),
 				traceCount = traces.Count,
+				executionCount = executionSnapshot.Events.Count,
 				logging = logger.GetStatus(),
 			};
 			var safeLogs = logs
@@ -89,11 +92,16 @@ public static class DiagnosticExporter
 				WriteJson(archive, "runtime.json", runtime, cancellationToken);
 				WriteJson(archive, "recent-logs.json", safeLogs, cancellationToken);
 				WriteJson(archive, "agent-trace.json", traces, cancellationToken);
-				WriteText(archive, "README.txt", "本压缩包只包含脱敏的运行诊断、Agent 性能元数据与最近日志，不包含数据库、聊天、记忆、资源或密钥。\n", cancellationToken);
+				WriteJson(archive, "agent-execution.json", new
+				{
+					summary = executionSnapshot.Summary,
+					events = executionSnapshot.Events,
+				}, cancellationToken);
+				WriteText(archive, "README.txt", "本压缩包只包含脱敏的运行诊断、Agent 性能元数据、执行记录与最近日志，不包含数据库、聊天、记忆、工具参数、工具结果、资源或密钥。\n", cancellationToken);
 				WriteJson(archive, "manifest.json", new
 				{
 					formatVersion = 1,
-					files = new[] {"diagnostics.json", "runtime.json", "recent-logs.json", "agent-trace.json", "README.txt"},
+					files = new[] {"diagnostics.json", "runtime.json", "recent-logs.json", "agent-trace.json", "agent-execution.json", "README.txt"},
 					skipped,
 				}, cancellationToken);
 				archive.Dispose();

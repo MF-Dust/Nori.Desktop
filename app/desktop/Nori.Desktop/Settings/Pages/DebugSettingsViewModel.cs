@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Nori.Core.Agent;
 using Nori.Desktop.Diagnostics;
 
 namespace Nori.Desktop.Settings.Pages;
@@ -28,18 +29,37 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 	private long _logRequest;
 	private bool _refreshingLogs;
 	private Live2DPerformanceSnapshot _performance = Live2DPerformanceSnapshot.Empty;
+	private AgentExecutionSnapshot _execution = AgentExecutionSnapshot.Empty;
+	private readonly Action _executionChanged;
 
 	/// <summary>创建调试诊断 ViewModel。</summary>
-	public DebugSettingsViewModel(SettingsService service) : base(service) { }
+	public DebugSettingsViewModel(SettingsService service) : base(service)
+	{
+		_executionChanged = () => ExecutionChanged?.Invoke();
+		service.AgentExecutionChanged += _executionChanged;
+	}
+
+	/// <summary>执行记录变化。页面隐藏或释放后，呈现器必须退订。</summary>
+	public event Action? ExecutionChanged;
 
 	/// <summary>性能面板实际读取次数。隐藏期间不得增加。</summary>
 	internal int PerformanceReadCount { get; private set; }
+
+	/// <summary>执行记录实际读取次数。隐藏期间不得增加。</summary>
+	internal int ExecutionReadCount { get; private set; }
 
 	/// <summary>最近一次只读性能快照。</summary>
 	public Live2DPerformanceSnapshot Performance
 	{
 		get => _performance;
 		private set => SetProperty(ref _performance, value);
+	}
+
+	/// <summary>当前执行记录快照。</summary>
+	public AgentExecutionSnapshot Execution
+	{
+		get => _execution;
+		private set => SetProperty(ref _execution, value);
 	}
 
 	/// <summary>当前日志。</summary>
@@ -100,6 +120,7 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 		try
 		{
 			RefreshPerformance();
+			RefreshExecution();
 			await RefreshDiagnosticCoreAsync(cancellationToken).ConfigureAwait(true);
 			await RefreshLogsCoreAsync(cancellationToken).ConfigureAwait(true);
 		}
@@ -129,9 +150,22 @@ public sealed class DebugSettingsViewModel : SettingsPageViewModelBase
 		}
 	}
 
+	/// <summary>读取已有执行记录。没有用量时快照里就是空，不补数字。</summary>
+	public void RefreshExecution()
+	{
+		ExecutionReadCount++;
+		AgentExecutionSnapshot next = Service.ReadAgentExecution();
+		if (next.Revision == _execution.Revision) return;
+		Execution = next;
+	}
+
 	/// <summary>把当前性能面板复制到剪贴板。</summary>
 	public Task CopyPerformanceAsync(CancellationToken cancellationToken = default) =>
 		CopyTextAsync(Live2DPerformanceText.Present(Performance).CopyText, cancellationToken);
+
+	/// <summary>复制当前执行记录的脱敏文本。</summary>
+	public Task CopyExecutionAsync(CancellationToken cancellationToken = default) =>
+		CopyTextAsync(AgentExecutionText.Present(Execution).CopyText, cancellationToken);
 
 	/// <summary>刷新诊断信息。</summary>
 	public async Task RefreshDiagnosticAsync(CancellationToken cancellationToken = default)

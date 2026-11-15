@@ -234,8 +234,15 @@ public sealed class AgentEngine
 		AgentExecutionRequest execution = _execution?.Open(sessionId) ?? AgentExecutionRequest.Inactive;
 
 		void SetState(AgentRunState state) => callbacks.OnState?.Invoke(state);
+		void FinishExecution(long durationMs, AgentExecutionStatus status, string? failureCategory)
+		{
+			if (execution.HasEnded) return;
+			execution.End(durationMs, status, failureCategory);
+		}
 
 		SetState(AgentRunState.Thinking);
+		try
+		{
 
 		// 0. 对话是否交给 LuoLiCore。
 		//
@@ -258,7 +265,7 @@ public sealed class AgentEngine
 		if (!chatSettings.IsConfigured)
 		{
 			WriteTrace(sessionId, "config", configClock.ElapsedMilliseconds, null, null, "error", "invalid_config");
-			execution.End(configClock.ElapsedMilliseconds, AgentExecutionStatus.Failed, "invalid_config");
+			FinishExecution(configClock.ElapsedMilliseconds, AgentExecutionStatus.Failed, "invalid_config");
 			throw new InvalidOperationException("尚未配置完整的 LLM 参数 (API Base, API Key 或 Model 缺失)");
 		}
 		Chat.Catalog.ModelCapabilities? capabilities = customProvider
@@ -285,7 +292,7 @@ public sealed class AgentEngine
 		catch (Exception exception)
 		{
 			WriteTrace(sessionId, "context", contextClock.ElapsedMilliseconds, null, null, "error", FailureCategory(exception));
-			execution.End(contextClock.ElapsedMilliseconds,
+			FinishExecution(contextClock.ElapsedMilliseconds,
 				exception is OperationCanceledException ? AgentExecutionStatus.Cancelled : AgentExecutionStatus.Failed,
 				FailureCategory(exception));
 			throw;
@@ -378,8 +385,6 @@ public sealed class AgentEngine
 		ProtocolMessage finalMessage = new("", null, null, null);
 		int currentIteration = -1;
 		DateTimeOffset? callDeadlineUtc = null;
-		try
-		{
 			async Task<ToolResult> ExecuteToolAsync(string name, JsonNode? arguments, CancellationToken token, string? callId = null)
 			{
 				runToken.ThrowIfCancellationRequested();
@@ -490,6 +495,11 @@ public sealed class AgentEngine
 						{
 							task = ExecuteToolAsync(call.Name, call.Arguments, token, call.Id);
 							pending.Add(key, task);
+						}
+						else
+						{
+							// 同批复用已启动任务：只记一次压制，不另开真实执行。
+							execution.Deduplicated(round, key, call.Name);
 						}
 						batch[offset] = task;
 					}
@@ -673,28 +683,28 @@ public sealed class AgentEngine
 			_chat.SaveMessage("assistant", finalMessage.Text);
 			callbacks.OnComplete?.Invoke(finalMessage);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "completed");
-			execution.End(runClock.ElapsedMilliseconds, AgentExecutionStatus.Success, null);
+			FinishExecution(runClock.ElapsedMilliseconds, AgentExecutionStatus.Success, null);
 			return finalMessage;
 		}
 		catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
 		{
 			// 非用户取消的超时: 转成可读错误而不是当作正常中止
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", "timeout");
-			execution.End(runClock.ElapsedMilliseconds, AgentExecutionStatus.Failed, "timeout");
+			FinishExecution(runClock.ElapsedMilliseconds, AgentExecutionStatus.Failed, "timeout");
 			throw new ChatException($"回复超时 ({CallTimeoutSeconds}s), 请稍后重试");
 		}
 		catch (OperationCanceledException)
 		{
 			SetState(AgentRunState.Idle);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "cancelled", "cancelled");
-			execution.End(runClock.ElapsedMilliseconds, AgentExecutionStatus.Cancelled, "cancelled");
+			FinishExecution(runClock.ElapsedMilliseconds, AgentExecutionStatus.Cancelled, "cancelled");
 			throw;
 		}
 		catch (Exception exception)
 		{
 			SetState(AgentRunState.Error);
 			WriteTrace(sessionId, "run", runClock.ElapsedMilliseconds, null, null, "error", FailureCategory(exception));
-			execution.End(runClock.ElapsedMilliseconds, AgentExecutionStatus.Failed, FailureCategory(exception));
+			FinishExecution(runClock.ElapsedMilliseconds, AgentExecutionStatus.Failed, FailureCategory(exception));
 			throw;
 		}
 	}

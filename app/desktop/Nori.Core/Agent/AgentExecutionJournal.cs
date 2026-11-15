@@ -108,6 +108,7 @@ public sealed class AgentExecutionJournal : IDisposable
 	private readonly object _gate = new();
 	private readonly Queue<StoredEvent> _events = [];
 	private readonly Dictionary<string, Dictionary<string, CallSlot>> _slots = new(StringComparer.Ordinal);
+	private readonly byte[] _callIdSecret = new byte[32];
 	private readonly int _capacity;
 	private readonly int _maxEventBytes;
 	private readonly int _maxRetainedBytes;
@@ -127,6 +128,7 @@ public sealed class AgentExecutionJournal : IDisposable
 		_capacity = capacity;
 		_maxEventBytes = maxEventBytes;
 		_maxRetainedBytes = maxRetainedBytes;
+		RandomNumberGenerator.Fill(_callIdSecret);
 	}
 
 	/// <summary>新事件通知。可能发生在任意线程，订阅方不得在其中执行工具。</summary>
@@ -215,8 +217,9 @@ public sealed class AgentExecutionJournal : IDisposable
 			string id = CallId(callId);
 			if (Slot(request.Id, round, id) is not null)
 			{
+				// 只标 category；Deduplicated 计数交给 Deduplicated(...) 记一次，避免同一次压制被加两次。
 				Append(request, round, id, AgentExecutionKind.Tool, toolName, null, AgentExecutionStatus.Pending,
-					"duplicate", true, false, false, null, null, false);
+					"duplicate", false, false, false, null, null, false);
 			}
 			else
 			{
@@ -499,29 +502,22 @@ public sealed class AgentExecutionJournal : IDisposable
 		return CutBytes(redacted, Math.Min(maxBytes, _maxEventBytes));
 	}
 
-	private static string CallId(string? value)
+	/// <summary>
+	/// 把调用键收成实例内稳定、对外不可逆的标识。
+	/// 即使用 <see cref="ToolExecutionTracker.Key"/> 的参数哈希键，也不会把可关联原文放进导出。
+	/// </summary>
+	private string CallId(string? value)
 	{
-		if (string.IsNullOrWhiteSpace(value)) return "call";
-		string trimmed = Strip(value.Trim());
-		if (trimmed.Length is > 0 and <= 160 && SafeToken(trimmed)) return trimmed;
-		byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(trimmed));
-		return "id-" + Convert.ToHexString(hash)[..16];
+		string trimmed = string.IsNullOrWhiteSpace(value) ? "call" : Strip(value.Trim());
+		if (trimmed.Length == 0) trimmed = "call";
+		byte[] mac = HMACSHA256.HashData(_callIdSecret, Encoding.UTF8.GetBytes(trimmed));
+		return "id-" + Convert.ToHexString(mac.AsSpan(0, 8));
 	}
 
 	private static string Level(string? value)
 	{
 		string text = (value ?? "").Trim().ToLowerInvariant();
 		return text is "safe" or "confirm" or "dangerous" ? text : "unknown";
-	}
-
-	private static bool SafeToken(string value)
-	{
-		foreach (char character in value)
-		{
-			if (char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' or ':') continue;
-			return false;
-		}
-		return true;
 	}
 
 	private static string Strip(string value)

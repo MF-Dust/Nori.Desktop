@@ -138,7 +138,7 @@ public sealed class AgentExecutionEngineTests : IDisposable
 		Assert.Equal(1, ran);
 		AgentExecutionSnapshot snapshot = journal.Snapshot();
 		Assert.Equal(1, snapshot.Summary.RealExecutions);
-		Assert.True(snapshot.Summary.Deduplicated >= 1);
+		Assert.Equal(1, snapshot.Summary.Deduplicated);
 	}
 
 	[Fact]

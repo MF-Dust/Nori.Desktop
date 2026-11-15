@@ -63,9 +63,9 @@ public static class AgentExecutionText
 		if (ev.Deduplicated) prefix += NativeSettingsResources.Get("exec.dedup") + " · ";
 		string body = ev.Kind switch
 		{
-			AgentExecutionKind.Request => NativeSettingsResources.Get("exec.kind.request"),
-			AgentExecutionKind.Model => NativeSettingsResources.Get("exec.kind.model"),
-			AgentExecutionKind.Session => NativeSettingsResources.Get("exec.kind.session"),
+			AgentExecutionKind.Request => NativeSettingsResources.Get("exec.kind.request") + " · " + Status(ev.Status),
+			AgentExecutionKind.Model => NativeSettingsResources.Get("exec.kind.model") + " · " + Status(ev.Status),
+			AgentExecutionKind.Session => NativeSettingsResources.Get("exec.kind.session") + " · " + Status(ev.Status),
 			AgentExecutionKind.Permission => Permission(ev),
 			_ => Status(ev.Status),
 		};

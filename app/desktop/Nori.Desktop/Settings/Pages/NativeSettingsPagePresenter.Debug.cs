@@ -360,7 +360,8 @@ public sealed partial class NativeSettingsPagePresenter
 
 	private void QueueExecutionRefresh()
 	{
-		if (_disposed || !IsDebugPanelVisible()) return;
+		// Changed 可能来自后台线程；可见性检查只在 UI 线程回调里做。
+		if (_disposed) return;
 		if (Interlocked.Exchange(ref _executionRefreshQueued, 1) == 1) return;
 		Dispatcher.UIThread.Post(() =>
 		{

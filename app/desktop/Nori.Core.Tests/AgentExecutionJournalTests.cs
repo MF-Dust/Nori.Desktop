@@ -25,10 +25,10 @@ public sealed class AgentExecutionJournalTests
 		Assert.True(second.FinishTool(1, "call-b", "readFile", 8, AgentExecutionStatus.Success, null, true));
 
 		AgentExecutionEvent[] events = journal.Snapshot().Events.ToArray();
-		AgentExecutionEvent firstDone = Applied(events, first.Id, "call-a", AgentExecutionStatus.Success);
+		AgentExecutionEvent firstDone = Applied(events, first.Id, AgentExecutionStatus.Success);
 		Assert.True(firstDone.SideEffectsCommitted);
 		Assert.Equal(1, firstDone.Round);
-		Assert.Contains(events, ev => ev.Late && ev.RequestId == second.Id && ev.ToolCallId == "call-a");
+		Assert.Contains(events, ev => ev.Late && ev.RequestId == second.Id && ev.Status == AgentExecutionStatus.Failed);
 		Assert.Contains(events, ev => ev.Late && ev.RequestId == first.Id && ev.Round == 2);
 		Assert.Equal(2, journal.Snapshot().Summary.RealExecutions);
 	}
@@ -51,10 +51,10 @@ public sealed class AgentExecutionJournalTests
 		Assert.False(journal.TryFinish(cancelled.Id, 0, "call-cancel", "runTask", 9, AgentExecutionStatus.Success, null, true));
 
 		AgentExecutionEvent[] events = journal.Snapshot().Events.ToArray();
-		Assert.False(Applied(events, denied.Id, "call-deny", AgentExecutionStatus.Denied).SideEffectsCommitted);
+		Assert.False(Applied(events, denied.Id, AgentExecutionStatus.Denied).SideEffectsCommitted);
 		Assert.Contains(events, ev => ev.Kind == AgentExecutionKind.Permission && ev.Status == AgentExecutionStatus.Denied && !ev.Late);
-		Assert.False(Applied(events, cancelled.Id, "call-cancel", AgentExecutionStatus.Cancelled).SideEffectsCommitted);
-		Assert.DoesNotContain(events, ev => ev.ToolCallId == "call-cancel" && ev.Status == AgentExecutionStatus.Success && !ev.Late);
+		Assert.False(Applied(events, cancelled.Id, AgentExecutionStatus.Cancelled).SideEffectsCommitted);
+		Assert.DoesNotContain(events, ev => ev.RequestId == cancelled.Id && ev.Status == AgentExecutionStatus.Success && !ev.Late);
 	}
 
 	[Fact]
@@ -68,10 +68,11 @@ public sealed class AgentExecutionJournalTests
 		Assert.False(journal.TryFinish(request.Id, 0, "call-done", "writeFile", 1, AgentExecutionStatus.Cancelled, "cancelled", false));
 
 		AgentExecutionEvent[] events = journal.Snapshot().Events.ToArray();
-		Assert.True(Applied(events, request.Id, "call-done", AgentExecutionStatus.Success).SideEffectsCommitted);
+		AgentExecutionEvent done = Applied(events, request.Id, AgentExecutionStatus.Success);
+		Assert.True(done.SideEffectsCommitted);
 		Assert.Contains(events, ev => ev.Kind == AgentExecutionKind.Session && ev.Status == AgentExecutionStatus.Cancelled && !ev.Late);
-		Assert.Contains(events, ev => ev.Late && ev.ToolCallId == "call-done" && ev.Status == AgentExecutionStatus.Cancelled);
-		Assert.DoesNotContain(events, ev => ev.ToolCallId == "call-done" && ev.Status == AgentExecutionStatus.Cancelled && !ev.Late);
+		Assert.Contains(events, ev => ev.Late && ev.ToolCallId == done.ToolCallId && ev.Status == AgentExecutionStatus.Cancelled);
+		Assert.DoesNotContain(events, ev => ev.ToolCallId == done.ToolCallId && ev.Status == AgentExecutionStatus.Cancelled && !ev.Late);
 	}
 
 	[Fact]
@@ -90,7 +91,7 @@ public sealed class AgentExecutionJournalTests
 
 		AgentExecutionSnapshot snapshot = journal.Snapshot();
 		Assert.Equal(1, snapshot.Summary.RealExecutions);
-		Assert.True(snapshot.Summary.Deduplicated >= 2);
+		Assert.Equal(2, snapshot.Summary.Deduplicated);
 		Assert.DoesNotContain(snapshot.Events, ev => ev.Round == 1 && ev.Status == AgentExecutionStatus.Success && !ev.Deduplicated);
 		Assert.DoesNotContain(snapshot.Events, ev => ev.FailureCategory == "not_started" && ev.Round == 1);
 	}
@@ -103,7 +104,8 @@ public sealed class AgentExecutionJournalTests
 		request.ToolPending(0, "queued", "later");
 		request.End(4, AgentExecutionStatus.Cancelled, "cancelled");
 
-		AgentExecutionEvent cancelled = Assert.Single(journal.Snapshot().Events, ev => ev.ToolCallId == "queued" && ev.Status == AgentExecutionStatus.Cancelled);
+		AgentExecutionEvent cancelled = Assert.Single(journal.Snapshot().Events, ev =>
+			ev.Kind == AgentExecutionKind.Tool && ev.Status == AgentExecutionStatus.Cancelled && ev.FailureCategory == "not_started");
 		Assert.Equal("not_started", cancelled.FailureCategory);
 		Assert.False(cancelled.SideEffectsCommitted);
 		Assert.Equal(0, journal.Snapshot().Summary.RealExecutions);
@@ -198,6 +200,6 @@ public sealed class AgentExecutionJournalTests
 		Assert.InRange(journal.Snapshot().Events.Count, 1, 32);
 	}
 
-	private static AgentExecutionEvent Applied(IReadOnlyList<AgentExecutionEvent> events, string requestId, string callId, AgentExecutionStatus status) =>
-		Assert.Single(events, ev => ev.RequestId == requestId && ev.ToolCallId == callId && ev.Status == status && !ev.Late && ev.Kind == AgentExecutionKind.Tool);
+	private static AgentExecutionEvent Applied(IReadOnlyList<AgentExecutionEvent> events, string requestId, AgentExecutionStatus status) =>
+		Assert.Single(events, ev => ev.RequestId == requestId && ev.Status == status && !ev.Late && ev.Kind == AgentExecutionKind.Tool);
 }

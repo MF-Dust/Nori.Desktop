@@ -21,7 +21,7 @@ namespace Nori.Desktop.Windows;
 public sealed partial class MemoryWindow : Window
 {
 	private static readonly string[] Sections = ["overview", "memories", "timeline", "atoms", "knowledge", "archive", "transfer", "debugger", "advanced"];
-	private static readonly string[] Kinds = ["general", "factual", "preference", "relational", "planned", "identity"];
+	private static readonly string[] Kinds = ["general", "episodic", "factual", "preference", "relational", "planned", "identity"];
 	private readonly MemoryService _service;
 	private readonly CancellationTokenSource _lifetime = new();
 	private readonly Dictionary<string, Control> _pages = [];

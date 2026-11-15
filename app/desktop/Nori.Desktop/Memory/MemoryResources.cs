@@ -83,6 +83,7 @@ internal static class MemoryResources
 		["add.importance"] = ("重要度", "Importance"),
 		["add.kind"] = ("记忆类型", "Memory type"),
 		["add.kindGeneral"] = ("通用", "General"),
+		["add.kindEpisodic"] = ("情景", "Episodic"),
 		["add.kindFactual"] = ("事实", "Factual"),
 		["add.kindPreference"] = ("偏好", "Preference"),
 		["add.kindRelational"] = ("关系", "Relational"),

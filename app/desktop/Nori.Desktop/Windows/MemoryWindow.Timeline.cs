@@ -296,7 +296,7 @@ public sealed partial class MemoryWindow
 		};
 		archive.Name = "MemoryTimelineArchive_" + row.Id.ToString(CultureInfo.InvariantCulture);
 		AutomationProperties.SetName(archive, archiveLabel + " " + row.Name);
-		archive.Click += async (_, _) => await ChangeMemoryAsync(row.Id, operation);
+		archive.Click += async (_, _) => await RunActionAsync(() => ChangeMemoryAsync(row.Id, operation));
 		var actions = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
 		actions.Children.Add(open);
 		actions.Children.Add(archive);
@@ -322,13 +322,28 @@ public sealed partial class MemoryWindow
 	{
 		long request = ++_detailRequest;
 		CancellationToken token = RestartTimelineDetailQuery();
-		MemoryTimelineDetail detail = await _service.GetTimelineDetailAsync(id, TimeZoneInfo.Local, token).ConfigureAwait(false);
-		if (request != _detailRequest || token.IsCancellationRequested || _section != "timeline") return;
-		await Dispatcher.UIThread.InvokeAsync(() =>
+		try
 		{
-			if (request != _detailRequest || !IsVisible || token.IsCancellationRequested || _section != "timeline") return;
-			OpenTimelineDetailDialog(id, detail);
-		});
+			MemoryTimelineDetail detail = await _service.GetTimelineDetailAsync(id, TimeZoneInfo.Local, token).ConfigureAwait(false);
+			if (request != _detailRequest || token.IsCancellationRequested || _section != "timeline") return;
+			await Dispatcher.UIThread.InvokeAsync(() =>
+			{
+				if (request != _detailRequest || !IsVisible || token.IsCancellationRequested || _section != "timeline") return;
+				OpenTimelineDetailDialog(id, detail);
+			});
+		}
+		catch (OperationCanceledException) when (token.IsCancellationRequested || _lifetime.IsCancellationRequested)
+		{
+			// 切换分区/关闭窗口取消详情读取，属预期退出。
+		}
+		catch (Exception ex)
+		{
+			await Dispatcher.UIThread.InvokeAsync(() =>
+			{
+				if (request != _detailRequest || !IsVisible) return;
+				ShowError(ex);
+			});
+		}
 	}
 
 	private void OpenTimelineDetailDialog(long id, MemoryTimelineDetail detail)

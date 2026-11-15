@@ -124,14 +124,22 @@ public partial class BridgeCommandsTests
 		fixture._services.Memory.AddAggregate("general", "alpha-late", canonicalSummary: "alpha-late");
 		fixture._services.Memory.AddAggregate("general", "beta-late", canonicalSummary: "beta-late");
 		TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource firstObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		int calls = 0;
 		bool firstCancelled = false;
 		fixture._services.Memory.BeforeTimelineRead = cancellation =>
 		{
 			if (Interlocked.Increment(ref calls) != 1) return;
 			started.TrySetResult();
-			cancellation.WaitHandle.WaitOne(TimeSpan.FromSeconds(5));
-			firstCancelled = cancellation.IsCancellationRequested;
+			try
+			{
+				cancellation.WaitHandle.WaitOne(TimeSpan.FromSeconds(5));
+				firstCancelled = cancellation.IsCancellationRequested;
+			}
+			finally
+			{
+				firstObserved.TrySetResult();
+			}
 			cancellation.ThrowIfCancellationRequested();
 		};
 		MemoryWindow window = new(fixture._services) { Width = 1040, Height = 720 };
@@ -144,6 +152,7 @@ public partial class BridgeCommandsTests
 			TextBox search = NamedControl<TextBox>(window, "MemoryTimelineSearch");
 			search.Text = "beta-late";
 			await WaitTimelineAsync(() => TimelineHasText(window, "beta-late") && !TimelineHasText(window, "alpha-late"), window);
+			await firstObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
 			Assert.True(firstCancelled);
 			window.Hide();
 			Assert.False(window.IsVisible);

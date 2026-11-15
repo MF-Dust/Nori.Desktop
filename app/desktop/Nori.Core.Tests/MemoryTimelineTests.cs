@@ -84,37 +84,49 @@ public class MemoryTimelineTests : IDisposable
 		];
 		MemoryTimelineActivity[] activities = [MemoryTimelineActivity.All, MemoryTimelineActivity.Active, MemoryTimelineActivity.Archived];
 		foreach (MemoryTimelineActivity activity in activities)
-		foreach (string? kind in kinds)
-		foreach (string? keyword in keywords)
-		foreach ((DateOnly? from, DateOnly? to) in ranges)
 		{
-			var query = new MemoryTimelineQuery { Activity = activity, Kind = kind, Keyword = keyword, From = from, To = to, Limit = 3 };
-			List<Seed> expected = Expected(seeds, query);
-			List<long> actual = [];
-			int offset = 0;
-			MemoryTimelinePage? first = null;
-			do
+			foreach (string? kind in kinds)
 			{
-				MemoryTimelinePage page = _store.QueryTimeline(query with { Offset = offset }, Zone);
-				first ??= page;
-				Assert.Equal(expected.Count, page.Total);
-				Assert.Equal(3, page.Limit);
-				actual.AddRange(page.Items.Select(item => item.Item.Id));
-				Assert.True(page.Items.Count <= 3);
-				offset += page.Items.Count;
-				if (page.Items.Count == 0) break;
-			}
-			while (actual.Count < expected.Count);
-			Assert.Equal(expected.Select(item => item.Id), actual);
-			if (first is not null)
-			{
-				foreach (MemoryTimelineEntry entry in first.Items)
+				foreach (string? keyword in keywords)
 				{
-					Seed seed = seeds.Single(item => item.Id == entry.Item.Id);
-					MemoryCreatedStamp stamp = MemoryTimelineTime.Classify(seed.CreatedAt, Zone);
-					Assert.Equal(stamp.Known, entry.Created.Known);
-					Assert.Equal(stamp.Date, entry.Created.Date);
-					if (!stamp.Known) Assert.NotEqual("2099-01-01", entry.Item.CreatedAt);
+					foreach ((DateOnly? from, DateOnly? to) in ranges)
+					{
+						var query = new MemoryTimelineQuery { Activity = activity, Kind = kind, Keyword = keyword, From = from, To = to, Limit = 3 };
+						List<Seed> expected = Expected(seeds, query);
+						List<long> actual = [];
+						int offset = 0;
+						MemoryTimelinePage? first = null;
+						do
+						{
+							MemoryTimelinePage page = _store.QueryTimeline(query with { Offset = offset }, Zone);
+							first ??= page;
+							Assert.Equal(expected.Count, page.Total);
+							Assert.Equal(3, page.Limit);
+							actual.AddRange(page.Items.Select(item => item.Item.Id));
+							Assert.True(page.Items.Count <= 3);
+							offset += page.Items.Count;
+							if (page.Items.Count == 0)
+							{
+								break;
+							}
+						}
+						while (actual.Count < expected.Count);
+						Assert.Equal(expected.Select(item => item.Id), actual);
+						if (first is not null)
+						{
+							foreach (MemoryTimelineEntry entry in first.Items)
+							{
+								Seed seed = seeds.Single(item => item.Id == entry.Item.Id);
+								MemoryCreatedStamp stamp = MemoryTimelineTime.Classify(seed.CreatedAt, Zone);
+								Assert.Equal(stamp.Known, entry.Created.Known);
+								Assert.Equal(stamp.Date, entry.Created.Date);
+								if (!stamp.Known)
+								{
+									Assert.NotEqual("2099-01-01", entry.Item.CreatedAt);
+								}
+							}
+						}
+					}
 				}
 			}
 		}

@@ -61,14 +61,33 @@ public sealed partial class MemoryWindow
 		ScrollViewer.SetHorizontalScrollBarVisibility(rows, ScrollBarVisibility.Disabled);
 		ScrollViewer.SetVerticalScrollBarVisibility(rows, ScrollBarVisibility.Auto);
 		rows.ItemTemplate = new FuncDataTemplate<TimelineRow>((row, _) => row is null ? new Border() : TimelineRowView(row));
-		rows.KeyDown += (_, args) =>
+		rows.KeyDown += (sender, args) =>
 		{
-			if (args.Key != Key.Enter || rows.SelectedItem is not TimelineRow selected || selected.Header || selected.Id <= 0) return;
+			if (args.Key != Key.Enter || rows.SelectedItem is not TimelineRow selected || selected.Header || selected.Id <= 0)
+			{
+				return;
+			}
 			args.Handled = true;
 			_ = OpenTimelineDetailAsync(selected.Id);
 		};
-		var previous = Button("list.previous", async () => { if (_timeline is null) return; _timeline.Page--; await RefreshPageAsync(); }, enabled: () => _timeline?.Page > 0);
-		var next = Button("list.next", async () => { if (_timeline is null) return; _timeline.Page++; await RefreshPageAsync(); }, enabled: () => _timeline is { } state && (state.Page + 1) * MemoryTimelineQuery.DefaultLimit < state.Total);
+		var previous = Button("list.previous", async () =>
+		{
+			if (_timeline is null)
+			{
+				return;
+			}
+			_timeline.Page--;
+			await RefreshPageAsync();
+		}, enabled: () => _timeline?.Page > 0);
+		var next = Button("list.next", async () =>
+		{
+			if (_timeline is null)
+			{
+				return;
+			}
+			_timeline.Page++;
+			await RefreshPageAsync();
+		}, enabled: () => _timeline is { } state && (state.Page + 1) * MemoryTimelineQuery.DefaultLimit < state.Total);
 		previous.Name = "MemoryTimelinePrevious";
 		next.Name = "MemoryTimelineNext";
 		_timeline = new TimelineState

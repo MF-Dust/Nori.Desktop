@@ -154,7 +154,7 @@ public sealed class Live2DPerformanceSnapshot
 		}
 
 		PetRenderMetrics metrics = pet.RenderMetrics;
-		bool modelLoaded = pet.CurrentModel is not null;
+		bool modelLoaded = metrics.ModelPresent;
 		string? error = pet.LastModelLoadError;
 		bool safeMessage = string.Equals(error, PetRuntime.SafeModeModelLoadMessage, StringComparison.Ordinal);
 		bool loadFailed = !string.IsNullOrWhiteSpace(error) && !safeMessage;
@@ -185,7 +185,7 @@ public sealed class Live2DPerformanceSnapshot
 			LoadFailed = loadFailed,
 			FailedModelId = loadFailed ? SafeModelToken(error) : null,
 			SafeModeBlocked = availability == Live2DPerformanceAvailability.SafeMode || safeMessage,
-			SafeModelId = modelLoaded ? SupportedModelIds.Normalize(pet.CurrentModelId) : null,
+			SafeModelId = modelLoaded ? metrics.ModelId : null,
 			Quality = quality,
 			TargetFps = showTargets ? metrics.EffectiveFps : null,
 			RenderScale = showTargets ? metrics.EffectiveRenderScale : null,

@@ -59,7 +59,7 @@ public partial class BridgeCommandsTests
 		Assert.Equal(40, runtime.RenderMetrics.FrameTimeP95Ms);
 		Assert.Equal(9, runtime.RenderMetrics.MaskCostP95Ms);
 
-		runtime.ResetRenderSampleWindow();
+		runtime.ResetRenderSampleWindow(true, "nori");
 		Live2DPerformanceSnapshot snapshot = Live2DPerformanceSnapshot.Capture(runtime, false, null);
 		Assert.Equal(Live2DPerformanceAvailability.Unavailable, snapshot.Availability);
 		Assert.Null(snapshot.FrameTimeP95Ms);
@@ -499,5 +499,6 @@ public partial class BridgeCommandsTests
 	{
 		SetQualityField(runtime, "_currentModel", RuntimeHelpers.GetUninitializedObject(typeof(NativeModelHost)));
 		SetQualityField(runtime, "_currentModelId", modelId);
+		runtime.PublishRenderSubject(modelId);
 	}
 }

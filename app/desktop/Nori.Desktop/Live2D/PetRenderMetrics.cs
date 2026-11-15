@@ -50,4 +50,10 @@ public sealed record PetRenderMetrics
 
 	/// <summary>最近一次渲染表面故障或恢复阶段。</summary>
 	public PetRenderRecoveryPhase Recovery { get; init; }
+
+	/// <summary>这批样本所属的模型是否已发布。与样本窗口同锁写出。</summary>
+	public bool ModelPresent { get; init; }
+
+	/// <summary>这批样本所属的内置模型 ID。没有安全 ID 时为空。</summary>
+	public string ModelId { get; init; } = "";
 }

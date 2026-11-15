@@ -54,6 +54,8 @@ public sealed class PetRuntime
 	private bool _surfaceStateKnown;
 	private DateTime? _lastFrameSampleUtc;
 	private long _lastFrameSampleTimestamp;
+	private bool _sampleModelPresent;
+	private string _sampleModelId = "";
 	private PetRenderRecoveryPhase _recoveryPhase;
 	private int _appliedMaskBufferSize;
 	private bool _maskResizeFailureLogged;
@@ -226,6 +228,8 @@ public sealed class PetRuntime
 					SampleAge = _lastFrameSampleTimestamp == 0 ? null : System.Diagnostics.Stopwatch.GetElapsedTime(_lastFrameSampleTimestamp),
 					SurfaceStateKnown = _surfaceStateKnown,
 					Recovery = _recoveryPhase,
+					ModelPresent = _sampleModelPresent,
+					ModelId = _sampleModelId,
 				};
 			}
 		}
@@ -280,17 +284,31 @@ public sealed class PetRuntime
 	}
 
 	/// <summary>
-	/// 清空当前模型的帧时间与遮罩样本。
+	/// 清空帧时间与遮罩样本，并同时发布这批样本所属的模型。
 	/// 丢帧数是进程累计，不随模型切换或上下文失效清零。
 	/// </summary>
-	internal void ResetRenderSampleWindow()
+	internal void ResetRenderSampleWindow(bool modelPresent, string? modelId)
 	{
+		string? safeId = modelPresent ? SupportedModelIds.Normalize(modelId) : null;
 		lock (_metricsGate)
 		{
 			_frameTimesMs.Clear();
 			_maskTimesMs.Clear();
 			_lastFrameSampleUtc = null;
 			_lastFrameSampleTimestamp = 0;
+			_sampleModelPresent = safeId is not null;
+			_sampleModelId = safeId ?? "";
+		}
+	}
+
+	/// <summary>在不改样本窗口的情况下发布当前模型。只接受内置 ID。</summary>
+	internal void PublishRenderSubject(string? modelId)
+	{
+		string? safeId = SupportedModelIds.Normalize(modelId);
+		lock (_metricsGate)
+		{
+			_sampleModelPresent = safeId is not null;
+			_sampleModelId = safeId ?? "";
 		}
 	}
 
@@ -385,7 +403,7 @@ public sealed class PetRuntime
 		_presentationGeometry = null;
 		lock (_interactionGate) _viewportMapping = null;
 		_gl = null;
-		ResetRenderSampleWindow();
+		ResetRenderSampleWindow(false, null);
 		if (contextLost) previous?.Abandon();
 		else previous?.Dispose();
 	}
@@ -906,7 +924,7 @@ public sealed class PetRuntime
 			return;
 		}
 
-		ResetRenderSampleWindow();
+		ResetRenderSampleWindow(true, prepared.ModelId);
 		try { _services.Logger.Write(LogSource.Backend, "info", $"成功加载 Live2D 模型: {prepared.ModelId}"); } catch { }
 		try { ModelChanged?.Invoke(); }
 		catch (Exception exception) { WriteLive2DLog($"模型变更事件处理异常: {exception.Message}"); }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -33,6 +34,7 @@ public sealed class PetRuntime
 	private readonly IdleDisableBehavior _idleDisable = new();
 	private readonly BeatSyncBehavior _beatSync = new();
 	private readonly LipSyncBehavior _lipSync = new();
+	private readonly AutonomousMotionPlanner _autonomous = new();
 	private readonly ModelParameters _modelParams = new();
 	/// <summary>行为上下文逐帧复用, 避免渲染热路径上每帧分配</summary>
 	private readonly BehaviorContext _behaviorContext = new();
@@ -90,6 +92,9 @@ public sealed class PetRuntime
 	public bool ShadowEnabled { get; set; } = true;
 	public bool LipSyncEnabled { get; set; } = true;
 	public bool BeatSyncEnabled { get; set; }
+	public bool AutonomousBehaviorEnabled { get; set; } = true;
+	public bool AutonomousRandomEnabled { get; set; } = true;
+	public string AutonomousFrequency { get; set; } = AutonomousPacing.Normal;
 	public bool ClickInteraction { get; set; } = true;
 	public bool ClickThroughEnabled { get; set; }
 	public float RenderScale { get; private set; } = Live2DRenderSettings.DefaultRenderScale;
@@ -169,6 +174,16 @@ public sealed class PetRuntime
 	}
 
 	internal bool IsPreviewMode => _previewMode;
+
+	internal bool IsRenderVisible
+	{
+		get { lock (_metricsGate) return _renderVisible; }
+	}
+
+	/// <summary>预览、安全模式、隐藏或尚未装上模型时，不开始自主动作。</summary>
+	internal bool AutonomousSuspended => _previewMode || _services.SafeMode || !IsRenderVisible || _currentModel is null;
+
+	internal AutonomousMotionPlanner AutonomousMotions => _autonomous;
 
 	/// <summary>只串行当前实例的模型操作，宠物和预览不再共享 SDK 全局状态。</summary>
 	internal void RunSynchronized(Action action)
@@ -271,12 +286,16 @@ public sealed class PetRuntime
 	/// <summary>记录当前渲染后端能力，失败时不把配置伪装成已生效。</summary>
 	public void SetRenderSurfaceState(bool offscreenRendering, bool shadowApplied, bool visible)
 	{
+		bool becameHidden;
 		lock (_metricsGate)
 		{
+			becameHidden = _renderVisible && !visible;
 			_offscreenRendering = offscreenRendering;
 			_shadowApplied = shadowApplied;
 			_renderVisible = visible;
 		}
+		// 隐藏只打一个标记。恢复后的第一帧再决定，不保留到点任务。
+		if (becameHidden) _autonomous.Hold();
 	}
 
 	private static void AddMetric(Queue<double> values, double value)
@@ -340,6 +359,7 @@ public sealed class PetRuntime
 		_presentationGeometry = null;
 		lock (_interactionGate) _viewportMapping = null;
 		_gl = null;
+		_autonomous.Reset();
 		if (contextLost) previous?.Abandon();
 		else previous?.Dispose();
 	}
@@ -400,6 +420,9 @@ public sealed class PetRuntime
 		BeatSyncEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_beat_sync")) ?? false;
 		ClickInteraction = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_click_interaction")) ?? true;
 		ClickThroughEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, "l2d_click_through")) ?? false;
+		AutonomousBehaviorEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, Live2DModelConfig.AutonomousBehaviorKey)) ?? true;
+		AutonomousRandomEnabled = Live2DModelConfig.ParseBool(Live2DModelConfig.ReadText(values, Live2DModelConfig.AutonomousRandomKey)) ?? true;
+		AutonomousFrequency = AutonomousPacing.Normalize(Live2DModelConfig.ReadText(values, Live2DModelConfig.AutonomousFrequencyKey));
 		LoadInteractionConfig(values.TryGetValue(interactionKey, out ConfigValue? interaction) ? interaction : null);
 	}
 
@@ -766,12 +789,16 @@ public sealed class PetRuntime
 				bool previousBeatSyncEnabled = BeatSyncEnabled;
 				bool previousClickInteraction = ClickInteraction;
 				bool previousClickThroughEnabled = ClickThroughEnabled;
+				bool previousAutonomousBehaviorEnabled = AutonomousBehaviorEnabled;
+				bool previousAutonomousRandomEnabled = AutonomousRandomEnabled;
+				string previousAutonomousFrequency = AutonomousFrequency;
 				float previousRenderScale = RenderScale;
 				string previousQualityMode = QualityMode;
 				int previousMaxFps = MaxFps;
 				Live2DRenderSettings previousRenderSettings = _renderSettings;
 				int previousMaskBufferSize = _appliedMaskBufferSize;
 				bool previousMaskResizeFailureLogged = _maskResizeFailureLogged;
+				long previousAutonomousGeneration = _autonomous.Generation;
 				PetInteractionConfig previousInteraction;
 				lock (_interactionGate) previousInteraction = _interactionConfig;
 				string previousExpressionModelId = _expressionStore.ModelId;
@@ -796,6 +823,7 @@ public sealed class PetRuntime
 					_expressionBehavior.ApplyPrepared(prepared, candidate.Model);
 					_motionGroups = [.. prepared.MotionGroups];
 					if (firstLoadOfModel && !_previewMode) LoadConfigs();
+					BindAutonomousMotions(candidate, _motionGroups, prepared.Generation);
 
 					// 候选模型已经可用后才释放旧对象; 旧对象清理异常不能反向销毁新模型。
 					if (previousModel is not null)
@@ -828,6 +856,9 @@ public sealed class PetRuntime
 					BeatSyncEnabled = previousBeatSyncEnabled;
 					ClickInteraction = previousClickInteraction;
 					ClickThroughEnabled = previousClickThroughEnabled;
+					AutonomousBehaviorEnabled = previousAutonomousBehaviorEnabled;
+					AutonomousRandomEnabled = previousAutonomousRandomEnabled;
+					AutonomousFrequency = previousAutonomousFrequency;
 					RenderScale = previousRenderScale;
 					QualityMode = previousQualityMode;
 					MaxFps = previousMaxFps;
@@ -844,6 +875,16 @@ public sealed class PetRuntime
 					// 旧渲染器从未参与候选初始化，回滚只恢复它的质量应用状态。
 					_appliedMaskBufferSize = previousMaskBufferSize;
 					_maskResizeFailureLogged = previousMaskResizeFailureLogged;
+					try
+					{
+						if (previousModel is null) _autonomous.Reset();
+						else BindAutonomousMotions(previousModel, previousMotionGroups, previousAutonomousGeneration);
+					}
+					catch (Exception bindException)
+					{
+						_autonomous.Reset();
+						WriteLive2DLog($"恢复自主动作候选失败: {bindException.Message}");
+					}
 				}
 			}
 		}
@@ -924,11 +965,12 @@ public sealed class PetRuntime
 		double timeDelta = _lastUpdateTime > 0 ? now - _lastUpdateTime : 0.016;
 		_lastUpdateTime = now;
 
-		// "空闲" = 没有动作在播, 或播的是待机组。NativeModelHost.Update() 会在动作播完时
-		// 自动补一个随机 Idle, 所以只判 IsMotionFinished() 会让 isIdleMotion 几乎永远为 false,
-		// 自动眨眼 / 空闲眼神微动 / idle-disable 三个行为都不会触发。
+		// "空闲" = 没有动作在播, 或播的是待机组。待机动作由帧内规划在动作结束后开始,
+		// 所以眨眼和空闲眼神在待机期间仍然工作; 互动和语音动作不会被当成空闲。
+		string? motionGroup = model.Animation.CurrentMotionGroup;
 		bool isIdleMotion = model.Animation.IsMotionFinished
-			|| string.Equals(model.Animation.CurrentMotionGroup, "Idle", StringComparison.OrdinalIgnoreCase);
+			|| string.Equals(motionGroup, "Idle", StringComparison.OrdinalIgnoreCase)
+			|| AutonomousMotionPlanner.IsIdleGroup(motionGroup);
 
 		var ctx = _behaviorContext;
 		ctx.ResetFrame();
@@ -1016,8 +1058,11 @@ public sealed class PetRuntime
 		float canvasUnitW = (_currentModel.Model.CanvasSize.X / _currentModel.Model.PixelsPerUnit);
 		float canvasUnitH = (_currentModel.Model.CanvasSize.Y / _currentModel.Model.PixelsPerUnit);
 
-		_currentModel.Animation.RandomMotion = IdleAnimationEnabled;
+		// 关掉模型自带的“播完立刻再抽一条 Idle”。冷却、防重复和优先级都由这一帧的规划决定。
+		_currentModel.Animation.RandomMotion = false;
 		if (!IdleAnimationEnabled) _currentModel.Animation.StopIdleMotion();
+		if (!_previewMode && !_services.SafeMode && IsRenderVisible)
+			TryStartAutonomousMotion();
 		_currentModel.Update(deltaTime);
 
 		float modelScaleX = _currentModel.ModelMatrix.M11;
@@ -1436,6 +1481,9 @@ public sealed class PetRuntime
 			case "l2d_beat_sync": BeatSyncEnabled = false; break;
 			case "l2d_click_interaction": ClickInteraction = true; break;
 			case "l2d_click_through": ClickThroughEnabled = false; break;
+			case Live2DModelConfig.AutonomousBehaviorKey: AutonomousBehaviorEnabled = true; break;
+			case Live2DModelConfig.AutonomousRandomKey: AutonomousRandomEnabled = true; break;
+			case Live2DModelConfig.AutonomousFrequencyKey: AutonomousFrequency = AutonomousPacing.Normal; break;
 			default: break;
 		}
 
@@ -1529,6 +1577,11 @@ public sealed class PetRuntime
 			case "l2d_beat_sync" when ParseBool(value) is { } v: BeatSyncEnabled = v; break;
 			case "l2d_click_interaction" when ParseBool(value) is { } v: ClickInteraction = v; break;
 			case "l2d_click_through" when ParseBool(value) is { } v: ClickThroughEnabled = v; break;
+			case Live2DModelConfig.AutonomousBehaviorKey when ParseBool(value) is { } v: AutonomousBehaviorEnabled = v; break;
+			case Live2DModelConfig.AutonomousRandomKey when ParseBool(value) is { } v: AutonomousRandomEnabled = v; break;
+			case Live2DModelConfig.AutonomousFrequencyKey:
+				AutonomousFrequency = AutonomousPacing.Normalize(value);
+				break;
 			default: break;
 		}
 	}
@@ -1551,6 +1604,52 @@ public sealed class PetRuntime
 		ShadowEnabled = shadowEnabled;
 		MaxFps = Math.Clamp(maxFps, 0, Live2DRenderSettings.MaxExplicitFps);
 		RefreshRenderSettings();
+	}
+
+	/// <summary>
+	/// 只在当前帧、当前模型上开始一个自主动作。
+	/// 播放器拒绝时不记冷却，下一帧可以再试；成功后才进入冷却。
+	/// </summary>
+	private void TryStartAutonomousMotion()
+	{
+		if (_currentModel is null) return;
+		// 冷却只跟单调计数走。系统时间被校前或校后时，不能把下一次待机提前，也不能把它拖过整个间隔。
+		double now = AutonomousTime.Seconds(Stopwatch.GetTimestamp());
+		AutonomousDecision decision = _autonomous.Tick(new AutonomousFrame(
+			now,
+			AutonomousBehaviorEnabled,
+			AutonomousRandomEnabled,
+			AutonomousFrequency,
+			Suspended: false,
+			_lipSync.IsSpeaking,
+			_currentModel.Animation.IsMotionFinished,
+			_currentModel.Animation.CurrentMotionPriority,
+			_currentModel.Animation.CurrentMotionGroup,
+			IdleAnimationEnabled));
+		if (decision.Motion is not { } motion) return;
+		if (_currentModel.Animation.StartMotion(motion.Group, motion.Index, decision.Priority) is null) return;
+		_autonomous.Commit(motion, decision.Priority, now, AutonomousFrequency);
+	}
+
+	/// <summary>按当前模型的动作组建立待机和语音候选。闭眼待机仍可被跳过。</summary>
+	private void BindAutonomousMotions(NativeModelHost model, IReadOnlyList<MotionGroupInfo> groups, long generation)
+	{
+		var idle = new List<AutonomousMotionSlot>();
+		var voice = new List<AutonomousMotionSlot>();
+		foreach (MotionGroupInfo group in groups)
+		{
+			if (!AutonomousMotionPlanner.TryClassify(group.Group, out AutonomousMotionRole role) || group.Names is null)
+				continue;
+			for (int index = 0; index < group.Names.Count; index++)
+			{
+				if (string.IsNullOrWhiteSpace(group.Names[index])) continue;
+				bool eyesClosed = model.Animation.MotionKeepsEyesClosed(group.Group, index);
+				var slot = new AutonomousMotionSlot(group.Group, index, eyesClosed);
+				if (role == AutonomousMotionRole.Voice) voice.Add(slot);
+				else idle.Add(slot);
+			}
+		}
+		_autonomous.Bind(generation, idle, voice);
 	}
 
 	private void RefreshRenderSettings()

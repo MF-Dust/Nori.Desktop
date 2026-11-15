@@ -18,6 +18,9 @@ public static class Live2DModelConfig
 	public const string RenderScaleKey = "l2d_render_scale";
 	public const string QualityModeKey = "l2d_quality_mode";
 	public const string MaxFpsKey = "l2d_max_fps";
+	public const string AutonomousBehaviorKey = "l2d_autonomous_behavior";
+	public const string AutonomousRandomKey = "l2d_autonomous_random";
+	public const string AutonomousFrequencyKey = "l2d_autonomous_frequency";
 
 	private static readonly string[] DisplayBases =
 	[
@@ -41,6 +44,9 @@ public static class Live2DModelConfig
 		"l2d_beat_sync",
 		"l2d_click_interaction",
 		"l2d_click_through",
+		AutonomousBehaviorKey,
+		AutonomousRandomKey,
+		AutonomousFrequencyKey,
 	];
 
 	/// <summary>每模型键，形如 <c>l2d_scale_arg-nori</c>。</summary>

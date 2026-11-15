@@ -233,6 +233,23 @@ public sealed partial class ChatView : UserControl, IDisposable
 		if (_disposed || _preparing || _clearing || _modal.IsVisible)
 			throw new InvalidOperationException("对话窗口暂时无法开始语音会话");
 		if (!_loadedHistory) await RefreshAsync();
+		// 首次显示窗口会并行加载历史；等正在进行的请求结束，避免误报尚未就绪。
+		if (!_loadedHistory && _state.LoadingHistory)
+		{
+			TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+			void HistoryChanged()
+			{
+				if (!_state.LoadingHistory) ready.TrySetResult();
+			}
+			_state.Changed += HistoryChanged;
+			try
+			{
+				HistoryChanged();
+				await ready.Task.WaitAsync(TimeSpan.FromSeconds(15), turn.CancellationToken);
+			}
+			finally { _state.Changed -= HistoryChanged; }
+			if (!_loadedHistory) await RefreshAsync();
+		}
 		turn.CancellationToken.ThrowIfCancellationRequested();
 		if (!_configured || !_loadedHistory || _safeMode)
 			throw new InvalidOperationException("聊天服务尚未准备好，无法发送语音转写");

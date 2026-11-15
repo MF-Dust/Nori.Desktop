@@ -61,6 +61,16 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
+	public void RealtimeVoiceAgentRejectsUntrustedSource()
+	{
+		RealtimeVoiceTurn turn = new(1, "测试", CancellationToken.None);
+		Assert.Throws<InvalidOperationException>(() => _runtime.StartRealtimeChat(new FakeBridgeSource(WindowLabels.Main), turn));
+		Assert.Throws<InvalidOperationException>(() => _runtime.StartRealtimeChat(new FakeBridgeSource(WindowLabels.Chat), turn));
+		using NativeChatTestSource mislabelled = new(WindowLabels.Main);
+		Assert.Throws<InvalidOperationException>(() => _runtime.StartRealtimeChat(mislabelled, turn));
+	}
+
+	[Fact]
 	public Task RealtimeVoiceTurnUsesExistingNativeAgentAndCompletesBeforeReturning() => WithSettingsUiAsync(async () =>
 	{
 		NativeChatHttpHandler handler = new();

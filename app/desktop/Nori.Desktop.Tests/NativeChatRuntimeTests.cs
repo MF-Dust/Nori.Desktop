@@ -7,6 +7,7 @@ using Nori.Core.Agent;
 using Nori.Core.Chat.LuoLiCore;
 using Nori.Core.Configuration;
 using Nori.Core.Tools;
+using Nori.Core.Voice.Realtime;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Runtime;
 using Nori.Desktop.Windows;
@@ -58,6 +59,48 @@ public partial class BridgeCommandsTests
 		_services.Runtime = runtime;
 		return runtime;
 	}
+
+	[Fact]
+	public Task RealtimeVoiceTurnUsesExistingNativeAgentAndCompletesBeforeReturning() => WithSettingsUiAsync(async () =>
+	{
+		NativeChatHttpHandler handler = new();
+		using HttpClient http = new(handler);
+		await using AppRuntime runtime = CreateNativeChatRuntime(http);
+		_config.Set("tts_auto_play", new ConfigValue.Boolean(false));
+		using NativeChatTestSource source = new();
+		RealtimeVoiceTurn turn = new(7, "语音提问", CancellationToken.None);
+		var started = runtime.StartRealtimeChat(source, turn);
+		Assert.True(runtime.IsSessionActive(started.SessionId));
+		Assert.Throws<AgentSessionBusyException>(() => runtime.StartRealtimeChat(source, turn));
+		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		handler.ReleaseStream.TrySetResult();
+		await started.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+		Assert.False(runtime.IsSessionActive(started.SessionId));
+		Assert.Contains(source.Events, item => item.GetProperty("type").GetString() == "complete"
+			&& item.GetProperty("sessionId").GetString() == started.SessionId);
+		Assert.Equal("服务端最终文本", _services.Chat.GetHistory()[^1].Content);
+	});
+
+	[Fact]
+	public Task RealtimeVoiceInterruptCancelsLinkedAgentWithoutReplayingTurn() => WithSettingsUiAsync(async () =>
+	{
+		NativeChatHttpHandler handler = new();
+		using HttpClient http = new(handler);
+		await using AppRuntime runtime = CreateNativeChatRuntime(http);
+		_config.Set("tts_auto_play", new ConfigValue.Boolean(false));
+		using NativeChatTestSource source = new();
+		using CancellationTokenSource interrupt = new();
+		RealtimeVoiceTurn turn = new(8, "可被打断的输入", interrupt.Token);
+		var started = runtime.StartRealtimeChat(source, turn);
+		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		interrupt.Cancel();
+		await started.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+		Assert.False(runtime.IsSessionActive(started.SessionId));
+		Assert.DoesNotContain(source.Events, item => item.GetProperty("type").GetString() == "complete");
+		Assert.Empty(_services.Chat.GetHistory());
+		Assert.ThrowsAny<OperationCanceledException>(() => runtime.StartRealtimeChat(source, turn));
+		using AgentSessionLease lease = runtime.Engine.ReserveSession("after-realtime-cancel");
+	});
 
 	[Fact]
 	public Task NativeChatClearCannotRaceAcceptedGenerationAndCompleteReleasesBeforeSpeech() => WithSettingsUiAsync(async () =>

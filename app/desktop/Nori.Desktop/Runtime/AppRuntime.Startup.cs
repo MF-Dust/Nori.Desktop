@@ -195,7 +195,8 @@ public sealed partial class AppRuntime
 		});
 	}
 
-	private void ApplyFocusQuiet()
+	/// <summary>把当前专注阶段写到已有伴侣运行时。不改用户保存的待机和自主动作开关。</summary>
+	internal void ApplyFocusQuiet()
 	{
 		try
 		{

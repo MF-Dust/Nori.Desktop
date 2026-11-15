@@ -104,12 +104,12 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			(value, token) => ExecuteAsync("settings_update_voice", new { sttApiKey = Convert.ToString(value)?.Trim() ?? string.Empty }, token), secret: true);
 
 		SettingsSectionViewModel live = AddSection(new("实时语音", "Live voice"));
-		AddField(live, "realtimeStatus", new("当前状态", "Status"), new("状态只说明阶段。不会显示识别正文，也不会保存原始录音。", "Status shows the phase only. Transcripts are not shown, and raw audio is not stored."), SettingsEditorKind.Text,
+		AddField(live, "realtimeStatus", new("当前状态", "Status"), new("状态栏只显示阶段。识别文字会进入聊天，原始录音不落盘。", "The status shows phases only. Recognized text enters Chat, and raw audio is not stored."), SettingsEditorKind.Text,
 			StatusText, "", (_, _) => Task.FromResult<JsonElement>(default), readOnly: true);
 		AddField(live, "realtimeEnabled", new("允许实时语音", "Allow live voice"), new("保存这个开关不会打开麦克风，启动时也不会自动监听。", "Saving this switch does not open the microphone, and listening does not start at launch."), SettingsEditorKind.Boolean,
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "voice", "realtimeEnabled"), false,
 			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeEnabled = Convert.ToBoolean(value) }, token));
-		AddField(live, "realtimeContinuous", new("连续对话", "Continuous"), new("一轮结束后继续听。这一项还没有接上回答和朗读。", "Keep listening after a turn. Replies and read-aloud are not connected yet."), SettingsEditorKind.Boolean,
+		AddField(live, "realtimeContinuous", new("连续对话", "Continuous"), new("一轮对话及可选自动朗读结束后继续监听。自动朗读使用现有 TTS 开关。", "Resume listening after the reply and optional auto read-aloud. The existing TTS auto-play setting applies."), SettingsEditorKind.Boolean,
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "voice", "realtimeContinuous"), false,
 			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeContinuous = Convert.ToBoolean(value) }, token));
 		AddField(live, "realtimeSensitivity", new("检测灵敏度", "Detection sensitivity"), new("0 更钝，1 更灵。只用本地音量，不会把检测发给云端。", "0 is less sensitive and 1 is more sensitive. Detection stays on this computer."), SettingsEditorKind.Slider,
@@ -126,7 +126,7 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 		AddField(live, "realtimeInputDevice", new("麦克风", "Microphone"), new("留空使用系统默认输入。当前采集不能按设备名切换，填了别的标识会拒绝开始。", "Leave empty for the system default. Capture cannot switch by device name; another id is rejected."), SettingsEditorKind.Text,
 			snapshot => SettingsSnapshotReader.String(snapshot, string.Empty, "voice", "realtimeInputDevice"), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeInputDevice = Convert.ToString(value)?.Trim() ?? string.Empty }, token));
-		AddAction(live, "realtimeStart", new("开始监听", "Start listening"), new("打开麦克风并用本地静音检测分段。这段语音还不会上传识别，也还不会回答。聊天里的麦克风按钮仍是按住说话，两边不能同时占用麦克风。", "Open the microphone and segment speech locally. Audio is not uploaded yet, and there is no reply yet. The chat microphone button remains push-to-talk, and the two cannot hold the microphone together."), new SettingsCommand(command => _ = StartRealtimeAsync()));
+		AddAction(live, "realtimeStart", new("开始监听", "Start listening"), new("主动开始后，本地静音检测会将完整语音交给已配置的识别服务，识别结果自动进入 AI 对话，可能调用工具和云端 API。聊天麦克风与实时监听不能同时占用设备。", "Once started, local VAD submits complete speech to the configured transcription service and starts an AI chat, which may call tools and cloud APIs. Live listening and the chat microphone cannot capture simultaneously."), new SettingsCommand(command => _ = StartRealtimeAsync()));
 		AddAction(live, "realtimeStop", new("停止监听", "Stop listening"), new("关闭实时监听并放开麦克风。", "Stop live listening and release the microphone."), new SettingsCommand(command => _ = StopRealtimeAsync()));
 		AddAction(live, "realtimeInterrupt", new("打断朗读", "Interrupt speech"), new("立刻停止播放。朗读时麦克风是暂停的，说话不会打断；请用这个按钮，或在 Nori 窗口按 Ctrl+Shift+.（macOS 为 Command+Shift+.）。这不是系统全局热键。", "Stop playback immediately. The microphone pauses during speech, so talking does not interrupt; use this button or Ctrl+Shift+. in a Nori window (Command+Shift+. on macOS). This is not a system-wide hotkey."), new SettingsCommand(command => _ = InterruptRealtimeAsync()));
 		_ttsProvider.PropertyChanged += (_, args) =>

@@ -504,13 +504,13 @@ public sealed class AgentExecutionJournal : IDisposable
 
 	/// <summary>
 	/// 把调用键收成实例内稳定、对外不可逆的标识。
-	/// 即使用 <see cref="ToolExecutionTracker.Key"/> 的参数哈希键，也不会把可关联原文放进导出。
+	/// 对非空原文直接 HMAC，不 Strip：否则 <c>call-a</c> 与带零宽字符的同形键会撞槽。
+	/// 时间线只存哈希，控制字符不会进入导出。
 	/// </summary>
 	private string CallId(string? value)
 	{
-		string trimmed = string.IsNullOrWhiteSpace(value) ? "call" : Strip(value.Trim());
-		if (trimmed.Length == 0) trimmed = "call";
-		byte[] mac = HMACSHA256.HashData(_callIdSecret, Encoding.UTF8.GetBytes(trimmed));
+		string material = string.IsNullOrWhiteSpace(value) ? "call" : value;
+		byte[] mac = HMACSHA256.HashData(_callIdSecret, Encoding.UTF8.GetBytes(material));
 		return "id-" + Convert.ToHexString(mac.AsSpan(0, 8));
 	}
 

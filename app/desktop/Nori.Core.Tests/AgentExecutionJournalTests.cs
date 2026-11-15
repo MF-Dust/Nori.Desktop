@@ -76,6 +76,26 @@ public sealed class AgentExecutionJournalTests
 	}
 
 	[Fact]
+	public void 含不可见字符的调用键不会撞槽()
+	{
+		using AgentExecutionJournal journal = new();
+		AgentExecutionRequest request = journal.Open("session");
+		Assert.True(request.ToolPending(0, "call-a", "readFile"));
+		Assert.True(request.ToolPending(0, "call-\u200ba", "readFile"));
+		request.ToolStarted(0, "call-a", "readFile");
+		request.ToolStarted(0, "call-\u200ba", "readFile");
+		Assert.True(request.FinishTool(0, "call-a", "readFile", 3, AgentExecutionStatus.Success, null, true));
+		Assert.True(request.FinishTool(0, "call-\u200ba", "readFile", 4, AgentExecutionStatus.Success, null, true));
+
+		AgentExecutionEvent[] done = journal.Snapshot().Events
+			.Where(ev => ev.Kind == AgentExecutionKind.Tool && ev.Status == AgentExecutionStatus.Success && !ev.Late)
+			.ToArray();
+		Assert.Equal(2, done.Length);
+		Assert.NotEqual(done[0].ToolCallId, done[1].ToolCallId);
+		Assert.Equal(2, journal.Snapshot().Summary.RealExecutions);
+	}
+
+	[Fact]
 	public void 重复调用只标记一次真实执行()
 	{
 		using AgentExecutionJournal journal = new();

@@ -7,6 +7,7 @@ using System.Numerics;
 using Nori.Live2D;
 using Nori.Desktop.Live2D.Gl;
 using Nori.Core.Configuration;
+using Nori.Core.Focus;
 using Nori.Core.Data;
 using Nori.Core.Live2D;
 using Nori.Core.Logging;
@@ -97,6 +98,13 @@ public sealed class PetRuntime
 	public string AutonomousFrequency { get; set; } = AutonomousPacing.Normal;
 	public bool ClickInteraction { get; set; } = true;
 	public bool ClickThroughEnabled { get; set; }
+	/// <summary>专注期间暂时压低氛围动作。只活在这一次运行里，不写回用户保存的待机开关。</summary>
+	private volatile bool _focusQuiet;
+	public bool FocusQuiet
+	{
+		get => _focusQuiet;
+		set => _focusQuiet = value;
+	}
 	public float RenderScale { get; private set; } = Live2DRenderSettings.DefaultRenderScale;
 	public string QualityMode { get; private set; } = Live2DRenderSettings.DefaultQualityMode;
 	public int MaxFps { get; private set; }
@@ -981,10 +989,11 @@ public sealed class PetRuntime
 		ctx.AutoBlinkEnabled = AutoBlinkEnabled;
 		ctx.EyeTrackingEnabled = EyeTrackingEnabled;
 		ctx.EyeFocusSourceActive = EyeTrackingEnabled && model.HasPointerInput;
-		ctx.IdleEyeAnimationEnabled = IdleEyeAnimationEnabled;
-		ctx.IdleAnimationEnabled = IdleAnimationEnabled;
-		ctx.ForceIdleEyeAnimation = IdleEyeAnimationEnabled;
-		ctx.BeatSyncEnabled = BeatSyncEnabled;
+		bool ambientMotion = FocusCompanionPolicy.AllowsAmbientMotion(true, FocusQuiet);
+		ctx.IdleEyeAnimationEnabled = FocusCompanionPolicy.AllowsAmbientMotion(IdleEyeAnimationEnabled, FocusQuiet);
+		ctx.IdleAnimationEnabled = FocusCompanionPolicy.AllowsAmbientMotion(IdleAnimationEnabled, FocusQuiet);
+		ctx.ForceIdleEyeAnimation = IdleEyeAnimationEnabled && ambientMotion;
+		ctx.BeatSyncEnabled = FocusCompanionPolicy.AllowsAmbientMotion(BeatSyncEnabled, FocusQuiet);
 		ctx.LipSyncEnabled = LipSyncEnabled;
 		ctx.ExpressionEnabled = ExpressionEnabled;
 		ctx.ClickInteraction = ClickInteraction;
@@ -1060,7 +1069,8 @@ public sealed class PetRuntime
 
 		// 关掉模型自带的“播完立刻再抽一条 Idle”。冷却、防重复和优先级都由这一帧的规划决定。
 		_currentModel.Animation.RandomMotion = false;
-		if (!IdleAnimationEnabled) _currentModel.Animation.StopIdleMotion();
+		if (!FocusCompanionPolicy.AllowsAmbientMotion(IdleAnimationEnabled, FocusQuiet))
+			_currentModel.Animation.StopIdleMotion();
 		if (!_previewMode && !_services.SafeMode && IsRenderVisible)
 			TryStartAutonomousMotion();
 		_currentModel.Update(deltaTime);
@@ -1620,7 +1630,7 @@ public sealed class PetRuntime
 			AutonomousBehaviorEnabled,
 			AutonomousRandomEnabled,
 			AutonomousFrequency,
-			Suspended: false,
+			Suspended: FocusQuiet,
 			_lipSync.IsSpeaking,
 			_currentModel.Animation.IsMotionFinished,
 			_currentModel.Animation.CurrentMotionPriority,

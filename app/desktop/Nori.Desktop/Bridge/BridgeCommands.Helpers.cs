@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Nori.Core.Focus;
 using Nori.Core.Mcp;
 
 namespace Nori.Desktop.Bridge;
@@ -79,6 +80,16 @@ public sealed partial class BridgeCommands
 			"gptsovitsBaseUrl", "gptsovitsRefAudio", "gptsovitsPromptText", "gptsovitsPromptLang",
 		];
 		return keys.Any(key => args.TryGetProperty(key, out _));
+	}
+
+	private static int ReadFocusMinutes(JsonElement args)
+	{
+		double? raw = OptionalDouble(args, "minutes");
+		if (raw is not { } minutes || !double.IsFinite(minutes)
+			|| minutes < FocusSession.MinMinutes || minutes > FocusSession.MaxMinutes
+			|| Math.Abs(minutes - Math.Round(minutes)) > 0.001)
+			throw new InvalidOperationException("专注时长需要在 1 到 180 分钟之间。");
+		return (int)Math.Round(minutes);
 	}
 
 	private static double Num(JsonElement args, string name) =>

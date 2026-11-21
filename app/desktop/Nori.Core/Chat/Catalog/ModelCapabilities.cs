@@ -58,10 +58,3 @@ public sealed record ModelCapabilities
 	/// <summary>可用于输入的窗口：有独立输入上限时取它，否则取总窗口。</summary>
 	public int EffectiveInputWindow => InputLimit > 0 ? InputLimit : ContextWindow;
 }
-
-/// <summary>按协议、地址与模型名查询模型能力。</summary>
-public interface IModelCapabilityProvider
-{
-	/// <summary>查询模型能力；目录不可用或找不到模型时返回 null，不抛异常。</summary>
-	Task<ModelCapabilities?> FindAsync(LlmProvider protocol, string? baseUrl, string model, CancellationToken cancellationToken = default);
-}

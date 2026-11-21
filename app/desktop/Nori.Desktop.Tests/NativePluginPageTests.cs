@@ -135,7 +135,7 @@ public partial class BridgeCommandsTests
 							errors.Clear();
 							// 后台停用等待 UI 清理屏障；插件 Deactivate 会检查所有已创建页面已释放。
 							using JsonDocument args = JsonDocument.Parse("{\"id\":\"native.plugin\"}");
-							await Task.Run(() => runtime.InvokeManagementAsync(new PluginManagementSource("settings", true, IsTrustedNativeSettings: true), "plugin_disable", args.RootElement));
+							await Task.Run(() => runtime.InvokeManagementAsync(new PluginManagementSource(), "plugin_disable", args.RootElement));
 							Assert.Null(second.Content);
 							Assert.False(second.IsVisible);
 							Assert.Empty(controller.Pages);

@@ -76,8 +76,6 @@ public static class ChatMarkdown
 	/// <param name="images">生成图片的读取回调；为 null 时图片引用不显示。</param>
 	public static Control Render(string text, Action<string> openUrl, ChatMarkdownImages? images = null)
 	{
-		ArgumentNullException.ThrowIfNull(text);
-		ArgumentNullException.ThrowIfNull(openUrl);
 		return new Renderer(text, openUrl, images).Blocks(Markdown.Parse(text, Pipeline), trimMargins: true);
 	}
 
@@ -108,7 +106,6 @@ public static class ChatMarkdown
 	/// <returns>去除首尾空白后的气泡文本；空白消息返回空集合。</returns>
 	public static IReadOnlyList<string> Split(string text, bool streaming = false)
 	{
-		ArgumentNullException.ThrowIfNull(text);
 		string trimmed = Trim(text);
 		if (trimmed.Length == 0) return [];
 		// JavaScript 的多行锚点也识别 CR、行分隔符和段落分隔符；这里只规范化结构检测副本。

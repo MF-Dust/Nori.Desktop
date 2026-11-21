@@ -18,9 +18,6 @@ public static class SecretProtector
 	/// <summary>当前格式前缀。</summary>
 	public const string Prefix = "nsec2:";
 
-	/// <summary>当前格式前缀的显式别名。</summary>
-	public const string Nsec2Prefix = Prefix;
-
 	/// <summary>旧 AES-GCM 格式前缀 (只读兼容, 无 AAD)。</summary>
 	public const string LegacyNsec1Prefix = "nsec1:";
 
@@ -34,7 +31,7 @@ public static class SecretProtector
 	public static bool IsProtected(string stored) => IsNsec1(stored) || IsNsec2(stored);
 
 	/// <summary>是否为当前 nsec2 密文。</summary>
-	public static bool IsNsec2(string? stored) => stored?.StartsWith(Nsec2Prefix, StringComparison.Ordinal) == true;
+	public static bool IsNsec2(string? stored) => stored?.StartsWith(Prefix, StringComparison.Ordinal) == true;
 
 	/// <summary>是否为旧 nsec1 密文。</summary>
 	public static bool IsNsec1(string? stored) => stored?.StartsWith(LegacyNsec1Prefix, StringComparison.Ordinal) == true;
@@ -85,7 +82,7 @@ public static class SecretProtector
 	/// <summary>按配置键 AAD 解密当前 nsec2 格式。</summary>
 	public static bool TryUnprotectV2(ReadOnlySpan<byte> key, string configKey, string stored, out string plainText)
 	{
-		return TryDecrypt(key, Encoding.UTF8.GetBytes(configKey ?? string.Empty), stored, Nsec2Prefix, out plainText);
+		return TryDecrypt(key, Encoding.UTF8.GetBytes(configKey ?? string.Empty), stored, Prefix, out plainText);
 	}
 
 	/// <summary>解密旧 nsec1 格式。</summary>

@@ -91,27 +91,20 @@ public partial class BridgeCommandsTests : IDisposable
 		}, CancellationToken.None);
 	}
 
-	private sealed class FakeBridgeSource(string label, bool isVisible = true) : IBridgeSource
+	private sealed class FakeBridgeSource(string label) : IBridgeSource
 	{
 		public string Label => label;
-		public bool IsVisible => isVisible;
 		public Window? Self => null;
 		public List<(string Name, object? Payload)> Events { get; } = [];
 
 		public void PostEvent(string name, object? payload) => Events.Add((name, payload));
-
-		public void PostResult(long id, object? value, string? error)
-		{
-		}
 	}
 
-	private sealed class NativeSettingsCommandSource(bool isVisible = true) : INativeSettingsSource
+	private sealed class NativeSettingsCommandSource : IBridgeSource
 	{
 		public string Label => WindowLabels.Settings;
-		public bool IsVisible => isVisible;
 		public Window? Self => null;
 		public void PostEvent(string name, object? payload) { }
-		public void PostResult(long id, object? value, string? error) { }
 	}
 
 	private sealed class FakeDesktopWindowCatalog : IDesktopVisionWindowCatalog

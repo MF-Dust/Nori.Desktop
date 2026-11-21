@@ -7,7 +7,7 @@ namespace Nori.Desktop.Tests;
 public partial class BridgeCommandsTests
 {
 	[Fact]
-	public void LoadConfigs一次批量读取并保留每模型回退与类型推断()
+	public void LoadConfigs一次批量读取每模型配置并保留类型推断()
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true);
 		fixture._config.Set("l2d_scale_arg-nori", new ConfigValue.Text("1.25"));
@@ -47,11 +47,11 @@ public partial class BridgeCommandsTests
 			runtime.LoadConfigs();
 			Assert.Equal(1, queryCount);
 			Assert.Equal(1.25f, runtime.UserScale);
-			Assert.Equal(0.5f, runtime.Opacity);
+			Assert.Equal(Live2DRenderSettings.DefaultOpacity, runtime.Opacity);
 			Assert.False(runtime.ShadowEnabled);
 			Assert.Equal(1.25f, runtime.RenderScale);
 			Assert.Equal("eco", runtime.QualityMode);
-			Assert.Equal(45, runtime.MaxFps);
+			Assert.Equal(Live2DRenderSettings.DefaultMaxFps, runtime.MaxFps);
 			Assert.True(runtime.ClickThroughEnabled);
 			Assert.True(runtime.BeatSyncEnabled);
 			Assert.False(runtime.ExpressionEnabled);
@@ -66,7 +66,7 @@ public partial class BridgeCommandsTests
 			queryCount = 0;
 			runtime.LoadConfigs();
 			Assert.Equal(1, queryCount);
-			Assert.Equal(2f, runtime.UserScale);
+			Assert.Equal(1f, runtime.UserScale);
 		}
 		finally
 		{

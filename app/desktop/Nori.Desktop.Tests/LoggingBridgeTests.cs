@@ -65,12 +65,9 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public async Task 日志管理只允许宿主授权的管理来源()
+	public async Task 日志管理应用有效级别并拒绝非法级别()
 	{
 		BridgeCommands commands = CreateCommands();
-		foreach (string source in new[] { "first-run", "init", "plugin-test" })
-		foreach (string command in new[] { "get_logging_status", "set_logging_level" })
-			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource(source), command, Args(new { level = "trace" })));
 		await commands.InvokeAsync(new FakeBridgeSource("main"), "set_logging_level", Args(new { level = "trace" }));
 		Assert.Equal("trace", _services.Logger.GetStatus().MinimumLevel);
 		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource("main"), "set_logging_level", Args(new { level = "invalid" })));

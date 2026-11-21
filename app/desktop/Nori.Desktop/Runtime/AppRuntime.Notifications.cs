@@ -74,11 +74,8 @@ public sealed partial class AppRuntime
 		catch (Exception failure) { LogNotificationFailure("撤销系统通知失败", failure); }
 	}
 
-	private void LogNotificationFailure(string operation, Exception failure)
-	{
-		try { Services.Logger.Write(LogSource.Backend, "warn", $"{operation}", exception: failure); }
-		catch { /* 通知是辅助呈现，日志故障也不能阻断授权。 */ }
-	}
+	private void LogNotificationFailure(string operation, Exception failure) =>
+		Services.Logger.Write(LogSource.Backend, "warn", operation, exception: failure);
 
 	/// <summary>
 	/// 参数压成一行给通知用。
@@ -205,8 +202,7 @@ public sealed partial class AppRuntime
 		catch (Exception failure)
 		{
 			// 同时兜住调度失败与 UI 动作异常，不能泄漏到 COM 或成为未观察的任务异常。
-			try { Services.Logger.Write(LogSource.Backend, "warn", "处理系统通知失败", exception: failure); }
-			catch { /* 退出时日志失败也不能让通知回调抛出。 */ }
+			Services.Logger.Write(LogSource.Backend, "warn", "处理系统通知失败", exception: failure);
 		}
 	}
 

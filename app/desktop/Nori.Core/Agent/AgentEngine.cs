@@ -143,7 +143,7 @@ public sealed class AgentEngine
 	private readonly ReplyReactionService? _replyReaction;
 
 	private readonly Observation.IMachineStateProvider? _machineState;
-	private readonly Chat.Catalog.IModelCapabilityProvider? _modelCatalog;
+	private readonly Chat.Catalog.ModelsDevCatalog? _modelCatalog;
 	private readonly HttpClient _http;
 	private readonly ConfigStore _config;
 	private readonly ChatService _chat;
@@ -184,7 +184,7 @@ public sealed class AgentEngine
 		Chat.LuoLiCore.LuoLiCoreConversation? luoLiCore = null,
 		ReplyReactionService? replyReaction = null,
 		Observation.IMachineStateProvider? machineState = null,
-		Chat.Catalog.IModelCapabilityProvider? modelCatalog = null)
+		Chat.Catalog.ModelsDevCatalog? modelCatalog = null)
 	{
 		_machineState = machineState;
 		_modelCatalog = modelCatalog;

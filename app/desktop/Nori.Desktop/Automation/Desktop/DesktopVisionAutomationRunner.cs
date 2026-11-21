@@ -33,11 +33,6 @@ public sealed class DesktopVisionAutomationRunner : IAutomationTaskRunner
 		DesktopVisionAutomationOptions? options = null,
 		Action<DesktopVisionProgress>? progress = null)
 	{
-		ArgumentNullException.ThrowIfNull(taskTitle);
-		ArgumentNullException.ThrowIfNull(goal);
-		ArgumentNullException.ThrowIfNull(screenshotSource);
-		ArgumentNullException.ThrowIfNull(actionExecutor);
-		ArgumentNullException.ThrowIfNull(planner);
 		_options = options ?? new DesktopVisionAutomationOptions();
 		_options.Validate();
 		_taskTitle = taskTitle.Trim();
@@ -57,7 +52,6 @@ public sealed class DesktopVisionAutomationRunner : IAutomationTaskRunner
 	/// </summary>
 	public async Task<DesktopVisionAutomationResult> ExecuteAsync(AutomationTaskContext context, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(context);
 		Report(0, DesktopVisionAutomationCategory.Running);
 		if (context.TaskId == Guid.Empty || _targetWindow == 0 || string.IsNullOrWhiteSpace(_taskTitle) || string.IsNullOrWhiteSpace(_goal))
 			return Finish(0, DesktopVisionAutomationCategory.InvalidInput);

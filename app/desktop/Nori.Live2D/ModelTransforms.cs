@@ -17,7 +17,6 @@ public static class ModelTransforms
 
 	public static Matrix4x4 CreateLayout(Vector2 canvas, IReadOnlyDictionary<string, float> layout)
 	{
-		ArgumentNullException.ThrowIfNull(layout);
 		if (!float.IsFinite(canvas.X) || !float.IsFinite(canvas.Y) || canvas.X <= 0 || canvas.Y <= 0)
 			throw new ArgumentOutOfRangeException(nameof(canvas), "模型画布尺寸必须是有限正数");
 		float scale = 2 / canvas.Y;

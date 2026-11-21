@@ -4,11 +4,10 @@ using Nori.Core.Configuration;
 namespace Nori.Core.Live2D;
 
 /// <summary>
-/// Live2D 每模型配置与全局键回退。
+/// Live2D 每模型显示配置与全局行为键读取。
 ///
-/// 读取结果先经 <see cref="ConfigValue.AsStringOr"/> 还原。配置库存进去的 "1" / "0" / "true" / "false"
-/// 会在读出时重新推断成布尔，再还原成 "true" / "false"；浮点解析因此也要接受这两个词。
-/// 空字符串视为未设置。非空但无法解析的布尔回退全局键，与桌宠渲染一致。
+/// 配置库存进去的 "1" / "0" / "true" / "false" 会在读出时重新推断成布尔，
+/// 经 <see cref="ConfigValue.AsStringOr"/> 还原后浮点解析需同时接受 true/false。
 /// </summary>
 public static class Live2DModelConfig
 {
@@ -52,14 +51,13 @@ public static class Live2DModelConfig
 	/// <summary>每模型键，形如 <c>l2d_scale_arg-nori</c>。</summary>
 	public static string ModelKey(string baseKey, string modelId) => $"{baseKey}_{modelId}";
 
-	/// <summary>显示配置需要一次性读出的每模型键与全局键，按基键成对排列。</summary>
+	/// <summary>显示配置需要一次性读出的每模型键列表。</summary>
 	public static string[] DisplayKeys(string modelId)
 	{
-		string[] keys = new string[DisplayBases.Length * 2];
+		string[] keys = new string[DisplayBases.Length];
 		for (int index = 0; index < DisplayBases.Length; index++)
 		{
-			keys[index * 2] = ModelKey(DisplayBases[index], modelId);
-			keys[index * 2 + 1] = DisplayBases[index];
+			keys[index] = ModelKey(DisplayBases[index], modelId);
 		}
 		return keys;
 	}
@@ -68,13 +66,11 @@ public static class Live2DModelConfig
 	public static string ReadText(IReadOnlyDictionary<string, ConfigValue> values, string key) =>
 		values.TryGetValue(key, out ConfigValue? value) ? ConfigValue.AsStringOr(value, "") : "";
 
-	/// <summary>每模型文本非空则采用，否则全局文本非空则采用，否则 fallback。</summary>
+	/// <summary>每模型文本非空则采用，否则回退 fallback。</summary>
 	public static string ReadPreferredText(IReadOnlyDictionary<string, ConfigValue> values, string baseKey, string modelId, string fallback)
 	{
 		string modelValue = ReadText(values, ModelKey(baseKey, modelId));
-		if (modelValue.Length > 0) return modelValue;
-		string globalValue = ReadText(values, baseKey);
-		return globalValue.Length > 0 ? globalValue : fallback;
+		return modelValue.Length > 0 ? modelValue : fallback;
 	}
 
 	/// <summary>解析数值文本。空白或无法解析时返回 null；<c>true</c> / <c>false</c> 为 1 / 0。</summary>
@@ -95,17 +91,11 @@ public static class Live2DModelConfig
 		_ => null,
 	};
 
-	/// <summary>每模型浮点无法解析或为空白时回退全局键，再回退 fallback。</summary>
+	/// <summary>读取每模型浮点，无法解析或空白时回退 fallback。</summary>
 	public static float ReadFloat(IReadOnlyDictionary<string, ConfigValue> values, string baseKey, string modelId, float fallback) =>
-		ParseFloat(ReadText(values, ModelKey(baseKey, modelId)))
-		?? ParseFloat(ReadText(values, baseKey))
-		?? fallback;
+		ParseFloat(ReadText(values, ModelKey(baseKey, modelId))) ?? fallback;
 
-	/// <summary>每模型布尔。空白或无法解析时回退全局键，再回退 fallback。</summary>
-	public static bool ReadBool(IReadOnlyDictionary<string, ConfigValue> values, string baseKey, string modelId, bool fallback)
-	{
-		string modelText = ReadText(values, ModelKey(baseKey, modelId));
-		if (modelText.Length > 0 && ParseBool(modelText) is bool parsed) return parsed;
-		return ParseBool(ReadText(values, baseKey)) ?? fallback;
-	}
+	/// <summary>读取每模型布尔，无法解析或空白时回退 fallback。</summary>
+	public static bool ReadBool(IReadOnlyDictionary<string, ConfigValue> values, string baseKey, string modelId, bool fallback) =>
+		ParseBool(ReadText(values, ModelKey(baseKey, modelId))) ?? fallback;
 }

@@ -203,10 +203,10 @@ public sealed partial class QuickChatView : UserControl, IDisposable
 		Func<DateTimeOffset> now,
 		Func<bool> reduceMotion)
 	{
-		_service = service ?? throw new ArgumentNullException(nameof(service));
-		_execute = execute ?? throw new ArgumentNullException(nameof(execute));
-		_now = now ?? throw new ArgumentNullException(nameof(now));
-		_reduceMotion = reduceMotion ?? throw new ArgumentNullException(nameof(reduceMotion));
+		_service = service;
+		_execute = execute;
+		_now = now;
+		_reduceMotion = reduceMotion;
 		MinWidth = 200;
 		MaxWidth = 280;
 		// 聚焦缩放和多层阴影需要越过内容边界，窗口外层已预留安全边距。

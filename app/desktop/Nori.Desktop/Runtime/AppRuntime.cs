@@ -202,20 +202,16 @@ public sealed partial class AppRuntime : IAsyncDisposable
 
 		Memory = new MemoryService(services.Memory, services.Embedding, config, startBackgroundWorker: !services.SafeMode);
 		// 嵌入批处理恢复期的单轮失败降级为 warn 日志, 连续多轮失败才由 MemoryService 升级为 Error 遥测。
-		Memory.EmbeddingDiagnostic = (severity, message) =>
-		{
-			try { services.Logger.Write(LogSource.Backend, severity, message); } catch { }
-		};
+		Memory.EmbeddingDiagnostic = (severity, message) => services.Logger.Write(LogSource.Backend, severity, message);
 		Knowledge = new KnowledgeService(services.Database, Memory, config, services.Paths.KnowledgePath);
 		Knowledge.StatusChanged = () => InvalidateSnapshot();
 		Memory.Knowledge = Knowledge;
 		Lifecycle = new MemoryLifecycleService(Memory);
 		ReflectionService reflection = new(services.Http, services.Chat, Memory, config);
-		_reflectionWorker = new ReflectionWorker(reflection, exception =>
-		{
-			try { services.Logger.Write(LogSource.Backend, "warn", $"记忆整理失败: {ReflectionDiagnostics.Format(exception)}"); }
-			catch { }
-		}, () => InvalidateSnapshot());
+		_reflectionWorker = new ReflectionWorker(
+			reflection,
+			exception => services.Logger.Write(LogSource.Backend, "warn", $"记忆整理失败: {ReflectionDiagnostics.Format(exception)}"),
+			() => InvalidateSnapshot());
 		Skills = new SkillService(config, services.PublicHttp);
 		Emotion = new EmotionManager(config);
 
@@ -233,8 +229,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		AudioBackendName = "native";
 		services.Logger.Write(LogSource.Backend, "info", "音频后端：原生设备");
 
-		Voice = new VoiceService(services.Http, config, _playback,
-			() => VoiceRetired() ? null : _recorder, services.Paths);
+		Voice = new VoiceService(services.Http, config, _playback, () => _recorder, services.Paths);
 		RealtimeVoice = new RealtimeVoiceSession(
 			() => RealtimeVoiceSettings.Read(config),
 			services.SafeMode,
@@ -435,20 +430,15 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		}
 	}
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "后台任务的遥测和日志失败不能覆盖已观察到的原始异常。")]
 	private async Task ObserveBackgroundAsync(Func<Task> operation, string name)
 	{
 		try { await operation().ConfigureAwait(false); }
 		catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) { }
 		catch (Exception exception)
 		{
-			try
-			{
-				if (!TelemetryNoise.IsNoise(exception))
-					Services.Telemetry.CaptureException(exception, "runtime.background_task");
-				Services.Logger.Write(LogSource.Backend, "warn", $"{name} failed: {SensitiveDataRedactor.ExceptionSummary(exception)}");
-			}
-			catch { }
+			if (!TelemetryNoise.IsNoise(exception))
+				Services.Telemetry.CaptureException(exception, "runtime.background_task");
+			Services.Logger.Write(LogSource.Backend, "warn", $"{name} failed: {SensitiveDataRedactor.ExceptionSummary(exception)}");
 		}
 	}
 
@@ -478,7 +468,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		public bool VoiceOrigin { get; } = voiceOrigin;
 
 		public CancellationTokenSource Cts { get; } = CancellationTokenSource.CreateLinkedTokenSource(
-			lifetimeToken, turnToken, source is INativeChatSource native ? native.LifetimeToken : CancellationToken.None);
+			lifetimeToken, turnToken, source.LifetimeToken);
 
 		public Task? Worker { get; set; }
 

@@ -31,7 +31,6 @@ public partial class SettingsWindow : Window
 	/// <summary>创建设置窗口。</summary>
 	public SettingsWindow(AppServices services) : this()
 	{
-		ArgumentNullException.ThrowIfNull(services);
 		WindowStartupLocation = WindowStartupLocation.CenterScreen;
 		_settingsService = new SettingsService(services, this);
 		_viewModel = new SettingsViewModel(_settingsService, (services.Windows as WindowManager)?.PluginPagesController);

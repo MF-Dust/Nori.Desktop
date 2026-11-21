@@ -23,7 +23,6 @@ public sealed record DesktopVisionScreenshotResult(DesktopVisionScreenshotStatus
 	/// <summary>创建成功结果。</summary>
 	public static DesktopVisionScreenshotResult Succeeded(DesktopVisionScreenshot screenshot)
 	{
-		ArgumentNullException.ThrowIfNull(screenshot);
 		return new(DesktopVisionScreenshotStatus.Succeeded, screenshot);
 	}
 

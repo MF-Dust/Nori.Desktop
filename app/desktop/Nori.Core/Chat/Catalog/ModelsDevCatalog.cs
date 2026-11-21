@@ -9,7 +9,7 @@ namespace Nori.Core.Chat.Catalog;
 /// 网络被禁用 (安全模式) 时只读缓存；下载失败沿用旧缓存。任何失败都不影响对话本身 ——
 /// 查不到能力时调用方回退到保守默认值。
 /// </summary>
-public sealed class ModelsDevCatalog : IModelCapabilityProvider, IAsyncDisposable
+public sealed class ModelsDevCatalog : IAsyncDisposable
 {
 	/// <summary>目录地址。</summary>
 	public static readonly Uri SourceUri = new("https://models.dev/api.json");

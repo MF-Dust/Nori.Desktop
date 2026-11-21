@@ -232,7 +232,6 @@ public sealed partial class BridgeCommands
 	/// </summary>
 	private async Task<object?> PickWorkspaceAsync(IBridgeSource source)
 	{
-		RequireMainVoid(source);
 		Avalonia.Controls.Window? self = source.Self ?? throw new InvalidOperationException("来源窗口不可用");
 		string? picked = await _uiDispatcher.InvokeTaskAsync(async () =>
 		{
@@ -254,7 +253,6 @@ public sealed partial class BridgeCommands
 	/// </summary>
 	private async Task<object?> PickSplashBackgroundAsync(IBridgeSource source)
 	{
-		RequireMainVoid(source);
 		Avalonia.Controls.Window? self = source.Self ?? throw new InvalidOperationException("来源窗口不可用");
 		string? picked = await _uiDispatcher.InvokeTaskAsync(async () =>
 		{

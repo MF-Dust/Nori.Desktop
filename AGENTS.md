@@ -17,8 +17,8 @@ Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12
   - Audio: `NativeAudioFactory` opens WASAPI on Windows, AudioQueue on macOS, and ALSA device `default` on Linux. Legacy `audio_backend=webview` does not switch implementations.
 - **Native Live2D Desk Pet**:
   - `PetWindow` + `PetGlControl`: Native C# pipeline (`AutoBlink`, `EyeFocus`, `BeatSync`, `LipSync`, `ExpressionStore`, `ExpressionBehavior`). Alpha mask sampling (~10Hz) computes a single bounding rectangle for hit-testing (`WM_NCHITTEST` on Windows, `XShape` on Linux X11, `wl_surface.set_input_region` on Wayland, `setIgnoresMouseEvents:` on macOS). Wayland falls back to the whole window when the surface is unreachable. Model preview is the native `ModelPreviewControl`, not a web view.
-- **IPC Bridge (`BridgeCommandRouter` & `BridgeCommands`)**:
-  - Native windows call `BridgeCommands` through `SettingsService`, `NativeChatService`, `ModelService`, and `MemoryService` frozen allowlists.
+- **Native Bridge (`BridgeCommands`)**:
+  - Native windows call `BridgeCommands` through `SettingsService`, `NativeChatService`, `ModelService`, and `MemoryService`. `NativeBridgePolicy` checks the frozen command allowlists at dispatch.
   - Host dispatches commands through `BridgeCommands.cs`.
   - Commands throw exceptions with human-readable Chinese messages on failure.
 - **Storage Layout (`<PackageRoot>/data`)**:
@@ -49,7 +49,7 @@ Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12
 ### Configuration & Resources
 
 - **`nori.db`**: SQLite key/value under `<PackageRoot>/data/core/database/`; values stored as TEXT. `ConfigValue.FromStorage` re-infers type on read (`"1"`/`"true"` → Boolean, digit strings → Integer, `{…}`/`[…]` → Json, else String). `"1.25"` stays String. Native readers must tolerate inferred types; see `Nori.Core.Tests` / `ConfigValueTests`.
-- **Live2D display keys**: Per-model `<base>_<modelId>` (e.g. `l2d_scale_arg-nori`) with fallback to legacy global keys — see `PetRuntime` and `BridgeCommands.model_get_meta`.
+- **Live2D display keys**: Per-model `<base>_<modelId>` (e.g. `l2d_scale_arg-nori`) with fallback to built-in defaults, not legacy global keys — see `PetRuntime` and `BridgeCommands.model_get_meta`.
 - **Model install**: Under `<PackageRoot>/data/resources/installed/live2d/`; native `ModelsWindow` (`ModelsWindow.Library.cs`) imports via `ModelService` allowlist command `model_import_local` (local ZIP or folder) or fetches built-in models from `https://static.nori.mom` (`ARGNori_web/`, `Nori_web/`) via `model_download_remote`. `RemoteModelInstaller` downloads only the model3.json `FileReferences` (path-validated before any request, size-capped, no redirects) into a same-volume staging dir and then reuses `ResourceManager.Import`. Startup (`InitWindow`) fetches a missing selected model and the first-run model step auto-fetches the default; safe mode never fetches. `ZipExtractor` rejects absolute paths, UNC, drive letters, `..`, control chars, and symlink entries, re-canonicalizes parents, and strips a single common top-level directory. Do not loosen it.
 
 ---

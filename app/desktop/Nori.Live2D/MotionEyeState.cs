@@ -30,7 +30,6 @@ public static class MotionEyeState
 	/// </summary>
 	public static bool KeepsEyesClosed(MotionClip clip)
 	{
-		ArgumentNullException.ThrowIfNull(clip);
 		bool sawEyeCurve = false;
 		foreach (MotionCurve curve in clip.Curves)
 		{
@@ -49,8 +48,6 @@ public static class MotionEyeState
 	/// </summary>
 	public static int PickIndex(IReadOnlyList<bool> eyesClosed, Random random)
 	{
-		ArgumentNullException.ThrowIfNull(eyesClosed);
-		ArgumentNullException.ThrowIfNull(random);
 		if (eyesClosed.Count == 0) throw new ArgumentException("候选不能为空。", nameof(eyesClosed));
 		List<int> open = [];
 		for (int index = 0; index < eyesClosed.Count; index++)

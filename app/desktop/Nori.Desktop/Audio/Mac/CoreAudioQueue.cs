@@ -33,7 +33,6 @@ internal sealed class CoreAudioQueue : ICoreAudioQueue
 	public AudioFormat OpenOutput(int sampleRate, int channels, Func<Span<float>, int> render)
 	{
 		ObjectDisposedException.ThrowIf(_disposed, this);
-		ArgumentNullException.ThrowIfNull(render);
 		Abort();
 		_render = render;
 		try
@@ -52,7 +51,6 @@ internal sealed class CoreAudioQueue : ICoreAudioQueue
 	public AudioFormat OpenInput(Action<ReadOnlySpan<float>> capture)
 	{
 		ObjectDisposedException.ThrowIf(_disposed, this);
-		ArgumentNullException.ThrowIfNull(capture);
 		Abort();
 		_capture = capture;
 		try

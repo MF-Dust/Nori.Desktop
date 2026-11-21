@@ -36,7 +36,7 @@ public partial class BridgeCommandsTests
 	private static async Task DisableExtensionAsync(PluginRuntimeHost runtime)
 	{
 		using JsonDocument args = JsonDocument.Parse($"{{\"id\":\"{ExtensionPluginId}\"}}");
-		await Task.Run(() => runtime.InvokeManagementAsync(new PluginManagementSource("settings", true, IsTrustedNativeSettings: true), "plugin_disable", args.RootElement));
+		await Task.Run(() => runtime.InvokeManagementAsync(new PluginManagementSource(), "plugin_disable", args.RootElement));
 	}
 
 	private static async Task DeleteExtensionDirectoryAsync(string root)

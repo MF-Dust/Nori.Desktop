@@ -9,8 +9,6 @@ public sealed class BreathPlayer
 
 	public BreathPlayer(NativeModel model, params (string Id, float Offset, float Amplitude, float Period, float Weight)[] waves)
 	{
-		ArgumentNullException.ThrowIfNull(model);
-		ArgumentNullException.ThrowIfNull(waves);
 		_model = model;
 		_waves = waves.Select(wave =>
 		{

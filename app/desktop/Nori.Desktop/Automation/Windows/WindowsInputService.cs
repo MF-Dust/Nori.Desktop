@@ -20,7 +20,6 @@ public sealed class WindowsInputService
 	/// <summary>校验目标和 Core 策略后通过 SendInput 执行动作。</summary>
 	public WindowsAutomationResult Execute(nint target, AutomationAction action, AutomationPolicy policy)
 	{
-		ArgumentNullException.ThrowIfNull(action); ArgumentNullException.ThrowIfNull(policy);
 		if (!Availability.IsAvailable) return new(false, Availability.Reason);
 		if (!policy.TryValidate(action, out string? error)) return new(false, error);
 		WindowsTargetValidationResult targetResult = _windows.ValidateTarget(target);

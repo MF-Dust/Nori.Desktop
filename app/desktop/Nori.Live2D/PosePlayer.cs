@@ -10,8 +10,6 @@ public sealed class PosePlayer
 
 	public PosePlayer(NativeModel model, PoseDefinition definition)
 	{
-		ArgumentNullException.ThrowIfNull(model);
-		ArgumentNullException.ThrowIfNull(definition);
 		_model = model;
 		_fadeInTime = definition.FadeInTime;
 		_groups = definition.Groups.Select(group => group.Select(part => new BoundPart(

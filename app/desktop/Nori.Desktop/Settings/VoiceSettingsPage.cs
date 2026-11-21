@@ -25,7 +25,6 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	private readonly SettingsSectionViewModel _gptSection;
 	private readonly SettingsSectionViewModel _indexSection;
 	private readonly SettingsSectionViewModel _generalSection;
-	private readonly SettingsFieldViewModel _notice;
 	private readonly SettingsCommand _previewCommand;
 	private readonly SettingsCommand _cloneCommand;
 	private bool _previewing;
@@ -67,7 +66,6 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 		_previewCommand = new SettingsCommand(command => _ = TestVoiceAsync(), canExecute => !_previewing && !_speaking);
 		AddAction(general, "testVoice", new("试听当前声音", "Preview voice"), new("使用当前 TTS 配置播放一条测试语音。", "Play a sample with the current TTS configuration."), _previewCommand);
 		AddAction(general, "stopVoice", new("停止播放", "Stop playback"), new("停止当前语音播放。", "Stop the current speech."), new SettingsCommand(command => _ = StopVoiceAsync()));
-		_notice = AddAction(general, "ackVoiceNotice", new("已了解语音配置迁移", "Dismiss voice migration notice"), new("旧版浏览器语音配置已停用，当前由宿主语音服务合成和播放。", "Legacy browser speech settings are no longer used. The host now synthesizes and plays speech."), new SettingsCommand(command => _ = AcknowledgeVoiceNoticeAsync()));
 
 		SettingsSectionViewModel gpt = _gptSection = AddSection(new("GPT-SoVITS", "GPT-SoVITS"));
 		AddField(gpt, "gptsovitsBaseUrl", new("服务地址", "Service URL"), new("GPT-SoVITS API 地址。", "GPT-SoVITS API endpoint."), SettingsEditorKind.Text,
@@ -134,13 +132,11 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			if (args.PropertyName == nameof(SettingsFieldViewModel.Selected)) UpdateProviderVisibility();
 		};
 		UpdateProviderVisibility();
-		_notice.IsVisible = false;
 	}
 
 	internal override void ApplySnapshot(JsonElement snapshot)
 	{
 		base.ApplySnapshot(snapshot);
-		_notice.IsVisible = SettingsSnapshotReader.Boolean(snapshot, false, "voice", "noticePending");
 		_speaking = SettingsSnapshotReader.Boolean(snapshot, false, "voice", "speaking");
 		_previewCommand.RaiseCanExecuteChanged();
 		UpdateProviderVisibility();
@@ -313,17 +309,6 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	{
 		try { await ExecuteAsync("tts_stop", cancellationToken: LifetimeToken).ConfigureAwait(true); }
 		catch (OperationCanceledException) { }
-		catch (Exception exception) { SetStatus(exception); }
-	}
-
-	private async Task AcknowledgeVoiceNoticeAsync()
-	{
-		try
-		{
-			await ExecuteAsync("settings_ack_voice_notice", cancellationToken: LifetimeToken).ConfigureAwait(true);
-			_notice.IsVisible = false;
-			SetStatus(Text("旧版提示已关闭。", "Legacy notice dismissed."));
-		}
 		catch (Exception exception) { SetStatus(exception); }
 	}
 

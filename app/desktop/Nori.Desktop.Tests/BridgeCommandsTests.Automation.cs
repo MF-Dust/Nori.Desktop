@@ -21,7 +21,7 @@ public partial class BridgeCommandsTests
 		BridgeCommands commands = CreateCommands();
 		FakeBridgeSource main = new(WindowLabels.Main);
 
-		await commands.InvokeAsync(main, "settings_update_automation", Args(new
+		await commands.InvokeAsync(main, "automation_update_settings", Args(new
 		{
 			enabled = true,
 			desktopEnabled = true,
@@ -32,7 +32,7 @@ public partial class BridgeCommandsTests
 		Assert.True(_config.GetBoolOr(ConfigStore.KeyAutomationAllowKeyboard, false));
 		Assert.True(_config.GetBoolOr(ConfigStore.KeyAutomationAllowScroll, false));
 
-		await commands.InvokeAsync(main, "settings_update_automation", Args(new {desktopEnabled = false}));
+		await commands.InvokeAsync(main, "automation_update_settings", Args(new {desktopEnabled = false}));
 
 		Assert.False(_config.GetBoolOr(ConfigStore.KeyAutomationAllowPointer, true));
 		Assert.False(_config.GetBoolOr(ConfigStore.KeyAutomationAllowKeyboard, true));
@@ -43,8 +43,6 @@ public partial class BridgeCommandsTests
 	public async Task 自动化默认关闭且快照不含敏感正文()
 	{
 		BridgeCommands commands = CreateCommands();
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "automation_get_snapshot", Args(new { })));
 		object? result = await commands.InvokeAsync(new NativeSettingsCommandSource(), "automation_get_snapshot", Args(new { }));
 		string json = JsonSerializer.Serialize(result, BridgeJson.Options);
 
@@ -57,14 +55,8 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public async Task 自动化状态变更只允许可见main且安全模式拒绝设置()
+	public async Task 自动化状态变更在安全模式下拒绝设置()
 	{
-		BridgeCommands commands = CreateCommands();
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Init), "automation_update_settings", Args(new {enabled = true})));
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main, false), "automation_update_settings", Args(new {enabled = true})));
-
 		using BridgeCommandsTests safeFixture = new(true, true);
 		await Assert.ThrowsAsync<InvalidOperationException>(() =>
 			safeFixture.CreateCommands().InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "automation_update_settings", Args(new {enabled = true})));
@@ -256,7 +248,7 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public async Task 自动化停止命令幂等且只允许可见main()
+	public async Task 自动化停止命令幂等()
 	{
 		BridgeCommands commands = CreateCommands();
 		string taskId = Guid.NewGuid().ToString();
@@ -266,8 +258,6 @@ public partial class BridgeCommandsTests
 		Assert.Equal(false, first);
 		Assert.Equal(false, second);
 		Assert.Equal(0, all);
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Init), "automation_stop_all", Args(new { })));
 	}
 
 	[Theory]

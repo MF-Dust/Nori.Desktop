@@ -107,16 +107,13 @@ public sealed partial class AppRuntime
 		}
 	}
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "诊断写入失败不能覆盖已分类的 MCP 刷新失败。")]
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "诊断写入失败不能挡住已连接服务的工具替换。")]
 	private void LogMcpRefreshSkip(string? serverId, string status)
 	{
 		string safeServerId = CapMcpLogPart(serverId, McpRefreshLogServerIdMaxCharacters);
 		string safeStatus = CapMcpLogPart(status, 32);
 		string message = $"MCP 工具刷新已跳过未就绪服务: server_id={safeServerId} status={safeStatus}";
 		if (message.Length > McpRefreshLogMaxCharacters) message = message[..McpRefreshLogMaxCharacters];
-		try { Services.Logger.Write(LogSource.Backend, "warn", message); }
-		catch { }
+		Services.Logger.Write(LogSource.Backend, "warn", message);
 	}
 
 	private void LogMcpRefreshFailure(string? serverId, string category)
@@ -125,8 +122,7 @@ public sealed partial class AppRuntime
 		string safeCategory = CapMcpLogPart(category, 32);
 		string message = $"MCP 工具刷新失败: server_id={safeServerId} category={safeCategory}";
 		if (message.Length > McpRefreshLogMaxCharacters) message = message[..McpRefreshLogMaxCharacters];
-		try { Services.Logger.Write(LogSource.Backend, "warn", message); }
-		catch { }
+		Services.Logger.Write(LogSource.Backend, "warn", message);
 	}
 
 	private static string McpRefreshErrorCategory(Exception exception) => exception switch
@@ -198,8 +194,7 @@ public sealed partial class AppRuntime
 		catch (Exception exception)
 		{
 			// 只记录类别与摘要, 不写入插件参数或结果
-			try { Services.Logger.Write(LogSource.Backend, "warn", $"插件工具刷新失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); }
-			catch { }
+			Services.Logger.Write(LogSource.Backend, "warn", $"插件工具刷新失败: {SensitiveDataRedactor.ExceptionSummary(exception)}");
 		}
 		finally
 		{
@@ -416,7 +411,6 @@ public sealed partial class AppRuntime
 	/// </summary>
 	public void ReleaseStaleGrants(IReadOnlyList<string> previous)
 	{
-		ArgumentNullException.ThrowIfNull(previous);
 		if (previous.Count == 0) return;
 
 		HashSet<string> keep = new(CurrentGrantPaths(), StringComparer.OrdinalIgnoreCase);
@@ -455,16 +449,12 @@ public sealed partial class AppRuntime
 			? new WorkspaceAccess("")
 			: new WorkspaceAccess(Services.Config.GetStringOr(ConfigStore.KeyWorkspaceRoot, ""));
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "工具失败诊断写入失败不能覆盖原始工具错误。")]
 	private ToolRegistry BuildToolRegistry(bool audioAvailable)
 	{
 		ToolRegistry registry = new()
 		{
 			FailureDiagnostic = (tool, diagnostic) =>
-			{
-				try { Services.Logger.Write(LogSource.Backend, "warn", $"工具调用失败: {diagnostic.ToLogMessage(tool)}"); }
-				catch { }
-			},
+				Services.Logger.Write(LogSource.Backend, "warn", $"工具调用失败: {diagnostic.ToLogMessage(tool)}"),
 		};
 		BuiltinTools.RegisterAll(registry, new BuiltinToolDeps
 		{

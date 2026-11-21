@@ -64,7 +64,6 @@ public sealed record AppearancePreferences(string Accent, int UiScale, string Bu
 	/// <summary>从配置读取外观偏好；会访问数据库，不能在 UI 线程调用。</summary>
 	internal static AppearancePreferences Read(ConfigStore config)
 	{
-		ArgumentNullException.ThrowIfNull(config);
 		string accent = config.GetStringOr(ConfigStore.KeyUiAccent, Default.Accent);
 		string scale = config.GetStringOr(ConfigStore.KeyUiScale, "");
 		string font = config.GetStringOr(ConfigStore.KeyBubbleFont, Default.BubbleFont);

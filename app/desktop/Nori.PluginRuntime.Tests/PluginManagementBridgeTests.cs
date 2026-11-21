@@ -20,26 +20,12 @@ public sealed class PluginManagementBridgeTests : IDisposable
 	}
 
 	[Fact]
-	public async Task 六个管理命令都拒绝非main和不可见来源()
-	{
-		FakePicker picker = new(null);
-		await using PluginRuntimeHost runtime = CreateHost(picker: picker);
-		string[] names = ["plugin_list", "plugin_install_local", "plugin_enable", "plugin_reload", "plugin_disable", "plugin_uninstall"];
-		foreach (string name in names)
-		{
-			await Assert.ThrowsAsync<UnauthorizedAccessException>(() => runtime.InvokeManagementAsync(new PluginManagementSource("init", true), name, Args(new {id = "io.nori.test"})));
-			await Assert.ThrowsAsync<UnauthorizedAccessException>(() => runtime.InvokeManagementAsync(new PluginManagementSource("main", false), name, Args(new {id = "io.nori.test"})));
-			await Assert.ThrowsAsync<UnauthorizedAccessException>(() => runtime.InvokeManagementAsync(new PluginManagementSource("settings", false, IsTrustedNativeSettings: true), name, Args(new {id = "io.nori.test"})));
-		}
-	}
-
-	[Fact]
 	public async Task plugin_list返回稳定DTO且不泄露安装路径或异常对象()
 	{
 		CreateInstalledLayout("io.nori.dto", "1.2.3");
 		await using PluginRuntimeHost runtime = CreateHost();
 
-		object? result = await runtime.InvokeManagementAsync(new PluginManagementSource("main", true), "plugin_list", Args(new { }));
+		object? result = await runtime.InvokeManagementAsync(new PluginManagementSource(), "plugin_list", Args(new { }));
 		string json = JsonSerializer.Serialize(result, JsonOptions);
 		using JsonDocument document = JsonDocument.Parse(json);
 		JsonElement item = document.RootElement.GetProperty("plugins")[0];
@@ -58,7 +44,7 @@ public sealed class PluginManagementBridgeTests : IDisposable
 		FakePicker picker = new(null);
 		await using PluginRuntimeHost runtime = CreateHost(picker: picker);
 		object? result = await runtime.InvokeManagementAsync(
-			new PluginManagementSource("main", true),
+			new PluginManagementSource(),
 			"plugin_install_local",
 			Args(new {path = Path.Combine(_root, "forged.noripack"), filePath = "C:\\forged.noripack"}));
 		string json = JsonSerializer.Serialize(result, JsonOptions);
@@ -72,28 +58,27 @@ public sealed class PluginManagementBridgeTests : IDisposable
 		CreateInstalledLayout("io.nori.safe", "1.0.0");
 		FakePicker picker = new(null);
 		await using PluginRuntimeHost runtime = CreateHost(safeMode: true, picker: picker);
-		PluginManagementSource main = new("main", true);
+		PluginManagementSource source = new();
 
-		object? list = await runtime.InvokeManagementAsync(main, "plugin_list", Args(new { }));
+		object? list = await runtime.InvokeManagementAsync(source, "plugin_list", Args(new { }));
 		Assert.Contains("safe_mode_disabled", JsonSerializer.Serialize(list, JsonOptions), StringComparison.Ordinal);
-		await Assert.ThrowsAsync<PluginException>(() => runtime.InvokeManagementAsync(main, "plugin_install_local", Args(new { })));
+		await Assert.ThrowsAsync<PluginException>(() => runtime.InvokeManagementAsync(source, "plugin_install_local", Args(new { })));
 		Assert.Equal(0, picker.Calls);
-		await Assert.ThrowsAsync<PluginException>(() => runtime.InvokeManagementAsync(main, "plugin_enable", Args(new {id = "io.nori.safe"})));
-		PluginException reload = await Assert.ThrowsAsync<PluginException>(() => runtime.InvokeManagementAsync(main, "plugin_reload", Args(new {id = "io.nori.safe"})));
+		await Assert.ThrowsAsync<PluginException>(() => runtime.InvokeManagementAsync(source, "plugin_enable", Args(new {id = "io.nori.safe"})));
+		PluginException reload = await Assert.ThrowsAsync<PluginException>(() => runtime.InvokeManagementAsync(source, "plugin_reload", Args(new {id = "io.nori.safe"})));
 		Assert.Equal(PluginErrorCodes.SafeModeDisabled, reload.Code);
 		Assert.False(Directory.Exists(Path.Combine(_root, "plugins", "data", "io.nori.safe")));
 
-		object? disabled = await runtime.InvokeManagementAsync(main, "plugin_disable", Args(new {id = "io.nori.safe"}));
+		object? disabled = await runtime.InvokeManagementAsync(source, "plugin_disable", Args(new {id = "io.nori.safe"}));
 		Assert.Contains("\"enabled\":false", JsonSerializer.Serialize(disabled, JsonOptions), StringComparison.Ordinal);
-		object? uninstalled = await runtime.InvokeManagementAsync(main, "plugin_uninstall", Args(new {id = "io.nori.safe", deleteData = false}));
+		object? uninstalled = await runtime.InvokeManagementAsync(source, "plugin_uninstall", Args(new {id = "io.nori.safe", deleteData = false}));
 		Assert.Contains("\"success\":true", JsonSerializer.Serialize(uninstalled, JsonOptions), StringComparison.Ordinal);
 	}
 
 	[Theory]
-	[InlineData("main", false, false)]
-	[InlineData("settings", true, false)]
-	[InlineData("main", false, true)]
-	public async Task plugin_reload从授权来源返回活动或待重启DTO(string label, bool trustedSettings, bool retainContribution)
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task plugin_reload返回活动或待重启DTO(bool retainContribution)
 	{
 		await Task.Run(async () =>
 		{
@@ -104,7 +89,7 @@ public sealed class PluginManagementBridgeTests : IDisposable
 			IPluginContribution? retained = retainContribution ? Assert.Single(runtime.GetContributions<IPluginContribution>()) : null;
 
 			object? result = await runtime.InvokeManagementAsync(
-				new PluginManagementSource(label, true, IsTrustedNativeSettings: trustedSettings),
+				new PluginManagementSource(),
 				"plugin_reload", Args(new {id = "io.nori.reload"}));
 
 			PluginListItemDto info = Assert.IsType<PluginListItemDto>(result);
@@ -127,7 +112,7 @@ public sealed class PluginManagementBridgeTests : IDisposable
 		await using PluginRuntimeHost runtime = CreateHost();
 		using JsonDocument args = JsonDocument.Parse(json);
 		PluginException failure = await Assert.ThrowsAsync<PluginException>(() => runtime.InvokeManagementAsync(
-			new PluginManagementSource("main", true), "plugin_reload", args.RootElement));
+			new PluginManagementSource(), "plugin_reload", args.RootElement));
 		Assert.Equal(code, failure.Code);
 	}
 

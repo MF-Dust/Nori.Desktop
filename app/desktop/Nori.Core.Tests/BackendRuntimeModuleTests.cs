@@ -495,26 +495,7 @@ public class BackendRuntimeModuleTests : IDisposable
 		Assert.Empty(Model3Meta.Read(Path.Combine(_tempDir, "missing")).Expressions);
 	}
 
-	// ---- 语音停用策略 ----
-
-	[Fact]
-	public async Task 已停用的浏览器语音提供商给出明确错误()
-	{
-		_config.Set("tts_provider", new ConfigValue.Text("web_speech"));
-		VoiceService voice = new(new HttpClient(), _config, playback: null, () => null);
-
-		Assert.Throws<InvalidOperationException>(() => voice.CreateProvider("web_speech"));
-
-		try
-		{
-			await voice.SynthesizeAsync("hi");
-			Assert.Fail("应当抛出停用提示");
-		}
-		catch (InvalidOperationException error)
-		{
-			Assert.Contains("已在纯后端版本中停用", error.Message, StringComparison.Ordinal);
-		}
-	}
+	// ---- 语音 ----
 
 	[Fact]
 	public void 云端TTS提供商按配置构造()
@@ -526,6 +507,7 @@ public class BackendRuntimeModuleTests : IDisposable
 		Assert.IsType<GptSoVitsTtsProvider>(voice.CreateProvider("gpt_sovits"));
 		Assert.IsType<OpenAiTtsProvider>(voice.CreateProvider("openai"));
 		Assert.IsType<CustomHttpTtsProvider>(voice.CreateProvider("custom"));
+		Assert.Throws<InvalidOperationException>(() => voice.CreateProvider("web_speech"));
 	}
 
 	// ---- 测试替身 ----

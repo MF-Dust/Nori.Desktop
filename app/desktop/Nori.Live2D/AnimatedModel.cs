@@ -28,8 +28,6 @@ public sealed class AnimatedModel : IDisposable
 	public AnimatedModel(ReadOnlySpan<byte> mocBytes, ModelDefinition definition,
 		IReadOnlyDictionary<string, MotionClip> motions, PhysicsDefinition? physics = null, PoseDefinition? pose = null)
 	{
-		ArgumentNullException.ThrowIfNull(definition);
-		ArgumentNullException.ThrowIfNull(motions);
 		Definition = definition;
 		// 在创建原生模型之前确认动作资源完整；不把 GL 提交变成文件加载回退路径。
 		foreach (var group in definition.Motions)

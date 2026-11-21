@@ -79,7 +79,6 @@ internal sealed class PluginManager : IAsyncDisposable
 
 	public PluginManager(PluginRuntimeOptions options)
 	{
-		ArgumentNullException.ThrowIfNull(options);
 		ArgumentException.ThrowIfNullOrWhiteSpace(options.PluginsDirectory);
 		ArgumentException.ThrowIfNullOrWhiteSpace(options.DataDirectory);
 		if (options.ActivationTimeout <= TimeSpan.Zero || options.DeactivationTimeout <= TimeSpan.Zero)

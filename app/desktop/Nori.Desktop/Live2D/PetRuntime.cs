@@ -291,26 +291,15 @@ public sealed class PetRuntime
 	/// </summary>
 	public void WriteLive2DLog(string message)
 	{
-		try
-		{
-			string level = message.StartsWith("[CSM] [E]", StringComparison.Ordinal) ? "error"
-				: message.StartsWith("[CSM] [W]", StringComparison.Ordinal) ? "warn"
-				: message.StartsWith("[CSM] [I]", StringComparison.Ordinal) ? "info" : "debug";
-			_services.Logger.Write(LogSource.Backend, level, "Live2D 诊断事件", "Live2D", "cubism.diagnostic");
-		}
-		catch
-		{
-			// 日志本身失败时保持静默, 绝不允许把异常带回渲染线程
-		}
+		string level = message.StartsWith("[CSM] [E]", StringComparison.Ordinal) ? "error"
+			: message.StartsWith("[CSM] [W]", StringComparison.Ordinal) ? "warn"
+			: message.StartsWith("[CSM] [I]", StringComparison.Ordinal) ? "info" : "debug";
+		_services.Logger.Write(LogSource.Backend, level, "Live2D 诊断事件", "Live2D", "cubism.diagnostic");
 	}
 
 	/// <summary>渲染表面故障与恢复的固定事件日志；消息不含模型或用户内容。</summary>
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "渲染恢复日志失败不能带回 UI 或渲染线程。")]
-	internal void WriteRenderSurfaceLog(string level, string message, string eventId)
-	{
-		try { _services.Logger.Write(LogSource.Backend, level, message, "Live2D", eventId); }
-		catch { }
-	}
+	internal void WriteRenderSurfaceLog(string level, string message, string eventId) =>
+		_services.Logger.Write(LogSource.Backend, level, message, "Live2D", eventId);
 
 	/// <summary>记录渲染线程的帧耗时与命中掩码耗时。</summary>
 	public void RecordRenderMetrics(double frameTimeMs, double maskCostMs)
@@ -748,14 +737,7 @@ public sealed class PetRuntime
 		lock (_prepareGate) committed = CommitModelLoadFailureLocked(operation, error);
 		if (!committed) return;
 
-		try
-		{
-			_services.Logger.Write(LogSource.Backend, "error", $"加载 Live2D 模型失败 [{operation.ModelId}]", exception: error);
-		}
-		catch
-		{
-			// 日志失败保持静默, 不能掩盖模型加载失败。
-		}
+		_services.Logger.Write(LogSource.Backend, "error", $"加载 Live2D 模型失败 [{operation.ModelId}]", exception: error);
 		NotifyModelLoadFailed();
 	}
 
@@ -999,7 +981,7 @@ public sealed class PetRuntime
 		}
 
 		ResetRenderSampleWindow(true, prepared.ModelId);
-		try { _services.Logger.Write(LogSource.Backend, "info", $"成功加载 Live2D 模型: {prepared.ModelId}"); } catch { }
+		_services.Logger.Write(LogSource.Backend, "info", $"成功加载 Live2D 模型: {prepared.ModelId}");
 		try { ModelChanged?.Invoke(); }
 		catch (Exception exception) { WriteLive2DLog($"模型变更事件处理异常: {exception.Message}"); }
 	}
@@ -1034,15 +1016,8 @@ public sealed class PetRuntime
 				if (!_maskResizeFailureLogged)
 				{
 					_maskResizeFailureLogged = true;
-					try
-					{
-						_services.Logger.Write(LogSource.Backend, "warn", "Live2D 遮罩质量调整失败，继续使用旧质量",
-							"Live2D", "live2d.mask_resize_failed", exception);
-					}
-					catch
-					{
-						// 日志失败也不能阻断已经清空场景后的模型绘制。
-					}
+					_services.Logger.Write(LogSource.Backend, "warn", "Live2D 遮罩质量调整失败，继续使用旧质量",
+						"Live2D", "live2d.mask_resize_failed", exception);
 				}
 				return;
 			}
@@ -1559,8 +1534,7 @@ public sealed class PetRuntime
 			ObserveCompletionTask(RequestModelLoad(ConfigStore.DefaultModel, reloadCurrent: false));
 			return;
 		}
-		if (key is "l2d_opacity" or "l2d_quality_mode" or "l2d_render_scale" or "l2d_max_fps" or "l2d_shadow"
-			|| key == ModelConfigKey("l2d_opacity")
+		if (key == ModelConfigKey("l2d_opacity")
 			|| key == ModelConfigKey("l2d_quality_mode")
 			|| key == ModelConfigKey("l2d_render_scale")
 			|| key == ModelConfigKey("l2d_max_fps")
@@ -1587,8 +1561,7 @@ public sealed class PetRuntime
 			default: break;
 		}
 
-		// 缩放按模型存储 (l2d_scale_<modelId>), 兼容旧的全局键
-		if (key == $"l2d_scale_{_currentModelId}" || key == "l2d_scale")
+		if (key == ModelConfigKey("l2d_scale"))
 		{
 			UserScale = 1.0f;
 			LayoutChanged?.Invoke();
@@ -1610,8 +1583,7 @@ public sealed class PetRuntime
 			return;
 		}
 
-		// 缩放按模型存储 (l2d_scale_<modelId>), 兼容旧的全局键
-		if (key == $"l2d_scale_{_currentModelId}" || key == "l2d_scale")
+		if (key == ModelConfigKey("l2d_scale"))
 		{
 			if (ParseFloat(value) is { } scale)
 			{
@@ -1621,7 +1593,7 @@ public sealed class PetRuntime
 			return;
 		}
 
-		if (key == "l2d_opacity" || key == ModelConfigKey("l2d_opacity"))
+		if (key == ModelConfigKey("l2d_opacity"))
 		{
 			if (ParseFloat(value) is { } opacity)
 			{
@@ -1631,7 +1603,7 @@ public sealed class PetRuntime
 			return;
 		}
 
-		if (key == "l2d_render_scale" || key == ModelConfigKey("l2d_render_scale"))
+		if (key == ModelConfigKey("l2d_render_scale"))
 		{
 			if (ParseFloat(value) is { } scale)
 			{
@@ -1641,7 +1613,7 @@ public sealed class PetRuntime
 			return;
 		}
 
-		if (key == "l2d_quality_mode" || key == ModelConfigKey("l2d_quality_mode"))
+		if (key == ModelConfigKey("l2d_quality_mode"))
 		{
 			QualityMode = Live2DRenderSettings.QualityModeToStorage(
 				Live2DRenderSettings.ParseQualityMode(value) ?? Live2DQualityMode.Adaptive);
@@ -1649,14 +1621,14 @@ public sealed class PetRuntime
 			return;
 		}
 
-		if (key == "l2d_shadow" || key == ModelConfigKey("l2d_shadow"))
+		if (key == ModelConfigKey("l2d_shadow"))
 		{
 			if (ParseBool(value) is { } shadow) ShadowEnabled = shadow;
 			RefreshRenderSettings();
 			return;
 		}
 
-		if (key == "l2d_max_fps" || key == ModelConfigKey("l2d_max_fps"))
+		if (key == ModelConfigKey("l2d_max_fps"))
 		{
 			if (ParseFloat(value) is { } fps)
 			{

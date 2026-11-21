@@ -107,11 +107,7 @@ public sealed class AppServices : IAsyncDisposable
 		PublicHttp,
 		Paths.ModelCatalogCachePath,
 		() => !SafeMode,
-		message =>
-		{
-			try { Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", message); }
-			catch { }
-		});
+		message => Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", message));
 
 	private Nori.Core.Community.GitHubContributorCatalog? _contributors;
 
@@ -122,11 +118,7 @@ public sealed class AppServices : IAsyncDisposable
 		PublicHttp,
 		Paths.ContributorsCachePath,
 		() => !SafeMode,
-		message =>
-		{
-			try { Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", message); }
-			catch { }
-		});
+		message => Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", message));
 
 	private Nori.Core.Chat.Images.GeneratedImageStore? _imageStore;
 

@@ -57,7 +57,6 @@ public sealed partial class AppRuntime
 		}
 	}
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "状态订阅者和诊断记录必须彼此隔离，单个失败不能阻断其余通知。")]
 	private void RaiseStateChanged()
 	{
 		if (Volatile.Read(ref _disposed) != 0) return;
@@ -68,8 +67,7 @@ public sealed partial class AppRuntime
 			try { handler(); }
 			catch (Exception exception)
 			{
-				try { Services.Logger.Write(LogSource.Backend, "warn", $"原生设置状态通知失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); }
-				catch { }
+				Services.Logger.Write(LogSource.Backend, "warn", $"原生设置状态通知失败: {SensitiveDataRedactor.ExceptionSummary(exception)}");
 			}
 		}
 	}
@@ -387,7 +385,6 @@ public sealed partial class AppRuntime
 				sttProvider = config.GetStringOr("stt_provider", "whisper"),
 				sttBaseUrl = config.GetStringOr("stt_base_url", ""),
 				hasSttApiKey = config.GetStringOr("stt_api_key", "").Length > 0,
-				noticePending = config.GetStringOr("voice_notice_pending", "") == "1",
 				speaking = Voice.IsSpeaking,
 				realtimeEnabled = realtimeSettings.Enabled,
 				realtimeContinuous = realtimeSettings.Continuous,

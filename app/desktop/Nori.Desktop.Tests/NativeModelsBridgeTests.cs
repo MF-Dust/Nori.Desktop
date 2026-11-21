@@ -11,13 +11,11 @@ namespace Nori.Desktop.Tests;
 
 public partial class BridgeCommandsTests
 {
-	private sealed class NativeModelTestSource(bool visible = true, string label = WindowLabels.Models) : INativeModelSource
+	private sealed class NativeModelTestSource(string label = WindowLabels.Models) : IBridgeSource
 	{
 		public string Label => label;
-		public bool IsVisible => visible;
 		public Window? Self => null;
 		public void PostEvent(string name, object? payload) { }
-		public void PostResult(long id, object? value, string? error) { }
 	}
 
 	// ---- 初始化握手与窗口状态 ----
@@ -51,50 +49,6 @@ public partial class BridgeCommandsTests
 			commands.InvokeAsync(main, "model_set_display", Args(new {modelId = "nori", qualityMode = "unknown"})));
 	}
 	[Fact]
-	public async Task NativeModelPolicyCannotBeBypassedAtEitherHostEntry()
-	{
-		string[] allowed =
-		[
-			"model_download_remote", "model_get_meta", "model_import_local", "model_select",
-			"model_set_behavior", "model_set_display", "model_set_interactions",
-		];
-		Assert.Equal(allowed, ModelService.Commands.Order(StringComparer.Ordinal));
-
-		NativeModelTestSource source = new();
-		foreach (string command in new[] {"plugin_widgets", "memory_overview", "ui_get_snapshot", "model_future_command"})
-		{
-			Assert.False(ModelService.IsCommandAllowed(command));
-			InvalidOperationException direct = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-				CreateCommands().InvokeAsync(source, command, Args(new { })));
-			Assert.Contains("原生模型窗口不允许", direct.Message);
-			InvalidOperationException routed = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-				new BridgeCommandRouter(_services).InvokeAsync(source, command, Args(new { })));
-			Assert.Contains("原生模型窗口不允许", routed.Message);
-		}
-	}
-
-	[Fact]
-	public async Task NativeModelCommandsRequireTrustedMarker()
-	{
-		InstallKnownModel("nori");
-		BridgeCommands commands = CreateCommands();
-		Assert.NotNull(await commands.InvokeAsync(new NativeModelTestSource(), "model_get_meta", Args(new {modelId = "nori"})));
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Models), "model_get_meta", Args(new {modelId = "nori"})));
-	}
-
-	[Fact]
-	public async Task NativeModelImportRequiresVisibleOwner()
-	{
-		InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			CreateCommands().InvokeAsync(
-				new NativeModelTestSource(false),
-				"model_import_local",
-				Args(new {resourceType = "live2d", sourceKind = "zip", filePath = "missing.zip"})));
-		Assert.Contains("不可见", exception.Message);
-	}
-
-	[Fact]
 	public async Task ModelMetadataSeparatesSelectedExpressionsFromAvailableExpressions()
 	{
 		InstallKnownModel("nori");
@@ -109,16 +63,15 @@ public partial class BridgeCommandsTests
 			}
 			""");
 		File.WriteAllText(Path.Combine(directory, "Smile.exp3.json"), "{}");
-		_config.Set("l2d_expression", new ConfigValue.Json(JsonNode.Parse("[\"LegacyPose\"]")!));
 
 		BridgeCommands commands = CreateCommands();
-		object? fallback = await commands.InvokeAsync(
+		object? initial = await commands.InvokeAsync(
 			new NativeModelTestSource(),
 			"model_get_meta",
 			Args(new {modelId = "nori"}));
-		using JsonDocument fallbackDocument = JsonDocument.Parse(JsonSerializer.Serialize(fallback, BridgeJson.Options));
-		Assert.Equal(["LegacyPose"], fallbackDocument.RootElement.GetProperty("selectedExpressions").EnumerateArray().Select(value => value.GetString()));
-		Assert.Equal(["Smile"], fallbackDocument.RootElement.GetProperty("expressions").EnumerateArray().Select(value => value.GetString()));
+		using JsonDocument initialDocument = JsonDocument.Parse(JsonSerializer.Serialize(initial, BridgeJson.Options));
+		Assert.Empty(initialDocument.RootElement.GetProperty("selectedExpressions").EnumerateArray());
+		Assert.Equal(["Smile"], initialDocument.RootElement.GetProperty("expressions").EnumerateArray().Select(value => value.GetString()));
 
 		_config.Set("l2d_expression_nori", new ConfigValue.Json(JsonNode.Parse("[\"Smile\"]")!));
 		object? perModel = await commands.InvokeAsync(
@@ -174,7 +127,6 @@ public partial class BridgeCommandsTests
 		Assert.True(changes > 0);
 		JsonElement snapshot = await service.GetSnapshotAsync();
 		Assert.True(snapshot.TryGetProperty("models", out _));
-		await Assert.ThrowsAsync<InvalidOperationException>(() => service.ExecuteAsync("chat_clear"));
 		await service.WaitForPendingOperationsAsync();
 		service.Dispose();
 		int before = changes;

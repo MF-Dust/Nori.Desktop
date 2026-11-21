@@ -254,7 +254,6 @@ public sealed class McpSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>连接服务器。</summary>
 	public async Task ConnectAsync(McpServerItem server, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(server);
 		if (SafeMode) throw new InvalidOperationException("安全模式下不能连接 MCP。");
 		await ExecuteAsync("mcp_connect_server", new {id = server.Id}, cancellationToken).ConfigureAwait(true);
 		await RefreshAsync(cancellationToken).ConfigureAwait(true);
@@ -263,7 +262,6 @@ public sealed class McpSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>断开服务器。</summary>
 	public async Task DisconnectAsync(McpServerItem server, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(server);
 		await ExecuteAsync("mcp_disconnect_server", new {id = server.Id}, cancellationToken).ConfigureAwait(true);
 		await RefreshAsync(cancellationToken).ConfigureAwait(true);
 	}
@@ -271,7 +269,6 @@ public sealed class McpSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>删除服务器配置。</summary>
 	public async Task DeleteAsync(McpServerItem server, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(server);
 		await ExecuteAsync("mcp_delete_server", new {id = server.Id}, cancellationToken).ConfigureAwait(true);
 		await RefreshAsync(cancellationToken).ConfigureAwait(true);
 	}
@@ -279,7 +276,6 @@ public sealed class McpSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>启用或停用工具。使用注册表中的完整名称。</summary>
 	public async Task ToggleToolAsync(McpToolItem tool, bool enabled, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(tool);
 		await ExecuteAsync("tools_set_enabled", new {name = tool.Name, enabled}, cancellationToken).ConfigureAwait(true);
 		await RefreshAsync(cancellationToken).ConfigureAwait(true);
 	}
@@ -287,7 +283,6 @@ public sealed class McpSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>只测试 safe 工具，避免设置页绕过对话里的逐次授权。</summary>
 	public async Task<JsonElement> ExecuteToolAsync(McpToolItem tool, string jsonArguments, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(tool);
 		if (tool.ServerId is {Length: > 0} || !string.Equals(tool.PermissionLevel, "safe", StringComparison.OrdinalIgnoreCase))
 			throw new InvalidOperationException("该工具需要在对话里逐次授权，不能在设置页直接测试。");
 		JsonElement parsed = SettingsJson.Parse(string.IsNullOrWhiteSpace(jsonArguments) ? "{}" : jsonArguments);
@@ -299,7 +294,6 @@ public sealed class McpSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>读取可编辑元数据；环境变量和请求头始终只写不读。</summary>
 	public async Task<McpServerDraft> LoadDraftAsync(McpServerItem server, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(server);
 		JsonElement config = await Service.GetMcpServerConfigAsync(server.Id, cancellationToken).ConfigureAwait(true);
 		if (!SettingsJson.IsObject(config)) throw new InvalidOperationException("MCP 服务配置已不存在，请刷新列表。");
 		return new McpServerDraft(
@@ -373,7 +367,6 @@ public sealed class McpSettingsViewModel : SettingsPageViewModelBase
 
 	private async Task<JsonElement> ExecuteConfigCommandAsync(string command, McpServerDraft draft, CancellationToken cancellationToken)
 	{
-		ArgumentNullException.ThrowIfNull(draft);
 		if (string.IsNullOrWhiteSpace(draft.Name)) throw new InvalidOperationException("MCP 服务名称不能为空。");
 		string transport = draft.Transport.Trim().ToLowerInvariant();
 		if (transport is not ("stdio" or "http" or "sse")) throw new InvalidOperationException("MCP 传输协议必须是 Stdio、HTTP 或 SSE。");

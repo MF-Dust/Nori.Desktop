@@ -13,7 +13,6 @@ internal sealed class PluginRuntimeHost : IAsyncDisposable
 
 	public PluginRuntimeHost(PluginRuntimeHostOptions options)
 	{
-		ArgumentNullException.ThrowIfNull(options);
 		ArgumentException.ThrowIfNullOrWhiteSpace(options.DataDirectory);
 		if (options.HostApiVersion.Major < 0 || options.HostApiVersion.Minor < 0)
 			throw new ArgumentOutOfRangeException(nameof(options), "插件 API 版本无效");
@@ -42,7 +41,7 @@ internal sealed class PluginRuntimeHost : IAsyncDisposable
 			OnError = options.OnError,
 			OnLog = options.OnLog,
 		});
-		_management = new PluginManagementCommands(_manager, options.MainWindowLabel, options.PackagePicker);
+		_management = new PluginManagementCommands(_manager, options.PackagePicker);
 	}
 
 	public IReadOnlyCollection<PluginInfo> Discover() => _manager.Discover();
@@ -123,7 +122,6 @@ internal sealed record PluginRuntimeHostOptions
 	public PluginVersion HostVersion { get; init; } = new(1, 0, 0);
 	public bool DevelopmentHost { get; init; }
 	public bool SafeMode { get; init; }
-	public string MainWindowLabel { get; init; } = "main";
 	public FileLogger? Logger { get; init; }
 	public IPluginPackagePicker? PackagePicker { get; init; }
 	public Action<PluginException>? OnError { get; init; }

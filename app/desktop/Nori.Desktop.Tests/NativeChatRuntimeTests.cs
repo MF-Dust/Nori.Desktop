@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Net;
 using System.Text;
@@ -132,7 +133,7 @@ public partial class BridgeCommandsTests
 	[InlineData("trusted")]
 	[InlineData("bypass")]
 	[InlineData("session")]
-	public Task RealtimeVoiceToolApprovalAlwaysRequiresFreshConsent(string gear) => WithSettingsUiAsync(async () =>
+	public Task RealtimeVoiceToolApprovalAlwaysRequiresFreshConsent(string gear) => WithRealtimeChatSourceAsync(async (source, events) =>
 	{
 		NativeChatHttpHandler handler = new();
 		using HttpClient http = new(handler);
@@ -141,7 +142,6 @@ public partial class BridgeCommandsTests
 		if (gear == "bypass")
 			_config.Set(ToolPermissionPolicy.KeyBypassUntil,
 				new ConfigValue.Text(ToolPermissionPolicy.FormatDeadline(DateTimeOffset.UtcNow.AddMinutes(10))));
-		using NativeChatTestSource source = new();
 		var started = runtime.StartRealtimeChat(source, new RealtimeVoiceTurn(90, "语音请求", CancellationToken.None));
 		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
 		for (int index = 0; index < 2; index++)
@@ -154,7 +154,7 @@ public partial class BridgeCommandsTests
 			};
 			Task<bool> pending = runtime.RequestApprovalAsync(source, started.SessionId, approval, CancellationToken.None);
 			Assert.False(pending.IsCompleted);
-			Assert.Contains(source.Events, item =>
+			Assert.Contains(events, item =>
 				item.GetProperty("type").GetString() == "approval-request"
 				&& item.GetProperty("requestId").GetString() == approval.RequestId);
 			Assert.True(runtime.RespondApproval(source, approval.RequestId, true));
@@ -166,13 +166,12 @@ public partial class BridgeCommandsTests
 	});
 
 	[Fact]
-	public Task RealtimeVoiceTurnUsesExistingNativeAgentAndCompletesBeforeReturning() => WithSettingsUiAsync(async () =>
+	public Task RealtimeVoiceTurnUsesExistingNativeAgentAndCompletesBeforeReturning() => WithRealtimeChatSourceAsync(async (source, events) =>
 	{
 		NativeChatHttpHandler handler = new();
 		using HttpClient http = new(handler);
 		await using AppRuntime runtime = CreateNativeChatRuntime(http);
 		_config.Set("tts_auto_play", new ConfigValue.Boolean(false));
-		using NativeChatTestSource source = new();
 		RealtimeVoiceTurn turn = new(7, "语音提问", CancellationToken.None);
 		var started = runtime.StartRealtimeChat(source, turn);
 		Assert.True(runtime.IsSessionActive(started.SessionId));
@@ -181,19 +180,18 @@ public partial class BridgeCommandsTests
 		handler.ReleaseStream.TrySetResult();
 		await started.Completion.WaitAsync(TimeSpan.FromSeconds(3));
 		Assert.False(runtime.IsSessionActive(started.SessionId));
-		Assert.Contains(source.Events, item => item.GetProperty("type").GetString() == "complete"
+		Assert.Contains(events, item => item.GetProperty("type").GetString() == "complete"
 			&& item.GetProperty("sessionId").GetString() == started.SessionId);
 		Assert.Equal("服务端最终文本", _services.Chat.GetHistory()[^1].Content);
 	});
 
 	[Fact]
-	public Task RealtimeVoiceInterruptCancelsLinkedAgentWithoutReplayingTurn() => WithSettingsUiAsync(async () =>
+	public Task RealtimeVoiceInterruptCancelsLinkedAgentWithoutReplayingTurn() => WithRealtimeChatSourceAsync(async (source, events) =>
 	{
 		NativeChatHttpHandler handler = new();
 		using HttpClient http = new(handler);
 		await using AppRuntime runtime = CreateNativeChatRuntime(http);
 		_config.Set("tts_auto_play", new ConfigValue.Boolean(false));
-		using NativeChatTestSource source = new();
 		using CancellationTokenSource interrupt = new();
 		RealtimeVoiceTurn turn = new(8, "可被打断的输入", interrupt.Token);
 		var started = runtime.StartRealtimeChat(source, turn);
@@ -201,11 +199,26 @@ public partial class BridgeCommandsTests
 		interrupt.Cancel();
 		await started.Completion.WaitAsync(TimeSpan.FromSeconds(3));
 		Assert.False(runtime.IsSessionActive(started.SessionId));
-		Assert.DoesNotContain(source.Events, item => item.GetProperty("type").GetString() == "complete");
+		Assert.DoesNotContain(events, item => item.GetProperty("type").GetString() == "complete");
 		Assert.Empty(_services.Chat.GetHistory());
 		Assert.ThrowsAny<OperationCanceledException>(() => runtime.StartRealtimeChat(source, turn));
 		using AgentSessionLease lease = runtime.Engine.ReserveSession("after-realtime-cancel");
 	});
+
+	private static Task WithRealtimeChatSourceAsync(Func<NativeChatContext, ConcurrentQueue<JsonElement>, Task> test) =>
+		WithSettingsUiAsync(async () =>
+		{
+			Window owner = new();
+			try
+			{
+				owner.Show();
+				using NativeChatContext source = new(owner);
+				ConcurrentQueue<JsonElement> events = new();
+				source.EventReceived += (_, payload) => events.Enqueue(JsonSerializer.SerializeToElement(payload, BridgeJson.Options));
+				await test(source, events);
+			}
+			finally { owner.Close(); }
+		});
 
 	[Fact]
 	public Task NativeChatClearCannotRaceAcceptedGenerationAndCompleteReleasesBeforeSpeech() => WithSettingsUiAsync(async () =>
@@ -352,85 +365,6 @@ public partial class BridgeCommandsTests
 		Assert.False(await decision.WaitAsync(TimeSpan.FromSeconds(2)));
 		Assert.Throws<InvalidOperationException>(() => _runtime.ExtendApproval(source, "extend-one"));
 		Assert.Empty(reopened.Events);
-	}
-
-	[Fact]
-	public async Task NativeChatHiddenNativeRuntimeCannotApproveOrExtendButCanDeny()
-	{
-		using NativeChatTestSource source = new();
-		source.IsVisible = false;
-		string requestId = "hidden-runtime";
-		TaskCompletionSource requestPosted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-		source.Received = payload =>
-		{
-			if (payload.GetProperty("type").GetString() == "approval-request"
-				&& payload.GetProperty("requestId").GetString() == requestId)
-			{
-				requestPosted.TrySetResult();
-			}
-		};
-		Task<bool> decision = _runtime.RequestApprovalAsync(source, "session", new ToolApprovalRequest
-		{
-			RequestId = requestId, ToolName = "tool", PermissionLevel = "confirm",
-		}, CancellationToken.None);
-		await requestPosted.Task.WaitAsync(TimeSpan.FromSeconds(2));
-		Assert.Throws<InvalidOperationException>(() => _runtime.RespondApproval(source, requestId, true));
-		Assert.Throws<InvalidOperationException>(() => _runtime.ExtendApproval(source, requestId));
-		Assert.True(_runtime.RespondApproval(source, requestId, false));
-		Assert.False(await decision.WaitAsync(TimeSpan.FromSeconds(2)));
-		Assert.Throws<InvalidOperationException>(() => _runtime.ExtendApproval(source, requestId));
-	}
-
-	[Fact]
-	public async Task NativeChatApprovalCommandCannotApproveOrExtendAfterVisibilityLostWhileWaitingApprovalGate()
-	{
-		using NativeChatTestSource source = new();
-		BridgeCommands commands = CreateCommands();
-		string approveRequest = "queue-hidden-approve";
-		string extendRequest = "queue-hidden-extend";
-		TaskCompletionSource approvePosted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-		TaskCompletionSource extendPosted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-		source.Received = payload =>
-		{
-			if (payload.GetProperty("type").GetString() != "approval-request") return;
-			string requestId = payload.GetProperty("requestId").GetString()!;
-			if (requestId == approveRequest) approvePosted.TrySetResult();
-			else if (requestId == extendRequest) extendPosted.TrySetResult();
-		};
-		Task<bool> approveDecision = _runtime.RequestApprovalAsync(source, "session", new ToolApprovalRequest
-		{
-			RequestId = approveRequest, ToolName = "tool", PermissionLevel = "confirm",
-		}, CancellationToken.None);
-		Task<bool> extendDecision = _runtime.RequestApprovalAsync(source, "session", new ToolApprovalRequest
-		{
-			RequestId = extendRequest, ToolName = "tool", PermissionLevel = "confirm",
-		}, CancellationToken.None);
-		await Task.WhenAll(
-			approvePosted.Task.WaitAsync(TimeSpan.FromSeconds(2)),
-			extendPosted.Task.WaitAsync(TimeSpan.FromSeconds(2)));
-		foreach ((string command, string requestId, int entryChecks) in new[]
-		{
-			("approval_respond", approveRequest, 2), ("approval_extend", extendRequest, 1),
-		})
-		{
-			using ManualResetEventSlim validated = new();
-			int reads = 0;
-			source.IsVisible = true;
-			source.VisibilityRead = () => { if (Interlocked.Increment(ref reads) == entryChecks) validated.Set(); };
-			Task<object?> queued;
-			lock (GetApprovalGate(_runtime))
-			{
-				queued = Task.Run(() => commands.InvokeAsync(source, command, Args(new { requestId, approved = true })));
-				// 入口已读到可见=true，实际提交仍阻塞在当前线程持有的锁上。
-				Assert.True(validated.Wait(TimeSpan.FromSeconds(5)));
-				source.IsVisible = false;
-			}
-			await Assert.ThrowsAsync<InvalidOperationException>(() => queued.WaitAsync(TimeSpan.FromSeconds(5)));
-			source.VisibilityRead = null;
-			Assert.True(_runtime.RespondApproval(source, requestId, false));
-		}
-		Assert.False(await approveDecision.WaitAsync(TimeSpan.FromSeconds(2)));
-		Assert.False(await extendDecision.WaitAsync(TimeSpan.FromSeconds(2)));
 	}
 
 	[Fact]

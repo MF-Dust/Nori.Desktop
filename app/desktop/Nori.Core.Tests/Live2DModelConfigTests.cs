@@ -6,11 +6,11 @@ namespace Nori.Core.Tests;
 public class Live2DModelConfigTests
 {
 	[Fact]
-	public void DisplayKeys按基键成对给出每模型键与全局键()
+	public void DisplayKeys只包含每模型键()
 	{
 		string[] keys = Live2DModelConfig.DisplayKeys("arg-nori");
 		Assert.Equal(
-			["l2d_scale_arg-nori", "l2d_scale", "l2d_opacity_arg-nori", "l2d_opacity", "l2d_shadow_arg-nori", "l2d_shadow", "l2d_render_scale_arg-nori", "l2d_render_scale", "l2d_quality_mode_arg-nori", "l2d_quality_mode", "l2d_max_fps_arg-nori", "l2d_max_fps"],
+			["l2d_scale_arg-nori", "l2d_opacity_arg-nori", "l2d_shadow_arg-nori", "l2d_render_scale_arg-nori", "l2d_quality_mode_arg-nori", "l2d_max_fps_arg-nori"],
 			keys);
 		string[] behaviorKeys = ["l2d_auto_blink", "l2d_eye_tracking", "l2d_idle_eye_animation", "l2d_idle_animation", "l2d_expression_enabled", "l2d_lip_sync", "l2d_beat_sync", "l2d_click_interaction", "l2d_click_through", "l2d_autonomous_behavior", "l2d_autonomous_random", "l2d_autonomous_frequency"];
 		Assert.Equal(behaviorKeys.Order(StringComparer.Ordinal), Live2DModelConfig.BehaviorKeys.Order(StringComparer.Ordinal));
@@ -18,10 +18,10 @@ public class Live2DModelConfigTests
 	}
 
 	[Theory]
-	[InlineData("high", "eco", "high")]
-	[InlineData("", "eco", "eco")]
+	[InlineData("quality", "eco", "quality")]
+	[InlineData("", "eco", "adaptive")]
 	[InlineData("", "", "adaptive")]
-	public void 每模型文本优先空值回退全局(string model, string global, string expected)
+	public void 每模型文本为空时使用默认值(string model, string global, string expected)
 	{
 		Dictionary<string, ConfigValue> values = new()
 		{
@@ -44,13 +44,14 @@ public class Live2DModelConfigTests
 
 	[Theory]
 	[InlineData("1", true)]
-	[InlineData("nope", false)]
-	[InlineData("", false)]
-	public void 无效或空白每模型布尔回退全局(string model, bool expected)
+	[InlineData("nope", true)]
+	[InlineData("", true)]
+	[InlineData("0", false)]
+	public void 无效或空白每模型布尔使用默认值(string model, bool expected)
 	{
 		Dictionary<string, ConfigValue> values = new()
 		{
-			["l2d_shadow_nori"] = model == "1" ? ConfigValue.FromStorage(model) : new ConfigValue.Text(model),
+			["l2d_shadow_nori"] = ConfigValue.FromStorage(model),
 			["l2d_shadow"] = ConfigValue.FromStorage("0"),
 		};
 		Assert.Equal(expected, Live2DModelConfig.ReadBool(values, Live2DModelConfig.ShadowKey, "nori", true));

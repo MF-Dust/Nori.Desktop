@@ -187,7 +187,6 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>切换技能启用状态。</summary>
 	public async Task ToggleAsync(SkillItem skill, bool enabled, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(skill);
 		await ExecuteAsync("skills_toggle", new {id = skill.Id, enabled}, cancellationToken).ConfigureAwait(true);
 		await RefreshAsync(cancellationToken).ConfigureAwait(true);
 	}
@@ -195,7 +194,6 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>安装市场技能。</summary>
 	public async Task InstallMarketplaceAsync(SkillItem skill, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(skill);
 		await ExecuteAsync("skills_install_marketplace", new {skillId = skill.Id}, cancellationToken).ConfigureAwait(true);
 		await RefreshAsync(cancellationToken).ConfigureAwait(true);
 	}
@@ -211,7 +209,6 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>保存或更新自定义技能。</summary>
 	public async Task SaveCustomAsync(SkillDraft draft, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(draft);
 		if (string.IsNullOrWhiteSpace(draft.Name)) throw new InvalidOperationException("技能名称不能为空。");
 		if (string.IsNullOrWhiteSpace(draft.Instructions)) throw new InvalidOperationException("技能指令不能为空。");
 		object skill = new
@@ -238,7 +235,6 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>卸载非内置技能。</summary>
 	public async Task UninstallAsync(SkillItem skill, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(skill);
 		if (string.Equals(skill.Source, "builtin", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("内置技能不能卸载。 ");
 		await ExecuteAsync("skills_uninstall", new {id = skill.Id}, cancellationToken).ConfigureAwait(true);
 		await RefreshAsync(cancellationToken).ConfigureAwait(true);
@@ -266,7 +262,6 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>复制为新的自定义技能。</summary>
 	public async Task DuplicateAsync(SkillItem skill, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(skill);
 		await ExecuteAsync("skills_duplicate", new {id = skill.Id}, cancellationToken).ConfigureAwait(true);
 		await RefreshAsync(cancellationToken).ConfigureAwait(true);
 	}
@@ -274,7 +269,6 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>导出已安装技能的 JSON。</summary>
 	public async Task<string> ExportJsonAsync(SkillItem skill, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(skill);
 		JsonElement result = await ExecuteAsync("skills_export", new {id = skill.Id}, cancellationToken).ConfigureAwait(true);
 		return SettingsJson.RawOrString(result);
 	}
@@ -306,7 +300,6 @@ public sealed class SkillsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>读取技能的完整指令正文。</summary>
 	public async Task<SkillItem> LoadDetailsAsync(SkillItem skill, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(skill);
 		// 未安装的市场技能正文已随目录返回，不能调用仅支持已安装条目的导出命令。
 		if (!InstalledIds.Contains(skill.Id)) return skill;
 		JsonElement result = await ExecuteAsync("skills_export", new {id = skill.Id}, cancellationToken).ConfigureAwait(true);

@@ -18,18 +18,6 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public async Task 业务命令拒绝非main窗口()
-	{
-		BridgeCommands commands = CreateCommands();
-		string[] businessCommands = ["settings_update_voice", "chat_start", "memory_clear", "reminder_add", "tts_stop"];
-		foreach (string cmd in businessCommands)
-		{
-			await Assert.ThrowsAsync<InvalidOperationException>(() =>
-				commands.InvokeAsync(new FakeBridgeSource("init"), cmd, Args(new { })));
-		}
-	}
-
-	[Fact]
 	public async Task 内置市场安装正确接线并返回脱敏技能DTO()
 	{
 		BridgeCommands commands = CreateCommands();
@@ -48,19 +36,6 @@ public partial class BridgeCommandsTests
 		var installed = Assert.Single(_runtime.Skills.GetInstalled(), skill => skill.Id == "gaming-partner");
 		Assert.Equal("market", installed.Source);
 		Assert.True(installed.Enabled);
-	}
-
-	[Fact]
-	public async Task 内置市场安装只允许可见main()
-	{
-		BridgeCommands commands = CreateCommands();
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Init), "skills_install_marketplace",
-				Args(new {skillId = "gaming-partner"})));
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main, false), "skills_install_marketplace",
-				Args(new {skillId = "gaming-partner"})));
-		Assert.DoesNotContain(_runtime.Skills.GetInstalled(), skill => skill.Id == "gaming-partner");
 	}
 
 	[Fact]
@@ -101,6 +76,15 @@ public partial class BridgeCommandsTests
 		Assert.Equal($"未在市场中找到技能 ID: {skillId}", error.Message);
 		Assert.DoesNotContain(_runtime.Skills.GetInstalled(), skill => skill.Id == skillId);
 	}
+
+	[Fact]
+	public Task 原生窗口仍限制跨领域命令() => WithSettingsUiAsync(async () =>
+	{
+		using Nori.Desktop.Settings.SettingsService settings = new(_services, new Avalonia.Controls.Window());
+		InvalidOperationException denied = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			settings.ExecuteAsync("memory_clear", new {confirmToken = "CLEAR_PERSONAL_MEMORY"}));
+		Assert.Contains("当前窗口不允许", denied.Message, StringComparison.Ordinal);
+	});
 
 	[Fact]
 	public async Task tools_execute_manual非safe工具拒绝()

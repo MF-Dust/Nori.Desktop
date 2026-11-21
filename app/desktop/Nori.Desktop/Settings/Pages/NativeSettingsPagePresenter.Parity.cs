@@ -148,8 +148,8 @@ public sealed partial class NativeSettingsPagePresenter
 	{
 		AutomationStateModel state = viewModel.State;
 		StackPanel settings = CardBody(NativeSettingsResources.Get("automation.enabled"), state.UnavailableReason);
-		settings.Children.Add(ToggleRow(viewModel, NativeSettingsResources.Get("automation.enabled"), state.Enabled, value => viewModel.UpdateFrontendTogglesAsync(enabled: value), viewModel.CanConfigure));
-		settings.Children.Add(ToggleRow(viewModel, ParityText("桌面自动化", "Desktop automation"), viewModel.DesktopEnabled, value => viewModel.UpdateFrontendTogglesAsync(desktopEnabled: value), viewModel.CanConfigure && state.Enabled));
+		settings.Children.Add(ToggleRow(viewModel, NativeSettingsResources.Get("automation.enabled"), state.Enabled, value => viewModel.UpdateSettingsAsync(enabled: value), viewModel.CanConfigure));
+		settings.Children.Add(ToggleRow(viewModel, ParityText("桌面自动化", "Desktop automation"), viewModel.DesktopEnabled, value => viewModel.UpdateSettingsAsync(desktopEnabled: value), viewModel.CanConfigure && state.Enabled));
 		settings.Children.Add(ToggleRow(viewModel, NativeSettingsResources.Get("automation.pointer"), state.AllowPointer, value => viewModel.UpdateSettingsAsync(allowPointer: value), viewModel.CanConfigure && state.Enabled));
 		settings.Children.Add(ToggleRow(viewModel, NativeSettingsResources.Get("automation.keyboard"), state.AllowKeyboard, value => viewModel.UpdateSettingsAsync(allowKeyboard: value), viewModel.CanConfigure && state.Enabled));
 		settings.Children.Add(ToggleRow(viewModel, NativeSettingsResources.Get("automation.scroll"), state.AllowScroll, value => viewModel.UpdateSettingsAsync(allowScroll: value), viewModel.CanConfigure && state.Enabled));

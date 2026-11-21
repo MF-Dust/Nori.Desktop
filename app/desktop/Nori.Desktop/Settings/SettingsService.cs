@@ -1,337 +1,36 @@
-using System.Collections.Frozen;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Nori.Core.Agent;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Diagnostics;
+using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Settings;
 
-/// <summary>
-/// 原生设置窗口共享服务。
-///
-/// 设置窗口通过明确的 native settings 上下文和命令白名单调用 BridgeCommands。
-/// 所有桥接调用放到后台执行，UI 文件选择等操作仍由既有命令回切 Avalonia UI 线程。
-/// </summary>
-public sealed class SettingsService : IDisposable
+/// <summary>原生设置窗口共享服务。</summary>
+public sealed class SettingsService : NativeBridgeServiceBase
 {
 	/// <summary>原生插件操作的风险确认配置键。</summary>
 	internal const string PluginTrustConfigKey = "plugins_native_trust_confirmed";
 
-	private static readonly FrozenSet<string> AllowedCommands = new[]
-	{
-		// 账户与云端同步。前三个只是打开窗口或清本机凭据；后两个会动数据，
-		// 但删除与冲突处置留在同步窗口里，这里只是入口。
-		"account_open",
-		"account_sign_out",
-		"cloud_open",
-		"cloud_backup",
-		"cloud_restore",
-		"ai_test_connection",
-		"llm_fetch_models",
-		"llm_model_info",
-		"settings_update_ai_providers",
-		"settings_update_voice",
-		"settings_ack_voice_notice",
-		"indextts_pick_template",
-		"indextts_clone_voice",
-		"tts_test",
-		"tts_stop",
-		"stt_start",
-		"stt_stop",
-		"realtime_voice_start",
-		"realtime_voice_stop",
-		"realtime_voice_interrupt",
-		"realtime_voice_status",
-		"settings_update_workspace",
-		"settings_pick_workspace",
-		"settings_pick_splash_background",
-		"settings_update_tasks",
-		"settings_update_notifications",
-		"settings_update_permission",
-		"settings_update_screen",
-		"settings_update_expression",
-		"settings_update_proactive",
-		"reminder_add",
-		"reminder_cancel",
-		"reminder_update",
-		"reminder_list",
-		"focus_start",
-		"focus_pause",
-		"focus_resume",
-		"focus_end",
-		"focus_view",
-		"settings_update_automation",
-		"automation_get_snapshot",
-		"automation_update_settings",
-		"automation_probe_vision",
-		"automation_stop_task",
-		"automation_stop_all",
-		"automation_audit_list",
-		"approval_respond",
-		"skills_marketplace",
-		"skills_install_marketplace",
-		"skills_toggle",
-		"skills_install_url",
-		"skills_save_custom",
-		"skills_uninstall",
-		"skills_export",
-		"skills_import_preview",
-		"skills_import_commit",
-		"skills_duplicate",
-		"mcp_get_servers",
-		"mcp_save_server",
-		"mcp_delete_server",
-		"mcp_connect_server",
-		"mcp_disconnect_server",
-		"mcp_test_server",
-		"mcp_call_tool",
-		"mcp_import_url",
-		"mcp_import_preview",
-		"mcp_import_commit",
-		"tools_set_enabled",
-		"tools_execute_manual",
-		"plugin_list",
-		"plugin_install_local",
-		"plugin_enable",
-		"plugin_disable",
-		"plugin_reload",
-		"plugin_uninstall",
-		"settings_get_plugin_trust",
-		"settings_set_plugin_trust",
-		"get_recent_logs",
-		"get_logging_status",
-		"set_logging_level",
-		"clear_recent_logs",
-		"get_diagnostic_info",
-		"export_diagnostics",
-		"open_log_folder",
-		"clipboard_write_text",
-		"open_url",
-		"settings_update_general",
-		"model_set_behavior",
-		"updater_check",
-		"updater_install",
-		"updater_cancel",
-		"updater_restart",
-		"about_list_contributors",
-	}.ToFrozenSet(StringComparer.Ordinal);
-
-	private readonly AppServices _services;
-	private readonly SettingsContext _context;
-	private readonly BridgeCommandRouter _router;
-	private readonly Action _executionChanged;
-	private int _disposed;
-
-	/// <summary>设置状态变化通知；调用方负责在 UI 线程刷新控件。</summary>
-	public event Action? StateChanged;
-
 	/// <summary>执行记录有新事件。可能在后台线程触发，界面必须自行切回 UI 线程。</summary>
 	public event Action? AgentExecutionChanged;
 
+	private void RaiseAgentExecutionChanged() => AgentExecutionChanged?.Invoke();
+
 	/// <summary>创建与指定原生窗口绑定的设置服务。</summary>
 	public SettingsService(AppServices services, Window owner)
+		: base(services, new WindowContext(owner, WindowLabels.Settings))
 	{
-		_services = services ?? throw new ArgumentNullException(nameof(services));
-		_context = new SettingsContext(owner ?? throw new ArgumentNullException(nameof(owner)));
-		_router = new BridgeCommandRouter(services);
-		_executionChanged = () => AgentExecutionChanged?.Invoke();
-		services.AgentExecution.Changed += _executionChanged;
-		if (services.Runtime is { } runtime) runtime.StateChanged += OnRuntimeStateChanged;
-		if (services.PluginRuntime is { } plugins) plugins.ContributionsChanged += OnRuntimeStateChanged;
+		services.AgentExecution.Changed += RaiseAgentExecutionChanged;
+		if (services.PluginRuntime is { } plugins) plugins.ContributionsChanged += RaiseStateChanged;
 	}
 
-	/// <summary>允许原生设置窗口执行的命令集合。</summary>
-	public static IReadOnlySet<string> Commands => AllowedCommands;
+	protected override string StateNotificationFailureMessage => "设置窗口状态通知失败";
 
-	/// <summary>
-	/// 执行一个设置领域命令并返回桥接层同形 JSON。
-	/// 原生设置页通过本服务执行，不接受任意来源直接调用。
-	/// </summary>
-	public async Task<JsonElement> ExecuteAsync(
-		string command,
-		object? args = null,
-		CancellationToken cancellationToken = default)
-	{
-		ThrowIfDisposed();
-		if (string.IsNullOrWhiteSpace(command) || !AllowedCommands.Contains(command))
-			throw new InvalidOperationException($"原生设置窗口不允许执行命令: {command}");
-
-		JsonElement commandArgs = ToArgsElement(args);
-		int snapshotVersion = _services.Runtime?.SnapshotVersion ?? 0;
-		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
-			cancellationToken,
-			_services.ShutdownToken);
-		object? result = await Task.Run(
-			async () =>
-			{
-				if (command is "settings_get_plugin_trust" or "settings_set_plugin_trust")
-					return ExecutePluginTrust(command, commandArgs);
-				return await _router.InvokeAsync(_context, command, commandArgs, linked.Token).ConfigureAwait(false);
-			},
-			linked.Token).ConfigureAwait(false);
-		linked.Token.ThrowIfCancellationRequested();
-		// 业务命令通常会通过 Runtime.InvalidateSnapshot 发出通知；只有没有改变快照
-		// 版本的命令才由服务补发，避免一次保存触发两次设置页刷新。
-		if (IsStateChangingCommand(command)
-			&& (_services.Runtime is null || _services.Runtime.SnapshotVersion == snapshotVersion))
-			RaiseStateChanged();
-		return ToJsonElement(result);
-	}
-
-	/// <summary>读取脱敏运行时快照。</summary>
-	public async Task<JsonElement> GetSnapshotAsync(CancellationToken cancellationToken = default)
-	{
-		ThrowIfDisposed();
-		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
-			cancellationToken,
-			_services.ShutdownToken);
-		object snapshot = await Task.Run(
-			() => (_services.Runtime ?? throw new InvalidOperationException("应用运行时尚未就绪")).BuildSnapshot(),
-			linked.Token).ConfigureAwait(false);
-		linked.Token.ThrowIfCancellationRequested();
-		return ToJsonElement(snapshot);
-	}
-
-	/// <summary>读取并反序列化设置快照的稳定外壳。</summary>
-	public async Task<SettingsSnapshotDto?> GetSnapshotDtoAsync(CancellationToken cancellationToken = default)
-	{
-		JsonElement snapshot = await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-		return snapshot.Deserialize<SettingsSnapshotDto>(BridgeJson.Options);
-	}
-
-	/// <summary>执行命令并反序列化为调用方指定的结果 DTO。</summary>
-	public async Task<T?> ExecuteTypedAsync<T>(
-		string command,
-		object? args = null,
-		CancellationToken cancellationToken = default)
-	{
-		JsonElement result = await ExecuteAsync(command, args, cancellationToken).ConfigureAwait(false);
-		return result.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
-			? default
-			: result.Deserialize<T>(BridgeJson.Options);
-	}
-
-	/// <summary>更新 AI 对话与 Embedding 配置。</summary>
-	public Task<JsonElement> UpdateAiAsync(SettingsAiPatchDto patch, CancellationToken cancellationToken = default) =>
-		ExecuteAsync("settings_update_ai_providers", patch, cancellationToken);
-
-	/// <summary>更新语音配置。</summary>
-	public Task<JsonElement> UpdateVoiceAsync(SettingsVoicePatchDto patch, CancellationToken cancellationToken = default) =>
-		ExecuteAsync("settings_update_voice", patch, cancellationToken);
-
-	/// <summary>更新通用配置。</summary>
-	public Task<JsonElement> UpdateGeneralAsync(SettingsGeneralPatchDto patch, CancellationToken cancellationToken = default) =>
-		ExecuteAsync("settings_update_general", patch, cancellationToken);
-
-	/// <summary>更新主动行为配置。</summary>
-	public Task<JsonElement> UpdateProactiveAsync(SettingsProactivePatchDto patch, CancellationToken cancellationToken = default) =>
-		ExecuteAsync("settings_update_proactive", patch, cancellationToken);
-
-	/// <summary>更新自动化总开关。</summary>
-	public Task<JsonElement> UpdateAutomationAsync(SettingsAutomationPatchDto patch, CancellationToken cancellationToken = default) =>
-		ExecuteAsync("settings_update_automation", patch, cancellationToken);
-
-	/// <summary>读取不持有插件对象的页面元数据；设置侧栏页与独立窗口页分开。</summary>
-	public IReadOnlyList<Nori.Desktop.Windows.PluginPageInfo> PluginSettingsPages =>
-		(_services.Windows as Nori.Desktop.Windows.WindowManager)?.PluginPagesController?.SettingsPages ?? [];
-
-	/// <summary>可由插件管理页打开的独立窗口页面。</summary>
-	public IReadOnlyList<Nori.Desktop.Windows.PluginPageInfo> PluginPages =>
-		(_services.Windows as Nori.Desktop.Windows.WindowManager)?.PluginPages ?? [];
-
-	/// <summary>通过原生窗口管理器打开页面，不增加动态桥接命令。</summary>
-	public async Task OpenPluginPageAsync(string pluginId, string pageId)
-	{
-		ThrowIfDisposed();
-		await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
-		{
-			if (!_context.IsVisible) throw new InvalidOperationException("设置窗口不可见");
-			(_services.Windows as Nori.Desktop.Windows.WindowManager
-				?? throw new InvalidOperationException("插件页面宿主尚未就绪")).OpenPluginPage(pluginId, pageId);
-		});
-	}
-
-	/// <summary>读取插件列表。</summary>
-	public Task<JsonElement> ListPluginsAsync(CancellationToken cancellationToken = default) =>
-		ExecuteAsync("plugin_list", cancellationToken: cancellationToken);
-
-	/// <summary>读取原生 MCP 编辑器需要的配置元数据，不包含环境变量秘密。</summary>
-	public async Task<JsonElement> GetMcpServerConfigAsync(string id, CancellationToken cancellationToken = default)
-	{
-		ThrowIfDisposed();
-		bool visible = await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => _context.IsVisible);
-		if (!visible) throw new InvalidOperationException("设置窗口不可见");
-		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _services.ShutdownToken);
-		object config = await Task.Run(() => (object?)_services.Mcp.GetServerConfigs().FirstOrDefault(item => item.Id == id)
-			?? throw new InvalidOperationException("MCP 服务不存在"), linked.Token).ConfigureAwait(false);
-		linked.Token.ThrowIfCancellationRequested();
-		return ToJsonElement(config);
-	}
-
-	/// <summary>读取 MCP 服务器列表。</summary>
-	public Task<JsonElement> GetMcpServersAsync(CancellationToken cancellationToken = default) =>
-		ExecuteAsync("mcp_get_servers", cancellationToken: cancellationToken);
-
-	/// <summary>读取自动化运行时状态。</summary>
-	public Task<JsonElement> GetAutomationSnapshotAsync(CancellationToken cancellationToken = default) =>
-		ExecuteAsync("automation_get_snapshot", cancellationToken: cancellationToken);
-
-	/// <summary>读取进程内插件风险确认状态。</summary>
-	public Task<SettingsPluginTrustDto?> GetPluginTrustAsync(CancellationToken cancellationToken = default) =>
-		ExecuteTypedAsync<SettingsPluginTrustDto>("settings_get_plugin_trust", cancellationToken: cancellationToken);
-
-	/// <summary>保存进程内插件风险确认状态。</summary>
-	public Task<JsonElement> SetPluginTrustAsync(bool confirmed, CancellationToken cancellationToken = default) =>
-		ExecuteAsync("settings_set_plugin_trust", new {confirmed}, cancellationToken);
-
-	/// <summary>检查命令是否属于原生设置权限范围。</summary>
-	public static bool IsCommandAllowed(string command) =>
-		!string.IsNullOrWhiteSpace(command) && AllowedCommands.Contains(command);
-
-	private void OnRuntimeStateChanged() => RaiseStateChanged();
-
-	private object ExecutePluginTrust(string command, JsonElement args)
-	{
-		if (!_context.IsVisible) throw new InvalidOperationException("设置窗口不可见");
-		if (command == "settings_get_plugin_trust")
-			return new {confirmed = _services.Config.GetBoolOr(PluginTrustConfigKey, false)};
-
-		if (args.ValueKind != JsonValueKind.Object
-			|| !args.TryGetProperty("confirmed", out JsonElement value)
-			|| value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-		{
-			throw new InvalidOperationException("缺少参数: confirmed");
-		}
-
-		bool confirmed = value.GetBoolean();
-		_services.Config.Set(PluginTrustConfigKey, new Nori.Core.Configuration.ConfigValue.Text(confirmed ? "1" : "0"));
-		if (_services.Runtime is { } runtime) runtime.InvalidateSnapshot();
-		else RaiseStateChanged();
-		return new {confirmed};
-	}
-
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "设置状态通知失败不能阻断保存流程。")]
-	private void RaiseStateChanged()
-	{
-		if (Volatile.Read(ref _disposed) != 0) return;
-		Action? handlers = StateChanged;
-		if (handlers is null) return;
-		foreach (Action handler in handlers.GetInvocationList().Cast<Action>())
-		{
-			try { handler(); }
-			catch (Exception exception)
-			{
-				try { _services.Logger.Write(Nori.Core.Logging.LogSource.Backend, "warn", "设置窗口状态通知失败", exception: exception); }
-				catch { }
-			}
-		}
-	}
-
-	private static bool IsStateChangingCommand(string command) =>
+	protected override bool IsStateChangingCommand(string command) =>
 		command.StartsWith("settings_update_", StringComparison.Ordinal)
-		|| command.StartsWith("settings_ack_", StringComparison.Ordinal)
 		|| command is "indextts_clone_voice"
 			or "tts_stop"
 			or "stt_start"
@@ -364,50 +63,54 @@ public sealed class SettingsService : IDisposable
 			or "updater_restart"
 			or "model_set_behavior";
 
-	private static JsonElement ToArgsElement(object? args)
+	/// <summary>读取不持有插件对象的页面元数据；设置侧栏页与独立窗口页分开。</summary>
+	public IReadOnlyList<PluginPageInfo> PluginSettingsPages =>
+		(Services.Windows as WindowManager)?.PluginPagesController?.SettingsPages ?? [];
+
+	/// <summary>可由插件管理页打开的独立窗口页面。</summary>
+	public IReadOnlyList<PluginPageInfo> PluginPages =>
+		(Services.Windows as WindowManager)?.PluginPages ?? [];
+
+	/// <summary>通过原生窗口管理器打开插件页面。</summary>
+	public async Task OpenPluginPageAsync(string pluginId, string pageId)
 	{
-		if (args is JsonElement element)
-			return element.ValueKind == JsonValueKind.Undefined ? EmptyObject() : element.Clone();
-		if (args is JsonNode node) return ToJsonElement(node);
-		return args is null ? EmptyObject() : ToJsonElement(args);
+		ThrowIfDisposed();
+		await Dispatcher.UIThread.InvokeAsync(() =>
+		{
+			(Services.Windows as WindowManager
+				?? throw new InvalidOperationException("插件页面宿主尚未就绪")).OpenPluginPage(pluginId, pageId);
+		});
 	}
 
-	private static JsonElement EmptyObject() => ToJsonElement(new Dictionary<string, object?>());
-
-	private static JsonElement ToJsonElement(object? value)
+	/// <summary>读取原生 MCP 编辑器需要的配置元数据，不包含环境变量秘密。</summary>
+	public async Task<JsonElement> GetMcpServerConfigAsync(string id, CancellationToken cancellationToken = default)
 	{
-		string json = JsonSerializer.Serialize(value, BridgeJson.Options);
-		using JsonDocument document = JsonDocument.Parse(json);
-		return document.RootElement.Clone();
+		ThrowIfDisposed();
+		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, Services.ShutdownToken);
+		object config = await Task.Run(() => (object?)Services.Mcp.GetServerConfigs().FirstOrDefault(item => item.Id == id)
+			?? throw new InvalidOperationException("MCP 服务不存在"), linked.Token).ConfigureAwait(false);
+		linked.Token.ThrowIfCancellationRequested();
+		return JsonSerializer.SerializeToElement(config, BridgeJson.Options);
 	}
 
 	/// <summary>读取当前内存中的执行记录。不触发模型或网络。</summary>
 	internal AgentExecutionSnapshot ReadAgentExecution()
 	{
 		ThrowIfDisposed();
-		return _services.AgentExecution.Snapshot();
+		return Services.AgentExecution.Snapshot();
 	}
 
 	/// <summary>读取已有伴侣渲染统计。不加载模型，不创建视窗，也不启动渲染。</summary>
 	internal Live2DPerformanceSnapshot ReadLive2DPerformance()
 	{
 		ThrowIfDisposed();
-		return Live2DPerformanceSnapshot.Capture(_services.PetRuntime, _services.SafeMode, Live2DPerformanceSnapshot.TryWorkingSet());
+		return Live2DPerformanceSnapshot.Capture(Services.PetRuntime, Services.SafeMode, Live2DPerformanceSnapshot.TryWorkingSet());
 	}
 
-	private void ThrowIfDisposed()
+	protected override void OnDisposing()
 	{
-		ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-	}
-
-	public void Dispose()
-	{
-		if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-		_services.AgentExecution.Changed -= _executionChanged;
+		Services.AgentExecution.Changed -= RaiseAgentExecutionChanged;
 		AgentExecutionChanged = null;
-		if (_services.Runtime is { } runtime) runtime.StateChanged -= OnRuntimeStateChanged;
-		if (_services.PluginRuntime is { } plugins) plugins.ContributionsChanged -= OnRuntimeStateChanged;
-		_context.Dispose();
-		StateChanged = null;
+		if (Services.PluginRuntime is { } plugins) plugins.ContributionsChanged -= RaiseStateChanged;
 	}
 }

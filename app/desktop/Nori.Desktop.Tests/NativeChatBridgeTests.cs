@@ -12,7 +12,7 @@ namespace Nori.Desktop.Tests;
 
 public partial class BridgeCommandsTests
 {
-	private sealed class NativeChatTestSource : INativeChatSource, IDisposable
+	private sealed class NativeChatTestSource : IBridgeSource, IDisposable
 	{
 		private readonly CancellationTokenSource _lifetime = new();
 		private int _disposed;
@@ -22,13 +22,6 @@ public partial class BridgeCommandsTests
 			LifetimeToken = _lifetime.Token;
 		}
 		public string Label { get; }
-		private volatile bool _visible = true;
-		public Action? VisibilityRead { get; set; }
-		public bool IsVisible
-		{
-			get { bool visible = _visible; VisibilityRead?.Invoke(); return visible; }
-			set => _visible = value;
-		}
 		public Window? Self => null;
 		public CancellationToken LifetimeToken { get; }
 		public ConcurrentQueue<JsonElement> Events { get; } = new();
@@ -39,37 +32,11 @@ public partial class BridgeCommandsTests
 			Events.Enqueue(value);
 			Received?.Invoke(value);
 		}
-		public void PostResult(long id, object? value, string? error) { }
 		public void Dispose()
 		{
 			if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 			_lifetime.Cancel();
 			_lifetime.Dispose();
-		}
-	}
-
-	[Fact]
-	public async Task NativeChatWhitelistAndTrustedIdentityAreEnforcedAtBothEntries()
-	{
-		string[] allowed =
-		[
-			"approval_extend", "approval_respond", "chat_cancel", "chat_clear", "chat_history_page",
-			"chat_open_generated_image", "chat_read_generated_image", "chat_start",
-			"clipboard_write_text", "open_url", "stt_start", "stt_stop", "tts_stop",
-		];
-		Assert.Equal(allowed, NativeChatService.Commands.Order(StringComparer.Ordinal));
-		using NativeChatTestSource native = new();
-		foreach (string command in new[] {"plugin_action", "plugin_widgets", "settings_update_ai", "audio_host_ready", "ui_get_snapshot", "chat_future"})
-		{
-			Assert.False(NativeChatService.IsCommandAllowed(command));
-			await Assert.ThrowsAsync<InvalidOperationException>(() => CreateCommands().InvokeAsync(native, command, Args(new { })));
-			await Assert.ThrowsAsync<InvalidOperationException>(() => new BridgeCommandRouter(_services).InvokeAsync(native, command, Args(new { })));
-		}
-		foreach (IBridgeSource spoof in new IBridgeSource[] {new FakeBridgeSource(WindowLabels.Chat), new NativeChatTestSource(WindowLabels.Main)})
-		{
-			await Assert.ThrowsAsync<InvalidOperationException>(() => CreateCommands().InvokeAsync(spoof, "chat_history_page", Args(new { })));
-			await Assert.ThrowsAsync<InvalidOperationException>(() => CreateCommands().InvokeAsync(spoof, "chat_start", Args(new {text = "你好"})));
-			await Assert.ThrowsAsync<InvalidOperationException>(() => CreateCommands().InvokeAsync(spoof, "open_url", Args(new {url = "https://example.test"})));
 		}
 	}
 
@@ -103,22 +70,6 @@ public partial class BridgeCommandsTests
 		Assert.Equal("最近一条", page[1].GetProperty("content").GetString());
 		JsonElement older = JsonSerializer.SerializeToElement(await CreateCommands().InvokeAsync(source, "chat_history_page", Args(new {limit = 2, beforeId = page[0].GetProperty("id").GetInt64()})), BridgeJson.Options);
 		Assert.Equal("最早一条", Assert.Single(older.EnumerateArray()).GetProperty("content").GetString());
-	}
-
-	[Fact]
-	public async Task NativeChatHiddenApprovalAllowsDenialButNotApprovalOrExtension()
-	{
-		using NativeChatTestSource source = new();
-		Task<bool> decision = _runtime.RequestApprovalAsync(source, "session", new ToolApprovalRequest
-		{
-			RequestId = "hidden-approval", ToolName = "tool", PermissionLevel = "confirm",
-		}, CancellationToken.None);
-		source.IsVisible = false;
-		BridgeCommands commands = CreateCommands();
-		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(source, "approval_respond", Args(new {requestId = "hidden-approval", approved = true})));
-		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(source, "approval_extend", Args(new {requestId = "hidden-approval"})));
-		Assert.True(Assert.IsType<bool>(await commands.InvokeAsync(source, "approval_respond", Args(new {requestId = "hidden-approval", approved = false}))));
-		Assert.False(await decision.WaitAsync(TimeSpan.FromSeconds(2)));
 	}
 
 	[Fact]

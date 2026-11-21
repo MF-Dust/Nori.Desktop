@@ -133,20 +133,6 @@ public partial class BridgeCommandsTests
 		Assert.False(workspace.GetProperty("available").GetBoolean());
 	}
 
-	/// <summary>
-	/// 原生设置页经 SettingsService 白名单调用，工作目录、任务与表达通道命令必须在白名单里，
-	/// 否则界面上的按钮点了会报「不允许执行」。
-	/// </summary>
-	[Theory]
-	[InlineData("settings_update_workspace")]
-	[InlineData("settings_pick_workspace")]
-	[InlineData("settings_pick_splash_background")]
-	[InlineData("settings_update_tasks")]
-	[InlineData("settings_update_expression")]
-	public void 原生设置白名单包含领域命令(string command)
-	{
-		Assert.Contains(command, SettingsService.Commands);
-	}
 	// ---- 情绪表达 ----
 
 	/// <summary>
@@ -351,34 +337,17 @@ public partial class BridgeCommandsTests
 		finally { window.Close(); }
 	});
 
-	[Fact]
-	public Task NativeSettingsServiceRejectsCommandsOutsideSettingsPolicy() => WithSettingsUiAsync(async () =>
-	{
-		using SettingsService settings = new(_services, new Window());
-
-		await Assert.ThrowsAsync<InvalidOperationException>(() => settings.ExecuteAsync("chat_start", new {text = "不能从设置窗口发起聊天"}));
-		await Assert.ThrowsAsync<InvalidOperationException>(() => settings.ExecuteAsync("window_open_settings", new {page = "ai"}));
-	});
-
 	[Theory]
 	[InlineData("run_gc_collect")]
 	[InlineData("debug_crash_test")]
 	[InlineData("write_log")]
-	public Task RemovedDiagnosticCommandsAreUnknownAndRejectedBySettingsPolicy(string command) => WithSettingsUiAsync(async () =>
+	public async Task RemovedDiagnosticCommandsAreUnknown(string command)
 	{
 		FakeBridgeSource main = new(WindowLabels.Main);
-		// 不传崩溃模式或事件参数，回归测试只检查已移除的命令入口。
 		JsonElement args = Args(new { });
 		InvalidOperationException direct = await Assert.ThrowsAsync<InvalidOperationException>(() => CreateCommands().InvokeAsync(main, command, args));
 		Assert.Equal($"未知的命令: {command}", direct.Message);
-		InvalidOperationException routed = await Assert.ThrowsAsync<InvalidOperationException>(() => new BridgeCommandRouter(_services).InvokeAsync(main, command, args));
-		Assert.Equal($"未知的命令: {command}", routed.Message);
-
-		Assert.False(SettingsService.IsCommandAllowed(command));
-		using SettingsService settings = new(_services, new Window());
-		InvalidOperationException denied = await Assert.ThrowsAsync<InvalidOperationException>(() => settings.ExecuteAsync(command, args));
-		Assert.Contains("原生设置窗口不允许执行命令", denied.Message, StringComparison.Ordinal);
-	});
+	}
 
 	[Fact]
 	public Task NativeSettingsThemeInitializesControlTemplates() => WithSettingsUiAsync(() =>

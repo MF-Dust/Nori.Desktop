@@ -11,10 +11,6 @@ namespace Nori.Core.Voice;
 /// </summary>
 public sealed class VoiceService : IDisposable
 {
-	/// <summary>已停用的浏览器语音提供商集合。</summary>
-	public static readonly IReadOnlySet<string> RetiredProviders =
-		new HashSet<string>(StringComparer.OrdinalIgnoreCase) {"web_speech", "edge_tts"};
-
 	private readonly HttpClient _httpClient;
 	private readonly ConfigStore _config;
 	private readonly IAudioPlayback? _playback;
@@ -296,23 +292,17 @@ public sealed class VoiceService : IDisposable
 		return $"{providerName}:{endpoint.Trim().TrimEnd('/') }";
 	}
 
-	/// <summary>按名称构造 TTS 提供商；已停用的浏览器路径给出明确错误。</summary>
-	public ITtsProvider CreateProvider(string name)
+	/// <summary>按名称构造 TTS 提供商。</summary>
+	public ITtsProvider CreateProvider(string name) => name switch
 	{
-		if (RetiredProviders.Contains(name))
-		{
-			throw new InvalidOperationException($"语音提供商 {name} 依赖浏览器能力, 已在纯后端版本中停用, 请改用 OpenAI / Gemini / MiniMax / IndexTTS-2 / 自定义 HTTP / GPT-SoVITS");
-		}
-		return name switch
-		{
-			"gemini" => new GeminiTtsProvider(_httpClient, _config),
-			"minimax" => new MiniMaxTtsProvider(_httpClient, _config),
-			"indextts" => new IndexTtsProvider(_httpClient, _config, _paths),
-			"gpt_sovits" => new GptSoVitsTtsProvider(_httpClient, _config),
-			"custom" => new CustomHttpTtsProvider(_httpClient, _config),
-			_ => new OpenAiTtsProvider(_httpClient, _config),
-		};
-	}
+		"gemini" => new GeminiTtsProvider(_httpClient, _config),
+		"minimax" => new MiniMaxTtsProvider(_httpClient, _config),
+		"indextts" => new IndexTtsProvider(_httpClient, _config, _paths),
+		"gpt_sovits" => new GptSoVitsTtsProvider(_httpClient, _config),
+		"custom" => new CustomHttpTtsProvider(_httpClient, _config),
+		"openai" => new OpenAiTtsProvider(_httpClient, _config),
+		_ => throw new InvalidOperationException("不支持当前 TTS 服务商，请在语音设置中重新选择"),
+	};
 
 	// ---- 录音识别 ----
 
@@ -335,13 +325,6 @@ public sealed class VoiceService : IDisposable
 		if (audio.Bytes.Length == 0) return "";
 		return await new WhisperSttProvider(_httpClient, _config).TranscribeAsync(audio, cancellationToken);
 	}
-
-	// ---- 迁移检测 ----
-
-	/// <summary>检测旧版浏览器语音配置是否需要一次性提示。</summary>
-	public bool HasRetiredVoiceConfig() =>
-		RetiredProviders.Contains(ResolveProviderName())
-		|| RetiredProviders.Contains(_config.GetStringOr("stt_provider", ""));
 
 	/// <summary>读取数值配置，非法时回退。</summary>
 	private double ReadDoubleConfig(string key, double fallback) =>

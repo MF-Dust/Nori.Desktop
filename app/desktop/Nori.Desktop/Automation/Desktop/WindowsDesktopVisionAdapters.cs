@@ -76,8 +76,6 @@ public sealed class WindowsDesktopVisionActionExecutor : IDesktopVisionActionExe
 		AutomationPolicy policy,
 		CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(action);
-		ArgumentNullException.ThrowIfNull(policy);
 		cancellationToken.ThrowIfCancellationRequested();
 		WindowsTargetValidationResult validation = _windows.ValidateTarget(targetWindow);
 		if (validation.Rejection == WindowsTargetRejection.NotForeground)

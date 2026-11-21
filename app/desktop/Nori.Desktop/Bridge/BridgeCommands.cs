@@ -13,16 +13,16 @@ using Nori.Desktop.Automation;
 using Nori.Desktop.Diagnostics;
 using Nori.Desktop.Chat;
 using Nori.Desktop.Runtime;
+using Nori.Desktop.Settings;
+using Nori.Desktop.Windows;
+using Nori.PluginRuntime;
 using MemoryService = Nori.Desktop.Memory.MemoryService;
 using ModelService = Nori.Desktop.Models.ModelService;
-using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Bridge;
 
 /// <summary>
-/// 桥接命令。
-///
-/// 生产入口是设置、对话、模型、记忆四个原生窗口的白名单。
+/// 桥接命令分发器。
 /// 秘密只写不读。命令名保持 snake_case 且动词开头。
 /// </summary>
 public sealed partial class BridgeCommands
@@ -38,7 +38,14 @@ public sealed partial class BridgeCommands
 	public BridgeCommands(AppServices services, IUiDispatcher uiDispatcher)
 	{
 		_services = services;
-		_uiDispatcher = uiDispatcher ?? throw new ArgumentNullException(nameof(uiDispatcher));
+		_uiDispatcher = uiDispatcher;
+	}
+
+	private object ChangeFocus(Action update)
+	{
+		update();
+		Runtime.PublishFocus();
+		return Runtime.DescribeFocus();
 	}
 
 	private AppRuntime Runtime => _services.Runtime
@@ -57,205 +64,174 @@ public sealed partial class BridgeCommands
 		CancellationToken cancellationToken = default)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
-		MemoryService.ValidateSourceCommand(source, cmd);
-		ModelService.ValidateSourceCommand(source, cmd);
-		NativeChatService.ValidateSourceCommand(source, cmd);
+		NativeBridgePolicy.Validate(source, cmd);
+		if (_services.SafeMode && cmd is ("focus_start" or "focus_resume"))
+			throw new InvalidOperationException("安全模式已禁用开始或继续专注");
 		if (_services.SafeMode && IsNetworkCommand(cmd, args))
 		{
 			throw new InvalidOperationException("安全模式已禁用联网和外部服务，请退出安全模式后重试");
 		}
+		if (source is WindowContext { Self: { } owner } && NativeBridgePolicy.RequiresVisibleWindow(cmd)
+			&& !await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => owner.IsVisible))
+			throw new InvalidOperationException("来源窗口不可见");
+		if (cmd.StartsWith("plugin_", StringComparison.Ordinal))
+		{
+			PluginRuntimeHost pluginRuntime = _services.PluginRuntime
+				?? throw new InvalidOperationException("插件运行时尚未就绪");
+			if (cmd is not "plugin_list"
+				&& !_services.SafeMode
+				&& !_services.Config.GetBoolOr(SettingsService.PluginTrustConfigKey, false))
+			{
+				throw new UnauthorizedAccessException("请先确认进程内插件运行风险");
+			}
+			return await pluginRuntime.InvokeManagementAsync(
+				new PluginManagementSource(source.Self),
+				cmd,
+				args,
+				cancellationToken).ConfigureAwait(false);
+		}
 		object? result = cmd switch
 		{
-		// invoke("settings_ack_voice_notice")
-		"settings_ack_voice_notice" => RequireMain(source, () =>
-			Run(() =>
-			{
-				UpdateConfigDirect("voice_notice_pending", "0");
-				Runtime.InvalidateSnapshot();
-			})),
-
 		// ---- 自动化宿主接线 ----
-		/// invoke("automation_get_snapshot")
-		"automation_get_snapshot" => source is INativeSettingsSource
-			? await RequireVisibleMainAsync(source, () => Automation.GetSnapshot())
-			: throw new InvalidOperationException("自动化快照仅允许原生设置窗口读取"),
+		/// <summary>读取自动化状态快照。调用：invoke("automation_get_snapshot")</summary>
+		"automation_get_snapshot" => Automation.GetSnapshot(),
 
-		/// 更新自动化设置: invoke("automation_update_settings", {enabled?, allowPointer?, allowKeyboard?, allowScroll?})
-		"automation_update_settings" => await RequireVisibleMainAsync(source, () => UpdateAutomationSettings(args)),
+		/// <summary>更新自动化设置。调用：invoke("automation_update_settings", {enabled?, desktopEnabled?, allowPointer?, allowKeyboard?, allowScroll?})</summary>
+		"automation_update_settings" => UpdateAutomationSettings(args),
 
-		/// 兼容设置页自动化总开关: invoke("settings_update_automation", {enabled?, desktopEnabled?})
-		"settings_update_automation" => await RequireVisibleMainAsync(source, () => UpdateFrontendAutomationSettings(args)),
+		/// <summary>读取脱敏审计记录。调用：invoke("automation_audit_list", {limit?})</summary>
+		"automation_audit_list" => AutomationAuditList(ClampLimit(OptionalInt(args, "limit"), 50)),
 
-		/// invoke("automation_audit_list", {limit?})
-		"automation_audit_list" => await RequireVisibleMainAsync(source, () => AutomationAuditList(ClampLimit(OptionalInt(args, "limit"), 50))),
+		/// <summary>探测桌面视觉能力。调用：invoke("automation_probe_vision")</summary>
+		"automation_probe_vision" => Automation.ProbeVision(),
 
-		/// invoke("automation_probe_vision")
-		"automation_probe_vision" => await RequireVisibleMainAsync(source, () => Automation.ProbeVision()),
+		/// <summary>停止指定自动化任务。调用：invoke("automation_stop_task", {taskId: "..."})</summary>
+		"automation_stop_task" => Automation.StopTask(ParseGuid(args, "taskId")),
 
-		/// invoke("automation_stop_task", {taskId: "..."})
-		"automation_stop_task" => await RequireVisibleMainAsync(source, () => Automation.StopTask(ParseGuid(args, "taskId"))),
+		/// <summary>停止全部自动化任务。调用：invoke("automation_stop_all")</summary>
+		"automation_stop_all" => await Automation.StopAllAsync(cancellationToken).ConfigureAwait(false),
 
-		/// invoke("automation_stop_all")
-		"automation_stop_all" => await AutomationStopAllAsync(source, cancellationToken),
+		// ---- 插件风险确认 ----
+		/// <summary>读取进程内插件风险确认状态。调用：invoke("settings_get_plugin_trust")</summary>
+		"settings_get_plugin_trust" => new {confirmed = _services.Config.GetBoolOr(SettingsService.PluginTrustConfigKey, false)},
+
+		/// <summary>保存进程内插件风险确认状态。调用：invoke("settings_set_plugin_trust", {confirmed: true})</summary>
+		"settings_set_plugin_trust" => SetPluginTrust(args),
 
 		// ---- AI 设置 ----
-		// invoke("llm_fetch_models", {provider, baseUrl, apiKey})
-		"llm_fetch_models" => await FetchModelsWithSourceCheckAsync(source, args),
+		/// <summary>拉取模型列表。调用：invoke("llm_fetch_models", {provider?, baseUrl, apiKey?})</summary>
+		"llm_fetch_models" => await FetchModelsAsync(args),
 		/// <summary>
 		/// 查询模型能力 (models.dev)：上下文窗口、输出上限、支持的思考档位与多模态，以及按当前设置换算的上下文上限。
 		/// 前端调用：invoke("llm_model_info", {provider?, baseUrl?, model?}) → {found, contextWindow, reasoningEfforts, ...}
 		/// </summary>
-		"llm_model_info" => await GetModelInfoAsync(source, args, cancellationToken),
+		"llm_model_info" => await GetModelInfoAsync(args, cancellationToken),
 
-		/// invoke("ai_test_connection", {target: "chat" | "embedding", provider?, baseUrl?, apiKey?, model?, dimensions?})
-		"ai_test_connection" => await TestAiConnectionAsync(source, args, cancellationToken),
+		/// <summary>测试 AI 连接。调用：invoke("ai_test_connection", {target: "chat" | "embedding", provider?, baseUrl?, apiKey?, model?, dimensions?})</summary>
+		"ai_test_connection" => await TestAiConnectionAsync(args, cancellationToken),
 
-		/// invoke("settings_update_ai_providers", {chat?: {...}, embedding?: {...}, persona?})
-		"settings_update_ai_providers" => RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () =>
-			Run(() =>
-			{
-				UpdateUnifiedAiSettings(args);
-				Runtime.InvalidateSnapshot();
-			})),
+		/// <summary>更新 AI 提供商配置。调用：invoke("settings_update_ai_providers", {chat?: {...}, embedding?: {...}, persona?})</summary>
+		"settings_update_ai_providers" => Run(() =>
+		{
+			UpdateUnifiedAiSettings(args);
+			Runtime.InvalidateSnapshot();
+		}),
 
-		// invoke("settings_update_voice", {...})
-		"settings_update_voice" => RequireMain(source, () =>
-			Run(() =>
-			{
-				ValidateRealtimeInputDevice(args);
-				UpdateOptionalConfig(args, "volume", "audio_volume");
-				UpdateOptionalConfig(args, "ttsProvider", "tts_provider");
-				UpdateOptionalConfig(args, "ttsBaseUrl", "tts_base_url");
-				UpdateOptionalConfig(args, "ttsModel", "tts_model");
-				UpdateSecretConfig(args, "ttsApiKey", "tts_api_key");
-				UpdateOptionalConfig(args, "ttsVoice", "tts_voice");
-				UpdateOptionalConfig(args, "ttsSpeed", "tts_speed");
-				UpdateBoolConfig(args, "ttsAutoPlay", "tts_auto_play");
-				UpdateOptionalConfig(args, "gptsovitsBaseUrl", "gptsovits_base_url");
-				UpdateOptionalConfig(args, "gptsovitsRefAudio", "gptsovits_ref_audio");
-				UpdateOptionalConfig(args, "gptsovitsPromptText", "gptsovits_prompt_text");
-				UpdateOptionalConfig(args, "gptsovitsPromptLang", "gptsovits_prompt_lang");
-				UpdateOptionalConfig(args, "indexttsTemplateAudio", "indextts_template_audio");
-				UpdateOptionalConfig(args, "indexttsEmoAlpha", "indextts_emo_alpha");
-				UpdateOptionalConfig(args, "sttProvider", "stt_provider");
-				UpdateOptionalConfig(args, "sttBaseUrl", "stt_base_url");
-				UpdateSecretConfig(args, "sttApiKey", "stt_api_key");
-				UpdateBoolConfig(args, "realtimeEnabled", RealtimeVoiceSettings.EnabledKey);
-				UpdateBoolConfig(args, "realtimeContinuous", RealtimeVoiceSettings.ContinuousKey);
-				UpdateOptionalConfig(args, "realtimeSensitivity", RealtimeVoiceSettings.SensitivityKey);
-				UpdateOptionalConfig(args, "realtimeSilenceMs", RealtimeVoiceSettings.SilenceKey);
-				UpdateBoolConfig(args, "realtimeInterruptEnabled", RealtimeVoiceSettings.InterruptKey);
-				UpdateRealtimeInputDevice(args);
-				if (_services.Runtime?.Voice is not null)
-				{
-					string raw = _services.Config.GetStringOr("audio_volume", "1");
-					if (double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double vol))
-					{
-						_services.Runtime.Voice.SetVolume(vol);
-					}
-					if (HasTtsConfigurationChange(args) || HasString(args, "ttsModel")) _services.Runtime.Voice.NotifyConfigurationChanged();
-					_services.Runtime.RealtimeVoice.ApplySettingsAsync(RealtimeVoiceSettings.Read(_services.Config)).GetAwaiter().GetResult();
-				}
-				Runtime.InvalidateSnapshot();
-			})),
+		/// <summary>更新语音配置。调用：invoke("settings_update_voice", {...})</summary>
+		"settings_update_voice" => await UpdateVoiceSettingsAsync(args),
 
 		/// <summary>
 		/// 更新常规设置并同步窗口外观；启动画面设置在下次启动时生效。
 		/// 前端调用：invoke("settings_update_general", {backgroundBlurEnabled: true, splashEnabled: true, splashTheme: "character", splashBackground: "", accent: "teal", uiScale: 100, bubbleFont: "rounded", bubbleSize: "standard", motion: "system"})
 		/// </summary>
-		"settings_update_general" => RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () =>
-			Run(() =>
+		"settings_update_general" => Run(() =>
+		{
+			ValidateSplashSettings(args);
+			ValidateAppearanceSettings(args);
+			UpdateBoolConfig(args, "splashEnabled", "splash_enabled");
+			UpdateOptionalConfig(args, "splashTheme", "splash_theme");
+			UpdateOptionalConfig(args, "splashBackground", "splash_background");
+			UpdateOptionalConfig(args, "language", ConfigStore.KeyLanguage);
+			UpdateBoolConfig(args, "petAutoSummon", "pet_auto_summon");
+			UpdateBoolConfig(args, "quickChatEnabled", ConfigStore.KeyQuickChatEnabled);
+			UpdateBoolConfig(args, "backgroundBlurEnabled", ConfigStore.KeyBackgroundBlurEnabled);
+			if (args.TryGetProperty("backgroundBlurEnabled", out _))
 			{
-				ValidateSplashSettings(args);
-				ValidateAppearanceSettings(args);
-				UpdateBoolConfig(args, "splashEnabled", "splash_enabled");
-				UpdateOptionalConfig(args, "splashTheme", "splash_theme");
-				UpdateOptionalConfig(args, "splashBackground", "splash_background");
-				UpdateOptionalConfig(args, "language", ConfigStore.KeyLanguage);
-				UpdateBoolConfig(args, "petAutoSummon", "pet_auto_summon");
-				UpdateBoolConfig(args, "quickChatEnabled", ConfigStore.KeyQuickChatEnabled);
-				UpdateBoolConfig(args, "backgroundBlurEnabled", ConfigStore.KeyBackgroundBlurEnabled);
-				if (args.TryGetProperty("backgroundBlurEnabled", out _))
-				{
-					bool blurEnabled = _services.Config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true);
-					Avalonia.Threading.Dispatcher.UIThread.Post(() => _services.Windows.UpdateBackgroundBlurEnabled(blurEnabled));
-				}
-				UpdateOptionalConfig(args, "accent", ConfigStore.KeyUiAccent);
-				if (args.ValueKind == JsonValueKind.Object
-					&& args.TryGetProperty("uiScale", out JsonElement uiScale)
-					&& uiScale.ValueKind == JsonValueKind.Number
-					&& uiScale.TryGetInt32(out int percent))
-				{
-					// 存为 Integer：SQLite 读回会按存储文本重新推断类型。
-					_services.Config.Set(ConfigStore.KeyUiScale, new ConfigValue.Integer(percent));
-				}
-				UpdateOptionalConfig(args, "bubbleFont", ConfigStore.KeyBubbleFont);
-				UpdateOptionalConfig(args, "bubbleSize", ConfigStore.KeyBubbleSize);
-				UpdateOptionalConfig(args, "motion", ConfigStore.KeyMotion);
-				if (HasProperty(args, "accent") || HasProperty(args, "uiScale") || HasProperty(args, "bubbleFont")
-					|| HasProperty(args, "bubbleSize") || HasProperty(args, "motion"))
-				{
-					AppearancePreferences preferences = AppearancePreferences.Read(_services.Config);
-					Avalonia.Threading.Dispatcher.UIThread.Post(() => _services.Windows.UpdateAppearance(preferences));
-				}
-				UpdateBoolConfig(args, "sidebarCollapsed", "ui_sidebar_collapsed");
-				UpdateBoolConfig(args, "autoCheckUpdates", "auto_check_updates");
-				UpdateTelemetryConsent(source, args);
-				_services.Telemetry.Configure(_services.Config.GetTelemetryConsent() == TelemetryConsent.Granted);
-				// 托盘菜单是另一棵原生控件树, 不吃前端快照。语言改了要单独推给它,
-				// 否则会一直停在启动那一刻的语言上。
-				Avalonia.Threading.Dispatcher.UIThread.Post(Tray.TrayMenu.Refresh);
-				Runtime.InvalidateSnapshot();
-			})),
+				bool blurEnabled = _services.Config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true);
+				Avalonia.Threading.Dispatcher.UIThread.Post(() => _services.Windows.UpdateBackgroundBlurEnabled(blurEnabled));
+			}
+			UpdateOptionalConfig(args, "accent", ConfigStore.KeyUiAccent);
+			if (args.ValueKind == JsonValueKind.Object
+				&& args.TryGetProperty("uiScale", out JsonElement uiScale)
+				&& uiScale.ValueKind == JsonValueKind.Number
+				&& uiScale.TryGetInt32(out int percent))
+			{
+				// 存为 Integer：SQLite 读回会按存储文本重新推断类型。
+				_services.Config.Set(ConfigStore.KeyUiScale, new ConfigValue.Integer(percent));
+			}
+			UpdateOptionalConfig(args, "bubbleFont", ConfigStore.KeyBubbleFont);
+			UpdateOptionalConfig(args, "bubbleSize", ConfigStore.KeyBubbleSize);
+			UpdateOptionalConfig(args, "motion", ConfigStore.KeyMotion);
+			if (HasProperty(args, "accent") || HasProperty(args, "uiScale") || HasProperty(args, "bubbleFont")
+				|| HasProperty(args, "bubbleSize") || HasProperty(args, "motion"))
+			{
+				AppearancePreferences preferences = AppearancePreferences.Read(_services.Config);
+				Avalonia.Threading.Dispatcher.UIThread.Post(() => _services.Windows.UpdateAppearance(preferences));
+			}
+			UpdateBoolConfig(args, "sidebarCollapsed", "ui_sidebar_collapsed");
+			UpdateBoolConfig(args, "autoCheckUpdates", "auto_check_updates");
+			UpdateTelemetryConsent(source, args);
+			_services.Telemetry.Configure(_services.Config.GetTelemetryConsent() == TelemetryConsent.Granted);
+			// 托盘菜单是另一棵原生控件树，语言改了要单独刷新。
+			Avalonia.Threading.Dispatcher.UIThread.Post(Tray.TrayMenu.Refresh);
+			Runtime.InvalidateSnapshot();
+		}),
 
 		/// <summary>
 		/// 更新文件工具的工作目录与单轮工具次数上限。
 		/// 前端调用：invoke("settings_update_workspace", {root?: string, maxToolIterations?: number})
 		/// </summary>
-		"settings_update_workspace" => RequireMain(source, () => Run(() => UpdateWorkspaceSettings(args))),
+		"settings_update_workspace" => Run(() => UpdateWorkspaceSettings(args)),
 
 		/// <summary>
 		/// 更新 runTask 可运行的具名任务清单，整份替换。
 		/// 前端调用：invoke("settings_update_tasks", {tasks: {name: string, command: string}[]})
 		/// </summary>
-		"settings_update_tasks" => RequireMain(source, () => Run(() => UpdateTaskSettings(args))),
+		"settings_update_tasks" => Run(() => UpdateTaskSettings(args)),
 
-		/// <summary>
-		/// 开关读屏。
-		/// 前端调用：invoke("settings_update_screen", {enabled: boolean})
-		/// </summary>
 		/// <summary>
 		/// 开关一条情绪表达通道。
 		/// 前端调用：invoke("settings_update_expression", {channel: string, enabled: boolean})
 		/// </summary>
-		"settings_update_expression" => RequireMain(source, () => Run(() => UpdateExpressionChannel(args))),
+		"settings_update_expression" => Run(() => UpdateExpressionChannel(args)),
 
 		/// <summary>
 		/// 换授权档位。
 		/// 前端调用：invoke("settings_update_permission", {gear: "ask"|"session"|"trusted"|"bypass"})
 		/// </summary>
-		"settings_update_permission" => RequireMain(source, () => Run(() => UpdatePermissionGear(args))),
+		"settings_update_permission" => Run(() => UpdatePermissionGear(args)),
 
 		/// <summary>
 		/// 开关「待决授权也发系统通知」。
 		/// 前端调用：invoke("settings_update_notifications", {enabled: boolean})
 		/// </summary>
-		"settings_update_notifications" => RequireMain(source, () => Run(() =>
+		"settings_update_notifications" => Run(() =>
 		{
 			UpdateBoolConfig(args, "enabled", ConfigStore.KeyToastApprovals);
-			// 关掉时要把开始菜单快捷方式和注册表项清掉 —— 用户关的是「别在我机器上留东西」，
-			// 只停止发送等于留了一半。
 			Runtime.SyncNotificationRegistration();
 			Runtime.InvalidateSnapshot();
-		})),
+		}),
 
-		"settings_update_screen" => RequireMain(source, () => Run(() =>
+		/// <summary>
+		/// 开关读屏。
+		/// 前端调用：invoke("settings_update_screen", {enabled: boolean})
+		/// </summary>
+		"settings_update_screen" => Run(() =>
 		{
 			UpdateBoolConfig(args, "enabled", ConfigStore.KeyScreenReadingEnabled);
-			// 工具注册表按开关构建，不重建则要到下次启动才生效。
 			Runtime.RebuildTools();
 			Runtime.InvalidateSnapshot();
-		})),
+		}),
 
 		/// <summary>
 		/// 打开系统文件夹选择对话框，返回选中路径；用户取消时返回 null。
@@ -274,460 +250,336 @@ public sealed partial class BridgeCommands
 		/// 检查是否有可用软件更新。
 		/// 前端调用：invoke("updater_check")
 		/// </summary>
-		"updater_check" => await RequireMainAsync(source, async () =>
-		{
-			var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
-			var check = await update.CheckForUpdateAsync(cancellationToken);
-			Runtime.InvalidateSnapshot();
-			return (object?)new
-			{
-				available = check.Available,
-				currentVersion = check.CurrentVersion,
-				latestVersion = check.LatestVersion,
-				releaseTag = check.ReleaseTag,
-				releaseNotes = check.ReleaseNotes,
-				publishedAt = check.PublishedAt?.ToString("o"),
-			};
-		}),
+		"updater_check" => await CheckUpdateAsync(cancellationToken),
 
 		/// <summary>
 		/// 下载并安装候选版本到新部署槽。
 		/// 前端调用：invoke("updater_install")
 		/// </summary>
-		"updater_install" => await RequireMainAsync(source, async () =>
-		{
-			var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
-			var commit = await update.DownloadAndInstallAsync(progress: null, cancellationToken);
-			Runtime.InvalidateSnapshot();
-			return (object?)new
-			{
-				success = true,
-				slotName = commit.SlotName,
-				productVersion = commit.Manifest.ProductVersion,
-			};
-		}),
+		"updater_install" => await InstallUpdateAsync(cancellationToken),
 
 		/// <summary>
 		/// 取消当前正在进行的更新检查或安装。
 		/// 前端调用：invoke("updater_cancel")
 		/// </summary>
-		"updater_cancel" => RequireMain(source, () =>
-		{
-			var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
-			update.CancelActiveOperation();
-			Runtime.InvalidateSnapshot();
-			return (object?)true;
-		}),
+		"updater_cancel" => CancelUpdate(),
 
 		/// <summary>
 		/// 拉起启动器并安全退出当前宿主进程，由启动器等待旧进程退出后切换到新槽。
 		/// 前端调用：invoke("updater_restart")
 		/// </summary>
-		"updater_restart" => await RequireMainAsync(source, () =>
+		"updater_restart" => RestartForUpdate(),
+
+		/// <summary>更新主动行为配置。调用：invoke("settings_update_proactive", {idleEnabled?, idleMinutes?, dailyGreeting?})</summary>
+		"settings_update_proactive" => Run(() =>
 		{
-			var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
-			update.LaunchRestart();
-			_services.Windows.Shutdown();
-			return Task.FromResult<object?>(null);
+			UpdateBoolConfig(args, "idleEnabled", "proactive_idle_enabled");
+			UpdateNumberConfig(args, "idleMinutes", "proactive_idle_minutes");
+			UpdateBoolConfig(args, "dailyGreeting", "proactive_daily_greeting");
+			Runtime.InvalidateSnapshot();
 		}),
 
-		// invoke("settings_update_proactive", {idleEnabled?, idleMinutes?, dailyGreeting?})
-		"settings_update_proactive" => RequireMain(source, () =>
-			Run(() =>
+		/// <summary>启停指定工具。调用：invoke("tools_set_enabled", {name: "getTime", enabled: false})</summary>
+		"tools_set_enabled" => Run(() =>
+		{
+			string name = Str(args, "name");
+			bool enabled = OptionalBool(args, "enabled") ?? true;
+			if (!Runtime.Tools.SetEnabled(name, enabled))
 			{
-				UpdateBoolConfig(args, "idleEnabled", "proactive_idle_enabled");
-				UpdateNumberConfig(args, "idleMinutes", "proactive_idle_minutes");
-				UpdateBoolConfig(args, "dailyGreeting", "proactive_daily_greeting");
-				Runtime.InvalidateSnapshot();
-			})),
+				throw new InvalidOperationException($"未找到工具: {name}");
+			}
+			PersistDisabledTools();
+			Runtime.InvalidateSnapshot();
+		}),
 
-		// invoke("tools_set_enabled", {name: "getTime", enabled: false})
-		"tools_set_enabled" => RequireMain(source, () =>
-			Run(() =>
-			{
-				string name = Str(args, "name");
-				bool enabled = OptionalBool(args, "enabled") ?? true;
-				if (!Runtime.Tools.SetEnabled(name, enabled))
-				{
-					throw new InvalidOperationException($"未找到工具: {name}");
-				}
-				PersistDisabledTools();
-				Runtime.InvalidateSnapshot();
-			})),
+		/// <summary>选择模型。调用：invoke("model_select", {modelId: "nori"})</summary>
+		"model_select" => Run(() =>
+		{
+			string modelId = RequireKnownInstalledModel(Str(args, "modelId"));
+			UpdateConfigDirect(ConfigStore.KeySelectedModel, modelId);
+			ApplyPetConfig(ConfigStore.KeySelectedModel, modelId);
+			_services.Logger.Write(LogSource.Backend, "info", $"启用模型: {modelId}");
+			Runtime.InvalidateSnapshot();
+		}),
 
-		// invoke("model_select", {modelId: "nori"})
-		"model_select" => RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () =>
-			Run(() =>
-			{
-				string modelId = RequireKnownInstalledModel(Str(args, "modelId"));
-				UpdateConfigDirect(ConfigStore.KeySelectedModel, modelId);
-				ApplyPetConfig(ConfigStore.KeySelectedModel, modelId);
-				_services.Logger.Write(LogSource.Backend, "info", $"启用模型: {modelId}");
-				Runtime.InvalidateSnapshot();
-			})),
-
-		// invoke("model_import_local", {resourceType?: "live2d"})
-		"model_import_local" => await ModelImportLocalAsync(source, args, cancellationToken),
+		/// <summary>本地导入模型。调用：invoke("model_import_local", {resourceType?: "live2d"})</summary>
+		"model_import_local" => await ImportLocalResourceAsync(source, args, cancellationToken),
 
 		/// <summary>
 		/// 从 static.nori.mom 下载并安装内置 Live2D 模型，已安装时覆盖为远端版本。
 		/// 前端调用：invoke("model_download_remote", {modelId: "arg-nori"}) → "arg-nori"
 		/// </summary>
-		"model_download_remote" => await ModelDownloadRemoteAsync(source, args, cancellationToken),
+		"model_download_remote" => await ModelDownloadRemoteAsync(args, cancellationToken),
 
-		// invoke("indextts_pick_template", {}) — 选择 IndexTTS 音频模板文件并写入配置
-		"indextts_pick_template" => await IndexTtsPickTemplateAsync(source, args, cancellationToken),
+		/// <summary>选择 IndexTTS 音频模板文件并写入配置。调用：invoke("indextts_pick_template", {})</summary>
+		"indextts_pick_template" => await IndexTtsPickTemplateAsync(source, cancellationToken),
 
-		// invoke("indextts_clone_voice", {filePath?}) — 上传模板音频克隆音色并返回 voice_id
-		"indextts_clone_voice" => await IndexTtsCloneVoiceAsync(source, args, cancellationToken),
+		/// <summary>上传模板音频克隆音色并返回 voice_id。调用：invoke("indextts_clone_voice", {filePath?})</summary>
+		"indextts_clone_voice" => await IndexTtsCloneVoiceAsync(args, cancellationToken),
 
-		// invoke("model_get_meta", {modelId: "arg-nori"})
-		"model_get_meta" => RequireMain(source, () =>
-		{
-			string modelId = RequireKnownInstalledModel(Str(args, "modelId"));
-			string dir = _services.Resources.ResourceDir(ResourceType.Live2D, modelId);
-			Nori.Core.Live2D.Model3MetaInfo meta = Nori.Core.Live2D.Model3Meta.Read(dir);
-			IReadOnlyDictionary<string, ConfigValue> display = _services.Config.GetMany(Live2DModelConfig.DisplayKeys(modelId));
-			float scale = Live2DModelConfig.ReadFloat(display, Live2DModelConfig.ScaleKey, modelId, 1f);
-			float opacity = Live2DModelConfig.ReadFloat(display, Live2DModelConfig.OpacityKey, modelId, 1f);
-			float renderScale = Live2DModelConfig.ReadFloat(display, Live2DModelConfig.RenderScaleKey, modelId, 2f);
-			string qualityMode = Live2DModelConfig.ReadPreferredText(display, Live2DModelConfig.QualityModeKey, modelId, "adaptive");
-			int maxFps = (int)Live2DModelConfig.ReadFloat(display, Live2DModelConfig.MaxFpsKey, modelId, 0f);
-			bool shadow = Live2DModelConfig.ReadBool(display, Live2DModelConfig.ShadowKey, modelId, true);
-			return new
-			{
-				modelId,
-				scale,
-				opacity,
-				renderScale,
-				qualityMode,
-				maxFps,
-				shadow,
-				selectedExpressions = ReadSelectedExpressions(modelId),
-				expressions = meta.Expressions,
-				motions = meta.Motions.Select(group => new {group = group.Group, names = group.Names}),
-				interactions = ReadInteractionConfig(modelId),
-			};
-		}),
+		/// <summary>读取模型元信息。调用：invoke("model_get_meta", {modelId: "arg-nori"})</summary>
+		"model_get_meta" => GetModelMeta(args),
 
-		/// invoke("model_set_interactions", {modelId, interactions})
-		"model_set_interactions" => await ModelSetInteractionsAsync(source, args),
+		/// <summary>写入模型互动配置。调用：invoke("model_set_interactions", {modelId, interactions})</summary>
+		"model_set_interactions" => ModelSetInteractions(args),
 
-		// invoke("model_set_display", {modelId, scale?, expressions?})
-		"model_set_display" => await ModelSetDisplayAsync(source, args),
+		/// <summary>写入模型显示参数。调用：invoke("model_set_display", {modelId, scale?, expressions?})</summary>
+		"model_set_display" => ModelSetDisplay(args),
 
-		// invoke("model_set_behavior", {autoBlink?: true, maxFps?: 60, ...})
-		"model_set_behavior" => await ModelSetBehaviorAsync(source, args),
+		/// <summary>写入模型行为开关。调用：invoke("model_set_behavior", {autoBlink?: true, ...})</summary>
+		"model_set_behavior" => ModelSetBehavior(args),
 
 		// ---- 聊天 / Agent 会话 ----
-		// invoke("chat_start", {text: "你好呀"})
-		"chat_start" => RequireMain(source, () =>
-		{
-			string text = Str(args, "text").Trim();
-			if (text.Length == 0) throw new InvalidOperationException("消息内容不能为空");
-			return Runtime.StartChat(source, text);
-		}),
+		/// <summary>启动对话会话。调用：invoke("chat_start", {text: "你好呀"})</summary>
+		"chat_start" => StartChatCommand(source, args),
 
-		// invoke("chat_cancel", {sessionId: "..."})
-		"chat_cancel" => RequireMain(source, () => Runtime.CancelChat(source, Str(args, "sessionId"))),
+		/// <summary>取消对话会话。调用：invoke("chat_cancel", {sessionId: "..."})</summary>
+		"chat_cancel" => Runtime.CancelChat(source, Str(args, "sessionId")),
 
-		// invoke("approval_respond", {requestId: "...", approved: true})
-		"approval_respond" => RequireMain(source, () => RespondApproval(source, args)),
+		/// <summary>响应工具或自动化审批。调用：invoke("approval_respond", {requestId: "...", approved: true})</summary>
+		"approval_respond" => RespondApproval(source, args),
 
 		/// <summary>
 		/// 延长本来源的待决工具授权，不能超过工具调用的实际截止时间。
 		/// 前端调用：invoke("approval_extend", {requestId: "..."})
 		/// </summary>
-		"approval_extend" => RequireMain(source, () => new
+		"approval_extend" => new
 		{
 			deadlineUtc = Runtime.ExtendApproval(source, Str(args, "requestId")),
-		}),
+		},
 
-		// invoke("chat_history_page", {limit?: 50, beforeId?: 0})
-		"chat_history_page" => RequireMain(source, () => GetHistoryPage(
+		/// <summary>分页读取聊天历史。调用：invoke("chat_history_page", {limit?: 50, beforeId?: 0})</summary>
+		"chat_history_page" => GetHistoryPage(
 			ClampLimit(OptionalInt(args, "limit"), 50),
-			(long)(OptionalDouble(args, "beforeId") ?? 0))),
+			(long)(OptionalDouble(args, "beforeId") ?? 0)),
 
-		// invoke("chat_clear")
-		"chat_clear" => await ClearChatAsync(source, cancellationToken),
+		/// <summary>清空聊天记录。调用：invoke("chat_clear")</summary>
+		"chat_clear" => await ClearChatAsync(cancellationToken),
 
 		/// <summary>
 		/// 读取 AI 生成的图片 (仅限生成图片目录内的合法文件名)。
 		/// 前端调用：invoke("chat_read_generated_image", {name: "20261011-120000-abcd1234.png"}) → {name, base64} | null
 		/// </summary>
-		"chat_read_generated_image" => await ReadGeneratedImageAsync(source, Str(args, "name"), cancellationToken),
+		"chat_read_generated_image" => await ReadGeneratedImageAsync(Str(args, "name"), cancellationToken),
 
 		/// <summary>
 		/// 用系统默认程序打开 AI 生成的图片。
 		/// 前端调用：invoke("chat_open_generated_image", {name: "20261011-120000-abcd1234.png"})
 		/// </summary>
-		"chat_open_generated_image" => OpenGeneratedImage(source, Str(args, "name")),
+		"chat_open_generated_image" => OpenGeneratedImage(Str(args, "name")),
 
 		// ---- 记忆库 ----
-		/// invoke("memory_add", {content, type?, importance?, tags?})
-		"memory_add" => await MemoryAddAsync(source, args),
+		/// <summary>添加记忆。调用：invoke("memory_add", {content, type?, importance?, tags?})</summary>
+		"memory_add" => await MemoryAddAsync(args),
 
-		/// invoke("memory_update", {id, content, importance?, tags?})
-		"memory_update" => await MemoryUpdateAsync(source, args),
+		/// <summary>更新记忆。调用：invoke("memory_update", {id, content, importance?, tags?})</summary>
+		"memory_update" => await MemoryUpdateAsync(args),
 
-		/// invoke("memory_delete", {id, confirmToken: "DELETE_MEMORY"})
-		"memory_delete" => RequireMain(source, () => HardDeleteMemory(source, args)),
+		/// <summary>永久删除记忆。调用：invoke("memory_delete", {id, confirmToken: "DELETE_MEMORY"})</summary>
+		"memory_delete" => HardDeleteMemory(args),
 
-		/// invoke("memory_clear", {confirmToken: "CLEAR_PERSONAL_MEMORY"})
-		"memory_clear" => RequireMain(source, () => ClearMemories(source, args)),
+		/// <summary>清空个人记忆。调用：invoke("memory_clear", {confirmToken: "CLEAR_PERSONAL_MEMORY"})</summary>
+		"memory_clear" => ClearMemories(args),
 
-		/// invoke("memory_archive", {id})
-		"memory_archive" => RequireMain(source, () => ArchiveMemory(args)),
+		/// <summary>归档记忆。调用：invoke("memory_archive", {id})</summary>
+		"memory_archive" => ArchiveMemory(args),
 
-		/// invoke("memory_restore", {id})
-		"memory_restore" => RequireMain(source, () => RestoreMemory(args)),
+		/// <summary>恢复归档记忆。调用：invoke("memory_restore", {id})</summary>
+		"memory_restore" => RestoreMemory(args),
 
-		/// invoke("memory_list_page", {query?, kind?, status?, limit?, offset?})
-		"memory_list_page" => RequireMain(source, () => MemoryListPage(args)),
+		/// <summary>分页列出记忆。调用：invoke("memory_list_page", {query?, kind?, status?, limit?, offset?})</summary>
+		"memory_list_page" => MemoryListPage(args),
 
-		/// invoke("memory_get", {id})
-		"memory_get" => RequireMain(source, () => MemoryGet(args)),
+		/// <summary>读取单条记忆详情。调用：invoke("memory_get", {id})</summary>
+		"memory_get" => MemoryGet(args),
 
-		/// invoke("memory_atom_list", {memoryId?, status?, limit?, offset?})
-		"memory_atom_list" => RequireMain(source, () => MemoryAtomList(args)),
+		/// <summary>列出记忆原子。调用：invoke("memory_atom_list", {memoryId?, status?, limit?, offset?})</summary>
+		"memory_atom_list" => MemoryAtomList(args),
 
-		/// invoke("memory_knowledge_status")
-		"memory_knowledge_status" => RequireMain(source, () => Runtime.Knowledge.Status),
+		/// <summary>读取知识文档状态。调用：invoke("memory_knowledge_status")</summary>
+		"memory_knowledge_status" => Runtime.Knowledge.Status,
 
-		/// invoke("memory_knowledge_reindex")
-		"memory_knowledge_reindex" => await MemoryKnowledgeReindexAsync(source, cancellationToken),
+		/// <summary>重建知识文档索引。调用：invoke("memory_knowledge_reindex")</summary>
+		"memory_knowledge_reindex" => await MemoryKnowledgeReindexAsync(cancellationToken),
 
-		/// invoke("memory_knowledge_open")
-		"memory_knowledge_open" => RequireMain(source, () => OpenKnowledgeFolder()),
+		/// <summary>打开知识文档目录。调用：invoke("memory_knowledge_open")</summary>
+		"memory_knowledge_open" => OpenKnowledgeFolder(),
 
-		/// invoke("memory_recall_debug", {query})
-		"memory_recall_debug" => await MemoryRecallDebugAsync(source, args, cancellationToken),
+		/// <summary>调试记忆召回。调用：invoke("memory_recall_debug", {query})</summary>
+		"memory_recall_debug" => await MemoryRecallDebugAsync(args, cancellationToken),
 
-		/// invoke("memory_update_settings", {settings: {...}})
-		"memory_update_settings" => RequireMain(source, () => UpdateMemorySettings(args)),
+		/// <summary>更新记忆配置。调用：invoke("memory_update_settings", {settings: {...}})</summary>
+		"memory_update_settings" => UpdateMemorySettings(args),
 
-		/// invoke("memory_reembed_all")
-		"memory_reembed_all" => await MemoryReembedAllAsync(source, cancellationToken),
+		/// <summary>重建全部记忆向量。调用：invoke("memory_reembed_all")</summary>
+		"memory_reembed_all" => await MemoryReembedAllAsync(cancellationToken),
 
-		/// invoke("memory_export")
-		"memory_export" => await RequireVisibleMainAsync(source, MemoryExport),
+		/// <summary>导出脱敏记忆文档。调用：invoke("memory_export")</summary>
+		"memory_export" => MemoryExport(),
 
-		/// invoke("memory_import_preview", {fileContent, fileName?, fileSize?})
-		"memory_import_preview" => await RequireVisibleMainAsync(source, () => MemoryImportPreview(args)),
+		/// <summary>预览记忆导入。调用：invoke("memory_import_preview", {fileContent})</summary>
+		"memory_import_preview" => MemoryImportPreview(args),
 
-		/// invoke("memory_import_commit", {previewToken, conflictStrategy?})；忽略客户端 items。
-		"memory_import_commit" => await RequireVisibleMainAsync(source, () => MemoryImportCommit(args)),
+		/// <summary>提交记忆导入。调用：invoke("memory_import_commit", {previewToken, conflictStrategy?})</summary>
+		"memory_import_commit" => MemoryImportCommit(args),
 
 		// ---- 技能 ----
-		// invoke("skills_marketplace")
-		"skills_marketplace" => RequireMain(source, () => SkillServiceMarketplace()),
+		/// <summary>读取内置技能市场。调用：invoke("skills_marketplace")</summary>
+		"skills_marketplace" => SkillServiceMarketplace(),
 
-		/// 从内置市场安装技能: invoke("skills_install_marketplace", {skillId: "gaming-partner"}) → 脱敏 SkillDto
-		"skills_install_marketplace" => await RequireVisibleMainAsync(source, () =>
+		/// <summary>从内置市场安装技能。调用：invoke("skills_install_marketplace", {skillId: "gaming-partner"})</summary>
+		"skills_install_marketplace" => InstallMarketplaceSkill(args),
+
+		/// <summary>切换技能启用状态。调用：invoke("skills_toggle", {id, enabled})</summary>
+		"skills_toggle" => Run(() =>
 		{
-			string skillId = Str(args, "skillId").Trim();
-			if (skillId.Length == 0) throw new InvalidOperationException("技能 ID 不能为空");
-			SkillRecord installed = Runtime.Skills.InstallFromMarketplace(skillId);
-			Runtime.InvalidateSnapshot();
-			return RedactedSkillDto(installed);
-		}),
-
-		// invoke("skills_toggle", {id, enabled})
-		"skills_toggle" => RequireMain(source, () =>
-			Run(() =>
+			if (!SkillsToggle(Str(args, "id"), OptionalBool(args, "enabled") ?? true))
 			{
-				if (!SkillsToggle(Str(args, "id"), OptionalBool(args, "enabled") ?? true))
-				{
-					throw new InvalidOperationException($"未找到技能: {Str(args, "id")}");
-				}
-				Runtime.InvalidateSnapshot();
-			})),
-
-		// invoke("skills_install_url", {url})
-		"skills_install_url" => await SkillsInstallUrlAsync(source, args),
-
-		// invoke("skills_save_custom", {skill: {...}})
-		"skills_save_custom" => await SkillsSaveCustomAsync(source, args),
-
-		// invoke("skills_uninstall", {id})
-		"skills_uninstall" => RequireMain(source, () =>
-			Run(() =>
-			{
-				Runtime.Skills.Uninstall(Str(args, "id"));
-				Runtime.InvalidateSnapshot();
-			})),
-
-		// invoke("skills_export", {id}) → JSON 字符串
-		"skills_export" => RequireMain(source, () => Runtime.Skills.Export(Str(args, "id"))),
-
-		// invoke("skills_import_preview", {text}) → {token, name, description, category, tools}
-		"skills_import_preview" => RequireMain(source, () => Runtime.Skills.PreviewLocal(Str(args, "text"))),
-
-		// invoke("skills_import_commit", {token, enabled}) → 脱敏 SkillDto
-		"skills_import_commit" => RequireMain(source, () =>
-		{
-			SkillRecord saved = Runtime.Skills.CommitLocal(Str(args, "token"), OptionalBool(args, "enabled") ?? false);
+				throw new InvalidOperationException($"未找到技能: {Str(args, "id")}");
+			}
 			Runtime.InvalidateSnapshot();
-			return RedactedSkillDto(saved);
 		}),
 
-		// invoke("skills_duplicate", {id}) → 脱敏 SkillDto
-		"skills_duplicate" => RequireMain(source, () =>
+		/// <summary>从 URL 安装技能。调用：invoke("skills_install_url", {url})</summary>
+		"skills_install_url" => await SkillsInstallUrlAsync(args),
+
+		/// <summary>保存自定义技能。调用：invoke("skills_save_custom", {skill: {...}})</summary>
+		"skills_save_custom" => SkillsSaveCustom(args),
+
+		/// <summary>卸载技能。调用：invoke("skills_uninstall", {id})</summary>
+		"skills_uninstall" => Run(() =>
 		{
-			SkillRecord copy = Runtime.Skills.Duplicate(Str(args, "id"));
+			Runtime.Skills.Uninstall(Str(args, "id"));
 			Runtime.InvalidateSnapshot();
-			return RedactedSkillDto(copy);
 		}),
+
+		/// <summary>导出技能 JSON。调用：invoke("skills_export", {id})</summary>
+		"skills_export" => Runtime.Skills.Export(Str(args, "id")),
+
+		/// <summary>预览本地技能导入。调用：invoke("skills_import_preview", {text})</summary>
+		"skills_import_preview" => Runtime.Skills.PreviewLocal(Str(args, "text")),
+
+		/// <summary>提交本地技能导入。调用：invoke("skills_import_commit", {token, enabled})</summary>
+		"skills_import_commit" => CommitSkillImport(args),
+
+		/// <summary>复制技能。调用：invoke("skills_duplicate", {id})</summary>
+		"skills_duplicate" => DuplicateSkill(args),
 
 		// ---- MCP 服务 ----
-		// invoke("mcp_get_servers")
-		"mcp_get_servers" => await McpGetServersAsync(source),
-		// invoke("mcp_save_server", {id, name, transport, command, args, env, url, enabled, autoConnect})
-		"mcp_save_server" => await McpSaveServerAsync(source, args),
-		// invoke("mcp_delete_server", {id})
-		"mcp_delete_server" => await McpDeleteServerAsync(source, args),
-		// invoke("mcp_connect_server", {id})
-		"mcp_connect_server" => await McpConnectServerAsync(source, args),
-		// invoke("mcp_disconnect_server", {id})
-		"mcp_disconnect_server" => await McpDisconnectServerAsync(source, args),
-		// invoke("mcp_test_server", {id, name, transport, command, args, env, url, enabled, autoConnect})
-		"mcp_test_server" => await McpTestServerAsync(source, args),
-		// invoke("mcp_call_tool", {serverId, toolName, arguments, sessionId?})
-		"mcp_call_tool" => await McpCallToolAsync(source, args, cancellationToken),
-		// invoke("mcp_import_url", {url}) → 预览，不写入
-		"mcp_import_url" => await McpImportUrlAsync(source, args, cancellationToken),
-		// invoke("mcp_import_preview", {text}) → {token, servers:[{name, transport, ...}]}
-		"mcp_import_preview" => RequireMain(source, () => _services.Mcp.PreviewImport(Str(args, "text"))),
-		// invoke("mcp_import_commit", {token})
-		"mcp_import_commit" => await McpImportCommitAsync(source, args),
+		/// <summary>获取 MCP 服务器列表。调用：invoke("mcp_get_servers")</summary>
+		"mcp_get_servers" => await _services.Mcp.GetServersAsync(),
+		/// <summary>保存 MCP 服务器配置。调用：invoke("mcp_save_server", {id, name, transport, ...})</summary>
+		"mcp_save_server" => await McpSaveServerAsync(args),
+		/// <summary>删除 MCP 服务器配置。调用：invoke("mcp_delete_server", {id})</summary>
+		"mcp_delete_server" => await McpDeleteServerAsync(args),
+		/// <summary>连接 MCP 服务器。调用：invoke("mcp_connect_server", {id})</summary>
+		"mcp_connect_server" => await McpConnectServerAsync(args),
+		/// <summary>断开 MCP 服务器。调用：invoke("mcp_disconnect_server", {id})</summary>
+		"mcp_disconnect_server" => await McpDisconnectServerAsync(args),
+		/// <summary>测试 MCP 服务器连接。调用：invoke("mcp_test_server", {id, name, transport, ...})</summary>
+		"mcp_test_server" => await _services.Mcp.TestServerAsync(ParseMcpConfig(args)),
+		/// <summary>手动测试 safe MCP 工具。调用：invoke("mcp_call_tool", {serverId, toolName, arguments, sessionId?})</summary>
+		"mcp_call_tool" => await CallMcpToolCoreAsync(source, args, cancellationToken),
+		/// <summary>从 URL 预览 MCP 配置导入。调用：invoke("mcp_import_url", {url})</summary>
+		"mcp_import_url" => await McpImportUrlAsync(args, cancellationToken),
+		/// <summary>预览 MCP 配置文本。调用：invoke("mcp_import_preview", {text})</summary>
+		"mcp_import_preview" => _services.Mcp.PreviewImport(Str(args, "text")),
+		/// <summary>提交 MCP 配置导入。调用：invoke("mcp_import_commit", {token})</summary>
+		"mcp_import_commit" => await McpImportCommitAsync(args),
 
-		// invoke("tools_execute_manual", {name, arguments}) — 设置页手动测试, 仅放行 safe 工具
-		"tools_execute_manual" => await ToolsExecuteManualAsync(source, args),
+		/// <summary>手动测试 safe 内置工具。调用：invoke("tools_execute_manual", {name, arguments})</summary>
+		"tools_execute_manual" => await ToolsExecuteManualAsync(args),
 
 		// ---- 账户与云端同步 ----
-		// 调用方：设置页「账户」分区（AccountSettingsPage）。打开账户窗口（登录）。
-		"account_open" => await RequireMainAsync(source, () => OnUi(() => Run(_services.Windows.ShowAccount))),
-		// 调用方：设置页「账户」分区。打开云端同步窗口，删除与冲突处置都在那扇窗上。
-		"cloud_open" => await RequireMainAsync(source, () => OnUi(() => Run(_services.Windows.ShowCloudSync))),
-		// 调用方：设置页「账户」分区。先告知服务端，再清本机。
-		"account_sign_out" => await RequireMainAsync(source, () => SignOutAsync(cancellationToken)),
-		// 调用方：设置页「账户」分区。冲突不是错误，原样回给调用方，由人来选留哪一份。
-		"cloud_backup" => await RequireMainAsync(source, () => CloudSyncAsync(
-			token => _services.CloudSync.BackupAsync(overwrite: false, token), cancellationToken)),
-		// 调用方：设置页「账户」分区。合并语义：本机有、存档里没有的记忆与提醒会留下。
-		"cloud_restore" => await RequireMainAsync(source, () => CloudSyncAsync(
-			token => _services.CloudSync.RestoreAsync(token), cancellationToken)),
+		/// <summary>打开账户登录窗口。调用：invoke("account_open")</summary>
+		"account_open" => await OnUi(() => Run(_services.Windows.ShowAccount)),
+		/// <summary>打开云端同步窗口。调用：invoke("cloud_open")</summary>
+		"cloud_open" => await OnUi(() => Run(_services.Windows.ShowCloudSync)),
+		/// <summary>退出登录。调用：invoke("account_sign_out")</summary>
+		"account_sign_out" => await SignOutAsync(cancellationToken),
+		/// <summary>备份至云端。调用：invoke("cloud_backup")</summary>
+		"cloud_backup" => await CloudSyncAsync(
+			token => _services.CloudSync.BackupAsync(overwrite: false, token), cancellationToken),
+		/// <summary>从云端恢复。调用：invoke("cloud_restore")</summary>
+		"cloud_restore" => await CloudSyncAsync(
+			token => _services.CloudSync.RestoreAsync(token), cancellationToken),
 
 		// ---- 定时提醒 ----
-		/// invoke("reminder_add", {content, delayMinutes}) 添加倒计时提醒
-		"reminder_add" => RequireMain(source, () =>
-		{
-			double delayMinutes = ReadReminderNumber(args, "delayMinutes", allowMissing: true) ?? 15;
-			Nori.Core.Proactive.ReminderItem item = Runtime.Proactive.AddReminder(Str(args, "content"), delayMinutes);
-			Runtime.InvalidateSnapshot();
-			return item;
-		}),
+		/// <summary>添加倒计时提醒。调用：invoke("reminder_add", {content, delayMinutes})</summary>
+		"reminder_add" => AddReminderCommand(args),
 
-		/// invoke("reminder_cancel", {id}) 取消提醒
-		"reminder_cancel" => RequireMain(source, () =>
-		{
-			bool cancelled = Runtime.Proactive.CancelReminder(Str(args, "id"));
-			if (cancelled) Runtime.InvalidateSnapshot();
-			return cancelled;
-		}),
+		/// <summary>取消提醒。调用：invoke("reminder_cancel", {id})</summary>
+		"reminder_cancel" => CancelReminderCommand(args),
 
-		/// invoke("reminder_update", {id, content?, triggerTime?, delayMinutes?, repeatDaily?, timezone?, recurrenceJson?}) 更新提醒
-		"reminder_update" => RequireMain(source, () =>
-		{
-			object result = UpdateReminder(args);
-			Runtime.InvalidateSnapshot();
-			return result;
-		}),
+		/// <summary>更新提醒。调用：invoke("reminder_update", {id, content?, triggerTime?, delayMinutes?, repeatDaily?, timezone?, recurrenceJson?})</summary>
+		"reminder_update" => UpdateReminderCommand(args),
 
-		/// invoke("reminder_list") 查询提醒状态
-		"reminder_list" => RequireMain(source, () => Runtime.Proactive.ListReminders()),
+		/// <summary>查询提醒列表。调用：invoke("reminder_list")</summary>
+		"reminder_list" => Runtime.Proactive.ListReminders(),
 
-		/// invoke("focus_start", { minutes: 25, notify: true, silentReminders: true }) 开始专注。安全模式拒绝。
-		"focus_start" => RequireMain(source, () =>
-		{
-			Runtime.Focus.Start(ReadFocusMinutes(args), OptionalBool(args, "notify") ?? true, OptionalBool(args, "silentReminders") ?? true);
-			Runtime.PublishFocus();
-			return Runtime.DescribeFocus();
-		}),
+		/// <summary>开始专注。调用：invoke("focus_start", {minutes: 25, notify: true, silentReminders: true})</summary>
+		"focus_start" => ChangeFocus(() =>
+			Runtime.Focus.Start(ReadFocusMinutes(args), OptionalBool(args, "notify") ?? true, OptionalBool(args, "silentReminders") ?? true)),
 
-		/// invoke("focus_pause") 暂停当前专注。已用时长停在这一刻。
-		"focus_pause" => RequireMain(source, () =>
-		{
-			Runtime.Focus.Pause();
-			Runtime.PublishFocus();
-			return Runtime.DescribeFocus();
-		}),
+		/// <summary>暂停当前专注。调用：invoke("focus_pause")</summary>
+		"focus_pause" => ChangeFocus(() => Runtime.Focus.Pause()),
 
-		/// invoke("focus_resume") 继续已暂停的专注。安全模式拒绝。
-		"focus_resume" => RequireMain(source, () =>
-		{
-			Runtime.Focus.Resume();
-			Runtime.PublishFocus();
-			return Runtime.DescribeFocus();
-		}),
+		/// <summary>继续已暂停的专注。调用：invoke("focus_resume")</summary>
+		"focus_resume" => ChangeFocus(() => Runtime.Focus.Resume()),
 
-		/// invoke("focus_end") 结束当前专注。未走完的时间计入累计，不发完成通知。
-		"focus_end" => RequireMain(source, () =>
-		{
-			Runtime.Focus.End();
-			Runtime.PublishFocus();
-			return Runtime.DescribeFocus();
-		}),
+		/// <summary>提前结束当前专注。调用：invoke("focus_end")</summary>
+		"focus_end" => ChangeFocus(() => Runtime.Focus.End()),
 
-		/// invoke("focus_view") 读取专注状态。不刷新整页快照，供设置页每秒更新倒计时。
-		"focus_view" => RequireMain(source, () => Runtime.DescribeFocus()),
+		/// <summary>读取专注状态。调用：invoke("focus_view")</summary>
+		"focus_view" => Runtime.DescribeFocus(),
 
 		// ---- 语音 ----
-		// invoke("tts_test", {text?})
-		"tts_test" => await TtsTestAsync(source, args),
+		/// <summary>试听 TTS。调用：invoke("tts_test", {text?})</summary>
+		"tts_test" => await TtsTestAsync(args),
 
-		// invoke("tts_stop")
-		"tts_stop" => RequireMain(source, () => Run(Runtime.Voice.Stop)),
+		/// <summary>停止 TTS 朗读。调用：invoke("tts_stop")</summary>
+		"tts_stop" => Run(Runtime.Voice.Stop),
 
-		// invoke("stt_start")
-		"stt_start" => await SttStartAsync(source, cancellationToken),
+		/// <summary>开始语音识别录音。调用：invoke("stt_start")</summary>
+		"stt_start" => await SttStartAsync(cancellationToken),
 
-		// invoke("stt_stop") → {text}
-		"stt_stop" => await SttStopAsync(source, cancellationToken),
+		/// <summary>停止录音并转写。调用：invoke("stt_stop")</summary>
+		"stt_stop" => await SttStopAsync(cancellationToken),
 
 		/// <summary>
 		/// 开始实时监听。只有用户主动调用才会打开麦克风。
 		/// 前端调用：invoke("realtime_voice_start")
 		/// </summary>
-		"realtime_voice_start" => await RealtimeVoiceStartAsync(source, cancellationToken),
+		"realtime_voice_start" => await RealtimeVoiceStartAsync(cancellationToken),
 
 		/// <summary>
 		/// 停止实时监听，并放开麦克风。
 		/// 前端调用：invoke("realtime_voice_stop")
 		/// </summary>
-		"realtime_voice_stop" => await RealtimeVoiceStopAsync(source),
+		"realtime_voice_stop" => await RealtimeVoiceStopAsync(),
 
 		/// <summary>
 		/// 打断当前朗读。麦克风暂停时仍然可用；不能靠对着播放中的声音打断。
 		/// 前端调用：invoke("realtime_voice_interrupt") → {interrupted}
 		/// </summary>
-		"realtime_voice_interrupt" => RequireMain(source, () => RealtimeVoiceInterrupt()),
+		"realtime_voice_interrupt" => RealtimeVoiceInterrupt(),
 
 		/// <summary>
 		/// 读取实时语音状态。不含录音、识别正文或密钥。
 		/// 前端调用：invoke("realtime_voice_status")
 		/// </summary>
-		"realtime_voice_status" => RequireMain(source, () => RealtimeVoiceStatusPayload()),
+		"realtime_voice_status" => RealtimeVoiceStatusPayload(),
 
-		// ---- 插件替代 ----
-		// invoke("open_url", {url: "https://..."})
+		// ---- 系统能力 ----
+		/// <summary>用系统默认浏览器打开网址。调用：invoke("open_url", {url: "https://..."})</summary>
 		"open_url" => Run(() => ShellOpen.OpenUrl(Str(args, "url"))),
 
-		// invoke("clipboard_write_text", {text: "..."})
+		/// <summary>写入系统剪贴板。调用：invoke("clipboard_write_text", {text: "..."})</summary>
 		"clipboard_write_text" => await WriteClipboardAsync(source, Str(args, "text")),
 
 		// ---- 调试 ----
-		"get_recent_logs" => RequireMain(source, () => _services.Logger.RecentLogs().Select(entry => new
+		/// <summary>读取近期内存日志。调用：invoke("get_recent_logs")</summary>
+		"get_recent_logs" => _services.Logger.RecentLogs().Select(entry => new
 		{
 			time = entry.Time,
 			level = entry.Level,
@@ -742,44 +594,176 @@ public sealed partial class BridgeCommands
 			operationId = entry.OperationId,
 			exceptionType = entry.ExceptionType,
 			exceptionSite = entry.ExceptionSite,
-		}).ToArray()),
-		"get_logging_status" => RequireMain(source, () => GetLoggingStatus()),
-		"set_logging_level" => RequireMain(source, () => SetLoggingLevel(args)),
-		"clear_recent_logs" => RequireMain(source, () => Run(_services.Logger.ClearRecentLogs)),
-		"get_diagnostic_info" => RequireMain(source, () => DiagnosticInfo.Build(_services.PetRuntime, _services.Paths, _services.SafeMode)),
+		}).ToArray(),
+		/// <summary>读取日志健康状态。调用：invoke("get_logging_status")</summary>
+		"get_logging_status" => GetLoggingStatus(),
+		/// <summary>临时调整日志级别。调用：invoke("set_logging_level", {level: "debug"})</summary>
+		"set_logging_level" => SetLoggingLevel(args),
+		/// <summary>清空内存日志。调用：invoke("clear_recent_logs")</summary>
+		"clear_recent_logs" => Run(_services.Logger.ClearRecentLogs),
+		/// <summary>读取诊断信息。调用：invoke("get_diagnostic_info")</summary>
+		"get_diagnostic_info" => DiagnosticInfo.Build(_services.PetRuntime, _services.Paths, _services.SafeMode),
 		/// <summary>
 		/// 读取项目 GitHub 贡献者头像 (关于页)。有缓存时立即返回，过期在后台刷新；安全模式只读缓存。
 		/// 前端调用：invoke("about_list_contributors") → {contributors: [{login, avatar}]}，avatar 为 base64 图片
 		/// </summary>
-		"about_list_contributors" => await ListContributorsAsync(source, cancellationToken),
-		// invoke("export_diagnostics") → {fileName, bytes, skipped}
+		"about_list_contributors" => await ListContributorsAsync(cancellationToken),
+		/// <summary>导出脱敏诊断包。调用：invoke("export_diagnostics")</summary>
 		"export_diagnostics" => await ExportDiagnosticsAsync(source, cancellationToken),
-		"open_log_folder" => RequireMain(source, () => Run(OpenLogFolder)),
+		/// <summary>打开日志目录。调用：invoke("open_log_folder")</summary>
+		"open_log_folder" => Run(OpenLogFolder),
 
 			_ => throw new InvalidOperationException($"未知的命令: {cmd}"),
 		};
-		// 原生窗口修改已经提交时返回真实成功，避免关闭期间的取消把已写入误报为失败。
-		bool committedNativeWrite = (source is INativeMemorySource && MemoryService.IsStateChangingCommand(cmd))
-			|| (source is INativeModelSource && ModelService.IsStateChangingCommand(cmd))
-			|| (source is INativeChatSource && cmd is "chat_start" or "chat_clear" or "approval_respond" or "approval_extend");
-		if (!committedNativeWrite) cancellationToken.ThrowIfCancellationRequested();
+		// 已提交的写命令返回真实成功，避免关闭期间的取消把已写入误报为失败。
+		bool committedWrite = MemoryService.IsMutatingCommand(cmd)
+			|| ModelService.IsMutatingCommand(cmd)
+			|| cmd is "chat_start" or "chat_clear" or "approval_respond" or "approval_extend";
+		if (!committedWrite) cancellationToken.ThrowIfCancellationRequested();
 		return result;
 	}
 
-	private AutomationSettingsSnapshot UpdateAutomationSettings(JsonElement args) => Automation.UpdateSettings(
-		OptionalBool(args, "enabled"),
-		OptionalBool(args, "allowPointer"),
-		OptionalBool(args, "allowKeyboard"),
-		OptionalBool(args, "allowScroll"));
+	private object SetPluginTrust(JsonElement args)
+	{
+		bool confirmed = RequiredBool(args, "confirmed");
+		_services.Config.Set(SettingsService.PluginTrustConfigKey, new ConfigValue.Text(confirmed ? "1" : "0"));
+		_services.Runtime?.InvalidateSnapshot();
+		return new {confirmed};
+	}
 
-	private AutomationSettingsSnapshot UpdateFrontendAutomationSettings(JsonElement args)
+	private async Task<object?> CheckUpdateAsync(CancellationToken cancellationToken)
+	{
+		var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
+		var check = await update.CheckForUpdateAsync(cancellationToken);
+		Runtime.InvalidateSnapshot();
+		return new
+		{
+			available = check.Available,
+			currentVersion = check.CurrentVersion,
+			latestVersion = check.LatestVersion,
+			releaseTag = check.ReleaseTag,
+			releaseNotes = check.ReleaseNotes,
+			publishedAt = check.PublishedAt?.ToString("o"),
+		};
+	}
+
+	private async Task<object?> InstallUpdateAsync(CancellationToken cancellationToken)
+	{
+		var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
+		var commit = await update.DownloadAndInstallAsync(progress: null, cancellationToken);
+		Runtime.InvalidateSnapshot();
+		return new
+		{
+			success = true,
+			slotName = commit.SlotName,
+			productVersion = commit.Manifest.ProductVersion,
+		};
+	}
+
+	private object CancelUpdate()
+	{
+		var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
+		update.CancelActiveOperation();
+		Runtime.InvalidateSnapshot();
+		return true;
+	}
+
+	private object? RestartForUpdate()
+	{
+		var update = _services.Update ?? throw new InvalidOperationException("更新服务尚未初始化");
+		update.LaunchRestart();
+		_services.Windows.Shutdown();
+		return null;
+	}
+
+	private object GetModelMeta(JsonElement args)
+	{
+		string modelId = RequireKnownInstalledModel(Str(args, "modelId"));
+		string dir = _services.Resources.ResourceDir(ResourceType.Live2D, modelId);
+		Model3MetaInfo meta = Model3Meta.Read(dir);
+		IReadOnlyDictionary<string, ConfigValue> display = _services.Config.GetMany(Live2DModelConfig.DisplayKeys(modelId));
+		float scale = Live2DModelConfig.ReadFloat(display, Live2DModelConfig.ScaleKey, modelId, 1f);
+		float opacity = Live2DModelConfig.ReadFloat(display, Live2DModelConfig.OpacityKey, modelId, 1f);
+		float renderScale = Live2DModelConfig.ReadFloat(display, Live2DModelConfig.RenderScaleKey, modelId, 2f);
+		string qualityMode = Live2DModelConfig.ReadPreferredText(display, Live2DModelConfig.QualityModeKey, modelId, "adaptive");
+		int maxFps = (int)Live2DModelConfig.ReadFloat(display, Live2DModelConfig.MaxFpsKey, modelId, 0f);
+		bool shadow = Live2DModelConfig.ReadBool(display, Live2DModelConfig.ShadowKey, modelId, true);
+		return new
+		{
+			modelId,
+			scale,
+			opacity,
+			renderScale,
+			qualityMode,
+			maxFps,
+			shadow,
+			selectedExpressions = ReadSelectedExpressions(modelId),
+			expressions = meta.Expressions,
+			motions = meta.Motions.Select(group => new {group = group.Group, names = group.Names}),
+			interactions = ReadInteractionConfig(modelId),
+		};
+	}
+
+	private string StartChatCommand(IBridgeSource source, JsonElement args)
+	{
+		string text = Str(args, "text").Trim();
+		if (text.Length == 0) throw new InvalidOperationException("消息内容不能为空");
+		return Runtime.StartChat(source, text);
+	}
+
+	private object InstallMarketplaceSkill(JsonElement args)
+	{
+		string skillId = Str(args, "skillId").Trim();
+		if (skillId.Length == 0) throw new InvalidOperationException("技能 ID 不能为空");
+		SkillRecord installed = Runtime.Skills.InstallFromMarketplace(skillId);
+		Runtime.InvalidateSnapshot();
+		return RedactedSkillDto(installed);
+	}
+
+	private object CommitSkillImport(JsonElement args)
+	{
+		SkillRecord saved = Runtime.Skills.CommitLocal(Str(args, "token"), OptionalBool(args, "enabled") ?? false);
+		Runtime.InvalidateSnapshot();
+		return RedactedSkillDto(saved);
+	}
+
+	private object DuplicateSkill(JsonElement args)
+	{
+		SkillRecord copy = Runtime.Skills.Duplicate(Str(args, "id"));
+		Runtime.InvalidateSnapshot();
+		return RedactedSkillDto(copy);
+	}
+
+	private object AddReminderCommand(JsonElement args)
+	{
+		double delayMinutes = ReadReminderNumber(args, "delayMinutes", allowMissing: true) ?? 15;
+		Nori.Core.Proactive.ReminderItem item = Runtime.Proactive.AddReminder(Str(args, "content"), delayMinutes);
+		Runtime.InvalidateSnapshot();
+		return item;
+	}
+
+	private bool CancelReminderCommand(JsonElement args)
+	{
+		bool cancelled = Runtime.Proactive.CancelReminder(Str(args, "id"));
+		if (cancelled) Runtime.InvalidateSnapshot();
+		return cancelled;
+	}
+
+	private object UpdateReminderCommand(JsonElement args)
+	{
+		object result = UpdateReminder(args);
+		Runtime.InvalidateSnapshot();
+		return result;
+	}
+
+	private AutomationSettingsSnapshot UpdateAutomationSettings(JsonElement args)
 	{
 		bool? desktopEnabled = OptionalBool(args, "desktopEnabled");
 		return Automation.UpdateSettings(
 			OptionalBool(args, "enabled"),
-			desktopEnabled,
-			desktopEnabled,
-			desktopEnabled);
+			OptionalBool(args, "allowPointer") ?? desktopEnabled,
+			OptionalBool(args, "allowKeyboard") ?? desktopEnabled,
+			OptionalBool(args, "allowScroll") ?? desktopEnabled);
 	}
 
 	/// <summary>读取脱敏审计记录。前端调用: invoke("automation_audit_list", {limit?})</summary>
@@ -822,15 +806,8 @@ public sealed partial class BridgeCommands
 		durationMs = record.DurationMilliseconds,
 	}).ToArray();
 
-	private async Task<object?> AutomationStopAllAsync(IBridgeSource source, CancellationToken cancellationToken)
+	private async Task<object?> MemoryAddAsync(JsonElement args)
 	{
-		await RequireVisibleMainVoidAsync(source);
-		return await Automation.StopAllAsync(cancellationToken).ConfigureAwait(false);
-	}
-
-	private async Task<object?> MemoryAddAsync(IBridgeSource source, JsonElement args)
-	{
-		RequireMainVoid(source);
 		MemoryKind? kind = OptionalStr(args, "kind") is { } kindText ? MemoryKindExtensions.Parse(kindText) : null;
 		MemoryItem item = await Runtime.Memory.AddAsync(
 			Str(args, "content"),
@@ -843,9 +820,8 @@ public sealed partial class BridgeCommands
 		return item;
 	}
 
-	private async Task<object?> MemoryUpdateAsync(IBridgeSource source, JsonElement args)
+	private async Task<object?> MemoryUpdateAsync(JsonElement args)
 	{
-		RequireMainVoid(source);
 		MemoryKind? kind = OptionalStr(args, "kind") is { } kindText ? MemoryKindExtensions.Parse(kindText) : null;
 		bool updated = await Runtime.Memory.UpdateAsync(
 			(long)Num(args, "id"),
@@ -860,9 +836,8 @@ public sealed partial class BridgeCommands
 		return updated;
 	}
 
-	private async Task<object?> MemoryReembedAllAsync(IBridgeSource source, CancellationToken cancellationToken)
+	private async Task<object?> MemoryReembedAllAsync(CancellationToken cancellationToken)
 	{
-		RequireMainVoid(source);
 		int count = await Runtime.Memory.ReembedAllAsync(cancellationToken);
 		Runtime.InvalidateSnapshot();
 		return count;
@@ -951,7 +926,7 @@ public sealed partial class BridgeCommands
 		_ => throw new InvalidOperationException("导入冲突处理方式无效"),
 	};
 
-	private object? HardDeleteMemory(IBridgeSource source, JsonElement args)
+	private object? HardDeleteMemory(JsonElement args)
 	{
 		if (args.ValueKind != JsonValueKind.Object || OptionalStr(args, "confirmToken") != "DELETE_MEMORY")
 			throw new InvalidOperationException("删除记忆需要明确确认");
@@ -974,7 +949,7 @@ public sealed partial class BridgeCommands
 		return restored;
 	}
 
-	private object? ClearMemories(IBridgeSource source, JsonElement args)
+	private object? ClearMemories(JsonElement args)
 	{
 		if (OptionalStr(args, "confirmToken") != "CLEAR_PERSONAL_MEMORY")
 			throw new InvalidOperationException("清空记忆需要明确确认");
@@ -1020,9 +995,8 @@ public sealed partial class BridgeCommands
 		return Runtime.Memory.GetAtoms(memoryId, status, ClampLimit(OptionalInt(args, "limit"), 50), Math.Max(0, OptionalInt(args, "offset") ?? 0));
 	}
 
-	private async Task<object?> MemoryKnowledgeReindexAsync(IBridgeSource source, CancellationToken cancellationToken)
+	private async Task<object?> MemoryKnowledgeReindexAsync(CancellationToken cancellationToken)
 	{
-		RequireMainVoid(source);
 		MemoryIndexStatus status = await Runtime.Knowledge.ReindexAsync(cancellationToken).ConfigureAwait(false);
 		Runtime.InvalidateSnapshot();
 		return status;
@@ -1035,9 +1009,8 @@ public sealed partial class BridgeCommands
 		return null;
 	}
 
-	private async Task<object?> MemoryRecallDebugAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
+	private async Task<object?> MemoryRecallDebugAsync(JsonElement args, CancellationToken cancellationToken)
 	{
-		RequireMainVoid(source);
 		string query = Str(args, "query");
 		IReadOnlyList<(string Role, string Content)> recent = AgentHistory.NormalizeRecent(_services.Chat.GetHistory(8, 0));
 		MemoryContext context = await Runtime.Memory.BuildContextAsync(query, recent, cancellationToken, true, false).ConfigureAwait(false);

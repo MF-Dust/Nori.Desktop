@@ -31,19 +31,19 @@ public partial class BridgeCommandsTests
 		});
 		fixture._services.PluginRuntime = pluginRuntime;
 
-		PluginListResultDto result = Assert.IsType<PluginListResultDto>(await new BridgeCommandRouter(fixture._services).InvokeAsync(
+		PluginListResultDto result = Assert.IsType<PluginListResultDto>(await fixture.CreateCommands().InvokeAsync(
 			new NativeSettingsCommandSource(), "plugin_list", Args(new { })));
 
 		Assert.Empty(result.Plugins);
 	}
 
 	[Fact]
-	public async Task 非插件命令回退到BridgeCommands()
+	public async Task 未知命令返回明确错误()
 	{
 		using BridgeCommandsTests fixture = new(safeMode: true);
 
 		InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			new BridgeCommandRouter(fixture._services).InvokeAsync(
+			fixture.CreateCommands().InvokeAsync(
 				new FakeBridgeSource(WindowLabels.Main), "future_command", Args(new { })));
 
 		Assert.Equal("未知的命令: future_command", error.Message);

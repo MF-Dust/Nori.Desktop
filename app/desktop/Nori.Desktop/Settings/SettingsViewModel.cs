@@ -54,7 +54,7 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 
 	internal SettingsViewModel(SettingsService service, PluginPageController? pluginPages)
 	{
-		_service = service ?? throw new ArgumentNullException(nameof(service));
+		_service = service;
 		_pluginPages = pluginPages;
 		foreach ((string key, SettingsText title) in GroupOrder)
 		{
@@ -211,7 +211,6 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 	/// <summary>注册并显示一个并行实现的设置页。</summary>
 	public void AddPage(SettingsPageBase page)
 	{
-		ArgumentNullException.ThrowIfNull(page);
 		if (!_groups.TryGetValue(page.GroupKey, out SettingsGroupViewModel? group))
 			throw new ArgumentException("设置页分组不存在：" + page.GroupKey, nameof(page));
 		if (_pages.ContainsKey(page.Key)) return;

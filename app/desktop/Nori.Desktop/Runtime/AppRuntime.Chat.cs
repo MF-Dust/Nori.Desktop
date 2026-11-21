@@ -5,6 +5,7 @@ using Nori.Core.Voice;
 using Nori.Core.Voice.Realtime;
 using Avalonia.Threading;
 using Nori.Desktop.Bridge;
+using Nori.Desktop.Chat;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Runtime;
@@ -46,8 +47,9 @@ public sealed partial class AppRuntime
 	{
 		ArgumentNullException.ThrowIfNull(turn);
 		turn.CancellationToken.ThrowIfCancellationRequested();
-		if (source is not INativeChatSource native || !Nori.Desktop.Chat.NativeChatService.IsTrustedSource(native))
+		if (source is not NativeChatContext)
 			throw new InvalidOperationException("实时语音必须从可信原生对话窗口发起");
+		NativeBridgePolicy.Validate(source, "chat_start");
 		return StartChatCore(source, turn.Text, turn);
 	}
 
@@ -55,9 +57,6 @@ public sealed partial class AppRuntime
 	{
 		if (Volatile.Read(ref _disposed) != 0) throw new InvalidOperationException("应用正在退出");
 		if (Services.SafeMode) throw new InvalidOperationException("安全模式已禁用联网和外部服务");
-		Nori.Desktop.Chat.NativeChatService.ValidateSourceCommand(source, "chat_start");
-		if (source is not INativeChatSource && source.Label != WindowLabels.Main)
-			throw new InvalidOperationException("来源窗口无权发起对话");
 		if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("消息内容不能为空");
 		string sessionId = $"agent-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x}-{Interlocked.Increment(ref _sessionCounter):x}";
 		CancellationToken lifetimeToken = _lifetimeCts.Token;
@@ -194,7 +193,7 @@ public sealed partial class AppRuntime
 	}
 
 	private static bool IsSameSource(IBridgeSource source, IBridgeSource owner) =>
-		source is INativeChatSource || owner is INativeChatSource
+		source.Label is WindowLabels.Chat or WindowLabels.QuickChat || owner.Label is WindowLabels.Chat or WindowLabels.QuickChat
 			? ReferenceEquals(source, owner)
 			: source.Label == owner.Label;
 

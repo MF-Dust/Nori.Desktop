@@ -14,7 +14,7 @@ public abstract class SettingsPageViewModelBase : INotifyPropertyChanged
 	/// <summary>创建设置页 ViewModel。</summary>
 	protected SettingsPageViewModelBase(SettingsService service)
 	{
-		Service = service ?? throw new ArgumentNullException(nameof(service));
+		Service = service;
 	}
 
 	/// <summary>当前设置窗口的宿主服务。</summary>
@@ -52,7 +52,6 @@ public abstract class SettingsPageViewModelBase : INotifyPropertyChanged
 	/// <summary>记录页面错误并通知视图。</summary>
 	public void ReportError(Exception exception)
 	{
-		ArgumentNullException.ThrowIfNull(exception);
 		ErrorMessage = SettingsErrorText.Resolve(exception);
 		NotifyChanged(nameof(ErrorMessage));
 	}

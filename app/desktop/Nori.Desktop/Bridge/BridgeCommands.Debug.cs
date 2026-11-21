@@ -25,7 +25,6 @@ public sealed partial class BridgeCommands
 	/// <summary>弹出保存位置并在后台生成脱敏诊断 ZIP。</summary>
 	private async Task<object?> ExportDiagnosticsAsync(IBridgeSource source, CancellationToken cancellationToken)
 	{
-		RequireMainVoid(source);
 		Window self = source.Self ?? throw new InvalidOperationException("来源窗口不可用");
 		string? targetPath = await _uiDispatcher.InvokeTaskAsync(async () =>
 		{

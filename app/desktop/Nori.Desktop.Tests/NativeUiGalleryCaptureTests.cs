@@ -42,6 +42,15 @@ public partial class BridgeCommandsTests
 			settings.Width = 720; settings.Height = 480; settings.Navigate("ai"); settings.UpdateLayout();
 			await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 			CaptureUi(settings, "settings-ai-720x480");
+			settings.Navigate("voice");
+			foreach ((int width, int height) in new[] { (720, 480), (1920, 1080) })
+			{
+				settings.Width = width;
+				settings.Height = height;
+				await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+				settings.UpdateLayout();
+				CaptureUi(settings, $"settings-voice-{width}x{height}");
+			}
 			settings.AllowClose = true;
 
 			ModelsWindow models = new(fixture._services);

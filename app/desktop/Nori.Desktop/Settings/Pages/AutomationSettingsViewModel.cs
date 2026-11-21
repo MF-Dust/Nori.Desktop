@@ -90,7 +90,7 @@ public sealed class AutomationSettingsViewModel : SettingsPageViewModelBase
 			_safeMode = SettingsJson.Bool(SettingsJson.Object(snapshot, "app"), "safeMode");
 			_isSupported = SettingsJson.IsObject(SettingsJson.Object(snapshot, "automation"));
 			JsonElement detailed = _isSupported
-				? await Service.GetAutomationSnapshotAsync(cancellationToken).ConfigureAwait(true)
+				? await Service.ExecuteAsync("automation_get_snapshot", cancellationToken: cancellationToken).ConfigureAwait(true)
 				: default;
 			_platformSupported = SettingsJson.Bool(SettingsJson.Object(detailed, "capabilities"), "isWindows");
 			State = ParseState(detailed);
@@ -105,6 +105,7 @@ public sealed class AutomationSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>更新总开关或桌面权限。</summary>
 	public async Task UpdateSettingsAsync(
 		bool? enabled = null,
+		bool? desktopEnabled = null,
 		bool? allowPointer = null,
 		bool? allowKeyboard = null,
 		bool? allowScroll = null,
@@ -112,22 +113,12 @@ public sealed class AutomationSettingsViewModel : SettingsPageViewModelBase
 	{
 		Dictionary<string, object?> args = [];
 		if (enabled is { } enabledValue) args["enabled"] = enabledValue;
+		if (desktopEnabled is { } desktopValue) args["desktopEnabled"] = desktopValue;
 		if (allowPointer is { } pointerValue) args["allowPointer"] = pointerValue;
 		if (allowKeyboard is { } keyboardValue) args["allowKeyboard"] = keyboardValue;
 		if (allowScroll is { } scrollValue) args["allowScroll"] = scrollValue;
 		if (args.Count == 0) return;
 		await ExecuteAsync("automation_update_settings", args, cancellationToken).ConfigureAwait(true);
-		await RefreshAsync(cancellationToken).ConfigureAwait(true);
-	}
-
-	/// <summary>兼容设置页使用的自动化与桌面总开关。</summary>
-	public async Task UpdateFrontendTogglesAsync(bool? enabled = null, bool? desktopEnabled = null, CancellationToken cancellationToken = default)
-	{
-		Dictionary<string, object?> args = [];
-		if (enabled is { } enabledValue) args["enabled"] = enabledValue;
-		if (desktopEnabled is { } desktopValue) args["desktopEnabled"] = desktopValue;
-		if (args.Count == 0) return;
-		await ExecuteAsync("settings_update_automation", args, cancellationToken).ConfigureAwait(true);
 		await RefreshAsync(cancellationToken).ConfigureAwait(true);
 	}
 

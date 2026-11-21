@@ -50,7 +50,7 @@ public sealed partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public async Task model_download_remote拒绝未知模型_非授权窗口与安全模式()
+	public async Task model_download_remote拒绝未知模型与安全模式()
 	{
 		RemoteModelHandler handler = new();
 		using HttpClient http = new(handler);
@@ -58,8 +58,6 @@ public sealed partial class BridgeCommandsTests
 		BridgeCommands commands = CreateCommands();
 		await Assert.ThrowsAsync<InvalidOperationException>(() =>
 			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "model_download_remote", Args(new {modelId = "other"})));
-		await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Pet), "model_download_remote", Args(new {modelId = "nori"})));
 
 		using BridgeCommandsTests fixture = new(true);
 		fixture._services.PublicHttp = http;

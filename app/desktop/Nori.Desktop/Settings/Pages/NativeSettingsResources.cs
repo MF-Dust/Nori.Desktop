@@ -248,11 +248,8 @@ public static class NativeSettingsResources
 	};
 
 	/// <summary>按当前界面语言读取资源；未知键返回键名以保持界面可诊断。</summary>
-	public static string Get(string key)
-	{
-		ArgumentNullException.ThrowIfNull(key);
-		return Values.TryGetValue(key, out SettingsText text)
+	public static string Get(string key) =>
+		Values.TryGetValue(key, out SettingsText text)
 			? text.Resolve(SettingsLocalization.IsEnglish ? "en-US" : "zh-CN")
 			: key;
-	}
 }

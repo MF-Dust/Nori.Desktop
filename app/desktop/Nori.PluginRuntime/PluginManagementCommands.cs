@@ -5,12 +5,8 @@ using Avalonia.Threading;
 
 namespace Nori.PluginRuntime;
 
-/// <summary>供插件管理命令使用的最小宿主来源。</summary>
-internal sealed record PluginManagementSource(
-	string Label,
-	bool IsVisible,
-	Window? Owner = null,
-	bool IsTrustedNativeSettings = false);
+/// <summary>供插件管理命令使用的宿主来源。</summary>
+internal sealed record PluginManagementSource(Window? Owner = null);
 
 /// <summary>宿主本地插件包文件选择器。</summary>
 internal interface IPluginPackagePicker
@@ -56,20 +52,17 @@ internal sealed class AvaloniaPluginPackagePicker : IPluginPackagePicker
 	}
 }
 
-/// <summary>插件管理命令的实现；只服务宿主可见主窗口。</summary>
+/// <summary>插件管理命令的实现。</summary>
 internal sealed class PluginManagementCommands
 {
 	private readonly PluginManager _manager;
-	private readonly string _mainWindowLabel;
 	private readonly IPluginPackagePicker _picker;
 
 	public PluginManagementCommands(
 		PluginManager manager,
-		string mainWindowLabel,
 		IPluginPackagePicker? picker)
 	{
-		_manager = manager ?? throw new ArgumentNullException(nameof(manager));
-		_mainWindowLabel = string.IsNullOrWhiteSpace(mainWindowLabel) ? "main" : mainWindowLabel;
+		_manager = manager;
 		_picker = picker ?? new AvaloniaPluginPackagePicker();
 	}
 
@@ -79,8 +72,6 @@ internal sealed class PluginManagementCommands
 		JsonElement args,
 		CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(source);
-		RequireVisibleMain(source);
 		return command switch
 		{
 			"plugin_list" => List(),
@@ -208,11 +199,4 @@ internal sealed class PluginManagementCommands
 		&& args.TryGetProperty(name, out JsonElement value)
 		&& value.ValueKind is JsonValueKind.True or JsonValueKind.False
 		&& value.GetBoolean();
-
-	private void RequireVisibleMain(PluginManagementSource source)
-	{
-		if ((!source.IsTrustedNativeSettings && !string.Equals(source.Label, _mainWindowLabel, StringComparison.Ordinal))
-			|| !source.IsVisible)
-			throw new UnauthorizedAccessException("插件管理仅允许可见的主窗口调用");
-	}
 }

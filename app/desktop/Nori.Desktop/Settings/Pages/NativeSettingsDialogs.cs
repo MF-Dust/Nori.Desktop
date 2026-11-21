@@ -22,7 +22,6 @@ internal static class NativeSettingsDialogs
 		string? cancelText = null,
 		Func<bool>? english = null)
 	{
-		ArgumentNullException.ThrowIfNull(owner);
 		StackPanel body = new() {Spacing = 14, Margin = new Avalonia.Thickness(24)};
 		body.Children.Add(new TextBlock {Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 520});
 		StackPanel buttons = new() {Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8};
@@ -42,7 +41,6 @@ internal static class NativeSettingsDialogs
 	/// <summary>显示只读消息窗口。</summary>
 	public static async Task ShowMessageAsync(Window owner, string title, string message)
 	{
-		ArgumentNullException.ThrowIfNull(owner);
 		StackPanel body = new() {Spacing = 14, Margin = new Avalonia.Thickness(24)};
 		ScrollViewer scroll = new()
 		{
@@ -81,8 +79,6 @@ internal static class NativeSettingsDialogs
 		IReadOnlyList<Field> fields,
 		string confirmText)
 	{
-		ArgumentNullException.ThrowIfNull(owner);
-		ArgumentNullException.ThrowIfNull(fields);
 		Dictionary<string, TextBox> editors = new(StringComparer.Ordinal);
 		StackPanel body = new() {Spacing = 12, Margin = new Avalonia.Thickness(24)};
 		ScrollViewer fieldScroll = new() {MaxHeight = Math.Max(120, owner.ClientSize.Height - 160)};

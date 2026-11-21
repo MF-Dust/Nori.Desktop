@@ -10,19 +10,18 @@ namespace Nori.Desktop.Chat;
 internal enum NativeChatSurface { Full, QuickChat }
 
 /// <summary>原生对话来源；后台只读取缓存的可见性。</summary>
-internal sealed class NativeChatContext : INativeChatSource, IDisposable
+internal sealed class NativeChatContext : IBridgeSource, IDisposable
 {
 	private readonly Window _owner;
-	private readonly Action<string, object?> _onEvent;
+	public event Action<string, object?>? EventReceived;
 	private readonly CancellationTokenSource _lifetime = new();
 	private int _visible;
 	private int _disposed;
 
-	public NativeChatContext(Window owner, Action<string, object?> onEvent, NativeChatSurface surface = NativeChatSurface.Full)
+	public NativeChatContext(Window owner, NativeChatSurface surface = NativeChatSurface.Full)
 	{
 		Surface = surface;
 		_owner = owner;
-		_onEvent = onEvent;
 		LifetimeToken = _lifetime.Token;
 		_visible = Dispatcher.UIThread.CheckAccess() && owner.IsVisible ? 1 : 0;
 		_owner.PropertyChanged += OnOwnerPropertyChanged;
@@ -42,10 +41,8 @@ internal sealed class NativeChatContext : INativeChatSource, IDisposable
 
 	public void PostEvent(string name, object? payload)
 	{
-		if (Volatile.Read(ref _disposed) == 0) _onEvent(name, payload);
+		if (Volatile.Read(ref _disposed) == 0) EventReceived?.Invoke(name, payload);
 	}
-
-	public void PostResult(long id, object? value, string? error) { }
 
 	public void Dispose()
 	{

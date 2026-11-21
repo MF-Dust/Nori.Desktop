@@ -14,45 +14,29 @@ namespace Nori.Desktop.Bridge;
 
 public sealed partial class BridgeCommands
 {
-	private async Task<object?> TtsTestAsync(IBridgeSource source, JsonElement args)
+	private async Task<object?> TtsTestAsync(JsonElement args)
 	{
-		RequireMainVoid(source);
 		string text = OptionalStr(args, "text") is {Length: > 0} custom ? custom : "你好呀！我是 Nori，这是一条声音播放测试~";
 		await Runtime.Voice.SpeakAsync(text);
 		return null;
 	}
 
-	private async Task<object?> SttStartAsync(IBridgeSource source, CancellationToken cancellationToken)
+	private async Task<object?> SttStartAsync(CancellationToken cancellationToken)
 	{
-		RequireMainVoid(source);
 		await Runtime.Voice.StartListeningAsync(cancellationToken);
 		return null;
 	}
 
-	private async Task<object?> SttStopAsync(IBridgeSource source, CancellationToken cancellationToken)
+	private async Task<object?> SttStopAsync(CancellationToken cancellationToken)
 	{
-		RequireMainVoid(source);
 		string text = await Runtime.Voice.StopListeningAndTranscribeAsync(cancellationToken);
 		return new {text};
 	}
 
-	private async Task<object?> ModelImportLocalAsync(
-		IBridgeSource source,
-		JsonElement args,
-		CancellationToken cancellationToken)
-	{
-		RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () => (object?)true);
-		if (source is INativeModelSource) await RequireVisibleMainVoidAsync(source);
-		return await ImportLocalResourceAsync(source, args, cancellationToken);
-	}
-
 	private async Task<object?> ModelDownloadRemoteAsync(
-		IBridgeSource source,
 		JsonElement args,
 		CancellationToken cancellationToken)
 	{
-		RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () => (object?)true);
-		if (source is INativeModelSource) await RequireVisibleMainVoidAsync(source);
 		string modelId = SupportedModelIds.Normalize(Str(args, "modelId"))
 			?? throw new InvalidOperationException("不支持的 Live2D 模型");
 		try
@@ -66,9 +50,9 @@ public sealed partial class BridgeCommands
 		}
 	}
 
-	/// <summary>读取已保存的模型表情选择，优先模型键并兼容旧全局键。</summary>
+	/// <summary>读取已保存的模型表情选择。</summary>
 	private IReadOnlyList<string> ReadSelectedExpressions(string modelId) =>
-		ReadExpressionConfig($"l2d_expression_{modelId}") ?? ReadExpressionConfig("l2d_expression") ?? [];
+		ReadExpressionConfig($"l2d_expression_{modelId}") ?? [];
 
 	private string[]? ReadExpressionConfig(string key)
 	{
@@ -113,9 +97,8 @@ public sealed partial class BridgeCommands
 	/// 写入指定模型的互动配置。
 	/// 前端调用: invoke("model_set_interactions", {modelId, interactions})
 	/// </summary>
-	private async Task<object?> ModelSetInteractionsAsync(IBridgeSource source, JsonElement args)
+	private object? ModelSetInteractions(JsonElement args)
 	{
-		RequireMainVoid(source);
 		string modelId = RequireKnownInstalledModel(Str(args, "modelId"));
 		if (!args.TryGetProperty("interactions", out JsonElement interactionsElement)
 			|| interactionsElement.ValueKind != JsonValueKind.Object)
@@ -139,16 +122,14 @@ public sealed partial class BridgeCommands
 		_services.Config.Set(PetInteractionConfig.StorageKey(modelId), new ConfigValue.Json(config.ToJsonNode()));
 		_services.PetRuntime?.SetInteractionConfig(modelId, config);
 		Runtime.InvalidateSnapshot();
-		await Task.CompletedTask;
 		return null;
 	}
 
 	/// <summary>
 	/// 模型显示参数写入 (缩放按模型存储, 表情列表同)
 	/// </summary>
-	private async Task<object?> ModelSetDisplayAsync(IBridgeSource source, JsonElement args)
+	private object? ModelSetDisplay(JsonElement args)
 	{
-		RequireMainVoid(source);
 		string modelId = RequireKnownInstalledModel(Str(args, "modelId"));
 		if (args.TryGetProperty("scale", out JsonElement scaleElem))
 		{
@@ -194,7 +175,6 @@ public sealed partial class BridgeCommands
 			}
 			ApplyDisplayKey($"l2d_expression_{modelId}", expElem.GetRawText());
 		}
-		await Task.CompletedTask;
 		Runtime.InvalidateSnapshot();
 		return null;
 	}
@@ -206,9 +186,8 @@ public sealed partial class BridgeCommands
 	}
 
 	/// <summary>行为开关批量写入并热应用。整批先校验，任一字段非法时不写库、也不热更新。</summary>
-	private async Task<object?> ModelSetBehaviorAsync(IBridgeSource source, JsonElement args)
+	private object? ModelSetBehavior(JsonElement args)
 	{
-		RequireMainVoid(source);
 		ValidateBehaviorUpdate(args);
 		SetBehaviorKey(args, "clickInteraction", "l2d_click_interaction");
 		SetBehaviorKey(args, "clickThrough", "l2d_click_through");
@@ -223,7 +202,6 @@ public sealed partial class BridgeCommands
 		SetBehaviorKey(args, "autonomousRandom", Live2DModelConfig.AutonomousRandomKey);
 		SetBehaviorFrequency(args);
 		SetBehaviorKey(args, "aiInteraction", PetInteractionConfig.AiEnabledKey);
-		await Task.CompletedTask;
 		Runtime.InvalidateSnapshot();
 		return null;
 	}
@@ -283,7 +261,6 @@ public sealed partial class BridgeCommands
 	/// </summary>
 	private async Task<object?> IndexTtsPickTemplateAsync(
 		IBridgeSource source,
-		JsonElement args,
 		CancellationToken cancellationToken)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
@@ -312,11 +289,9 @@ public sealed partial class BridgeCommands
 	/// 未传 filePath 时使用配置中的模板路径。
 	/// </summary>
 	private async Task<object?> IndexTtsCloneVoiceAsync(
-		IBridgeSource source,
 		JsonElement args,
 		CancellationToken cancellationToken)
 	{
-		RequireMainVoid(source);
 		string templatePath = OptionalStr(args, "filePath") ?? "";
 		if (string.IsNullOrWhiteSpace(templatePath))
 		{
@@ -396,12 +371,9 @@ public sealed partial class BridgeCommands
 	{
 		string serverId = Str(args, "serverId");
 		string toolName = Str(args, "toolName");
-		if (source is INativeSettingsSource)
-		{
-			RegisteredTool? registered = Runtime.Tools.Get($"mcp__{serverId}__{toolName}");
-			if (registered is null || !string.Equals(registered.PermissionLevel, "safe", StringComparison.OrdinalIgnoreCase))
-				throw new InvalidOperationException("该工具需要在对话里逐次授权，不能在设置页直接测试");
-		}
+		RegisteredTool? registered = Runtime.Tools.Get($"mcp__{serverId}__{toolName}");
+		if (registered is null || !string.Equals(registered.PermissionLevel, "safe", StringComparison.OrdinalIgnoreCase))
+			throw new InvalidOperationException("该工具需要在对话里逐次授权，不能在设置页直接测试");
 		JsonObject? toolArgs = null;
 		if (args.TryGetProperty("arguments", out JsonElement argElem) && argElem.ValueKind == JsonValueKind.Object)
 		{
@@ -417,14 +389,14 @@ public sealed partial class BridgeCommands
 		}
 		else
 		{
-			CancellationTokenSource registered = _services.AgentOperations.Register(source.Label, sessionId, cancellationToken);
+			CancellationTokenSource operationCts = _services.AgentOperations.Register(source.Label, sessionId, cancellationToken);
 			try
 			{
-				result = await _services.Mcp.CallToolAsync(serverId, toolName, toolArgs, registered.Token);
+				result = await _services.Mcp.CallToolAsync(serverId, toolName, toolArgs, operationCts.Token);
 			}
 			finally
 			{
-				_services.AgentOperations.Complete(source.Label, sessionId, registered);
+				_services.AgentOperations.Complete(source.Label, sessionId, operationCts);
 			}
 		}
 

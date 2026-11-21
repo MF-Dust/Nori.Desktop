@@ -18,7 +18,7 @@ public partial class BridgeCommandsTests
 		JsonElement initial = JsonSerializer.SerializeToElement(_runtime.BuildSnapshot());
 		Assert.True(initial.GetProperty("general").GetProperty("backgroundBlurEnabled").GetBoolean());
 		using SettingsService service = new(_services, new Window());
-		await service.UpdateGeneralAsync(new SettingsGeneralPatchDto { BackgroundBlurEnabled = false });
+		await service.ExecuteAsync("settings_update_general", new { backgroundBlurEnabled = false });
 		await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 		Assert.False(_config.GetBoolOr(ConfigStore.KeyBackgroundBlurEnabled, true));
 		Assert.False(JsonSerializer.SerializeToElement(_runtime.BuildSnapshot()).GetProperty("general").GetProperty("backgroundBlurEnabled").GetBoolean());

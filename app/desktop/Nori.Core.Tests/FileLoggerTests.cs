@@ -80,7 +80,6 @@ public class FileLoggerTests : IDisposable
 	[Fact]
 	public async Task 清空只影响内存缓冲_不影响文件内容()
 	{
-		_logger.Initialize();
 		_logger.Write(LogSource.Backend, "warn", "清空前的一条");
 		Assert.True(await _logger.FlushAsync(TimeSpan.FromSeconds(10)));
 		string file = Assert.Single(Directory.GetFiles(LogDirectory(_directory), "*.jsonl"));

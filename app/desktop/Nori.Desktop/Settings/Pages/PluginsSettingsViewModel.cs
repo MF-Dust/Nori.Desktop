@@ -180,7 +180,6 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>启用插件。</summary>
 	public async Task<PluginItem> EnableAsync(PluginItem plugin, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(plugin);
 		EnsureCanMutate();
 		JsonElement result = await ExecuteAsync("plugin_enable", new {id = plugin.Id}, cancellationToken).ConfigureAwait(true);
 		PluginItem updated = ParsePlugin(result);
@@ -191,7 +190,6 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>重新加载插件，保留数据和启用意图。</summary>
 	public async Task<PluginItem> ReloadAsync(PluginItem plugin, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(plugin);
 		EnsureCanMutate();
 		JsonElement result = await ExecuteAsync("plugin_reload", new {id = plugin.Id}, cancellationToken).ConfigureAwait(true);
 		PluginItem updated = ParsePlugin(result);
@@ -220,7 +218,6 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 
 	private void EnsureKnownAction(McpToolItem action)
 	{
-		ArgumentNullException.ThrowIfNull(action);
 		if (action.Category != "plugin" || !Actions.Any(item => item.Name == action.Name))
 			throw new InvalidOperationException("插件动作已不可用，请刷新列表。");
 	}
@@ -228,7 +225,6 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>停用插件。</summary>
 	public async Task<PluginItem> DisableAsync(PluginItem plugin, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(plugin);
 		// 停用属于撤回授权，安全模式和未确认安装风险时仍然允许。
 		JsonElement result = await ExecuteAsync("plugin_disable", new {id = plugin.Id}, cancellationToken).ConfigureAwait(true);
 		PluginItem updated = ParsePlugin(result);
@@ -239,7 +235,6 @@ public sealed class PluginsSettingsViewModel : SettingsPageViewModelBase
 	/// <summary>卸载插件，可选择同时删除插件数据。</summary>
 	public async Task<PluginUninstallItem> UninstallAsync(PluginItem plugin, bool deleteData, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(plugin);
 		JsonElement result = await ExecuteAsync("plugin_uninstall", new {id = plugin.Id, deleteData}, cancellationToken).ConfigureAwait(true);
 		PluginItem? updated = SettingsJson.Object(result, "plugin") is {ValueKind: JsonValueKind.Object} item ? ParsePlugin(item) : null;
 		PluginUninstallItem uninstall = new(SettingsJson.Bool(result, "success"), SettingsJson.Bool(result, "requiresRestart"), updated);

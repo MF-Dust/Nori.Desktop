@@ -23,44 +23,29 @@ public sealed partial class BridgeCommands
 	/// 因此远端重置失败时整条命令失败，本地记录原样留着，两边仍然一致。连不上对端又确实要
 	/// 清本地的话，关掉 LuoLiCore 再清。
 	/// </summary>
-	private async Task<object?> ClearChatAsync(IBridgeSource source, CancellationToken cancellationToken) =>
-		await RequireMainAsync(source, async () =>
+	private async Task<object?> ClearChatAsync(CancellationToken cancellationToken)
+	{
+		// 与 AgentEngine 的生成及最终落库共用闸门，含尚未进入后台执行的已接受请求。
+		using AgentSessionLease lease = Runtime.Engine.ReserveSession("chat-clear", cancellationToken);
+		bool hadRemoteSession = Runtime.Engine.HasRemoteContext;
+		bool remoteReset = false;
+		if (_services.SafeMode)
 		{
-			// 与 AgentEngine 的生成及最终落库共用闸门，含尚未进入后台执行的已接受请求。
-			using AgentSessionLease lease = Runtime.Engine.ReserveSession("chat-clear", cancellationToken);
-			// 安全模式禁用一切外部调用（AGENTS.md §1「Safe Mode」），重置远端会话是一次
-			// 真正的出网请求，所以这里跳过它。
-			//
-			// 不把 chat_clear 整条加进 IsNetworkCommand：清空本地聊天记录本身是纯本地操作，
-			// 安全模式没有理由连它一起禁掉 —— 那会让人在排障时连清个记录都做不到。
-			//
-			// 代价是两边会不一致：安全模式下对话本来就不走远端（chat_start 已被挡），远端的
-			// 上下文停在进入安全模式那一刻，清完本地它还记着。因此把这件事**报给调用方**，
-			// 由界面提示一句，而不是让用户以为清干净了 —— 这种不一致查起来比清不掉贵得多。
-			// 判据要在动手之前取：作废之后再问「有没有远端会话」恒为否。
-			bool hadRemoteSession = Runtime.Engine.HasRemoteContext;
-			bool remoteReset = false;
-			if (_services.SafeMode)
-			{
-				// 安全模式不出网，但本地记着的会话必须作废 —— 否则退出安全模式之后那段「已经
-				// 清掉」的上下文会原样回来。这一步不联网。
-				Runtime.Engine.ForgetRemoteSession();
-			}
-			else
-			{
-				remoteReset = await Runtime.Engine.ResetRemoteContextAsync(cancellationToken);
-			}
+			Runtime.Engine.ForgetRemoteSession();
+		}
+		else
+		{
+			remoteReset = await Runtime.Engine.ResetRemoteContextAsync(cancellationToken);
+		}
 
-			_services.Chat.ClearHistory();
-			Runtime.NotifyChatHistoryChanged();
-			return new ClearChatResult(
-				remoteReset,
-				_services.SafeMode && hadRemoteSession
-					// 用户这一侧已经干净了：本地空了，那段会话也不会再被用到。留着说一句是因为
-					// 旧会话的内容仍留在对端服务器上 —— 删它需要联网，而安全模式的前提是不联网。
-					? "安全模式下未联系外部服务；本地会话已作废，重新启用后会开一段新的对话"
-					: null);
-		});
+		_services.Chat.ClearHistory();
+		Runtime.NotifyChatHistoryChanged();
+		return new ClearChatResult(
+			remoteReset,
+			_services.SafeMode && hadRemoteSession
+				? "安全模式下未联系外部服务；本地会话已作废，重新启用后会开一段新的对话"
+				: null);
+	}
 
 	/// <summary>
 	/// 清空聊天记录的结果。
@@ -70,17 +55,15 @@ public sealed partial class BridgeCommands
 	/// </summary>
 	private sealed record ClearChatResult(bool RemoteReset, string? Note);
 
-	private async Task<object?> SkillsInstallUrlAsync(IBridgeSource source, JsonElement args)
+	private async Task<object?> SkillsInstallUrlAsync(JsonElement args)
 	{
-		RequireMainVoid(source);
 		object skill = await Runtime.Skills.InstallFromUrlAsync(Str(args, "url"));
 		Runtime.InvalidateSnapshot();
 		return skill;
 	}
 
-	private async Task<object?> SkillsSaveCustomAsync(IBridgeSource source, JsonElement args)
+	private object SkillsSaveCustom(JsonElement args)
 	{
-		RequireMainVoid(source);
 		SkillRecord skill = args.GetProperty("skill").Deserialize<SkillRecord>(BridgeJson.Options)
 			?? throw new InvalidOperationException("技能数据不能为空");
 		object saved = Runtime.Skills.SaveCustom(skill);
@@ -88,23 +71,8 @@ public sealed partial class BridgeCommands
 		return saved;
 	}
 
-	private async Task<object?> McpGetServersAsync(IBridgeSource source)
+	private async Task<object?> ToolsExecuteManualAsync(JsonElement args)
 	{
-		RequireMainVoid(source);
-		IReadOnlyList<McpServerStatusInfo> servers = await _services.Mcp.GetServersAsync();
-		// 原生设置已订阅状态通知，读取列表不能再触发同一页面的刷新。
-		// 连接、断开与配置写入命令仍负责更新工具注册表并广播状态。
-		if (source is not INativeSettingsSource)
-		{
-			await Runtime.RefreshMcpToolsAsync();
-			Runtime.InvalidateSnapshot();
-		}
-		return servers;
-	}
-
-	private async Task<object?> ToolsExecuteManualAsync(IBridgeSource source, JsonElement args)
-	{
-		RequireMainVoid(source);
 		string name = Str(args, "name");
 		RegisteredTool? tool = Runtime.Tools.Get(name)
 			?? throw new InvalidOperationException($"未找到工具: {name}");
@@ -144,18 +112,16 @@ public sealed partial class BridgeCommands
 	// LLM / MCP / 技能辅助
 	// ===================================================================
 
-	private async Task<object?> FetchModelsWithSourceCheckAsync(IBridgeSource source, JsonElement args)
+	private async Task<object?> FetchModelsAsync(JsonElement args)
 	{
-		RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () => (object?)true);
 		AiChatSettings chat = _services.AiSettings.Read().Chat;
 		string apiKey = OptionalStr(args, "apiKey") ?? chat.ApiKey;
 		return await _services.Llm.FetchModelsAsync(
 			OptionalStr(args, "provider") ?? chat.ProviderId, Str(args, "baseUrl"), apiKey);
 	}
 
-	private async Task<object?> GetModelInfoAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
+	private async Task<object?> GetModelInfoAsync(JsonElement args, CancellationToken cancellationToken)
 	{
-		RequireLabel(source, WindowLabels.FirstRun, WindowLabels.Main, () => (object?)true);
 		AiChatSettings chat = _services.AiSettings.Read().Chat;
 		string providerId = OptionalStr(args, "provider") ?? chat.ProviderId;
 		// 插件提供商的模型能力未知，按保守默认值返回，与 AgentEngine 运行时一致，不查内置协议目录。
@@ -201,35 +167,32 @@ public sealed partial class BridgeCommands
 		_ => null,
 	};
 
-	private async Task<object?> ReadGeneratedImageAsync(IBridgeSource source, string name, CancellationToken cancellationToken)
+	private async Task<object?> ReadGeneratedImageAsync(string name, CancellationToken cancellationToken)
 	{
-		RequireMainVoid(source);
 		if (!Nori.Core.Chat.Images.GeneratedImageStore.IsValidName(name)) throw new InvalidOperationException("图片名称无效");
 		byte[]? bytes = await _services.ImageStore.ReadAsync(name, cancellationToken);
 		return bytes is null ? null : new {name, base64 = Convert.ToBase64String(bytes)};
 	}
 
-	private object? OpenGeneratedImage(IBridgeSource source, string name)
+	private object? OpenGeneratedImage(string name)
 	{
-		RequireMainVoid(source);
 		string path = _services.ImageStore.Resolve(name) ?? throw new InvalidOperationException("图片不存在或已被删除");
 		Nori.Desktop.Runtime.ShellOpen.OpenDataFile(path, _services.Paths.DataRoot);
 		return null;
 	}
 
-	private async Task<object?> TestAiConnectionAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
+	private async Task<object?> TestAiConnectionAsync(JsonElement args, CancellationToken cancellationToken)
 	{
 		string target = OptionalStr(args, "target") ?? "chat";
 		if (string.Equals(target, "embedding", StringComparison.OrdinalIgnoreCase))
 		{
-			return await TestEmbeddingConnectionAsync(source, args, cancellationToken);
+			return await TestEmbeddingConnectionAsync(args, cancellationToken);
 		}
-		return await TestLlmConnectionAsync(source, args, cancellationToken);
+		return await TestLlmConnectionAsync(args, cancellationToken);
 	}
 
-	private async Task<ProviderConnectionTestResult> TestLlmConnectionAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
+	private async Task<ProviderConnectionTestResult> TestLlmConnectionAsync(JsonElement args, CancellationToken cancellationToken)
 	{
-		RequireMainVoid(source);
 		AiChatSettings chat = _services.AiSettings.Read().Chat;
 		string provider = OptionalStr(args, "provider") ?? chat.ProviderId;
 		string baseUrl = OptionalStr(args, "baseUrl") ?? chat.BaseUrl;
@@ -239,9 +202,8 @@ public sealed partial class BridgeCommands
 		return await tester.TestLlmAsync(provider, baseUrl, apiKey, model, cancellationToken);
 	}
 
-	private async Task<ProviderConnectionTestResult> TestEmbeddingConnectionAsync(IBridgeSource source, JsonElement args, CancellationToken cancellationToken)
+	private async Task<ProviderConnectionTestResult> TestEmbeddingConnectionAsync(JsonElement args, CancellationToken cancellationToken)
 	{
-		RequireMainVoid(source);
 		AiEmbeddingSettings embedding = _services.AiSettings.Read().Embedding;
 		string baseUrl = OptionalStr(args, "baseUrl") ?? embedding.BaseUrl;
 		string apiKey = OptionalStr(args, "apiKey") ?? embedding.ApiKey;
@@ -287,11 +249,9 @@ public sealed partial class BridgeCommands
 	private bool SkillsToggle(string id, bool enabled) => Runtime.Skills.Toggle(id, enabled);
 
 	private async Task<object?> McpImportUrlAsync(
-		IBridgeSource source,
 		JsonElement args,
 		CancellationToken cancellationToken)
 	{
-		RequireMainVoid(source);
 		string url = Str(args, "url");
 		Nori.Core.Network.UrlAccessPolicy.EnsurePublicHttp(new Uri(url));
 		using HttpResponseMessage response = await Nori.Core.Network.UrlAccessPolicy.GetWithSafeRedirectsAsync(
@@ -305,64 +265,45 @@ public sealed partial class BridgeCommands
 		return _services.Mcp.PreviewImport(text);
 	}
 
-	private async Task<object?> McpImportCommitAsync(IBridgeSource source, JsonElement args)
+	private async Task<object?> McpImportCommitAsync(JsonElement args)
 	{
-		RequireMainVoid(source);
 		IReadOnlyList<McpServerStatusInfo> saved = await _services.Mcp.CommitImportAsync(Str(args, "token"));
 		await Runtime.RefreshMcpToolsAsync();
 		InvalidateMcpSnapshot();
 		return saved;
 	}
 
-	private async Task<object?> McpSaveServerAsync(IBridgeSource source, JsonElement args)
+	private async Task<object?> McpSaveServerAsync(JsonElement args)
 	{
-		RequireMainVoid(source);
 		object result = await _services.Mcp.SaveServerAsync(ParseMcpConfig(args));
 		await Runtime.RefreshMcpToolsAsync();
 		InvalidateMcpSnapshot();
 		return result;
 	}
 
-	private async Task<object?> McpDeleteServerAsync(IBridgeSource source, JsonElement args)
+	private async Task<object?> McpDeleteServerAsync(JsonElement args)
 	{
-		RequireMainVoid(source);
 		bool deleted = await _services.Mcp.DeleteServerAsync(Str(args, "id"));
 		await Runtime.RefreshMcpToolsAsync();
 		InvalidateMcpSnapshot();
 		return deleted;
 	}
 
-	private async Task<object?> McpConnectServerAsync(IBridgeSource source, JsonElement args)
+	private async Task<object?> McpConnectServerAsync(JsonElement args)
 	{
-		RequireMainVoid(source);
 		object result = await _services.Mcp.ConnectServerAsync(Str(args, "id"));
 		await Runtime.RefreshMcpToolsAsync();
 		InvalidateMcpSnapshot();
 		return result;
 	}
 
-	private async Task<object?> McpDisconnectServerAsync(IBridgeSource source, JsonElement args)
+	private async Task<object?> McpDisconnectServerAsync(JsonElement args)
 	{
-		RequireMainVoid(source);
 		object result = await _services.Mcp.DisconnectServerAsync(Str(args, "id"));
 		await Runtime.RefreshMcpToolsAsync();
 		InvalidateMcpSnapshot();
 		return result;
 	}
 
-	private async Task<object?> McpTestServerAsync(IBridgeSource source, JsonElement args)
-	{
-		RequireMainVoid(source);
-		return await _services.Mcp.TestServerAsync(ParseMcpConfig(args));
-	}
-
-	private async Task<object?> McpCallToolAsync(
-		IBridgeSource source,
-		JsonElement args,
-		CancellationToken cancellationToken)
-	{
-		RequireMainVoid(source);
-		return await CallMcpToolCoreAsync(source, args, cancellationToken);
-	}
 	private void InvalidateMcpSnapshot() => Runtime.InvalidateSnapshot();
 }

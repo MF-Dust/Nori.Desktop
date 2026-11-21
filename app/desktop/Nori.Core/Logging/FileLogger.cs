@@ -75,9 +75,6 @@ public sealed class FileLogger : IDisposable, IAsyncDisposable
 		_worker = Task.Run(ConsumeAsync);
 	}
 
-	/// <summary>兼容旧初始化入口；后台任务在构造后启动。</summary>
-	public void Initialize() { }
-
 	/// <summary>调整当前运行的最低级别，不持久化设置。</summary>
 	public void SetMinimumLevel(string level)
 	{

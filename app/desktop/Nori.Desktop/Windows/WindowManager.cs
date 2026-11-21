@@ -52,7 +52,7 @@ public sealed class WindowManager : IWindowManager
 	/// <summary>隔离最终退出动作，生命周期测试不实现 Avalonia 私有接口，也不终止共享 UI 会话。</summary>
 	internal WindowManager(Action<int> shutdown)
 	{
-		_shutdown = shutdown ?? throw new ArgumentNullException(nameof(shutdown));
+		_shutdown = shutdown;
 	}
 
 	/// <inheritdoc />

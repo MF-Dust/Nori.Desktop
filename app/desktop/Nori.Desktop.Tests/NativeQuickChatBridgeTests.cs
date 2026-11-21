@@ -12,23 +12,18 @@ namespace Nori.Desktop.Tests;
 /// <summary>Quick Chat 的独立来源身份、命令边界与会话生命周期。</summary>
 public partial class BridgeCommandsTests
 {
-	private sealed class QuickChatTestSource : INativeChatSource, IDisposable
+	private sealed class QuickChatTestSource : IBridgeSource, IDisposable
 	{
 		private readonly CancellationTokenSource _lifetime = new();
 		private int _disposed;
 
-		public QuickChatTestSource(
-			string label = WindowLabels.QuickChat,
-			NativeChatSurface surface = NativeChatSurface.QuickChat)
+		public QuickChatTestSource(string label = WindowLabels.QuickChat)
 		{
 			Label = label;
-			Surface = surface;
 			LifetimeToken = _lifetime.Token;
 		}
 
 		public string Label { get; }
-		public NativeChatSurface Surface { get; }
-		public bool IsVisible { get; set; } = true;
 		public Window? Self => null;
 		public CancellationToken LifetimeToken { get; }
 		public ConcurrentQueue<JsonElement> Events { get; } = new();
@@ -41,63 +36,12 @@ public partial class BridgeCommandsTests
 			Received?.Invoke(value);
 		}
 
-		public void PostResult(long id, object? value, string? error) { }
-
 		public void Dispose()
 		{
 			if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 			_lifetime.Cancel();
 			_lifetime.Dispose();
 		}
-	}
-
-	[Fact]
-	public async Task QuickChatWhitelistIsEnforcedAtBridgeAndRouterEntries()
-	{
-		using QuickChatTestSource source = new();
-		BridgeCommands commands = CreateCommands();
-		BridgeCommandRouter router = new(_services);
-
-		// 历史读取是两个入口都必须保留的最小合法命令。
-		Assert.NotNull(await commands.InvokeAsync(source, "chat_history_page", Args(new {limit = 2})));
-		Assert.NotNull(await router.InvokeAsync(source, "chat_history_page", Args(new {limit = 2})));
-
-		foreach (string command in new[] {"chat_clear", "clipboard_write_text", "open_url", "stt_start", "stt_stop", "tts_stop"})
-		{
-			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(source, command, Args(new { })));
-			await Assert.ThrowsAsync<InvalidOperationException>(() => router.InvokeAsync(source, command, Args(new { })));
-		}
-	}
-
-	[Fact]
-	public async Task QuickChatRejectsSpoofedLabelAndFakeFullSurface()
-	{
-		BridgeCommands commands = CreateCommands();
-		BridgeCommandRouter router = new(_services);
-		IBridgeSource[] spoofed =
-		[
-			new QuickChatTestSource(WindowLabels.Chat),
-			new QuickChatTestSource(WindowLabels.QuickChat, NativeChatSurface.Full),
-			new FakeBridgeSource(WindowLabels.QuickChat),
-		];
-
-		foreach (IBridgeSource source in spoofed)
-		{
-			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(source, "chat_history_page", Args(new { })));
-			await Assert.ThrowsAsync<InvalidOperationException>(() => router.InvokeAsync(source, "chat_history_page", Args(new { })));
-		}
-	}
-
-	[Fact]
-	public async Task QuickChatDisposedSourceIsRejectedAtBothEntries()
-	{
-		QuickChatTestSource source = new();
-		source.Dispose();
-		BridgeCommands commands = CreateCommands();
-		BridgeCommandRouter router = new(_services);
-
-		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(source, "chat_history_page", Args(new { })));
-		await Assert.ThrowsAsync<InvalidOperationException>(() => router.InvokeAsync(source, "chat_history_page", Args(new { })));
 	}
 
 	[Fact]

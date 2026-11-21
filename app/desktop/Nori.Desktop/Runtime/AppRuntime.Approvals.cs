@@ -53,8 +53,7 @@ public sealed partial class AppRuntime
 		}
 
 		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
-			cancellationToken, request.CancellationToken, _lifetimeCts.Token,
-			source is INativeChatSource native ? native.LifetimeToken : CancellationToken.None);
+			cancellationToken, request.CancellationToken, _lifetimeCts.Token, source.LifetimeToken);
 		PendingApproval approval = new(request.RequestId, request.ToolName, source, sessionId,
 			request.DeadlineUtc ?? DateTimeOffset.UtcNow.AddSeconds(AgentEngine.CallTimeoutSeconds), linked.Token);
 		lock (_approvalGate)
@@ -125,7 +124,7 @@ public sealed partial class AppRuntime
 				FinishApproval(approval, false, "cancelled");
 				throw new InvalidOperationException("授权请求已取消");
 			}
-			if (source is INativeChatSource && !source.IsVisible)
+			if (source is Nori.Desktop.Chat.NativeChatContext { IsVisible: false })
 				throw new InvalidOperationException("对话窗口不可见，无法延长工具授权");
 			approval.Extend();
 			PostAgentEvent(approval.Source, new
@@ -212,36 +211,34 @@ public sealed partial class AppRuntime
 	}
 
 	/// <summary>
-	/// 回传授权决定; 只允许原始窗口响应。原生设置窗口可在明确可信上下文中
-	/// 响应主窗口发起的自动化审批，未匹配的请求 fail-closed 忽略。
+	/// 回传授权决定；仅原始会话窗口（或设置窗口针对主窗口审批）可响应，未匹配请求 fail-closed 忽略。
 	/// </summary>
 	public bool RespondApproval(IBridgeSource source, string requestId, bool approved)
 	{
-		bool allowNativeSettings = source is INativeSettingsSource;
+		bool isSettings = source.Label == WindowLabels.Settings;
 		lock (_approvalGate)
 		{
 			if (_approvals.TryGetValue(requestId, out PendingApproval? approval)
 				&& (IsSameSource(source, approval.Source)
-					|| (allowNativeSettings && approval.Source is not INativeChatSource && approval.Source.Label == WindowLabels.Main)))
+					|| (isSettings && approval.Source.Label == WindowLabels.Main)))
 			{
 				if (approval.DeadlineUtc <= DateTimeOffset.UtcNow)
 				{
 					FinishApproval(approval, false, "timeout");
 					return false;
 				}
-				// 可见性及取消信号可能在命令入口校验后、等待授权锁期间改变。
 				if (approval.CancellationToken.IsCancellationRequested)
 				{
 					FinishApproval(approval, false, "cancelled");
 					return false;
 				}
-				if (approved && source is INativeChatSource && !source.IsVisible)
+				if (approved && source is Nori.Desktop.Chat.NativeChatContext { IsVisible: false })
 					throw new InvalidOperationException("对话窗口不可见，无法批准工具执行");
 				return FinishApproval(approval, approved, approved ? "approved" : "denied");
 			}
 		}
 
-		if (source.Label != WindowLabels.Main && !allowNativeSettings
+		if (source.Label != WindowLabels.Main && !isSettings
 			|| !_desktopApprovals.TryGetValue(requestId, out PendingDesktopApproval? desktopApproval)) return false;
 		if (!_desktopApprovals.TryRemove(new KeyValuePair<string, PendingDesktopApproval>(requestId, desktopApproval))) return false;
 		desktopApproval.Dispose();

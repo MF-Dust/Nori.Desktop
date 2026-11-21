@@ -77,7 +77,6 @@ internal sealed class DesktopBootstrapper
 		AppStoragePaths paths = Program.StoragePaths ?? throw new InvalidOperationException("存储路径尚未初始化");
 
 		FileLogger logger = Program.Logger ?? throw new InvalidOperationException("日志系统尚未初始化");
-		logger.Initialize();
 		CrashReporter.AttachLogger(logger); // 兜底日志与应用共用同一个写入器
 		logger.Write(LogSource.Backend, "info", "日志系统初始化完成", "Lifecycle", "logging.ready");
 
@@ -374,11 +373,8 @@ internal sealed class DesktopBootstrapper
 		}
 	}
 
-	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "关闭诊断记录失败不能阻断进程退出。")]
-	private static void WriteShutdownFailure(Exception exception)
-	{
-		try { Program.Logger?.Write(LogSource.Backend, "warn", "应用关闭流程失败", "Lifecycle", "app.shutdown_failed", exception); } catch { }
-	}
+	private static void WriteShutdownFailure(Exception exception) =>
+		Program.Logger?.Write(LogSource.Backend, "warn", "应用关闭流程失败", "Lifecycle", "app.shutdown_failed", exception);
 
 	/// <summary>
 	/// 应用版本, 写入 app_version 配置

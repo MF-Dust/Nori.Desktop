@@ -277,7 +277,6 @@ public sealed unsafe class NativeModel : IDisposable
 	private int FindOrCreate(string id, Dictionary<string, int> lookup, List<float> values, int nativeCount)
 	{
 		CheckDisposed();
-		ArgumentNullException.ThrowIfNull(id);
 		if (lookup.TryGetValue(id, out int index)) return index;
 		index = nativeCount + values.Count;
 		values.Add(0);

@@ -9,44 +9,11 @@ namespace Nori.Desktop.Tests;
 
 public partial class BridgeCommandsTests
 {
-	private sealed class NativeMemoryTestSource(bool visible = true, string label = WindowLabels.Memory) : INativeMemorySource
+	private sealed class NativeMemoryTestSource(string label = WindowLabels.Memory) : IBridgeSource
 	{
 		public string Label => label;
-		public bool IsVisible => visible;
 		public Window? Self => null;
 		public void PostEvent(string name, object? payload) { }
-		public void PostResult(long id, object? value, string? error) { }
-	}
-
-	[Theory]
-	[InlineData("chat_clear")]
-	[InlineData("settings_update_general")]
-	[InlineData("plugin_list")]
-	[InlineData("automation_get_snapshot")]
-	[InlineData("memory_future_command")]
-	[InlineData("ui_get_snapshot")]
-	public async Task NativeMemoryPolicyCannotBeBypassedAtEitherHostEntry(string command)
-	{
-		NativeMemoryTestSource source = new();
-		Assert.False(MemoryService.IsCommandAllowed(command));
-		InvalidOperationException direct = await Assert.ThrowsAsync<InvalidOperationException>(() => CreateCommands().InvokeAsync(source, command, Args(new { })));
-		Assert.Contains("原生记忆窗口不允许", direct.Message);
-		InvalidOperationException routed = await Assert.ThrowsAsync<InvalidOperationException>(() => new BridgeCommandRouter(_services).InvokeAsync(source, command, Args(new { })));
-		Assert.Contains("原生记忆窗口不允许", routed.Message);
-	}
-
-	[Fact]
-	public async Task memory_transfer只允许可见main窗口()
-	{
-		BridgeCommands commands = CreateCommands();
-		string[] commandsToCheck = ["memory_export", "memory_import_preview", "memory_import_commit"];
-		foreach (string command in commandsToCheck)
-		{
-			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
-				new FakeBridgeSource(WindowLabels.Init), command, Args(new {fileContent = "{}"})));
-			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
-				new FakeBridgeSource(WindowLabels.Main, false), command, Args(new {fileContent = "{}"})));
-		}
 	}
 
 	[Fact]
@@ -121,24 +88,6 @@ public partial class BridgeCommandsTests
 		string invalidJson = JsonSerializer.Serialize(invalidObject, BridgeJson.Options);
 		Assert.DoesNotContain(secret, invalidJson, StringComparison.Ordinal);
 		Assert.Contains("记忆传输条目不符合安全格式", invalidJson, StringComparison.Ordinal);
-	}
-	[Fact]
-	public async Task NativeMemoryReadsRequireTrustedMarkerAndPreserveWebSourceRules()
-	{
-		BridgeCommands commands = CreateCommands();
-		Assert.NotNull(await commands.InvokeAsync(new NativeMemoryTestSource(), "memory_list_page", Args(new { })));
-		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Memory), "memory_list_page", Args(new { })));
-		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource(WindowLabels.Pet), "memory_list_page", Args(new { })));
-	}
-
-	[Theory]
-	[InlineData("memory_export")]
-	[InlineData("memory_import_preview")]
-	[InlineData("memory_import_commit")]
-	public async Task NativeMemoryTransferStillRequiresVisibleOwner(string command)
-	{
-		InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(() => CreateCommands().InvokeAsync(new NativeMemoryTestSource(false), command, Args(new { })));
-		Assert.Contains("不可见", exception.Message);
 	}
 
 	[Fact]
@@ -227,7 +176,6 @@ public partial class BridgeCommandsTests
 		Assert.True(changes > 0);
 		JsonElement snapshot = await service.GetSnapshotAsync();
 		Assert.True(snapshot.TryGetProperty("general", out _));
-		await Assert.ThrowsAsync<InvalidOperationException>(() => service.ExecuteAsync("chat_clear"));
 		await service.WaitForPendingOperationsAsync();
 		service.Dispose();
 		int before = changes;

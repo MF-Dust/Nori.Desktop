@@ -127,7 +127,6 @@ public sealed class AutomationRuntime : IAsyncDisposable
 		AutomationAuditRepository? auditSink = null,
 		Func<AutomationBounds>? screenBoundsProvider = null)
 	{
-		ArgumentNullException.ThrowIfNull(config);
 		_config = config;
 		_aiSettings = new AiSettingsStore(config);
 		_safeMode = safeMode;
@@ -350,7 +349,6 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	/// <summary>登记当前高风险动作审批，供宿主 RespondApproval 流程使用。</summary>
 	public void SetAutomationApproval(AutomationApprovalRequest request)
 	{
-		ArgumentNullException.ThrowIfNull(request);
 		if (_safeMode) return;
 		AutomationAuditTaskKind taskKind = GetAuditTaskKind(request.TaskId);
 		lock (_desktopStateGate)
@@ -376,7 +374,6 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	/// <summary>记录由宿主现有审批协调器产生的固定结论。</summary>
 	public void RecordApprovalOutcome(AutomationApprovalRequest request, AutomationApprovalOutcome outcome)
 	{
-		ArgumentNullException.ThrowIfNull(request);
 		AutomationAuditOutcome auditOutcome = outcome switch
 		{
 			AutomationApprovalOutcome.Approved => AutomationAuditOutcome.Approved,
@@ -402,7 +399,6 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	/// <summary>记录审批因取消而 fail-closed 的结论。</summary>
 	public void RecordApprovalCancellation(AutomationApprovalRequest request)
 	{
-		ArgumentNullException.ThrowIfNull(request);
 		RecordAudit(new AutomationAuditEvent(
 			DateTimeOffset.UtcNow,
 			request.TaskId,
@@ -415,7 +411,6 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	/// <summary>登记一个经过显式能力授权的执行任务。</summary>
 	public AutomationTask Enqueue(AutomationCapability requiredCapability, Func<CancellationToken, Task> operation, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(operation);
 		ThrowIfExecutionBlocked(requiredCapability);
 		return _tasks.Enqueue(operation, cancellationToken);
 	}

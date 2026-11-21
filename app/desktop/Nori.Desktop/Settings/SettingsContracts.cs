@@ -108,31 +108,6 @@ public sealed class SettingsSectionViewModel : SettingsObservableObject
 	}
 }
 
-/// <summary>设置页公共契约，供各功能页并行实现。</summary>
-public interface ISettingsPage
-{
-	/// <summary>稳定页面键。</summary>
-	string Key { get; }
-
-	/// <summary>左侧导航分组键。</summary>
-	string GroupKey { get; }
-
-	/// <summary>当前语言下的页面标题。</summary>
-	string DisplayTitle { get; }
-
-	/// <summary>当前语言下的页面说明。</summary>
-	string Description { get; }
-
-	/// <summary>页面字段分组。</summary>
-	ObservableCollection<SettingsSectionViewModel> Sections { get; }
-
-	/// <summary>等待本页防抖保存完成。</summary>
-	Task<bool> FlushPendingSavesAsync(CancellationToken cancellationToken = default);
-
-	/// <summary>取消查询、等待保存并释放页面订阅。</summary>
-	Task PrepareShutdownAsync(CancellationToken cancellationToken = default);
-}
-
 /// <summary>页面导航项。</summary>
 public sealed class SettingsPageItemViewModel(SettingsPageBase page) : SettingsObservableObject
 {
@@ -185,7 +160,7 @@ public sealed class SettingsGroupViewModel(SettingsText title, string key) : Set
 }
 
 /// <summary>设置页面的公共基类。</summary>
-public abstract class SettingsPageBase : SettingsObservableObject, ISettingsPage, IDisposable
+public abstract class SettingsPageBase : SettingsObservableObject, IDisposable
 {
 	private readonly SettingsText _titleText;
 	private readonly SettingsText _descriptionText;
@@ -213,7 +188,7 @@ public abstract class SettingsPageBase : SettingsObservableObject, ISettingsPage
 		SettingsText description,
 		CancellationToken lifetimeToken)
 	{
-		Service = service ?? throw new ArgumentNullException(nameof(service));
+		Service = service;
 		Key = key;
 		GroupKey = groupKey;
 		_titleText = title;
@@ -548,7 +523,6 @@ public sealed class SettingsFieldViewModel : SettingsObservableObject, IDisposab
 	/// <summary>替换选择项但保留当前编辑值，不把刷新选项当作用户保存。</summary>
 	public void SetOptions(IEnumerable<SettingsOption> options)
 	{
-		ArgumentNullException.ThrowIfNull(options);
 		SettingsOption[] next = options.ToArray();
 		string selected = _selected;
 		_suppress = true;

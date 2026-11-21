@@ -151,7 +151,7 @@ public partial class BridgeCommandsTests
 		int resultThreadId = 0;
 		FakeNotifier notifier = new();
 		_runtime.UseNotifierForTests(notifier);
-		using NativeChatTestSource source = new() {IsVisible = false};
+		using NativeChatTestSource source = new();
 		source.Received = payload =>
 		{
 			if (payload.GetProperty("type").GetString() == "approval-result")

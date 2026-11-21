@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace Nori.Core.Platform;
 
 /// <summary>绑定 UDA v0.2.0 C ABI，只加载应用目录内的原生库。调用涉及 IPC，须在后台线程执行。</summary>
-public sealed class UniDesktopIntegration : IDesktopIntegration
+public sealed class UniDesktopIntegration
 {
 	private const CallingConvention Convention = CallingConvention.Cdecl;
 	[UnmanagedFunctionPointer(Convention)] private delegate int DetectThemeCall(out int theme);
@@ -221,7 +221,28 @@ public sealed class UniDesktopIntegration : IDesktopIntegration
 
 	private static void ValidateText(string value)
 	{
-		ArgumentNullException.ThrowIfNull(value);
 		if (value.Contains('\0')) throw new ArgumentException("文本不能包含空字符。", nameof(value));
 	}
+}
+
+public enum DesktopTheme { Unknown, Dark, Light }
+public enum WallpaperFillMode { Crop, Fill, Fit, Stretch }
+public sealed record DesktopAccent(byte Red, byte Green, byte Blue, byte Alpha);
+public enum WakeLockType { Display, System }
+public enum MediaPlaybackStatus { Playing, Paused, Stopped, Unknown }
+public enum MediaCommand { Play, Pause, Toggle, Next, Previous, Stop }
+public sealed record DesktopMediaInfo(string? Title, string? Artist, string? Album, ulong DurationMilliseconds, ulong PositionMilliseconds);
+public enum SessionAction { Lock, Logout, Suspend, Hibernate, Reboot, Shutdown }
+
+[Flags]
+public enum SessionCapabilities : uint
+{
+	None = 0,
+	Management = 0x00010000,
+	Lock = 0x00020000,
+	Logout = 0x00040000,
+	Suspend = 0x00080000,
+	Hibernate = 0x00100000,
+	Reboot = 0x00200000,
+	Shutdown = 0x00400000,
 }

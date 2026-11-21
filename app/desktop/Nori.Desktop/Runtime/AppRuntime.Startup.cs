@@ -127,7 +127,6 @@ public sealed partial class AppRuntime
 
 		if (!Services.SafeMode)
 		{
-			DetectLegacyVoiceConfig();
 			TrackBackground(() => RefreshMcpToolsAsync(), "MCP tools refresh");
 		}
 
@@ -148,16 +147,6 @@ public sealed partial class AppRuntime
 			return null;
 		}
 	}
-
-	private void DetectLegacyVoiceConfig()
-	{
-		if (!Voice.HasRetiredVoiceConfig()) return;
-		string flagged = Services.Config.GetStringOr("voice_notice_pending", "");
-		if (flagged.Length > 0) return; // 已提示过或已处理
-		Services.Config.Set("voice_notice_pending", new ConfigValue.Text("1"));
-	}
-
-	private bool VoiceRetired() => VoiceService.RetiredProviders.Contains(Services.Config.GetStringOr("stt_provider", ""));
 
 	private void OnProactiveMessage(ProactiveMessage message)
 	{

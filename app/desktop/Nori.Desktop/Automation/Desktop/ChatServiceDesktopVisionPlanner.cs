@@ -15,8 +15,6 @@ public sealed class ChatServiceDesktopVisionPlanner : IDesktopVisionPlanner
 	/// <summary>创建当前聊天 Provider 规划器。</summary>
 	public ChatServiceDesktopVisionPlanner(ChatService chat, AiSettingsStore settings)
 	{
-		ArgumentNullException.ThrowIfNull(chat);
-		ArgumentNullException.ThrowIfNull(settings);
 		_chat = chat;
 		_settings = settings;
 	}
@@ -24,7 +22,6 @@ public sealed class ChatServiceDesktopVisionPlanner : IDesktopVisionPlanner
 	/// <inheritdoc />
 	public Task<string> PlanAsync(IReadOnlyList<ChatMessageInput> messages, CancellationToken cancellationToken = default)
 	{
-		ArgumentNullException.ThrowIfNull(messages);
 		AiChatSettings chat = _settings.Read().Chat;
 		if (!chat.IsConfigured)
 		{

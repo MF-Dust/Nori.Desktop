@@ -35,7 +35,7 @@ public class SecretProtectorTests
 		byte[] key = Key(0x2A);
 		string cipher = SecretProtector.ProtectV2(key, "llm_api_key", "secret");
 
-		Assert.StartsWith(SecretProtector.Nsec2Prefix, cipher, StringComparison.Ordinal);
+		Assert.StartsWith(SecretProtector.Prefix, cipher, StringComparison.Ordinal);
 		Assert.True(SecretProtector.TryUnprotectV2(key, "llm_api_key", cipher, out string plain));
 		Assert.Equal("secret", plain);
 		Assert.False(SecretProtector.TryUnprotectV2(key, "tts_api_key", cipher, out _));

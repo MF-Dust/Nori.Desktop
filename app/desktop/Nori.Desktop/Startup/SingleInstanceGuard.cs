@@ -80,7 +80,6 @@ internal sealed class SingleInstanceGuard : IDisposable
 		string activationName,
 		Action<string, Exception>? onFailure = null)
 	{
-		ArgumentNullException.ThrowIfNull(onActivate);
 		Mutex mutex = CreateMutex(mutexName, out bool createdNew);
 		bool ownsMutex = createdNew;
 		if (!createdNew)

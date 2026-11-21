@@ -104,7 +104,7 @@ public sealed partial class AppRuntime
 		}
 		catch (Exception exception)
 		{
-			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣 AI 互动失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
+			Services.Logger.Write(LogSource.Backend, "warn", $"伴侣 AI 互动失败: {SensitiveDataRedactor.ExceptionSummary(exception)}");
 			PostActivePetInteractionFallback(trigger, requestCts);
 		}
 		finally
@@ -214,7 +214,7 @@ public sealed partial class AppRuntime
 		}
 		catch (Exception exception)
 		{
-			try { Services.Logger.Write(LogSource.Backend, "warn", $"伴侣互动朗读失败: {SensitiveDataRedactor.ExceptionSummary(exception)}"); } catch { }
+			Services.Logger.Write(LogSource.Backend, "warn", $"伴侣互动朗读失败: {SensitiveDataRedactor.ExceptionSummary(exception)}");
 		}
 		finally
 		{

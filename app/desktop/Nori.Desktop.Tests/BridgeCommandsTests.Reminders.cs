@@ -66,16 +66,9 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public async Task reminder命令拒绝非main和越界参数()
+	public async Task reminder命令拒绝越界参数()
 	{
 		BridgeCommands commands = CreateCommands();
-		FakeBridgeSource pet = new(WindowLabels.Pet);
-		string[] commandsToCheck = ["reminder_update", "reminder_list"];
-		foreach (string command in commandsToCheck)
-		{
-			await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(pet, command, Args(new {id = "missing"})));
-		}
-
 		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(
 			new FakeBridgeSource(WindowLabels.Main), "reminder_add", Args(new {content = new string('x', 201), delayMinutes = 15})));
 		Nori.Core.Proactive.ReminderItem added = Assert.IsType<Nori.Core.Proactive.ReminderItem>(await commands.InvokeAsync(

@@ -66,7 +66,6 @@ internal sealed class NoriAppearance
 	/// </summary>
 	internal static NoriAppearance Install(Application application)
 	{
-		ArgumentNullException.ThrowIfNull(application);
 		return Instances.GetValue(application, static app => new NoriAppearance(app));
 	}
 
@@ -107,7 +106,6 @@ internal sealed class NoriAppearance
 	internal void Apply(AppearancePreferences preferences)
 	{
 		Dispatcher.UIThread.VerifyAccess();
-		ArgumentNullException.ThrowIfNull(preferences);
 		AppearancePreferences? previous = _preferences;
 		if (previous == preferences) return;
 		IResourceDictionary resources = _application.Resources;

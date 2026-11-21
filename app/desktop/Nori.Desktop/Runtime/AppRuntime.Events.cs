@@ -9,12 +9,10 @@ public sealed partial class AppRuntime
 	// 事件出口
 	// ===================================================================
 
-	/// <summary>原生会话只回推最初的可信对象，旧会话不会流入同标签的新窗口。</summary>
+	/// <summary>向发起会话的窗口回推流式事件。</summary>
 	private void PostAgentEvent(IBridgeSource source, object payload)
 	{
-		if (Volatile.Read(ref _disposed) != 0) return;
-		if (source is not INativeChatSource native) return;
-		if (!Nori.Desktop.Chat.NativeChatService.IsTrustedSource(native) || native.LifetimeToken.IsCancellationRequested) return;
+		if (Volatile.Read(ref _disposed) != 0 || source.LifetimeToken.IsCancellationRequested) return;
 		try { source.PostEvent(AgentEventName, payload); }
 		catch { /* 窗口退出不影响会话收尾。 */ }
 	}

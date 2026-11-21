@@ -506,10 +506,9 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 				}
 			}
 		}
-		catch (YamlDotNet.Core.YamlException)
+		catch (YamlDotNet.Core.YamlException exception)
 		{
-			// 保持旧版对简单 frontmatter 的容错：YAML 不完整时按首个冒号切分。
-			meta = ParseLegacyFrontmatter(match.Groups["front"].Value);
+			throw new InvalidOperationException("SKILL.md 的 YAML Frontmatter 格式无效", exception);
 		}
 
 		string body = match.Groups["body"].Value.Trim();
@@ -568,20 +567,6 @@ public sealed class SkillService(ConfigStore configStore, HttpClient httpClient)
 		public SkillContentTimeoutException(Exception inner) : base(ContentParseTimeoutMessage, inner)
 		{
 		}
-	}
-
-	private static Dictionary<string, string> ParseLegacyFrontmatter(string frontmatter)
-	{
-		Dictionary<string, string> meta = new(StringComparer.OrdinalIgnoreCase);
-		foreach (string line in frontmatter.Split('\n'))
-		{
-			int colon = line.IndexOf(':');
-			if (colon <= 0) continue;
-			string key = line[..colon].Trim();
-			string value = line[(colon + 1)..].Trim().Trim('"', '\'');
-			if (key.Length > 0) meta[key] = value;
-		}
-		return meta;
 	}
 
 	private static IReadOnlyList<string>? ReadTools(Dictionary<string, string> meta)

@@ -345,12 +345,15 @@ public static class ModelPreparation
 		finally { TextureDecodeGate.Release(); }
 	}
 
+	// 纹理上传后会生成 Mipmap 并做线性过滤，必须保持预乘 Alpha，避免透明边界在过滤后再被着色器二次预乘产生灰黑边。
+	internal const AlphaFormat TextureAlphaFormat = AlphaFormat.Premul;
+
 	private static TexturePixels DecodeTexture(byte[] encoded)
 	{
 		using MemoryStream stream = new(encoded, writable: false);
 		using Bitmap bitmap = new(stream);
 		PixelSize size = bitmap.PixelSize;
-		using WriteableBitmap rgba = new(size, bitmap.Dpi, PixelFormat.Rgba8888, AlphaFormat.Unpremul);
+		using WriteableBitmap rgba = new(size, bitmap.Dpi, PixelFormat.Rgba8888, TextureAlphaFormat);
 		using ILockedFramebuffer framebuffer = rgba.Lock();
 		bitmap.CopyPixels(framebuffer);
 

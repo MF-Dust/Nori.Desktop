@@ -216,4 +216,66 @@ public partial class BridgeCommandsTests
 			await write;
 		}
 	});
+
+	[Theory]
+	[InlineData("00_Default", "Default")]
+	[InlineData("01_KiraKira", "KiraKira")]
+	[InlineData("05_Dark.", "Dark")]
+	[InlineData("Finale_Sad", "Finale_Sad")]
+	[InlineData("Custom_Pose", "Custom_Pose")]
+	public void ModelsWindowNormalizesPrefixedExpressionKeys(string raw, string expected)
+	{
+		Assert.Equal(expected, ModelsWindow.NormalizeExpressionKey(raw));
+	}
+
+	[Fact]
+	public Task ModelsWindowExpressionButtonsUseTextBlockAndTranslatePrefixedNames() => WithSettingsUiAsync(async () =>
+	{
+		InstallKnownModel("nori");
+		string directory = _services.Resources.ResourceDir(ResourceType.Live2D, "nori");
+		File.WriteAllText(Path.Combine(directory, "nori.model3.json"), """
+			{
+				"FileReferences": {
+					"Moc": "model.moc3",
+					"Textures": [],
+					"Expressions": [
+						{"Name": "01_KiraKira", "File": "01_KiraKira.exp3.json"},
+						{"Name": "05_Dark.", "File": "05_Dark.exp3.json"},
+						{"Name": "Custom_Expr", "File": "Custom_Expr.exp3.json"}
+					]
+				}
+			}
+			""");
+		File.WriteAllText(Path.Combine(directory, "01_KiraKira.exp3.json"), "{}");
+		File.WriteAllText(Path.Combine(directory, "05_Dark.exp3.json"), "{}");
+		File.WriteAllText(Path.Combine(directory, "Custom_Expr.exp3.json"), "{}");
+
+		ModelsWindow window = new(_services);
+		try
+		{
+			window.Width = 960;
+			window.Height = 680;
+			window.Show();
+			window.UpdateLayout();
+			await window.RefreshAsync();
+			await window.OpenAdjustAsync("nori");
+			window.UpdateLayout();
+			Avalonia.Controls.Primitives.ToggleButton[] buttons = Avalonia.VisualTree.VisualExtensions
+				.GetVisualDescendants(window)
+				.OfType<Avalonia.Controls.Primitives.ToggleButton>()
+				.ToArray();
+			Avalonia.Controls.Primitives.ToggleButton kira = Assert.Single(buttons, item => item.Name == "ModelsExpression_01_KiraKira");
+			Avalonia.Controls.Primitives.ToggleButton dark = Assert.Single(buttons, item => item.Name == "ModelsExpression_05_Dark.");
+			Avalonia.Controls.Primitives.ToggleButton custom = Assert.Single(buttons, item => item.Name == "ModelsExpression_Custom_Expr");
+
+			Assert.Equal("星星眼", Assert.IsType<TextBlock>(kira.Content).Text);
+			Assert.Equal("黑化", Assert.IsType<TextBlock>(dark.Content).Text);
+			Assert.Equal("Custom_Expr", Assert.IsType<TextBlock>(custom.Content).Text);
+		}
+		finally
+		{
+			window.AllowClose = true;
+			window.Close();
+		}
+	});
 }

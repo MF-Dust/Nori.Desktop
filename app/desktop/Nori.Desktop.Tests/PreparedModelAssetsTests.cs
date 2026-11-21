@@ -58,6 +58,8 @@ public sealed class PreparedModelAssetsTests : IDisposable
 
 	private static readonly byte[] TinyPng = Convert.FromBase64String(
 		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+	private static readonly byte[] SemiTransparentPng = Convert.FromBase64String(
+		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP43+DQAAAGgQJAY6O3bwAAAABJRU5ErkJggg==");
 	private readonly string _modelDir = Path.Combine(Path.GetTempPath(), $"nori-assets-{Guid.NewGuid():N}");
 
 	public void Dispose()
@@ -105,6 +107,30 @@ public sealed class PreparedModelAssetsTests : IDisposable
 		Directory.Delete(_modelDir, recursive: true);
 		Assert.Equal("sample.model3.json", prepared.Assets.ModelName);
 		Assert.Equal(1, prepared.Assets.TextureCount);
+	}
+
+	[Fact]
+	public async Task 纹理后台解码输出预乘Alpha以避免Mipmap边缘黑边()
+	{
+		Assert.Equal(Avalonia.Platform.AlphaFormat.Premul, ModelPreparation.TextureAlphaFormat);
+		TexturePixels? pixels = null;
+		await BridgeCommandsTests.WithSettingsUiAsync(async () =>
+		{
+			pixels = await ModelPreparation.DecodeTextureAsync(SemiTransparentPng, CancellationToken.None);
+		});
+		Assert.NotNull(pixels);
+		Assert.Equal(1, pixels!.Width);
+		Assert.Equal(1, pixels.Height);
+		Assert.Equal(4, pixels.Data.Length);
+		// Headless drawing 只提供尺寸，不保证像素内容；开启 NORI_TEST_NATIVE_GL=1（真实 Skia）时严格校验预乘像素值。
+		if (Environment.GetEnvironmentVariable("NORI_TEST_NATIVE_GL") == "1")
+		{
+			byte r = pixels.Data[0], g = pixels.Data[1], b = pixels.Data[2], a = pixels.Data[3];
+			Assert.Equal(128, a);
+			Assert.InRange(r, (byte)127, (byte)129);
+			Assert.InRange(g, (byte)63, (byte)65);
+			Assert.InRange(b, (byte)31, (byte)33);
+		}
 	}
 
 	[Live2DAssetsFact]

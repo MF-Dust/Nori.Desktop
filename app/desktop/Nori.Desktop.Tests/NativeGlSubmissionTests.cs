@@ -26,6 +26,19 @@ public sealed class NativeGlSubmissionTests
 	}
 
 	[Live2DAssetsFact]
+	public void 原生渲染器声明预乘Alpha并向着色器提交预乘标志()
+	{
+		var gl = new RecordingGlApi { CreateResources = true };
+		using var host = new NativeModelHost(gl, NativeGlRendererBufferTests.Assets("arg-nori"));
+		Assert.True(host.Renderer.IsPremultipliedAlpha);
+		host.Model.Update();
+		host.Renderer.PreDraw();
+		host.Renderer.DrawMesh(0);
+		int premultipliedLocation = Assert.Single(gl.UniformQueries, item => item.Name == "premultiplied").Location;
+		Assert.Contains(gl.IntegerUniforms, call => call.Location == premultipliedLocation && call.Value == 1);
+	}
+
+	[Live2DAssetsFact]
 	public void 同一pass相同网格不重复提交状态且PreDraw使上下文缓存失效()
 	{
 		var gl = new RecordingGlApi { CreateResources = true };

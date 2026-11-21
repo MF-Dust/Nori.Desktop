@@ -210,9 +210,11 @@ public sealed partial class ModelsWindow
 		var choices = new WrapPanel();
 		foreach (string expression in new[] { "" }.Concat(Strings(P(meta, "expressions"))))
 		{
-			var button = new ToggleButton { Name = "ModelsExpression_" + expression, Padding = new Thickness(10, 6), Margin = new Thickness(0, 0, 6, 6), MinHeight = 32 };
+			// 使用 TextBlock 避免 Avalonia 将表情名中的下划线（如 01_KiraKira 或自定义模型表情）按 AccessText 助记符吞掉。
+			var label = new TextBlock();
+			var button = new ToggleButton { Name = "ModelsExpression_" + expression, Content = label, Padding = new Thickness(10, 6), Margin = new Thickness(0, 0, 6, 6), MinHeight = 32 };
 			button.Classes.Add("settings-choice");
-			Localize(() => button.Content = expression.Length == 0 ? T("无", "None") : ExpressionLabel(expression));
+			Localize(() => label.Text = expression.Length == 0 ? T("无", "None") : ExpressionLabel(expression));
 			button.Click += (_, _) =>
 			{
 				if (_applying) return;
@@ -227,7 +229,16 @@ public sealed partial class ModelsWindow
 		body.Children.Add(Secondary(() => T("表情为单选，再次点击可取消。", "Select one expression; click it again to clear it.")));
 		return body;
 	}
-	private string ExpressionLabel(string name) => name switch
+	internal static string NormalizeExpressionKey(string name)
+	{
+		int index = 0;
+		while (index < name.Length && char.IsAsciiDigit(name[index])) index++;
+		ReadOnlySpan<char> trimmed = index > 0 && index < name.Length && name[index] == '_'
+			? name.AsSpan(index + 1)
+			: name.AsSpan();
+		return trimmed.TrimEnd('.').ToString();
+	}
+	private string ExpressionLabel(string name) => NormalizeExpressionKey(name) switch
 	{
 		"Default" => T("默认", "Default"), "KiraKira" => T("星星眼", "Sparkle Eyes"), "Dizzy" => T("眩晕", "Dizzy"), "Angry" => T("生气", "Angry"),
 		"Shy" => T("害羞", "Shy"), "Dark" => T("黑化", "Dark"), "Speechless" => T("无语", "Speechless"), "Smile" => T("微笑", "Smile"),

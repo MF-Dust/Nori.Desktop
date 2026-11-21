@@ -32,7 +32,8 @@ public sealed class NativeGlRenderer : IModelMeshTarget, IDisposable
 	public NativeModel NativeModel { get; }
 	public Matrix4x4 Projection { get; private set; } = Matrix4x4.Identity;
 	public Vector4 ModelColor { get; private set; } = Vector4.One;
-	public bool IsPremultipliedAlpha => false;
+	// ModelPreparation.DecodeTexture 输出预乘 RGBA8888，与 Mipmap 线性过滤及着色器预乘路径保持一致。
+	public bool IsPremultipliedAlpha => true;
 	public bool UseHighPrecisionMask { get; set; }
 	public float Anisotropy { get; set; }
 	public MaskGroup? ClippingContextBufferForMask { get; set; }

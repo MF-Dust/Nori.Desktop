@@ -50,6 +50,22 @@ public sealed class ScreenTargetPickerTests
 		Assert.Equal("Visual Studio Code", picked?.Title);
 	}
 
+	[Theory]
+	[InlineData("SOUI_DUMMY_WND", 1, 1)]
+	[InlineData("SOUI_DUMMY_WND", 2, 2)]
+	[InlineData("其他占位窗口", 1, 1)]
+	public void 占位窗口不会挡住真正的读屏目标(string title, int width, int height)
+	{
+		WindowsTopLevelWindow[] windows =
+		[
+			new(1, title, 200, new(0, 0, width, height), 96, false),
+			new(2, "记事本", 300, new(0, 0, 800, 600), 96, false),
+		];
+
+		Assert.Equal((nint)2, ScreenTargetPicker.Pick(windows, 100)?.Handle);
+		Assert.Equal((nint)2, ScreenTargetPicker.PickAt(windows, 0, 0, 100)?.Handle);
+	}
+
 	[Fact]
 	public void 显式扫描按物理坐标和遮挡顺序选择并排除自身()
 	{

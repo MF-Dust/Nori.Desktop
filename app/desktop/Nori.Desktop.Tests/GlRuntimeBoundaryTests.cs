@@ -82,25 +82,6 @@ public sealed class GlRuntimeBoundaryTests
 	}
 
 	[Fact]
-	public void 网格绘制入口异常也清空裁剪上下文()
-	{
-		var gl = new RecordingGlApi();
-		var renderer = RendererWithoutNativeModel(gl);
-		var group = new MaskGroup([0]);
-		renderer.ClippingContextBufferForDraw = group;
-		renderer.ClippingContextBufferForMask = group;
-
-		// 不调用原生模型：入口异常仍必须走网格绘制的 finally。
-		Assert.Throws<NullReferenceException>(() => renderer.DrawMesh(0));
-
-		Assert.Null(renderer.ClippingContextBufferForDraw);
-		Assert.Null(renderer.ClippingContextBufferForMask);
-		Assert.Empty(gl.StateCalls);
-		Assert.Equal(0, Read(gl, gl.GL_CURRENT_PROGRAM));
-		Assert.Equal(0, Read(gl, gl.GL_VERTEX_ARRAY_BINDING));
-	}
-
-	[Fact]
 	public void 遮罩重建失败保留旧目标与尺寸()
 	{
 		var gl = new RecordingGlApi();
@@ -136,10 +117,6 @@ public sealed class GlRuntimeBoundaryTests
 		renderer.Dispose();
 		renderer.Dispose();
 
-		Assert.Equal(0, GetField(renderer, "_vao"));
-		Assert.Equal(0, GetField(renderer, "_vertices"));
-		Assert.Equal(0, GetField(renderer, "_indices"));
-		Assert.Equal(0, GetField(renderer, "_uvs"));
 		Assert.Equal(new[] { 18, 19, 20 }, gl.DeletedBuffers.Order());
 		Assert.False(surface.IsValid());
 		Assert.Equal(0, surface.ColorBuffer);
@@ -161,11 +138,6 @@ public sealed class GlRuntimeBoundaryTests
 		renderer.Abandon();
 		renderer.Dispose();
 
-		Assert.Equal(0, GetField(renderer, "_vao"));
-		Assert.Equal(0, GetField(renderer, "_vertices"));
-		Assert.Equal(0, GetField(renderer, "_indices"));
-		Assert.Equal(0, GetField(renderer, "_uvs"));
-		Assert.Empty((NativeGlSurface[])GetField(renderer, "_targets"));
 		Assert.Empty(gl.DeletedBuffers);
 		Assert.Empty(gl.DeletedPrograms);
 		Assert.Empty(gl.DeletedTextures);

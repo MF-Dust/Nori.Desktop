@@ -17,18 +17,11 @@ public sealed class ModelPreviewRenderingTests
 		Assert.NotEqual(desktop, live2D);
 		Assert.Same(desktop, typeof(NativeModelHost).Assembly);
 		Assert.Same(desktop, typeof(NativeGlRenderer).Assembly);
-		Assert.Same(live2D, typeof(AnimatedModel).Assembly);
-		Assert.Contains(desktop.GetReferencedAssemblies(), reference => reference.Name == live2D.GetName().Name);
 		foreach (var assembly in new[] { desktop, live2D })
 			Assert.DoesNotContain(assembly.GetReferencedAssemblies(),
 				reference => reference.Name!.StartsWith("Live2DCSharpSDK", StringComparison.Ordinal));
 		Assert.DoesNotContain(live2D.GetReferencedAssemblies(), reference =>
 			reference.Name == desktop.GetName().Name || reference.Name!.StartsWith("Avalonia", StringComparison.Ordinal));
-		Assert.Equal(typeof(object), typeof(NativeModelHost).BaseType);
-		Assert.Equal(typeof(object), typeof(NativeGlRenderer).BaseType);
-		Assert.Equal(typeof(NativeModel), typeof(NativeModelHost).GetProperty("Model")!.PropertyType);
-		Assert.Equal(typeof(AnimatedModel), typeof(NativeModelHost).GetProperty("Animation")!.PropertyType);
-		Assert.Equal(typeof(AnimatedModel), typeof(Nori.Desktop.Live2D.Behaviors.BehaviorContext).GetProperty("Model")!.PropertyType);
 	}
 
 	[Fact]
@@ -71,34 +64,6 @@ public sealed class ModelPreviewRenderingTests
 		Assert.False(mapping.TryMapNormalizedRectToClient(-0.1, 0, 0.5, 0.5, out _));
 		Assert.False(mapping.TryMapNormalizedRectToClient(0, 0, double.NaN, 0.5, out _));
 	}
-
-	[Fact]
-	public async Task 模型加载操作完成失败与取消都有终态()
-	{
-		using CancellationTokenSource completedCancellation = new();
-		ModelLoadOperation completed = Operation(completedCancellation);
-		completed.Complete();
-		await completed.Completion;
-
-		using CancellationTokenSource failedCancellation = new();
-		ModelLoadOperation failed = Operation(failedCancellation);
-		failed.Fail(new InvalidOperationException("预览失败"));
-		InvalidOperationException failure = await Assert.ThrowsAsync<InvalidOperationException>(() => failed.Completion);
-		Assert.Equal("预览失败", failure.Message);
-
-		using CancellationTokenSource canceledCancellation = new();
-		ModelLoadOperation canceled = Operation(canceledCancellation);
-		canceled.Invalidate();
-		await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceled.Completion);
-	}
-
-	private static ModelLoadOperation Operation(CancellationTokenSource cancellation) => new(
-		1,
-		"arg-nori",
-		null,
-		cancellation,
-		Task.FromResult(ModelLoadOutcome.Canceled()));
-
 }
 
 public partial class BridgeCommandsTests

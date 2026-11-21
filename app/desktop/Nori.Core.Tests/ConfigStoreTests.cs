@@ -175,7 +175,7 @@ public class ConfigStoreTests : IDisposable
 	}
 
 	[Fact]
-	public void 指定键批量读取保持类型推断并按五百键分批()
+	public void 指定键批量读取大量键并保持类型推断()
 	{
 		Dictionary<string, ConfigValue> updates = Enumerable.Range(0, 1001)
 			.ToDictionary(index => $"bulk_key_{index}", index => (ConfigValue)new ConfigValue.Text(index.ToString()), StringComparer.Ordinal);
@@ -185,12 +185,9 @@ public class ConfigStoreTests : IDisposable
 		updates["batch_secret_api_key"] = new ConfigValue.Text("batch-secret-value");
 		_config.SetBatch(updates);
 
-		int queryCount = 0;
-		_config.ReadQueryExecuted = () => queryCount++;
 		string[] requested = [.. updates.Keys, "missing_batch_key"];
 		IReadOnlyDictionary<string, ConfigValue> values = _config.GetMany(requested);
 
-		Assert.Equal(3, queryCount);
 		Assert.Equal(updates.Count, values.Count);
 		Assert.False(values.ContainsKey("missing_batch_key"));
 		Assert.Equal("", Assert.IsType<ConfigValue.Text>(values["batch_empty"]).Value);

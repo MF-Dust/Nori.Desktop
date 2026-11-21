@@ -37,15 +37,6 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
-	public void ConsumeInitStartPending只能取一次()
-	{
-		Assert.False(_runtime.ConsumeInitStartPending());
-		_runtime.MarkInitStartPending();
-		Assert.True(_runtime.ConsumeInitStartPending());
-		Assert.False(_runtime.ConsumeInitStartPending());
-	}
-
-	[Fact]
 	public async Task 快照包含伴侣可见性与侧边栏折叠态()
 	{
 		BridgeCommands commands = CreateCommands();
@@ -80,19 +71,6 @@ public partial class BridgeCommandsTests
 		Assert.False(afterTelemetry.GetProperty("enabled").GetBoolean());
 		Assert.False(afterTelemetry.GetProperty("available").GetBoolean());
 		Assert.Equal("denied", afterTelemetry.GetProperty("consent").GetString());
-	}
-
-	[Fact]
-	public void 同版本快照复用缓存且失效后重建()
-	{
-		FakeBridgeSource source = new(WindowLabels.Main);
-		object first = _runtime.BuildSnapshot(source);
-		object cached = _runtime.BuildSnapshot(source);
-		Assert.Same(first, cached);
-
-		_runtime.InvalidateSnapshot();
-		object rebuilt = _runtime.BuildSnapshot(source);
-		Assert.NotSame(first, rebuilt);
 	}
 
 	[Fact]

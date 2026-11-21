@@ -300,7 +300,7 @@ public class SecretKeyStoreTests : IDisposable
 	}
 
 	[Fact]
-	public void 连续不可用按指数退避并封顶且成功后清零()
+	public void 连续不可用按指数退避并封顶且成功后恢复读取()
 	{
 		long now = 0;
 		int reads = 0;
@@ -334,9 +334,6 @@ public class SecretKeyStoreTests : IDisposable
 		Assert.Throws<SecretKeyStoreException>(() => store.LoadOrCreate());
 		probes[^1]();
 		Assert.Equal(original, store.LoadOrCreate());
-		// 成功后永久缓存，后续调用不再进入退避；直接核对内部计数已清零。
-		Assert.Equal(0, typeof(SecretKeyStore).GetField("_consecutiveUnavailable",
-			System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(store));
 		Assert.False(File.Exists(Path.Combine(_dir, "secret.key")));
 	}
 

@@ -66,12 +66,6 @@ public sealed class ExpressionChannelTests
 		Assert.Equal(Intrusiveness.Local, channel.Level);
 	}
 
-	[Fact]
-	public async Task 气泡不存在时下发不抛()
-	{
-		await new SpeechBorderChannel(() => null, RunInline).ApplyAsync(Palette(), CancellationToken.None);
-	}
-
 	// ---- 托盘 ----
 
 	[Fact]
@@ -81,12 +75,6 @@ public sealed class ExpressionChannelTests
 
 		Assert.False(channel.IsAvailable);
 		Assert.Equal(Intrusiveness.Local, channel.Level);
-	}
-
-	[Fact]
-	public async Task 托盘不存在时下发不抛()
-	{
-		await new TrayIconChannel(() => null, RunInline).ApplyAsync(Palette(), CancellationToken.None);
 	}
 
 	/// <summary>

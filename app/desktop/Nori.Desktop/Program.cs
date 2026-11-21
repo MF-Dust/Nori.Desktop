@@ -138,16 +138,9 @@ internal static class Program
 
 		Options = startup;
 		bool safeMode = startup?.SafeMode == true;
-		SmokeTestOptions? smokeTest = startup?.SmokeTest;
 		try
 		{
-			StoragePaths = smokeTest is null
-				? AppStoragePathResolver.Resolve()
-				: new AppStoragePaths(smokeTest.Profile);
-			if (smokeTest is not null)
-			{
-				SmokeTestRuntime.Configure(smokeTest);
-			}
+			StoragePaths = AppStoragePathResolver.Resolve();
 		}
 		catch (Exception exception)
 		{
@@ -160,11 +153,8 @@ internal static class Program
 
 		// 在 Avalonia 启动前就挂上域级兜底, 尽早覆盖启动期异常 (参考 ClassIsland Program.cs)
 		CrashReporter.RegisterDomainHandler();
-		// 冒烟使用隔离 profile，不能被用户正在运行的正式实例互斥量拦截。
-		using SingleInstanceGuard? singleInstance = smokeTest is null
-			? SingleInstanceGuard.TryAcquire(ActivateFirstInstance, signalExisting: !safeMode, onFailure: ReportActivationFailure)
-			: null;
-		if (smokeTest is null && singleInstance is null)
+		using SingleInstanceGuard? singleInstance = SingleInstanceGuard.TryAcquire(ActivateFirstInstance, signalExisting: !safeMode, onFailure: ReportActivationFailure);
+		if (singleInstance is null)
 		{
 			if (safeMode)
 			{

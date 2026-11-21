@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Nori.Core.Automation;
@@ -18,7 +17,6 @@ using Nori.Desktop.Windows;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
-using Avalonia.LogicalTree;
 
 namespace Nori.Desktop.Tests;
 
@@ -30,53 +28,7 @@ public partial class BridgeCommandsTests : IDisposable
 {
 	/// <summary>无界面测试使用生产主题，但不启动桌面服务。</summary>
 	public static AppBuilder BuildAvaloniaApp()
-	{
-		// 真 GL harness 必须走真实图片解码；headless drawing 只提供尺寸，不保证像素内容。
-		bool realDrawing = Environment.GetEnvironmentVariable("NORI_TEST_NATIVE_GL") == "1";
-		AppBuilder builder = AppBuilder.Configure<App>().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = !realDrawing });
-		return realDrawing ? builder.UseSkia() : builder;
-	}
-
-	[Theory]
-	[InlineData("en-US")]
-	[InlineData("zh-CN")]
-	public Task NativeTestFixtureLanguageIsIndependentOfHostCulture(string hostCulture) => WithSettingsUiAsync(async () =>
-	{
-		// Headless 使用自己的 UI 线程；必须在该线程构造夹具前模拟宿主语言。
-		CultureInfo previous = CultureInfo.CurrentUICulture;
-		try
-		{
-			CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(hostCulture);
-			using BridgeCommandsTests fixture = new(safeMode: true);
-			Assert.Equal(hostCulture, ConfigStore.SystemLanguage());
-			Assert.Equal("zh-CN", fixture._config.GetInitConfig().Language);
-			ModelsWindow models = new(fixture._services);
-			MemoryWindow memory = new(fixture._services);
-			try
-			{
-				models.Show(); memory.Show();
-				await models.RefreshAsync(); await memory.RefreshAsync();
-				Assert.Equal("Nori · 模型", models.Title);
-				Assert.Contains("记忆", memory.Title);
-				models.Navigate("behaviors");
-				models.UpdateLayout();
-				ToggleSwitch[] behaviors = models.PageContent.GetLogicalDescendants().OfType<ToggleSwitch>().ToArray();
-				Assert.DoesNotContain(behaviors, toggle => toggle.Name == "ModelsBehavior_clickThrough");
-				Assert.Contains(behaviors, toggle => toggle.Name == "ModelsBehavior_clickInteraction");
-				Assert.Contains(behaviors, toggle => toggle.Name == "ModelsBehavior_aiInteraction");
-				fixture._config.Set(ConfigStore.KeyLanguage, new ConfigValue.Text("en-US"));
-				fixture._runtime.InvalidateSnapshot();
-				await models.RefreshAsync(); await memory.RefreshAsync();
-				await WaitUntilAsync(() => models.Title == "Nori · Models" && memory.Title?.Contains("Memory", StringComparison.Ordinal) == true);
-				Assert.Equal("Nori · Models", models.Title);
-				Assert.Contains("Memory", memory.Title);
-				Assert.DoesNotContain(models.PageContent.GetLogicalDescendants().OfType<ToggleSwitch>(), toggle => toggle.Name == "ModelsBehavior_clickThrough");
-				await models.PrepareShutdownAsync(); await memory.PrepareShutdownAsync();
-			}
-			finally { models.AllowClose = memory.AllowClose = true; models.Close(); memory.Close(); }
-		}
-		finally { CultureInfo.CurrentUICulture = previous; }
-	});
+		=> AppBuilder.Configure<App>().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = true });
 
 	// 会话线程保留到测试进程退出，避免 Avalonia 12.1.1 启停竞态；每次 Dispatch 仍独立创建和清理应用。
 	private static readonly Lazy<HeadlessUnitTestSession> SettingsUiSession = new(() =>

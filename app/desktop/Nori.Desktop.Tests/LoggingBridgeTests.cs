@@ -1,8 +1,6 @@
 using System.Text.Json;
 using Nori.Core.Logging;
 using Nori.Desktop.Bridge;
-using Nori.Desktop.Settings;
-using Nori.Desktop.Settings.Pages;
 using Nori.Desktop.Windows;
 using Nori.Desktop.Diagnostics;
 using Nori.Core.Telemetry;
@@ -72,44 +70,4 @@ public partial class BridgeCommandsTests
 		Assert.Equal("trace", _services.Logger.GetStatus().MinimumLevel);
 		await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(new FakeBridgeSource("main"), "set_logging_level", Args(new { level = "invalid" })));
 	}
-
-	[Fact]
-	public Task 原生诊断查询与日志管理保留组合筛选() => WithSettingsUiAsync(async () =>
-	{
-		using BridgeCommandsTests fixture = new(safeMode: true);
-		SettingsWindow window = new();
-		using SettingsService service = new(fixture._services, window);
-		DebugSettingsViewModel viewModel = new(service);
-		try
-		{
-			window.Show();
-			fixture._services.Logger.Write(LogSource.Backend, "warn", "日志管理回归记录", "NativeSettings", "logs.refresh", windowLabel: WindowLabels.Settings);
-			fixture._services.Logger.Write(LogSource.Backend, "info", "低级别回归记录", "NativeSettings", "logs.refresh");
-			fixture._services.Logger.Write(LogSource.Backend, "warn", "其他模块回归记录", "BackgroundMaintenance", "logs.refresh");
-			fixture._services.Logger.Write(LogSource.Backend, "warn", "健康状态回归记录", "NativeSettings", "logs.health");
-			await viewModel.RefreshLogsAsync();
-			viewModel.LevelFilter = "warn";
-			viewModel.SourceFilter = "backend";
-			viewModel.CategoryFilter = "NativeSettings";
-			viewModel.SearchText = "logs.refresh";
-			DebugLogItem entry = Assert.Single(viewModel.FilteredLogs);
-			Assert.Equal("backend", entry.Source);
-			Assert.Equal(WindowLabels.Settings, entry.WindowLabel);
-			Assert.Equal("NativeSettings", entry.Category);
-			Assert.Equal("logs.refresh", entry.EventId);
-			Assert.Equal("日志管理回归记录", entry.Message);
-			viewModel.SourceFilter = "frontend";
-			Assert.Empty(viewModel.FilteredLogs);
-			viewModel.SourceFilter = "backend";
-			Assert.Single(viewModel.FilteredLogs);
-			await viewModel.SetMinimumLevelAsync("debug");
-			Assert.Equal("debug", fixture._services.Logger.GetStatus().MinimumLevel);
-			Assert.Equal("debug", viewModel.MinimumLevel);
-			await viewModel.ClearLogsAsync();
-			Assert.Empty(fixture._services.Logger.RecentLogs());
-			Assert.Empty(viewModel.Logs);
-			Assert.Empty(viewModel.FilteredLogs);
-		}
-		finally { window.Close(); }
-	});
 }

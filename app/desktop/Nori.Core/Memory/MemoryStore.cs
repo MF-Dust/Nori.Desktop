@@ -64,7 +64,6 @@ public sealed class MemoryStore
 	private readonly NoriDatabase _database;
 	private readonly int _semanticCandidateLimit;
 	private bool _ftsAvailable;
-	internal Action? ReadQueryExecuted { get; set; }
 
 	public MemoryStore(
 		NoriDatabase database,
@@ -293,9 +292,6 @@ public sealed class MemoryStore
 		return ReadItems(command);
 	});
 
-	/// <summary>测试可在读取前等待；回调发生在数据库锁之外，便于取消旧查询。</summary>
-	internal Action<CancellationToken>? BeforeTimelineRead { get; set; }
-
 	/// <summary>最近一次时间线查询实际装载的完整记忆行数，不含只读时间戳的候选。</summary>
 	internal int TimelineItemMaterializations { get; private set; }
 
@@ -308,8 +304,6 @@ public sealed class MemoryStore
 		ArgumentNullException.ThrowIfNull(query);
 		ArgumentNullException.ThrowIfNull(zone);
 		MemoryTimelineQuery normalized = query.Normalize();
-		cancellationToken.ThrowIfCancellationRequested();
-		BeforeTimelineRead?.Invoke(cancellationToken);
 		cancellationToken.ThrowIfCancellationRequested();
 		try
 		{
@@ -325,8 +319,6 @@ public sealed class MemoryStore
 	public MemoryTimelineDetail? GetTimelineDetail(long id, TimeZoneInfo zone, CancellationToken cancellationToken = default)
 	{
 		ArgumentNullException.ThrowIfNull(zone);
-		cancellationToken.ThrowIfCancellationRequested();
-		BeforeTimelineRead?.Invoke(cancellationToken);
 		cancellationToken.ThrowIfCancellationRequested();
 		try
 		{
@@ -579,7 +571,6 @@ public sealed class MemoryStore
 		command.CommandText = SelectByIdSql; // nosemgrep
 		AddParameter(command, "$id", id);
 		using SqliteDataReader reader = command.ExecuteReader();
-		ReadQueryExecuted?.Invoke();
 		return reader.Read() ? ReadRow(reader) : null;
 	});
 
@@ -689,7 +680,6 @@ public sealed class MemoryStore
 		command.CommandText = "SELECT id, parent_memory_id, atom_type, content, importance, confidence, status, created_at, last_accessed_at, last_reinforced_at, ttl_days, expires_at, reinforcement_count, decay_type, entities, superseded_by FROM memory_atoms WHERE id = $id";
 		AddParameter(command, "$id", id);
 		using SqliteDataReader reader = command.ExecuteReader();
-		ReadQueryExecuted?.Invoke();
 		return reader.Read() ? ReadAtom(reader) : null;
 	});
 
@@ -710,7 +700,6 @@ public sealed class MemoryStore
 		AddParameter(command, "$limit", Math.Max(0, limit));
 		AddParameter(command, "$offset", Math.Max(0, offset));
 		using SqliteDataReader reader = command.ExecuteReader();
-		ReadQueryExecuted?.Invoke();
 		List<MemoryAtom> result = [];
 		while (reader.Read()) result.Add(ReadAtom(reader));
 		return (IReadOnlyList<MemoryAtom>)result;
@@ -733,7 +722,6 @@ public sealed class MemoryStore
 				for (int index = 0; index < batch.Length; index++)
 					AddParameter(command, $"$id{index}", batch[index]);
 				using SqliteDataReader reader = command.ExecuteReader();
-				ReadQueryExecuted?.Invoke();
 				while (reader.Read())
 				{
 					MemoryAtom atom = ReadAtom(reader);
@@ -773,7 +761,6 @@ public sealed class MemoryStore
 				AddParameter(command, "$status", MemoryStatus.Active.ToStorage());
 				AddParameter(command, "$limit", perParentLimit);
 				using SqliteDataReader reader = command.ExecuteReader();
-				ReadQueryExecuted?.Invoke();
 				while (reader.Read())
 				{
 					MemoryAtom atom = ReadAtom(reader);
@@ -1499,7 +1486,6 @@ public sealed class MemoryStore
 				for (int index = 0; index < batch.Length; index++)
 					AddParameter(command, $"$id{index}", batch[index]);
 				using SqliteDataReader reader = command.ExecuteReader();
-				ReadQueryExecuted?.Invoke();
 				while (reader.Read())
 				{
 					MemoryItem item = ReadRow(reader);

@@ -1,9 +1,9 @@
 namespace Nori.Desktop.Diagnostics;
 
 /// <summary>进程级启动开关。</summary>
-public sealed record StartupOptions(bool SafeMode, SmokeTestOptions? SmokeTest)
+public sealed record StartupOptions(bool SafeMode)
 {
-	/// <summary>解析安全模式与发布冒烟参数。</summary>
+	/// <summary>解析安全模式参数。</summary>
 	public static bool TryParse(
 		IReadOnlyList<string> args,
 		out StartupOptions? options,
@@ -23,8 +23,7 @@ public sealed record StartupOptions(bool SafeMode, SmokeTestOptions? SmokeTest)
 			safeMode = true;
 		}
 
-		if (!SmokeTestOptions.TryParse(args, out SmokeTestOptions? smokeTest, out error)) return false;
-		options = new StartupOptions(safeMode, smokeTest);
+		options = new StartupOptions(safeMode);
 		return true;
 	}
 }

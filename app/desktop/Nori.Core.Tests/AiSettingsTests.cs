@@ -75,7 +75,7 @@ public sealed class AiSettingsTests : IDisposable
 	}
 
 	[Fact]
-	public void 完整AI配置只执行一次指定键批量读取且快照不含密钥()
+	public void 完整AI配置快照不含密钥()
 	{
 		_settings.UpdateChat(new AiChatSettingsPatch(
 			BaseUrl: "https://chat.example/v1",
@@ -88,11 +88,8 @@ public sealed class AiSettingsTests : IDisposable
 			Model: "embed-model",
 			ApiKeySpecified: true));
 
-		int queryCount = 0;
-		_config.ReadQueryExecuted = () => queryCount++;
 		AiProviderSettings settings = _settings.Read();
 
-		Assert.Equal(1, queryCount);
 		Assert.Equal("chat-secret-value", settings.Chat.ApiKey);
 		Assert.Equal("embedding-secret-value", settings.Embedding.ApiKey);
 

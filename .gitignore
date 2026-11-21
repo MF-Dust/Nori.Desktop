@@ -23,5 +23,5 @@ app/desktop/UniDesktop/native/
 
 *_TODO.md
 
-# Python 字节码缓存（scripts/linux-integration.test.py 会导入冒烟脚本）
+# Python 字节码缓存
 __pycache__/

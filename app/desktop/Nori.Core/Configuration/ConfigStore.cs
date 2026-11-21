@@ -23,7 +23,6 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 	private readonly ConcurrentDictionary<string, SecretIssue> _secretIssues = new(StringComparer.Ordinal);
 	private byte[]? _cachedMasterKey;
 	private readonly object _keyLock = new();
-	internal Action? ReadQueryExecuted { get; set; }
 
 	/// <summary>配置键: 配置结构版本。</summary>
 	public const string KeyConfigSchemaVersion = "config_schema_version";
@@ -195,7 +194,6 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 				for (int index = 0; index < batch.Length; index++)
 					command.Parameters.AddWithValue($"$key{index}", batch[index]);
 				using SqliteDataReader reader = command.ExecuteReader();
-				ReadQueryExecuted?.Invoke();
 				while (reader.Read()) result.Add((reader.GetString(0), reader.GetString(1)));
 			}
 			return result;
@@ -325,7 +323,6 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 			using SqliteCommand command = connection.CreateCommand();
 			command.CommandText = "SELECT key, value FROM config ORDER BY key";
 			using SqliteDataReader reader = command.ExecuteReader();
-			ReadQueryExecuted?.Invoke();
 			List<(string Key, string Stored)> values = [];
 			while (reader.Read()) values.Add((reader.GetString(0), reader.GetString(1)));
 			return values;
@@ -407,7 +404,6 @@ public sealed class ConfigStore(NoriDatabase database, ISecretKeyStore? keyStore
 		command.CommandText = "SELECT value FROM config WHERE key = $key";
 		command.Parameters.AddWithValue("$key", key);
 		using SqliteDataReader reader = command.ExecuteReader();
-		ReadQueryExecuted?.Invoke();
 		return reader.Read()
 			? new StoredConfigValue(true, reader.GetString(0))
 			: new StoredConfigValue(false, null);

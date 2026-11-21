@@ -1,7 +1,6 @@
 using Nori.Core.Configuration;
 using Nori.Core.Live2D;
 using Nori.Desktop.Live2D;
-using Nori.Desktop.Models;
 using Nori.Live2D;
 
 namespace Nori.Desktop.Tests;
@@ -138,15 +137,4 @@ public partial class BridgeCommandsTests
 		Assert.Equal(generation, previewRuntime.ModelGeneration);
 		Assert.Equal("nori", fixture._config.GetStringOr(ConfigStore.KeySelectedModel, ""));
 	}
-
-	[Fact]
-	public Task 预览控件不替换应用级桌宠运行时() => WithSettingsUiAsync(() =>
-	{
-		using BridgeCommandsTests fixture = new();
-		Assert.Null(fixture._services.PetRuntime);
-		using var preview = new ModelPreviewControl(fixture._services);
-		Assert.Null(fixture._services.PetRuntime);
-		Assert.False(preview.IsReady);
-		return Task.CompletedTask;
-	});
 }

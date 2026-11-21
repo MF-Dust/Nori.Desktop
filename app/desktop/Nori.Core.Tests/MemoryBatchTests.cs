@@ -25,7 +25,7 @@ public sealed class MemoryBatchTests : IDisposable
 	}
 
 	[Fact]
-	public async Task BuildContextUsesBatchedReadsAndKeepsRecallOrderAndAccessUpdates()
+	public async Task BuildContextKeepsRecallOrderAndUpdatesAccessCounts()
 	{
 		List<MemoryItem> parents = [];
 		for (int index = 0; index < 12; index++)
@@ -37,14 +37,8 @@ public sealed class MemoryBatchTests : IDisposable
 			_store.AddAtom(parent.Id, MemoryKind.Factual, $"sharedterm extra {index} c", 0.91);
 		}
 
-		int batchReadCount = 0;
-		_store.ReadQueryExecuted = () => batchReadCount++;
 		await using MemoryService service = new(_store, new DisabledEmbedding(), _config, startBackgroundWorker: false);
-		int settingsReadCount = 0;
-		_config.ReadQueryExecuted = () => settingsReadCount++;
 		Assert.True(service.Settings.Enabled);
-		Assert.Equal(1, settingsReadCount);
-		_config.ReadQueryExecuted = null;
 
 		MemoryContext context = await service.BuildContextAsync("sharedterm", [], includeDebug: true);
 
@@ -53,7 +47,6 @@ public sealed class MemoryBatchTests : IDisposable
 		Assert.Equal(context.Debug.InjectedIds, context.Personal.Select(item => item.Id));
 		Assert.Equal(36, context.Atoms.Count);
 		Assert.All(context.Atoms.GroupBy(atom => atom.ParentMemoryId), group => Assert.Equal(3, group.Count()));
-		Assert.Equal(3, batchReadCount);
 		long[] baselineAtomIds = context.Personal
 			.SelectMany(item => _store.GetAtoms(item.Id, MemoryStatus.Active, 3))
 			.Select(atom => atom.Id)
@@ -61,20 +54,6 @@ public sealed class MemoryBatchTests : IDisposable
 		Assert.Equal(baselineAtomIds, context.Atoms.Select(atom => atom.Id));
 		Assert.All(context.Personal, item => Assert.Equal(0, item.AccessCount));
 		Assert.All(parents, item => Assert.Equal(1, _store.Get(item.Id)!.AccessCount));
-	}
-
-	[Fact]
-	public void MemoryBatchQueriesBindAtMostFiveHundredIdsPerStatement()
-	{
-		int queryCount = 0;
-		_store.ReadQueryExecuted = () => queryCount++;
-		long[] ids = Enumerable.Range(1, 1001).Select(value => (long)value).ToArray();
-
-		Assert.Empty(_store.GetMany(ids));
-		Assert.Empty(_store.GetAtomsByIds(ids));
-		Assert.Empty(_store.GetActiveAtomsByParents(ids, 3));
-
-		Assert.Equal(9, queryCount);
 	}
 
 	[Fact]

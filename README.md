@@ -237,7 +237,7 @@ Nori.Desktop/
 │   ├── UniDesktop/                      # UniDesktop SDK 说明与许可证（MIT），原生库由脚本拉取，用于主题、壁纸等桌面集成
 │   ├── src/                             # 原生主题令牌与对比度计算（tokens.ts）
 │   ├── tests/                           # Vitest：令牌同步与对比度
-│   ├── scripts/                         # CI、覆盖率、TODO 检查、打包与令牌同步脚本
+│   ├── scripts/                         # CI、打包与令牌同步脚本
 │   ├── Nori.slnx                        # .NET 解决方案
 │   ├── package.json                     # 主题检查与前端工具脚本
 │   └── publish.bat / publish.sh         # 发布脚本
@@ -315,8 +315,6 @@ Linux 解压到用户可写的固定位置后，可在包根运行（不需要 s
 
 入口遵循 `XDG_DATA_HOME` / `XDG_CONFIG_HOME`，仅存放桌面注册文件；应用数据仍只在包根 `data/`。入口始终运行稳定根启动器，不绑定 `app-*` 槽。整体移动发布目录后，重新执行 `install`；已启用自启的还需重新执行 `enable-autostart`。
 
-Linux CI 在 Xvfb + 独立 D-Bus 会话下验证发布包的首次运行、已初始化和安全模式启动。维护者可用 `python3 scripts/smoke-published.py bin/publish/linux-x64/Nori --mode initialized --safe-mode` 在已有桌面会话中复现；脚本只使用自动创建并清理的临时 profile。
-
 Linux D-Bus 协议测试（授权通知、托盘宿主监听）会自动启动私有 `dbus-daemon`，不占用桌面会话里的真实服务，随 `dotnet test` 一起运行；未安装 `dbus-daemon` 时自动跳过。
 
 ---
@@ -343,22 +341,17 @@ Linux D-Bus 协议测试（授权通知、托盘宿主监听）会自动启动�
 *普通的 lint，我们普通地扫；普通的 test，我们普通地跑。*  
 *警告就是错误——全绿了，再来敲门。*
 
-本地按改动范围跑必要的检查：纯文档只看内容与格式，单端修改验证该端，跨端契约同时验证两端。完整门禁交给 CI，在 Windows、Ubuntu、macOS 上执行，Windows 还会跑首次运行、已初始化与安全模式三套冒烟。
+本地按改动范围跑必要的检查：纯文档只看内容与格式，单端修改验证该端，跨端契约同时验证两端。CI 在 Linux 检查主题令牌，并在 Windows、Linux、macOS 上运行 .NET 构建、测试与 FDD 发布。
 
 ```bash
-pnpm check:todo    # 一方代码不许残留 TODO / FIXME
 pnpm lint          # ESLint，零警告
 pnpm build         # TypeScript 主题令牌检查
-pnpm test          # Vitest；需要覆盖率时改用 pnpm coverage
+pnpm test          # Vitest
 dotnet build Nori.slnx --configuration Release
 dotnet test Nori.slnx --configuration Release --no-build --no-restore -m:1
 ```
 
-真实模型与 GL 测试不会在 CI 中运行。改动 `Nori.Live2D` 或 `Nori.Desktop/Live2D` 之后，请在本地打开它们：
-
-```bash
-NORI_TEST_LIVE2D_ASSETS=1 NORI_TEST_NATIVE_GL=1 dotnet test Nori.Desktop.Tests/Nori.Desktop.Tests.csproj --configuration Release -m:1
-```
+真实模型、GPU 和设备行为需要在目标桌面环境单独验证。
 
 ---
 
@@ -391,7 +384,7 @@ NORI_TEST_LIVE2D_ASSETS=1 NORI_TEST_NATIVE_GL=1 dotnet test Nori.Desktop.Tests/N
 - **平台**：Windows x64 是首要验收平台与发布 blocker。Release 产出 `win-x64`、`linux-x64`、`osx-arm64`，`publish.sh` 另可在本地构建 `linux-arm64`、`osx-x64`；平台能力不足时（如 Wayland 下的全局光标与窗口坐标）由能力标志驱动降级。
 - **Linux 会话**：存在 `DISPLAY` 时使用 X11/XWayland，支持模型输入区域穿透（要求 XShape 1.1+）；没有 `DISPLAY` 的 Wayland 会话使用原生后端，用表面输入区做模型矩形穿透，保留窗口内视线跟随和拖动，不提供窗口外全局光标或位置恢复。KWin 在能绑定窗口管理协议时把本进程的 Nori 窗口保持在上层，合成器提供模糊协议时普通窗口使用背景模糊。快捷聊天与 Live2D 共用同一个无标题栏窗口，拖动桌宠时一起移动。托盘按实际 StatusNotifier 宿主探测，并在同一条会话 D-Bus 连接上监听宿主变化（不轮询；监听失败时按无托盘处理，30 秒后重新订阅；没有 StatusNotifierWatcher 视为无托盘，不记告警）；宿主消失时，已隐藏的主窗口恢复为不抢焦点的最小化任务栏入口（不打断首次运行或初始化）。不可用时关闭主窗口改为最小化，宿主恢复后重新允许隐藏；恢复不会自动收起当前窗口。启动失败优先尝试系统已有的 `zenity` / `kdialog` 提示，同时保留标准错误输出。
 - **Linux 授权通知**：通过会话 D-Bus 通知服务提供「允许执行 / 拒绝」，点正文只打开应用内卡片；超时、取消或应用内决定后撤回通知。通知不包含工具参数或描述；不支持动作按钮的桌面仅显示提醒，应用内审批始终保留。关闭系统通知本身不代表拒绝，关闭设置或退出应用会撤回仍在等待的通知。首个请求允许会话总线按需启动通知服务，之后的撤回只发给实际应答的服务实例；通知带 `desktop-entry` 提示，并使用发布包内的 `nori.png` 图标。
-- **产物**：三平台均为 framework-dependent 的槽式归档（Windows ZIP、Linux tar.gz、macOS ZIP），附 `.sha256`、SBOM、第三方声明与发布清单。目标机需要 .NET Runtime 10，不提供自包含安装包；Linux 另需 GTK 与 ALSA。
+- **产物**：三平台均为 framework-dependent 的槽式归档（Windows ZIP、Linux tar.gz、macOS ZIP），附 `.sha256` 与发布清单。目标机需要 .NET Runtime 10，不提供自包含安装包；Linux 另需 GTK 与 ALSA。
 - **数据迁移**：迁移前以 `VACUUM INTO` 备份数据库，单文件上限 64 MiB，最多保留 3 份。
 - **模型**：只支持内置 Live2D 模型 ID（`arg-nori`、`nori`），来源为 `static.nori.mom` 在线获取或本地 ZIP / 目录导入，不支持任意第三方模型地址。
 

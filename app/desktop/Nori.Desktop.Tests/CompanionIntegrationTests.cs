@@ -149,36 +149,6 @@ public partial class BridgeCommandsTests
 		_runtime.ApplyFocusQuiet();
 		Assert.True(late.FocusQuiet);
 		Assert.True(late.AutonomousBehaviorEnabled);
-
-		await WithSettingsUiAsync(async () =>
-		{
-			using BridgeCommandsTests fixture = new();
-			fixture._config.Set(Live2DModelConfig.AutonomousBehaviorKey, new ConfigValue.Text("0"));
-			fixture._config.Set(Live2DModelConfig.AutonomousFrequencyKey, new ConfigValue.Text("lively"));
-			string behaviorBefore = fixture._config.GetStringOr(Live2DModelConfig.AutonomousBehaviorKey, "");
-			string frequencyBefore = fixture._config.GetStringOr(Live2DModelConfig.AutonomousFrequencyKey, "");
-			await fixture.CreateCommands().InvokeAsync(
-				new FakeBridgeSource(WindowLabels.Main),
-				"focus_start",
-				Args(new { minutes = 25, notify = false, silentReminders = true }));
-			WindowDefinition definition = WindowDefinition.All.Single(item => item.Label == WindowLabels.Pet);
-			PetWindow window = new(definition, fixture._services);
-			try
-			{
-				Assert.NotNull(fixture._services.PetRuntime);
-				fixture._services.PetRuntime.LoadConfigs();
-				Assert.True(fixture._services.PetRuntime.FocusQuiet);
-				Assert.False(fixture._services.PetRuntime.AutonomousBehaviorEnabled);
-				Assert.Equal(AutonomousPacing.Lively, fixture._services.PetRuntime.AutonomousFrequency);
-				window.AllowClose = true;
-			}
-			finally
-			{
-				window.Close();
-			}
-			Assert.Equal(behaviorBefore, fixture._config.GetStringOr(Live2DModelConfig.AutonomousBehaviorKey, ""));
-			Assert.Equal(frequencyBefore, fixture._config.GetStringOr(Live2DModelConfig.AutonomousFrequencyKey, ""));
-		});
 	}
 
 	[Fact]

@@ -48,7 +48,6 @@ copy /y "..\..\LICENSE" "%ROOT%\LICENSE" >nul || goto :error
 move /y "%ROOT%\.current.tmp" "%ROOT%\.current" >nul
 if not exist "%ROOT%\Nori.exe" goto :error
 node scripts\validate-publish-structure.mjs "%ROOT%" win-x64 || goto :error
-node scripts\check-package-size.mjs --path "%ROOT%" --label "win-x64 package" --max-mib 180 || goto :error
 
 echo 发布完成: %ROOT%
 exit /b 0

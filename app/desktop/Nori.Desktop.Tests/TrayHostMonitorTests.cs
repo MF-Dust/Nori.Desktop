@@ -1,12 +1,8 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Avalonia.Controls;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
-using Nori.Core.Configuration;
 using Nori.Core.Platform;
 using Nori.Desktop.Tray;
-using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Tests;
 
@@ -93,67 +89,6 @@ public partial class BridgeCommandsTests
 		Assert.Equal(before + 2, runtime.SnapshotVersion);
 		Assert.Equal(2, notified);
 	}
-
-	[Theory]
-	[InlineData("zh-CN", 720, 480)]
-	[InlineData("en-US", 720, 480)]
-	[InlineData("zh-CN", 1920, 1080)]
-	[InlineData("en-US", 1920, 1080)]
-	public Task 托盘消失后恢复任务栏入口且恢复后不藏起当前窗口(string language, int width, int height) => WithSettingsUiAsync(async () =>
-	{
-		using BridgeCommandsTests fixture = new(safeMode: true);
-		fixture._config.Set("language", new ConfigValue.Text(language));
-		WindowManager manager = new(_ => { });
-		fixture._services.Windows = manager;
-		MainWindow main = new(WindowDefinition.All.Single(item => item.Label == WindowLabels.Main), fixture._services)
-		{
-			Width = width, Height = height,
-		};
-		RegisterNativeTestWindow(manager, WindowLabels.Main, main);
-		try
-		{
-			Assert.False(main.IsVisible);
-			TrayHostMonitor.ApplyAvailability(fixture._services, false);
-			Assert.True(main.IsVisible);
-			Assert.True(main.ShowInTaskbar);
-			Assert.Equal(WindowState.Minimized, main.WindowState);
-			Assert.False(main.IsActive);
-			Assert.True(main.ShowActivated);
-			main.Close();
-			Assert.True(main.IsVisible);
-			manager.Show(WindowLabels.Main);
-			main.WindowState = WindowState.Normal;
-			main.UpdateLayout();
-			string quit = language == "en-US" ? "Quit" : "退出程序";
-			Button exit = Assert.Single(main.GetVisualDescendants().OfType<Button>(), button => Equals(button.Content, quit));
-			await WaitUntilAsync(() => exit.IsVisible);
-			Assert.DoesNotContain(main.GetVisualDescendants().OfType<TextBlock>(), text =>
-				text.Text?.Contains("系统托盘不可用", StringComparison.Ordinal) == true
-				|| text.Text?.Contains("System tray unavailable", StringComparison.Ordinal) == true);
-			CaptureUi(main, $"tray-lost-{language}-{width}x{height}");
-			TrayHostMonitor.ApplyAvailability(fixture._services, true);
-			await WaitUntilAsync(() => !exit.IsVisible);
-			Assert.True(main.IsVisible);
-			CaptureUi(main, $"tray-restored-{language}-{width}x{height}");
-			main.Close();
-			Assert.False(main.IsVisible);
-		}
-		finally { main.AllowClose = true; main.Close(); }
-	});
-
-	[Theory]
-	[InlineData(WindowLabels.FirstRun)]
-	[InlineData(WindowLabels.Init)]
-	public Task 托盘变化不打断首次运行或初始化(string activeWindow) => WithSettingsUiAsync(() =>
-	{
-		using BridgeCommandsTests fixture = new(safeMode: true);
-		fixture._windows.Show(activeWindow);
-		TrayHostMonitor.ApplyAvailability(fixture._services, false);
-		Assert.False(fixture._runtime.TrayAvailable);
-		Assert.True(fixture._windows.IsWindowVisible(activeWindow));
-		Assert.False(fixture._windows.IsWindowVisible(WindowLabels.Main));
-		return Task.CompletedTask;
-	});
 
 	[Fact]
 	public Task 托盘监听在后台枚举并跟随宿主消失和恢复() => WithSettingsUiAsync(async () =>

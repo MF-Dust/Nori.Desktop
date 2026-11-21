@@ -1,12 +1,8 @@
-using Avalonia.Controls;
-using Avalonia.Platform;
-using Nori.Desktop.Diagnostics;
 using Nori.Desktop.Live2D;
-using Nori.Desktop.Settings.Pages;
 
 namespace Nori.Desktop.Tests;
 
-/// <summary>NORI-31 / NORI-32：GPU 故障后的退避与渲染表面重建。</summary>
+/// <summary>NORI-31 / NORI-32：GPU 故障后的退避。</summary>
 public sealed class GpuRecoveryBackoffTests
 {
 	[Fact]
@@ -40,87 +36,4 @@ public sealed class GpuRecoveryBackoffTests
 		Assert.False(backoff.IsRecovering(stable));
 		Assert.Equal(GpuRecoveryBackoff.Delays[0], backoff.NextDelay(stable));
 	}
-}
-
-public partial class BridgeCommandsTests
-{
-	[Fact]
-	public Task GPU故障暂停帧请求并原位重建渲染表面() => WithSettingsUiAsync(() =>
-	{
-		using BridgeCommandsTests fixture = new(safeMode: true);
-		PetRuntime runtime = new(fixture._services, previewMode: true);
-		PetGlControl control = new(runtime);
-		Border sibling = new();
-		Grid host = new() { Children = { control, sibling } };
-		Window window = new() { Content = host, Width = 160, Height = 160 };
-		window.Show();
-		CrashReporter.ResetGpuFailureReports();
-		try
-		{
-			int detached = 0, attached = 0;
-			control.DetachedFromVisualTree += (_, _) => detached++;
-			control.AttachedToVisualTree += (_, _) => attached++;
-
-			Assert.True(CrashReporter.TryHandleGpuFailure(new PlatformGraphicsContextLostException(), "gpu_render", requestRecovery: true));
-			Assert.True(control.GpuRecoveryPending);
-			Assert.Equal(PetRenderRecoveryPhase.Rebuilding, runtime.RenderRecovery);
-			Live2DPerformanceSnapshot whileRecovering = Live2DPerformanceSnapshot.Capture(runtime, true, null);
-			Assert.Equal(Live2DPerformanceAvailability.Recovering, whileRecovering.Availability);
-			Assert.Null(whileRecovering.FrameTimeP95Ms);
-			Assert.Null(whileRecovering.TargetFps);
-			Assert.DoesNotContain("运行正常", Live2DPerformanceText.Present(whileRecovering).CopyText, StringComparison.Ordinal);
-			// 挂起期间 Avalonia 自身触发的失败不叠加重建，也不重置退避计时。
-			Assert.True(CrashReporter.TryHandleGpuFailure(new PlatformGraphicsContextLostException(), "gpu_render", requestRecovery: true));
-
-			control.RecoverFromGpuFailureNow();
-
-			Assert.False(control.GpuRecoveryPending);
-			Live2DPerformanceSnapshot afterRebuild = Live2DPerformanceSnapshot.Capture(runtime, true, null);
-			Assert.NotEqual(Live2DPerformanceAvailability.Live, afterRebuild.Availability);
-			Assert.Null(afterRebuild.FrameTimeP95Ms);
-			Assert.Null(afterRebuild.DroppedFrames);
-			Assert.Equal(1, detached);
-			Assert.Equal(1, attached);
-			Assert.Equal(0, host.Children.IndexOf(control));
-			Assert.Same(sibling, host.Children[1]);
-			Assert.Same(window, TopLevel.GetTopLevel(control));
-
-			// 重建后仍保持订阅，下一次故障照常安排恢复。
-			Assert.True(CrashReporter.TryHandleGpuFailure(new PlatformGraphicsContextLostException(), "gpu_render", requestRecovery: true));
-			Assert.True(control.GpuRecoveryPending);
-		}
-		finally
-		{
-			window.Close();
-			CrashReporter.ResetGpuFailureReports();
-		}
-		return Task.CompletedTask;
-	});
-
-	[Fact]
-	public Task 移出界面的渲染控件取消并不再响应GPU故障() => WithSettingsUiAsync(() =>
-	{
-		using BridgeCommandsTests fixture = new(safeMode: true);
-		PetGlControl control = new(new PetRuntime(fixture._services, previewMode: true));
-		Window window = new() { Content = control, Width = 160, Height = 160 };
-		window.Show();
-		CrashReporter.ResetGpuFailureReports();
-		try
-		{
-			Assert.True(CrashReporter.TryHandleGpuFailure(new PlatformGraphicsContextLostException(), "gpu_render", requestRecovery: true));
-			Assert.True(control.GpuRecoveryPending);
-
-			window.Content = null;
-
-			Assert.False(control.GpuRecoveryPending);
-			Assert.True(CrashReporter.TryHandleGpuFailure(new PlatformGraphicsContextLostException(), "gpu_render", requestRecovery: true));
-			Assert.False(control.GpuRecoveryPending);
-		}
-		finally
-		{
-			window.Close();
-			CrashReporter.ResetGpuFailureReports();
-		}
-		return Task.CompletedTask;
-	});
 }

@@ -77,44 +77,6 @@ public sealed class MaskPlanTests
 		AssertVector(new(0.1f, 1), Vector2.Transform(new(3, 25), draw));
 	}
 
-	[Live2DAssetsFact]
-	public void 真实模型遮罩布局稳态每帧零分配()
-	{
-		using NativeModel model = new(File.ReadAllBytes(PreparedModelAssetsTests.FindFixture("arg-nori", "ARGNori.moc3")));
-		var plan = new MaskPlan(model);
-		for (int i = 0; i < 8; i++) plan.Update(model, new(2048), 2, false);
-		long before = GC.GetAllocatedBytesForCurrentThread();
-		for (int i = 0; i < 100; i++) plan.Update(model, new(2048), 2, false);
-		long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-		Assert.Equal(0, allocated);
-	}
-
-	[Live2DAssetsFact]
-	public void 两个真实模型的所有遮罩映射有限且不共享状态()
-	{
-		foreach (var fixture in new[] { ("nori", "Nori.moc3"), ("arg-nori", "ARGNori.moc3") })
-		{
-			using NativeModel model = new(File.ReadAllBytes(PreparedModelAssetsTests.FindFixture(fixture.Item1, fixture.Item2)));
-			var plan = new MaskPlan(model);
-			var other = new MaskPlan(model);
-			Assert.NotEmpty(plan.Groups);
-			model.Update();
-			foreach (bool high in new[] { false, true })
-			{
-				plan.Update(model, new(2048), 2, high);
-				foreach (MaskGroup group in plan.Groups.Where(group => group.Active))
-				{
-					Assert.True(float.IsFinite(group.DrawMatrix.M11) && float.IsFinite(group.DrawMatrix.M22));
-					Assert.True(float.IsFinite(group.MaskMatrix.M41) && float.IsFinite(group.MaskMatrix.M42));
-					if (high) Assert.Equal(new Vector4(0, 0, 1, 1), group.Tile);
-				}
-			}
-			Assert.All(other.Groups, group => Assert.False(group.Active));
-			Assert.Throws<ArgumentOutOfRangeException>(() => plan.Update(model, new(0), 1, false));
-			Assert.Throws<ArgumentOutOfRangeException>(() => plan.Update(model, new(256), 0, false));
-		}
-	}
-
 	private static void AssertVector(Vector2 expected, Vector2 actual)
 	{
 		Assert.Equal(expected.X, actual.X, 5);

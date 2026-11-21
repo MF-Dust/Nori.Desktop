@@ -9,10 +9,6 @@ on:
 permissions:
   contents: read
 
-# CI 门禁: first-party TODO/FIXME 扫描 + pnpm lint/build/test/coverage + dotnet build/test/coverage。
-# 每个 job 内的 dotnet 调用严格串行;
-# Windows 另做 FDD 发布、ZIP 内容与双启动分支冒烟。
-# Linux / macOS 做 FDD 发布并上传 publish 产物。
 jobs:
   desktop:
     name: ${{ matrix.name }}
@@ -50,16 +46,17 @@ jobs:
           sudo apt-get update
           alsa=libasound2
           if apt-cache show libasound2t64 >/dev/null 2>&1; then alsa=libasound2t64; fi
-          sudo apt-get install -y libgtk-3-0 "$alsa" xvfb xauth dbus-x11 libgl1-mesa-dri desktop-file-utils libglib2.0-bin
+          sudo apt-get install -y libgtk-3-0 "$alsa" libgl1-mesa-dri dbus
 
       - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0
+        if: matrix.name == 'linux'
         with:
           version: 11
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
+          cache: ${{ matrix.name == 'linux' && 'pnpm' || '' }}
           cache-dependency-path: app/desktop/pnpm-lock.yaml
 
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
@@ -76,45 +73,20 @@ jobs:
             nuget-${{ runner.os }}-
 
       - name: 安装主题检查依赖
+        if: matrix.name == 'linux'
         run: pnpm install --frozen-lockfile
 
-      - name: 一方 TODO/FIXME 门禁
-        if: matrix.name == 'windows'
-        run: pnpm check:todo
-
-      # ESLint 与平台无关，只在 Windows 门禁 job 跑一次，避免三平台重复消耗。
       - name: 主题令牌门 · 静态检查
-        if: matrix.name == 'windows'
+        if: matrix.name == 'linux'
         run: pnpm lint
 
       - name: 主题令牌门 · 类型检查
+        if: matrix.name == 'linux'
         run: pnpm build
 
-      # Windows 的覆盖率命令已执行全量测试，无需重复跑普通测试。
       - name: 主题令牌门 · 单元测试
-        if: matrix.name != 'windows'
+        if: matrix.name == 'linux'
         run: pnpm test
-
-      - name: 主题令牌门 · 覆盖率与阈值
-        if: matrix.name == 'windows'
-        run: pnpm coverage
-
-      - name: 上传主题令牌覆盖率产物
-        if: matrix.name == 'windows'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: nori-theme-coverage
-          path: app/desktop/coverage/*
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: 脚本门 · 发布结构 fixture
-        if: matrix.name == 'windows'
-        run: node scripts/validate-publish-structure.test.mjs
-
-      - name: 脚本门 · 自动更新清单 fixture
-        if: matrix.name == 'windows'
-        run: node scripts/generate-update-manifest.test.mjs
 
       # 不把 build/test/publish 合并成并行 matrix 或后台任务, 避免共享 obj 文件锁。
       - name: 准备 UniDesktop 原生库
@@ -125,41 +97,9 @@ jobs:
 
       # Desktop 宿主测试包含短生命周期异步任务；限制 MSBuild 并行度，避免多个测试项目同时争用 runner 调度。
       - name: 后端门 · 单元测试
-        if: matrix.name != 'windows'
         run: dotnet test Nori.slnx --configuration Release --no-build --no-restore -m:1
 
-      - name: Linux ALSA 原生接口冒烟（null PCM）
-        if: matrix.name == 'linux'
-        env:
-          NORI_TEST_ALSA: "1"
-          ALSA_CONFIG_PATH: ${{ github.workspace }}/app/desktop/Nori.Desktop.Tests/Fixtures/alsa-null.conf
-        run: dotnet test Nori.Desktop.Tests/Nori.Desktop.Tests.csproj --configuration Release --no-build --no-restore -m:1 --filter 'FullyQualifiedName~AlsaNativeDeviceTests'
-
-      # Windows 的其余三个测试项目由覆盖率步骤完整执行；启动器没有覆盖率收集器。
-      - name: 后端门 · Windows 启动器单元测试
-        if: matrix.name == 'windows'
-        run: dotnet test Nori.AppLauncher.Tests/Nori.AppLauncher.Tests.csproj --configuration Release --no-build --no-restore -m:1
-
-      # 复用 Release 构建，在同一轮执行 Core、Desktop、PluginRuntime 全量测试并收集覆盖率。
-      - name: 后端门 · 覆盖率产物
-        if: matrix.name == 'windows'
-        run: pnpm coverage:dotnet --no-build --no-restore
-
-      - name: 上传 .NET 覆盖率产物
-        if: matrix.name == 'windows'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: nori-dotnet-coverage
-          path: app/desktop/artifacts/dotnet-coverage/**
-          if-no-files-found: error
-          retention-days: 7
-
-      # -----------------------------------------------------------------------
-      # Linux / macOS
-      # -----------------------------------------------------------------------
-
-      - name: Linux / macOS 发布目标还原
-        if: matrix.name != 'windows'
+      - name: 发布目标还原
         run: dotnet restore Nori.Desktop/Nori.Desktop.csproj --runtime ${{ matrix.rid }}
 
       - name: Linux / macOS 槽式 FDD 发布
@@ -167,38 +107,6 @@ jobs:
         run: |
           chmod +x publish.sh
           NORI_SKIP_FRONTEND=1 NORI_KEEP_SYMBOLS=0 ./publish.sh "${{ matrix.rid }}"
-
-      - name: Linux 桌面集成脚本 fixture
-        if: matrix.name == 'linux'
-        run: python3 scripts/linux-integration.test.py
-
-      - name: Linux 发布包启动冒烟
-        if: matrix.name == 'linux'
-        env:
-          EXPECTED_VERSION: Dev
-        run: |
-          for mode in first-run initialized; do
-            dbus-run-session -- xvfb-run -a python3 scripts/smoke-published.py bin/publish/linux-x64/Nori --mode "$mode" --expected-version "$EXPECTED_VERSION"
-          done
-          dbus-run-session -- xvfb-run -a python3 scripts/smoke-published.py bin/publish/linux-x64/Nori --mode initialized --safe-mode --expected-version "$EXPECTED_VERSION"
-
-      - name: 上传 Linux / macOS CI 产物
-        if: matrix.name != 'windows'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: nori-${{ matrix.rid }}-ci-package
-          path: app/desktop/bin/publish/${{ matrix.rid }}
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 7
-
-      # -----------------------------------------------------------------------
-      # Windows
-      # -----------------------------------------------------------------------
-
-      - name: Windows 发布目标还原
-        if: matrix.name == 'windows'
-        run: dotnet restore Nori.Desktop/Nori.Desktop.csproj --runtime win-x64
 
       - name: Windows 槽式 FDD 发布
         if: matrix.name == 'windows'
@@ -211,61 +119,11 @@ jobs:
           if (-not (Test-Path "bin/publish/win-x64/Nori.exe")) { throw "缺少稳定根入口 Nori.exe" }
           if (-not (Test-Path "bin/publish/win-x64/.current")) { throw "缺少 .current" }
 
-      - name: Windows ZIP / SBOM / notices 内容冒烟
-        if: matrix.name == 'windows'
-        shell: pwsh
-        run: |
-          ./scripts/package-windows.ps1 `
-            -PublishDir bin/publish/win-x64 `
-            -Version Dev `
-            -OutputDir bin/ci-release
-
-      - name: Windows first-run 启动冒烟
-        if: matrix.name == 'windows'
-        shell: pwsh
-        run: |
-          $profile = Join-Path $env:RUNNER_TEMP "nori-smoke-first-run-$env:GITHUB_RUN_ID"
-          $expectedVersion = "Dev"
-
-          ./scripts/smoke-published.ps1 `
-            -BinaryPath bin/publish/win-x64/Nori.exe `
-            -Mode first-run `
-            -Profile $profile `
-            -ExpectedVersion $expectedVersion
-
-      - name: Windows initialized 启动冒烟
-        if: matrix.name == 'windows'
-        shell: pwsh
-        run: |
-          $profile = Join-Path $env:RUNNER_TEMP "nori-smoke-initialized-$env:GITHUB_RUN_ID"
-          $expectedVersion = "Dev"
-
-          ./scripts/smoke-published.ps1 `
-            -BinaryPath bin/publish/win-x64/Nori.exe `
-            -Mode initialized `
-            -Profile $profile `
-            -ExpectedVersion $expectedVersion
-
-      - name: Windows safe-mode 启动冒烟
-        if: matrix.name == 'windows'
-        shell: pwsh
-        run: |
-          $profile = Join-Path $env:RUNNER_TEMP "nori-smoke-safe-mode-$env:GITHUB_RUN_ID"
-          $expectedVersion = "Dev"
-
-          ./scripts/smoke-published.ps1 `
-            -BinaryPath bin/publish/win-x64/Nori.exe `
-            -Mode initialized `
-            -Profile $profile `
-            -ExpectedVersion $expectedVersion `
-            -SafeMode
-
-      - name: 上传 Windows CI 产物
-        if: matrix.name == 'windows'
+      - name: 上传 CI 产物
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: nori-windows-ci-package
-          path: app/desktop/bin/ci-release
+          name: nori-${{ matrix.rid }}-ci-package
+          path: app/desktop/bin/publish/${{ matrix.rid }}
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7

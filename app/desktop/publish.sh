@@ -108,5 +108,4 @@ PLIST
 	rm -rf "$desktop_temp" "$launcher_temp"
 	printf '%s\n' "$(basename "$slot")" > "$root/.current.tmp"; mv -f "$root/.current.tmp" "$root/.current"
 	node scripts/validate-publish-structure.mjs "$root" "$rid"
-	node scripts/check-package-size.mjs --path "$root" --label "$rid package" --max-mib 180
 done

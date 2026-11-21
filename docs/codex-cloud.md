@@ -86,7 +86,6 @@ node --version
 pnpm --version
 dotnet --version
 
-pnpm check:todo
 pnpm lint
 pnpm build
 pnpm test
@@ -97,14 +96,7 @@ dotnet test Nori.slnx --configuration Release --no-build --no-restore -m:1
 
 其中 `node --version` 应显示 `v24.x`，`pnpm --version` 应显示 `11.x`。Codex 面板选择 Node.js 22 只决定基础环境版本，真正运行 Nori.Desktop 构建时会使用 setup script 准备的 Node.js 24。
 
-覆盖率任务按需运行：
-
-```bash
-pnpm coverage
-pnpm coverage:dotnet --no-build --no-restore
-```
-
-Windows 发布和 Windows 启动冒烟测试无法在 Codex Cloud 的 Linux 容器中原生复现，继续以 GitHub Actions 的 Windows job 为最终平台门禁。
+Windows 发布无法在 Codex Cloud 的 Linux 容器中原生复现，以 GitHub Actions 的 Windows job 为准。
 
 ## 官方参考
 

@@ -109,12 +109,6 @@ internal sealed class DesktopBootstrapper
 		{
 			config.InitDefaults(AppVersion());
 			config.EnsureSchemaVersion();
-			if (SmokeTestRuntime.Current?.Mode == SmokeTestMode.Initialized)
-			{
-				// 只在显式隔离 profile 的冒烟模式中预置完成标记, 不改变普通启动流程。
-				config.MarkFirstRunCompleted();
-				config.MarkInitialized();
-			}
 		}
 		catch (InvalidOperationException exception)
 		{
@@ -290,15 +284,6 @@ internal sealed class DesktopBootstrapper
 
 			// 窗口已显示，下一轮 UI 调度时撤下启动画面，不等待后台联网或插件入口。
 			Dispatcher.UIThread.Post(StartupSplash.Complete, DispatcherPriority.Background);
-
-			if (SmokeTestRuntime.Current is { } smokeTest)
-			{
-				bool expectedFirstRun = smokeTest.Mode == SmokeTestMode.FirstRun;
-				if (firstRun != expectedFirstRun)
-					throw new InvalidOperationException("启动冒烟分支与 profile 状态不一致");
-				SmokeTestRuntime.WriteReady(smokeTest, firstRun, safeMode, paths);
-				SmokeTestRuntime.ScheduleBoundedExit(services.Windows);
-			}
 		});
 
 		// Linux 的托盘宿主可在应用启动后出现或重启；图标自身的重注册由 Avalonia 处理。

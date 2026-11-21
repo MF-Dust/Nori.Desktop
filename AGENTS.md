@@ -40,9 +40,8 @@ Nori Desktop Pet is an AI desktop companion built with a **.NET 10 + Avalonia 12
 
 ### Stabilization Contracts
 
-- **Product version**: Controlled by the build environment; defaults to `Dev` when not injected. Release uses a manual codename; numeric versions must not be reused across release tags. Inject stable version via `NORI_PRODUCT_VERSION` and informational version via `NORI_PRODUCT_INFORMATIONAL_VERSION` (with `NORI_COMMIT_SHA` short hash). CLR/File/NuGet versions stay numeric; `ProductVersion.Current` keeps the full `v<version>-<codename>+<shortsha>` informational string and feeds snapshot, smoke readiness, diagnostics, crash reports, and MCP `clientInfo`. Do not add a `0.1.0` fallback.
+- **Product version**: Controlled by the build environment; defaults to `Dev` when not injected. Release uses a manual codename; numeric versions must not be reused across release tags. Inject stable version via `NORI_PRODUCT_VERSION` and informational version via `NORI_PRODUCT_INFORMATIONAL_VERSION` (with `NORI_COMMIT_SHA` short hash). CLR/File/NuGet versions stay numeric; `ProductVersion.Current` keeps the full `v<version>-<codename>+<shortsha>` informational string and feeds snapshot, diagnostics, crash reports, and MCP `clientInfo`. Do not add a `0.1.0` fallback.
 - **`--safe-mode`**: Manual CLI only; no auto-recovery. Keeps UI, logs, diagnostics, and local manual repair; skips MCP auto-connect, Proactive/Reflection, focus timer scheduling, knowledge/memory background maintenance, AI pet interaction, Live2D auto model load, and remote model download; bridge entry also rejects interactive networking and external Provider/MCP/voice operations. Focus state can still be read or ended locally.
-- **`readiness.json` schema v2**: Must include `product_version`, `database_schema_version`, `config_schema_version`, and `safe_mode`. Windows CI covers first-run, initialized, and initialized safe-mode profiles.
 - **`export_diagnostics`**: Size-limited, redacted whitelist ZIP only; must not contain database, chat/memory/prompts, tool args/results, request bodies, recordings, resources, credentials, or real user paths. Provider connection tests send fixed probes and do not persist config or content.
 - **Pre-migration backup**: Uses `VACUUM INTO`, 64 MiB per-file cap, keep at most 3 copies; new migrations must preserve this protection.
 
@@ -76,7 +75,7 @@ Nori-Desktop-Pet/
 │   │   ├── assets/style/       # tokens.ts — native theme token source
 │   │   └── services/theme/     # Contrast helpers
 │   ├── tests/                  # Vitest: native tokens and contrast
-│   ├── scripts/                # CI, coverage, todo-check, packaging, sync-design-tokens.mjs
+│   ├── scripts/                # CI, packaging, sync-design-tokens.mjs
 │   └── package.json
 ```
 
@@ -107,33 +106,19 @@ dotnet run --project Nori.Desktop
 
 ### Local Verification
 
-本地按改动范围运行必要检查：纯文档修改检查内容与格式；单端修改验证该端；跨端契约或共享构建变更验证两端。全量门禁保留在 CI。需要覆盖率时，以覆盖率测试替代同范围普通测试。检查通过后，仅因新增修改、失败或未解决风险重跑。
+本地按改动范围运行必要检查：纯文档修改检查内容与格式；单端修改验证该端；跨端契约或共享构建变更验证两端。全量门禁保留在 CI。检查通过后，仅因新增修改、失败或未解决风险重跑。
 
 ### Verification Gates (CI command reference)
 
 ```bash
-# 1. Source code annotation gate (fails on forbidden TODO/FIXME comments in first-party code)
-pnpm check:todo
-
-# 2. Frontend lint & static analysis
 pnpm lint
-
-# 3. TypeScript theme token check
 pnpm build
-
-# 4. Frontend unit tests & coverage
 pnpm test
-pnpm coverage
-
-# 5. Backend compilation (all warnings treated as errors)
 dotnet build Nori.slnx --configuration Release
-
-# 6. Backend unit tests (strictly serialized MSBuild concurrency)
 dotnet test Nori.slnx --configuration Release --no-build --no-restore -m:1
-
-# 7. Backend coverage collection
-pnpm coverage:dotnet --no-build --no-restore
 ```
+
+CI runs theme checks on Linux and .NET build, tests, and framework-dependent publish on Windows, Linux, and macOS. Publish scripts validate the slot structure.
 
 ### Packaging & Release
 
@@ -205,22 +190,9 @@ publish.bat
 - **Path Security (`ResourcePathSafetyTests.cs`)**: Prevents path traversal, UNC, symlink breakouts, and directory escaping.
 - **Config Inference (`ConfigValueTests.cs`)**: Pins type inference for SQLite key/value reads.
 
-### Gated Live2D / GL Tests
-Real-model and real-GL tests in `Nori.Desktop.Tests` are skipped unless enabled explicitly. CI sets none of these variables and the models are not in git, so these tests never run in CI; run them locally after changing `Nori.Live2D` or `Nori.Desktop/Live2D`.
-- `[Live2DAssetsFact]`: `NORI_TEST_LIVE2D_ASSETS=1`. Models load from `NORI_LIVE2D_FIXTURES/<modelId>/` when set, otherwise from the nearest `data/resources/installed/live2d/<modelId>/` above the test output directory (`arg-nori`, `nori`).
-- `[NativeGlAssetsTheory]`: Windows x64 (ANGLE) or Linux (system EGL with an available display), with `NORI_TEST_NATIVE_GL=1` and `NORI_TEST_LIVE2D_ASSETS=1`.
-- `[TextureQuadGlTheory]`: Windows x64 or Linux EGL with `NORI_TEST_NATIVE_GL=1`; no model assets required. Test output identifies the actual GL renderer (hardware or software).
-- `NORI_TEST_NATIVE_GL=1` also switches the shared headless fixture (`BridgeCommandsTests.BuildAvaloniaApp`) to real Skia drawing.
+### Native Desktop Verification
 
-```bash
-NORI_TEST_LIVE2D_ASSETS=1 NORI_TEST_NATIVE_GL=1 dotnet test Nori.Desktop.Tests/Nori.Desktop.Tests.csproj --configuration Release -m:1
-```
-
----
-
-### Gated X11 Input Tests
-
-`[NativeX11Fact]` requires `NORI_TEST_X11=1` and a Linux X11/XWayland session with SHAPE 1.1+. It round-trips production input-shape calls through an unmapped native window without moving the pointer. `[NativeX11PointerFact]` additionally requires explicit `NORI_TEST_X11_POINTER=1` and `libXtst`; it maps native windows and injects real XTEST pointer input to verify click delivery. Never enable it on the user's desktop. Use the isolated KWin virtual/XWayland runner instead: after a Release test build and `./publish.sh <current-linux-rid>`, run `NORI_TEST_LINUX_DESKTOP=1 python3 scripts/linux-integration.test.py IsolatedDesktopTests` from `app/desktop/`. The runner creates private HOME/config/runtime and D-Bus, runs both input tests plus six published-launcher startup profiles (X11/Wayland × first-run/initialized/safe), then cleans up the compositor. It needs installed `kwin_wayland`, `dbus-run-session`, .NET, XWayland and `libXtst`; it installs nothing.
+Automated tests cover model and renderer logic without external models or a desktop session. Linux D-Bus protocol tests use a private `dbus-daemon`. Verify changes that depend on real GL, input delivery, or audio devices in an appropriate desktop session.
 
 ## 6. Commit & Pull Request Guidelines
 

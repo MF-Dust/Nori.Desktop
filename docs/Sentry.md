@@ -55,6 +55,6 @@ Web Sentry 的 DSN、项目名和 source-map 上传配置已移除。
 
 Release workflow 在发布归档前保留 PDB，使用 Sentry CLI 上传 Native 符号，然后从 Windows、Linux 和 macOS 发布目录移除 PDB。用户 ZIP/tar.gz 不包含符号文件。Native release 在正式 tag 创建后由独立 job 创建或复用并 finalize；缺少 Sentry 凭据时跳过相关上传与 finalize，不阻断普通应用发布。
 
-Release 顺序保持为：版本与分发许可校验、主题令牌检查、Native 三平台构建/测试和发布冒烟、Native 符号上传、创建 tag、完成 Native Sentry release、创建 GitHub Release。
+Release 顺序保持为：版本校验、主题令牌检查、Native 三平台构建/测试和 FDD 发布、Native 符号上传、创建 tag、完成 Native Sentry release、创建 GitHub Release。
 
 本机可按需设置 `NORI_SENTRY_DSN_NATIVE`、`NORI_SENTRY_RELEASE` 和 `NORI_SENTRY_ENVIRONMENT`。不要把 `SENTRY_AUTH_TOKEN` 保存进项目文件或发布包。

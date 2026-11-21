@@ -6,9 +6,8 @@ namespace Nori.AppLauncher;
 /// <summary>启动画面随部署槽提供；缺失或失败不会阻断稳定根入口。</summary>
 internal sealed class SplashProcess(Process process) : IDisposable
 {
-	internal static SplashProcess? TryStart(string desktopEntrypoint, string pipe, Process child, List<string> arguments)
+	internal static SplashProcess? TryStart(string desktopEntrypoint, string pipe, Process child)
 	{
-		if (arguments.Any(argument => argument.StartsWith("--smoke-test", StringComparison.Ordinal))) return null;
 		try
 		{
 			string executable = Path.Combine(Path.GetDirectoryName(desktopEntrypoint)!,

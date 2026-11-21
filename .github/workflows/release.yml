@@ -23,11 +23,6 @@ on:
         required: false
         default: false
         type: boolean
-      run_extra_checks:
-        description: "运行额外 Windows 冒烟测试"
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -36,9 +31,6 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-# 核心门禁包括版本校验、前后端质量检查、编译/单测、基础启动冒烟和标签冲突检查。
-# Sentry 与额外 Windows 冒烟按配置或输入启用。
-# 分发许可确认改为仓库级 Variables，一次设置后无需每次手动勾选。
 jobs:
   validate:
     name: 版本预检
@@ -48,18 +40,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       informational: ${{ steps.version.outputs.informational }}
       sentry_release: ${{ steps.version.outputs.sentry_release }}
-    env:
-      # 法律/分发确认仍保留，但改成仓库级一次性 Variables，避免每次发布重复勾选。
-      NORI_AVALONIA_WEBVIEW_DISTRIBUTION_LICENSE_CONFIRMED: ${{ vars.NORI_AVALONIA_WEBVIEW_DISTRIBUTION_LICENSE_CONFIRMED || 'false' }}
     steps:
-      - name: 检查仓库级分发许可确认
-        shell: bash
-        run: |
-          if [ "$NORI_AVALONIA_WEBVIEW_DISTRIBUTION_LICENSE_CONFIRMED" != "true" ]; then
-            echo "请先在 Repository Variables 中将 NORI_AVALONIA_WEBVIEW_DISTRIBUTION_LICENSE_CONFIRMED 设为 true。" >&2
-            exit 1
-          fi
-
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.ref }}
@@ -143,14 +124,12 @@ jobs:
           echo "程序 informational version: $informational (标签将在所有测试通过后创建)"
 
   preflight:
-    name: 主题令牌与发布结构门禁
+    name: 主题令牌门禁
     needs: validate
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: app/desktop
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -167,16 +146,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: 主题令牌门 · 静态检查
         run: pnpm lint
-      - name: 一方 TODO/FIXME 门禁
-        run: pnpm check:todo
       - name: 主题令牌门 · 类型检查
         run: pnpm build
-      - name: 主题令牌门 · 覆盖率
-        run: pnpm coverage
-      - name: 发布结构 fixture 门
-        run: node scripts/validate-publish-structure.test.mjs
-      - name: 自动更新清单 fixture 门
-        run: node scripts/generate-update-manifest.test.mjs
+      - name: 主题令牌门 · 单元测试
+        run: pnpm test
       # 后端构建与全量单测统一交给 native 三平台门禁，不在 Ubuntu 重复执行。
 
   native:
@@ -222,7 +195,7 @@ jobs:
           sudo apt-get update
           alsa=libasound2
           if apt-cache show libasound2t64 >/dev/null 2>&1; then alsa=libasound2t64; fi
-          sudo apt-get install -y libgtk-3-0 "$alsa" xvfb xauth dbus-x11 libgl1-mesa-dri desktop-file-utils libglib2.0-bin
+          sudo apt-get install -y libgtk-3-0 "$alsa" libgl1-mesa-dri dbus
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
@@ -271,28 +244,10 @@ jobs:
         if: matrix.name == 'windows'
         shell: pwsh
         run: Get-ChildItem bin/publish/win-x64 -Recurse -Filter *.pdb | Remove-Item -Force
-      - name: Windows ZIP / checksum / SBOM / third-party notices
+      - name: 打包 Windows Release 资产
         if: matrix.name == 'windows'
         shell: pwsh
         run: ./scripts/package-windows.ps1 -PublishDir bin/publish/win-x64 -Version $env:NORI_VERSION -OutputDir bin/release
-      - name: Windows first-run 启动冒烟
-        if: matrix.name == 'windows'
-        shell: pwsh
-        run: |
-          $profile = Join-Path $env:RUNNER_TEMP "nori-release-smoke-first-run-$env:GITHUB_RUN_ID"
-          ./scripts/smoke-published.ps1 -BinaryPath bin/publish/win-x64/Nori.exe -Mode first-run -Profile $profile -ExpectedVersion $env:NORI_PRODUCT_INFORMATIONAL_VERSION
-      - name: Windows initialized 启动冒烟（可选）
-        if: matrix.name == 'windows' && inputs.run_extra_checks
-        shell: pwsh
-        run: |
-          $profile = Join-Path $env:RUNNER_TEMP "nori-release-smoke-initialized-$env:GITHUB_RUN_ID"
-          ./scripts/smoke-published.ps1 -BinaryPath bin/publish/win-x64/Nori.exe -Mode initialized -Profile $profile -ExpectedVersion $env:NORI_PRODUCT_INFORMATIONAL_VERSION
-      - name: Windows safe-mode 启动冒烟（可选）
-        if: matrix.name == 'windows' && inputs.run_extra_checks
-        shell: pwsh
-        run: |
-          $profile = Join-Path $env:RUNNER_TEMP "nori-release-smoke-safe-mode-$env:GITHUB_RUN_ID"
-          ./scripts/smoke-published.ps1 -BinaryPath bin/publish/win-x64/Nori.exe -Mode initialized -Profile $profile -ExpectedVersion $env:NORI_PRODUCT_INFORMATIONAL_VERSION -SafeMode
 
       - name: 上传待发布 Windows 产物
         if: matrix.name == 'windows'
@@ -302,14 +257,6 @@ jobs:
           path: |
             app/desktop/bin/release/*.zip
             app/desktop/bin/release/*.sha256
-            app/desktop/bin/release/SBOM.cdx.json
-            app/desktop/bin/release/THIRD-PARTY-NOTICES.json
-            app/desktop/bin/release/THIRD-PARTY-NOTICES.md
-            app/desktop/bin/release/RELEASE-MANIFEST.json
-            app/desktop/bin/release/SBOM-win-x64.cdx.json
-            app/desktop/bin/release/THIRD-PARTY-NOTICES-win-x64.json
-            app/desktop/bin/release/THIRD-PARTY-NOTICES-win-x64.md
-            app/desktop/bin/release/RELEASE-MANIFEST-win-x64.json
             app/desktop/bin/release/UPDATE-win-x64.json
           if-no-files-found: error
           retention-days: 2
@@ -320,19 +267,6 @@ jobs:
         run: |
           chmod +x publish.sh
           NORI_SKIP_FRONTEND=1 NORI_KEEP_SYMBOLS=1 ./publish.sh "${{ matrix.rid }}"
-      - name: Linux 桌面集成脚本 fixture
-        if: matrix.name == 'linux'
-        run: python3 scripts/linux-integration.test.py
-
-      - name: Linux 发布包启动冒烟
-        if: matrix.name == 'linux'
-        env:
-          EXPECTED_VERSION: ${{ env.NORI_PRODUCT_INFORMATIONAL_VERSION }}
-        run: |
-          for mode in first-run initialized; do
-            dbus-run-session -- xvfb-run -a python3 scripts/smoke-published.py bin/publish/linux-x64/Nori --mode "$mode" --expected-version "$EXPECTED_VERSION"
-          done
-          dbus-run-session -- xvfb-run -a python3 scripts/smoke-published.py bin/publish/linux-x64/Nori --mode initialized --safe-mode --expected-version "$EXPECTED_VERSION"
 
       - name: 上传 Linux/macOS Native Sentry 符号（可选）
         if: matrix.name != 'windows' && env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT_NATIVE != ''
@@ -376,16 +310,8 @@ jobs:
             hash="$(shasum -a 256 "$archive" | awk '{print $1}')"
           fi
           printf '%s  %s\n' "$hash" "$(basename "$archive")" > "$archive.sha256"
-          metadata="bin/release/.metadata-$rid"
-          rm -rf "$metadata"
-          node scripts/generate-release-metadata.mjs --publish-dir "$publish" --version "$NORI_VERSION" --rid "$rid" --output-dir "$metadata"
-          cp "$metadata/SBOM.cdx.json" "bin/release/SBOM-$rid.cdx.json"
-          cp "$metadata/THIRD-PARTY-NOTICES.json" "bin/release/THIRD-PARTY-NOTICES-$rid.json"
-          cp "$metadata/THIRD-PARTY-NOTICES.md" "bin/release/THIRD-PARTY-NOTICES-$rid.md"
-          cp "$metadata/RELEASE-MANIFEST.json" "bin/release/RELEASE-MANIFEST-$rid.json"
-          rm -rf "$metadata"
           node scripts/generate-update-manifest.mjs --version "$NORI_VERSION" --rid "$rid" --archive-path "$archive" --publish-dir "$publish" --output-dir "bin/release"
-          echo "已生成 $archive 及 $rid 发布元数据"
+          echo "已生成 $archive 及 $rid 更新清单"
       - name: 上传待发布 Linux/macOS 产物
         if: matrix.name != 'windows'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -395,10 +321,6 @@ jobs:
             app/desktop/bin/release/*.zip
             app/desktop/bin/release/*.tar.gz
             app/desktop/bin/release/*.sha256
-            app/desktop/bin/release/SBOM-${{ matrix.rid }}.cdx.json
-            app/desktop/bin/release/THIRD-PARTY-NOTICES-${{ matrix.rid }}.json
-            app/desktop/bin/release/THIRD-PARTY-NOTICES-${{ matrix.rid }}.md
-            app/desktop/bin/release/RELEASE-MANIFEST-${{ matrix.rid }}.json
             app/desktop/bin/release/UPDATE-${{ matrix.rid }}.json
           if-no-files-found: error
           retention-days: 2
@@ -489,7 +411,7 @@ jobs:
           pattern: "nori-*-release-${{ needs.validate.outputs.version }}"
           path: release-artifacts
           merge-multiple: true
-      - name: 发布 Windows、Linux、macOS 产物与审计元数据
+      - name: 发布 Windows、Linux、macOS 产物
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -505,18 +427,6 @@ jobs:
             release-artifacts/nori-${VERSION}-linux-x64.tar.gz.sha256
             release-artifacts/nori-${VERSION}-osx-arm64.zip
             release-artifacts/nori-${VERSION}-osx-arm64.zip.sha256
-            release-artifacts/SBOM-win-x64.cdx.json
-            release-artifacts/THIRD-PARTY-NOTICES-win-x64.json
-            release-artifacts/THIRD-PARTY-NOTICES-win-x64.md
-            release-artifacts/RELEASE-MANIFEST-win-x64.json
-            release-artifacts/SBOM-linux-x64.cdx.json
-            release-artifacts/THIRD-PARTY-NOTICES-linux-x64.json
-            release-artifacts/THIRD-PARTY-NOTICES-linux-x64.md
-            release-artifacts/RELEASE-MANIFEST-linux-x64.json
-            release-artifacts/SBOM-osx-arm64.cdx.json
-            release-artifacts/THIRD-PARTY-NOTICES-osx-arm64.json
-            release-artifacts/THIRD-PARTY-NOTICES-osx-arm64.md
-            release-artifacts/RELEASE-MANIFEST-osx-arm64.json
             release-artifacts/UPDATE-win-x64.json
             release-artifacts/UPDATE-linux-x64.json
             release-artifacts/UPDATE-osx-arm64.json

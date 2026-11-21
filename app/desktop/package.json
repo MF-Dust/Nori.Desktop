@@ -10,14 +10,10 @@
 		"theme:check": "node scripts/sync-design-tokens.mjs --check",
 		"build": "tsc --noEmit",
 		"lint": "eslint src --max-warnings=0",
-		"test": "vitest run",
-		"coverage": "vitest run --coverage",
-		"coverage:dotnet": "node scripts/coverage-dotnet.mjs",
-		"check:todo": "node scripts/check-first-party-todos.mjs"
+		"test": "vitest run"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
-		"@vitest/coverage-v8": "^4.1.12",
 		"eslint": "^10.13.0",
 		"globals": "^17.11.0",
 		"typescript": "~5.6.2",

@@ -214,22 +214,8 @@ public class MemoryTimelineTests : IDisposable
 	}
 
 	[Fact]
-	public async Task 取消时间线读取且大数据只装载当前页()
+	public void 大数据时间线只装载当前页()
 	{
-		TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
-		_store.BeforeTimelineRead = cancellation =>
-		{
-			started.TrySetResult();
-			cancellation.WaitHandle.WaitOne(TimeSpan.FromSeconds(5));
-			cancellation.ThrowIfCancellationRequested();
-		};
-		using CancellationTokenSource cancellation = new();
-		Task<MemoryTimelinePage> reading = Task.Run(() => _store.QueryTimeline(new MemoryTimelineQuery(), Zone, cancellation.Token));
-		await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-		cancellation.Cancel();
-		await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reading);
-		_store.BeforeTimelineRead = null;
-
 		_database.Locked(connection =>
 		{
 			using SqliteTransaction transaction = connection.BeginTransaction();

@@ -33,7 +33,7 @@ internal static class Program
 			startInfo.Environment["NORI_SPLASH_PIPE"] = splashPipe;
 			// Entrypoint 已由 DeploymentSelector 限定在签名部署槽内并验证为普通文件。
 			using Process child = Process.Start(startInfo) ?? throw new InvalidOperationException("无法启动 Nori 宿主"); // nosemgrep
-			using SplashProcess? splash = SplashProcess.TryStart(selection.Entrypoint, splashPipe, child, forwarded);
+			using SplashProcess? splash = SplashProcess.TryStart(selection.Entrypoint, splashPipe, child);
 			child.WaitForExit();
 			return child.ExitCode;
 		}

@@ -80,10 +80,10 @@ ABI 声明、对齐和位标记依据 PurismCore 的 MIT 公共头文件：
 在 `app/desktop/` 执行：
 
 ```bash
-NORI_TEST_LIVE2D_ASSETS=1 NORI_TEST_NATIVE_GL=1 dotnet test Nori.Desktop.Tests -c Release -m:1
+dotnet test Nori.Desktop.Tests -c Release -m:1
 ```
 
-真实模型沿用 `NORI_LIVE2D_FIXTURES` 或本地 `data/resources/installed/live2d`，不加入源码仓库。`NativeModelTests` 覆盖无旧框架初始化的模型创建、双实例隔离、参数/虚拟 ID、重复释放和释放后访问、越界、损坏/截断输入及不可跳过一致性检查；已有准备与遮罩测试覆盖实际加载路径及失败回滚。
+当前自动测试不依赖真实模型与原生 GL，覆盖损坏模型输入、资源准备、动作/物理/姿势解析和遮罩布局等逻辑。下方是各开发阶段的历史实测记录。
 
 模型数据层阶段已验证 Windows x64 FDD 发布包含 `Nori.Live2D.dll` 和 MIT 许可。动作阶段在 Windows 上验证：Desktop.Tests Release 构建成功；启用真实资源后 575 项测试通过、0 跳过。新增测试覆盖四种曲线、非等距贝塞尔、输入校验、效果通道、优先级/淡化/中断、双模型共享动作隔离、循环事件和全部本地真实动作求值。仓库外 GL harness 复用宿主加载及绘制代码，对两模型 × 普通/高精度遮罩 × 720×480/1920×1080 各播放 Idle 运行 60 帧，无 GL 错误；首末帧均有可见模型和透明区域，抽查截图无明显缺失。1080p 使用离屏目标，临时程序和私有截图不加入仓库。
 
@@ -99,10 +99,10 @@ NORI_TEST_LIVE2D_ASSETS=1 NORI_TEST_NATIVE_GL=1 dotnet test Nori.Desktop.Tests -
 
 遮罩阶段：Windows Release 桌面测试 658 项通过、0 跳过；8 个新增用例覆盖共享分组、1–100 组/1–3 纹理的分区不重叠、常用布局、普通/高精度取样和两模型状态隔离。8 组真实 GL 场景通过，16 张首末帧 PNG 与数学阶段逐字节相同。
 
-当前最终边界证据（Windows）：`Nori.Desktop.Tests` Release 在 `NORI_TEST_NATIVE_GL=1`、`NORI_TEST_LIVE2D_ASSETS=1` 下 792 项通过、0 跳过（性能阶段新增缓冲所有权、分段重定位、状态缓存失效、提交次数、原生数组一致性与稳态零分配用例）。仓库内 `NativeGlHarnessTests` 覆盖 Windows ANGLE GLES2/GLES3 各自的双上下文（不共享资源）、`arg-nori`/`nori`、720×480 和 1920×1080、场景纹理合成及双实例隔离释放；释放一个实例后，另一个仍可绘制且回读像素不变。此处为 Windows 证据，不声称跨驱动逐位等价。
+性能阶段最终边界证据（Windows）：`Nori.Desktop.Tests` Release 启用真实模型和原生 GL 后 792 项通过、0 跳过（性能阶段新增缓冲所有权、分段重定位、状态缓存失效、提交次数、原生数组一致性与稳态零分配用例）。当时的 GL 测试覆盖 Windows ANGLE GLES2/GLES3 各自的双上下文（不共享资源）、`arg-nori`/`nori`、720×480 和 1920×1080、场景纹理合成及双实例隔离释放；释放一个实例后，另一个仍可绘制且回读像素不变。此处为 Windows 证据，不声称跨驱动逐位等价。
 
 性能阶段：`MaskPlan`、`MotionPlayer`、`PosePlayer` 稳态更新改为零分配（曲线目标、效果通道与未跟踪的眼/嘴参数在首次绑定时预计算），遮罩包围框不再在循环条件中逐顶点读取原生计数。Windows（Ryzen 5 1600X、RX 580、ANGLE ES3/D3D11，Release）同一探针、两模型、1920×1080 与 720×480、2048 遮罩下各跑三轮取中位数：每帧更新+提交+`glFinish` 总耗时约 2.36–2.55 ms → 1.06–1.16 ms，其中绘制提交 CPU 约 1.47–1.51 ms → 0.44–0.47 ms，GPU 等待约 0.64–0.68 ms → 0.37–0.39 ms，托管分配约 2.0–2.2 KB/帧 → 1.0 KB/帧（剩余主要来自 `GlStateScope`）。两模型 × ES2/ES3 × 两分辨率的第 1/30/90 帧及一组高精度遮罩共 27 份 RGBA 回读与改动前逐字节一致。该计时不含 Avalonia 合成、呈现与命中采样，也不代表其他驱动或平台。
 
-相关边界测试还覆盖动作 `Meta` 全局 fade 与 model3 继承/覆盖、模型/绘制对象/Tint 的 opacity 组合、纹理上传校验与失败回滚、各向异性能力检查与上限裁剪、FBO resize 失败保留旧目标，以及最终纹理合成后的 GL 状态恢复。
+当时的相关边界测试还覆盖动作 `Meta` 全局 fade 与 model3 继承/覆盖、模型/绘制对象/Tint 的 opacity 组合、纹理上传校验与失败回滚、各向异性能力检查与上限裁剪、FBO resize 失败保留旧目标，以及最终纹理合成后的 GL 状态恢复。
 
-未启用真实资源或原生 GL 时相关测试明确跳过，不能据此声称真实模型或 GPU 验证通过。Linux/macOS 原生运行及完整桌宠长时间交互尚未实测。
+自动测试通过不代表真实模型或 GPU 验证通过；涉及原生驱动及桌面交互的改动需另做实机验证。

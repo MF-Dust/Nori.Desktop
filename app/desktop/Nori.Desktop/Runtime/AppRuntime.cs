@@ -115,6 +115,9 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	/// <summary>实时语音会话。构造后保持空闲，只有用户主动开始才会打开麦克风。</summary>
 	public RealtimeVoiceSession RealtimeVoice { get; }
 
+	/// <summary>连续语音对话协调器：统一轮次结束条件并阻止抢占未释放的 Agent 会话。</summary>
+	public IVoiceConversationCoordinator VoiceConversation { get; }
+
 	public AgentEngine Engine { get; }
 
 	/// <summary>伴侣轻量互动 LLM 服务, 不进入聊天历史和工具链。</summary>
@@ -276,6 +279,9 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			machineState: new MachineStateProvider(rgbDeviceCount: () => RgbChannel.Devices.Count),
 			// 上下文窗口与思考档位按 models.dev 的模型能力换算；查不到时回退保守默认值。
 			modelCatalog: services.ModelCatalog);
+		VoiceConversation = new VoiceConversationCoordinator(
+			() => !_sessions.IsEmpty || Engine.IsSessionBusy,
+			() => Engine.ActiveSessionId);
 		if (!services.SafeMode) services.ModelCatalog.Warmup();
 
 		// 窗口显隐变化 (含托盘切换伴侣) 直接作废快照, 主界面的伴侣状态因此不会陈旧

@@ -29,6 +29,7 @@ public sealed class NativeAudioPlaybackTests
 		public bool DisposedOnce => DisposeCount == 1;
 		public TaskCompletionSource WriteEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		public TaskCompletionSource OpenEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		public TaskCompletionSource Disposed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		public bool HoldAfterStop { get; set; }
 		public bool BlockOpen { get; set; }
 		public bool FailOpen { get; set; }
@@ -84,6 +85,7 @@ public sealed class NativeAudioPlaybackTests
 			DisposeCount++;
 			_released.Dispose();
 			_openReleased.Dispose();
+			Disposed.TrySetResult();
 		}
 	}
 
@@ -626,5 +628,40 @@ public sealed class NativeAudioPlaybackTests
 
 		Assert.Contains("audio/aac", failure.Message, StringComparison.Ordinal);
 		Assert.False(playback.IsPlaying);
+	}
+
+	[Fact]
+	public async Task RecoverPlayback释放卡住设备复位状态并允许新设备继续播放()
+	{
+		FakeDevice stuck = new() { BlockWrites = true, HoldAfterStop = true };
+		FakeDevice healthy = new();
+		int created = 0;
+		using NativeAudioPlayback playback = new(
+			() => Interlocked.Increment(ref created) == 1 ? stuck : healthy,
+			(_, _) => Tone(frames: 4410));
+		List<bool> states = [];
+		List<double> levels = [];
+		playback.PlayingChanged += states.Add;
+		playback.VolumeSampled += levels.Add;
+
+		Task playing = playback.PlayAsync(Bytes(), CancellationToken.None);
+		await stuck.WriteEntered.Task.WaitAsync(WaitTimeout);
+		Assert.True(playback.IsPlaying);
+
+		playback.RecoverPlayback();
+		await playing.WaitAsync(WaitTimeout);
+		Assert.False(playback.IsPlaying);
+		Assert.Equal([true, false], states);
+		Assert.Equal(0, levels[^1]);
+
+		// 新设备立即可用，不等待损坏的旧设备收尾。
+		await playback.PlayAsync(Bytes(), CancellationToken.None).WaitAsync(WaitTimeout);
+		Assert.NotEmpty(healthy.Written);
+		Assert.False(playback.IsPlaying);
+
+		stuck.Release();
+		await stuck.Disposed.Task.WaitAsync(WaitTimeout);
+		Assert.True(stuck.DisposedOnce);
+		Assert.True(healthy.DisposedOnce);
 	}
 }

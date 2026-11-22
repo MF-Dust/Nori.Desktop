@@ -268,7 +268,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 			if (!_configured || !_loadedHistory || _safeMode)
 				throw new InvalidOperationException("聊天服务尚未准备好，无法发送语音转写");
 			if (!_state.BeginSend(turn.Text, fromVoice: true))
-				throw new InvalidOperationException("已有对话正在进行，语音不会重复提交");
+				throw new Nori.Core.Voice.Realtime.VoiceConversationBusyException();
 		}
 		catch (Exception exception) when (exception is not OperationCanceledException && !_disposed)
 		{

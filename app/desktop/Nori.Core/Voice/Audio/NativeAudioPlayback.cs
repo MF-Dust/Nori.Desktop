@@ -11,10 +11,25 @@ namespace Nori.Core.Voice.Audio;
 public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<ReadOnlyMemory<byte>, string, PcmAudio> decode)
 	: IAudioPlayback
 {
+	private sealed class PlaybackRun(CancellationTokenSource cts)
+	{
+		private int _refs = 1;
+		public CancellationTokenSource Cts { get; } = cts;
+		public TaskCompletionSource Recovery { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+		public void AddRef() => Interlocked.Increment(ref _refs);
+
+		public void Release()
+		{
+			if (Interlocked.Decrement(ref _refs) == 0)
+				Cts.Dispose();
+		}
+	}
+
 	private readonly Lock _gate = new();
-	private readonly Queue<(CancellationTokenSource? Owner, bool IsLevel, Action Notify)> _notifications = new();
+	private readonly Queue<(PlaybackRun? Owner, bool IsLevel, Action Notify)> _notifications = new();
 	private bool _notifying;
-	private CancellationTokenSource? _current;
+	private PlaybackRun? _current;
 	private IAudioDevice? _device;
 	private bool _playing;
 	private bool _disposed;
@@ -49,8 +64,10 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 		PcmAudio pcm = decode(audio.Bytes, audio.Mime);
 		if (pcm.Samples.Length == 0) return;
 
-		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		PlaybackRun run = new(linked);
 		IAudioDevice? device = null;
+		Task? pumpTask = null;
 		try
 		{
 			lock (_gate)
@@ -58,7 +75,7 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 				ObjectDisposedException.ThrowIf(_disposed, this);
 				// 停旧段和预留新段必须原子完成；设备创建期间也属于这一代。
 				Stop();
-				_current = linked;
+				_current = run;
 				_device = null;
 			}
 
@@ -66,13 +83,27 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 			device = openDevice();
 			lock (_gate)
 			{
-				if (!ReferenceEquals(_current, linked) || linked.IsCancellationRequested) return;
+				if (!ReferenceEquals(_current, run) || linked.IsCancellationRequested) return;
 				_device = device;
 				device.Volume = _volume;
 				SetPlaying(true);
 			}
 			DrainNotifications();
-			await Task.Run(() => Pump(device, pcm, linked), CancellationToken.None).ConfigureAwait(false);
+			run.AddRef();
+			pumpTask = Task.Run(() => RunPump(device, pcm, run), CancellationToken.None);
+			Task completed = await Task.WhenAny(pumpTask, run.Recovery.Task).ConfigureAwait(false);
+			if (ReferenceEquals(completed, pumpTask))
+			{
+				await pumpTask.ConfigureAwait(false);
+			}
+			else
+			{
+				_ = pumpTask.ContinueWith(
+					static t => _ = t.Exception,
+					CancellationToken.None,
+					TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+					TaskScheduler.Default);
+			}
 		}
 		catch (OperationCanceledException) when (linked.IsCancellationRequested)
 		{
@@ -84,7 +115,7 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 			{
 				lock (_gate)
 				{
-					if (ReferenceEquals(_current, linked))
+					if (ReferenceEquals(_current, run))
 					{
 						_device = null;
 						_current = null;
@@ -97,9 +128,28 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 			}
 			finally
 			{
-				// 泵退出后才释放；Stop/Dispose 只负责请求停止。
-				device?.Dispose();
+				// 仅当泵尚未启动时才由 PlayAsync 负责释放设备；若泵已启动，由 RunPump 在退出后释放，避免销毁仍在阻塞写入的设备。
+				if (pumpTask is null)
+				{
+					try { device?.Dispose(); }
+					catch { /* 已损坏的底层句柄释放失败不阻断下一轮打开新设备。 */ }
+				}
+				run.Release();
 			}
+		}
+	}
+
+	private void RunPump(IAudioDevice device, PcmAudio pcm, PlaybackRun owner)
+	{
+		try
+		{
+			Pump(device, pcm, owner);
+		}
+		finally
+		{
+			try { device.Dispose(); }
+			catch { /* 已损坏的底层句柄释放失败不阻断下一轮打开新设备。 */ }
+			owner.Release();
 		}
 	}
 
@@ -110,9 +160,9 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 	/// 和「发电平的节奏」。两者用同一个值，电平就天然对齐到正在播的那一段，
 	/// 不需要另外算时间。
 	/// </summary>
-	private void Pump(IAudioDevice device, PcmAudio pcm, CancellationTokenSource owner)
+	private void Pump(IAudioDevice device, PcmAudio pcm, PlaybackRun owner)
 	{
-		CancellationToken cancellationToken = owner.Token;
+		CancellationToken cancellationToken = owner.Cts.Token;
 		cancellationToken.ThrowIfCancellationRequested();
 		AudioFormat actual = device.Open(pcm.SampleRate, pcm.Channels);
 		cancellationToken.ThrowIfCancellationRequested();
@@ -154,8 +204,35 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 		{
 			// 与摘除设备互斥，不能对已经交给收尾释放的设备调用 Stop。
 			try { _device?.Stop(); }
-			finally { _current?.Cancel(); }
+			finally { _current?.Cts.Cancel(); }
 		}
+	}
+
+	/// <inheritdoc />
+	public void RecoverPlayback()
+	{
+		IAudioDevice? device;
+		PlaybackRun? current;
+		lock (_gate)
+		{
+			if (_disposed) return;
+			device = _device;
+			current = _current;
+			bool hadActive = device is not null || current is not null || Volatile.Read(ref _playing);
+			_device = null;
+			_current = null;
+			SetPlaying(false);
+			if (hadActive) EnqueueLevel(null, 0);
+		}
+		try { device?.Stop(); }
+		catch { /* 损坏的设备可能无法响应停止，忽略以保证状态复位。 */ }
+		if (current is not null)
+		{
+			try { current.Cts.Cancel(); }
+			catch (ObjectDisposedException) { }
+			current.Recovery.TrySetResult();
+		}
+		DrainNotifications();
 	}
 
 	private void SetPlaying(bool playing)
@@ -165,7 +242,7 @@ public sealed class NativeAudioPlayback(Func<IAudioDevice> openDevice, Func<Read
 		_notifications.Enqueue((null, false, () => PlayingChanged?.Invoke(playing)));
 	}
 
-	private void EnqueueLevel(CancellationTokenSource? owner, double level)
+	private void EnqueueLevel(PlaybackRun? owner, double level)
 	{
 		if (VolumeSampled is not { } sampled) return;
 		// 每位订阅者单独入队；前一位回调启动新段后，其余旧段通知也必须失效。

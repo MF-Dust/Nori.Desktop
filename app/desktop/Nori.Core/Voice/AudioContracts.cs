@@ -219,7 +219,8 @@ public static class SentenceChunker
 		while (current.Length >= limit)
 		{
 			int splitAt = FindSplitPoint(current, limit);
-			result.Add(current.ToString(0, splitAt).Trim());
+			string piece = current.ToString(0, splitAt).Trim();
+			if (piece.Length > 0) result.Add(piece);
 			current.Remove(0, splitAt);
 		}
 	}

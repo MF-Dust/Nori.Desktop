@@ -65,6 +65,12 @@ public interface IAudioPlayback : IDisposable
 	void Stop();
 
 	/// <summary>
+	/// 播放设备切换或中途故障后的恢复入口：释放损坏的设备状态并复位播放状态，确保观察者收到停播通知。
+	/// 默认回退到 <see cref="Stop"/>。
+	/// </summary>
+	void RecoverPlayback() => Stop();
+
+	/// <summary>
 	/// 设置输出音量 0..1。
 	///
 	/// 默认空实现：不是每个后端都控制得了设备音量（早期的实现就没有）。

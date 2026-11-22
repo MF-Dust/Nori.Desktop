@@ -18,23 +18,29 @@ public sealed partial class AppRuntime
 
 	/// <summary>
 	/// 由用户主动开启的语音监听将最终转写送入原生对话。
-	/// 不创建独立 Agent；会话和授权仍绑定到真正的原生聊天来源。
+	/// 不创建独立 Agent；通过 <see cref="VoiceConversation"/> 协调，严禁抢占未释放的 Agent 会话。
 	/// </summary>
-	private async Task HandleRealtimeVoiceTurnAsync(RealtimeVoiceTurn turn)
+	internal Task HandleRealtimeVoiceTurnAsync(RealtimeVoiceTurn turn)
 	{
 		turn.CancellationToken.ThrowIfCancellationRequested();
-		Task running = await Dispatcher.UIThread.InvokeAsync<Task>(() =>
+		return VoiceConversation.ExecuteTurnAsync(turn, async (activeTurn, ct) =>
 		{
-			turn.CancellationToken.ThrowIfCancellationRequested();
-			if (Services.SafeMode || Volatile.Read(ref _disposed) != 0)
-				throw new InvalidOperationException("应用已停止接收实时语音");
-			if (Services.Windows.Get(WindowLabels.Chat) is not ChatWindow { IsVisible: true })
-				Services.Windows.ShowChat();
-			if (Services.Windows.Get(WindowLabels.Chat) is not ChatWindow chat || !chat.IsVisible)
-				throw new InvalidOperationException("原生对话窗口未能打开");
-			return chat.Body.SendRealtimeTurnAsync(turn);
-		}).GetTask().WaitAsync(turn.CancellationToken).ConfigureAwait(false);
-		await running.WaitAsync(turn.CancellationToken).ConfigureAwait(false);
+			Task running = await Dispatcher.UIThread.InvokeAsync<Task>(() =>
+			{
+				ct.ThrowIfCancellationRequested();
+				if (Services.SafeMode || Volatile.Read(ref _disposed) != 0)
+					throw new InvalidOperationException("应用已停止接收实时语音");
+				if (!_sessions.IsEmpty || Engine.IsSessionBusy)
+					throw new VoiceConversationBusyException(Engine.ActiveSessionId);
+				if (Services.Windows.Get(WindowLabels.Chat) is not ChatWindow { IsVisible: true })
+					Services.Windows.ShowChat();
+				if (Services.Windows.Get(WindowLabels.Chat) is not ChatWindow chat || !chat.IsVisible)
+					throw new InvalidOperationException("原生对话窗口未能打开");
+				return chat.Body.SendRealtimeTurnAsync(activeTurn);
+			}).GetTask().WaitAsync(ct).ConfigureAwait(false);
+			await running.WaitAsync(ct).ConfigureAwait(false);
+			return null;
+		}, cancellationToken: turn.CancellationToken);
 	}
 
 

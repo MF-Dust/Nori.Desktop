@@ -38,6 +38,14 @@ public sealed partial class ChatView
 		_liveToggle = Button(LiveToggleLabel, () => RunLiveCommandAsync(LiveActive ? "realtime_voice_stop" : "realtime_voice_start"), "ChatLiveVoiceToggle");
 		_liveRetry = Button(() => T("重试语音", "Retry voice"), () => RunLiveCommandAsync("realtime_voice_start", restart: LiveActive), "ChatLiveVoiceRetry");
 		_liveInterrupt = Button(() => T("打断语音", "Interrupt voice"), () => RunLiveCommandAsync("realtime_voice_interrupt"), "ChatLiveVoiceInterrupt");
+		Localize(() =>
+		{
+			string note = T(
+				"打断仅停止后续生成与朗读，已执行的外部动作不会自动撤销",
+				"Interrupt stops further generation and playback only; executed external actions are not undone");
+			ToolTip.SetTip(_liveInterrupt, note);
+			AutomationProperties.SetHelpText(_liveInterrupt, note);
+		});
 		_liveStopSpeech = Button(() => T("停止朗读", "Stop speaking"), () => RunLiveCommandAsync("tts_stop"), "ChatStopSpeaking");
 		_liveRestore = Button(() => T("将转写追加到草稿", "Append transcript to draft"), () =>
 		{
@@ -85,7 +93,10 @@ public sealed partial class ChatView
 		bool canRetryFallback = fallback && status?.Phase is RealtimeVoicePhase.Listening or RealtimeVoicePhase.Idle or RealtimeVoicePhase.Error;
 		_liveRetry.IsVisible = canStart && ((!LiveActive && error.Length > 0) || canRetryFallback);
 		_liveInterrupt.IsVisible = LiveActive && status?.InterruptEnabled == true
-			&& status.Phase is RealtimeVoicePhase.Transcribing or RealtimeVoicePhase.Thinking or RealtimeVoicePhase.Speaking;
+			&& status.Phase is RealtimeVoicePhase.Listening
+				or RealtimeVoicePhase.Transcribing
+				or RealtimeVoicePhase.Thinking
+				or RealtimeVoicePhase.Speaking;
 		_liveStopSpeech.IsVisible = speaking;
 		_liveRestore.IsVisible = canRestore;
 		_liveRestore.IsEnabled = !_preparing;

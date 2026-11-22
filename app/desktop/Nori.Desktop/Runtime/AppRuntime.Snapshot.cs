@@ -404,6 +404,7 @@ public sealed partial class AppRuntime
 				realtimeUsedBatchFallback = realtimeStatus.UsedBatchFallback,
 				realtimeFallbackReason = realtimeStatus.FallbackReason,
 				realtimeBargeIn = realtimeStatus.VoiceBargeInSupported,
+				realtimeAecVerified = realtimeStatus.Aec.CanEnableVoiceBargeIn,
 			},
 			embedding = embeddingSnapshot,
 			proactive = new

@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Runtime.InteropServices;
+using Nori.Core.Agent;
 using Nori.Core.Voice.Audio;
 using Nori.Core.Voice.Stt;
 
@@ -18,6 +20,7 @@ public sealed record RealtimeVoiceStatus(
 {
 	public bool UsedBatchFallback { get; init; }
 	public string FallbackReason { get; init; } = "";
+	public AecCapabilities Aec { get; init; } = AecCapabilities.None;
 }
 
 /// <summary>
@@ -42,6 +45,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 	private EnergyVoiceActivity _activity;
 	private readonly bool _legacySupportsStreaming;
 	private readonly RealtimeSttPipeline? _stt;
+	private readonly IAecProcessor _aec;
 
 	private RealtimeStreamingUtterance? _stream;
 	private ITranscriptionCoordinator? _coordinator;
@@ -94,7 +98,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 		Func<RecordedAudio, CancellationToken, Task<string>>? transcribe,
 		Action stopSpeech,
 		bool supportsStreaming,
-		CancellationToken lifetime = default)
+		CancellationToken lifetime = default,
+		IAecProcessor? aecProcessor = null)
 	{
 		_settings = settings ?? throw new ArgumentNullException(nameof(settings));
 		_safeMode = safeMode;
@@ -104,6 +109,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		_stopSpeech = stopSpeech ?? throw new ArgumentNullException(nameof(stopSpeech));
 		_legacySupportsStreaming = supportsStreaming;
 		_lifetime = lifetime;
+		_aec = aecProcessor ?? NullAecProcessor.Instance;
 		_tuning = settings();
 		_activity = _defaultActivity;
 	}
@@ -118,8 +124,9 @@ public sealed class RealtimeVoiceSession : IDisposable
 		ISttProvider? batchSttProvider,
 		Action stopSpeech,
 		Func<SttRequestOptions>? requestOptions = null,
-		CancellationToken lifetime = default)
-		: this(settings, safeMode, ownership, openDevice, null, stopSpeech, false, lifetime)
+		CancellationToken lifetime = default,
+		IAecProcessor? aecProcessor = null)
+		: this(settings, safeMode, ownership, openDevice, null, stopSpeech, false, lifetime, aecProcessor)
 	{
 		_stt = new(streamingSttProvider, batchSttProvider, requestOptions);
 	}
@@ -176,8 +183,11 @@ public sealed class RealtimeVoiceSession : IDisposable
 		get { lock (_gate) return _fallbackReason; }
 	}
 
-	/// <summary>这一版没有回声消除，朗读期间不能靠语音打断。</summary>
-	public bool VoiceBargeInSupported => false;
+	/// <summary>
+	/// 只有接通经验证的声学回声消除（AEC）与双讲检测后，才允许在朗读期间靠语音打断。
+	/// 无真实 AEC 时必须保持 false，并在播放期间强制暂停采集防止扬声器回声自触发。
+	/// </summary>
+	public bool VoiceBargeInSupported => !_safeMode && _aec.Capabilities.CanEnableVoiceBargeIn;
 
 	/// <summary>接上对话之后才会收到最终文本。未设置时，截下的语音不会上传。</summary>
 	public Func<RealtimeVoiceTurn, Task>? TurnAccepted { get; set; }
@@ -212,6 +222,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 			{
 				UsedBatchFallback = _fallbackReason.Length > 0,
 				FallbackReason = _fallbackReason,
+				Aec = _aec.Capabilities,
 			};
 		}
 	}
@@ -269,6 +280,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		cancellationToken.ThrowIfCancellationRequested();
 
 		Task ready;
+		Task? listenTask = null;
 		CancellationTokenSource listen;
 		bool openCapture;
 		lock (_gate)
@@ -282,7 +294,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 			CancelTurnLocked();
 			_error = "";
 			_fallbackReason = "";
-			_capturePaused = _externalPlayback;
+			bool allowExternalBargeIn = _externalPlayback && VoiceBargeInSupported && _tuning.InterruptEnabled;
+			_capturePaused = _externalPlayback && !allowExternalBargeIn;
 			_pushHeld = false;
 			_lastPeakBufferedBytes = 0;
 			ResetInputLevelLocked();
@@ -291,8 +304,9 @@ public sealed class RealtimeVoiceSession : IDisposable
 			listen = CancellationTokenSource.CreateLinkedTokenSource(_lifetime);
 			ReplaceListenLocked(listen);
 			SetPhaseLocked(RealtimeVoicePhase.Listening);
-			openCapture = _openDevice is not null && !_externalPlayback;
+			openCapture = _openDevice is not null && !_capturePaused;
 			ready = openCapture ? StartLoopLocked(listen) : Task.CompletedTask;
+			if (openCapture) listenTask = _listenTask;
 		}
 		PublishPhase();
 		if (!openCapture) return;
@@ -305,7 +319,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		catch
 		{
 			StopCaptured(listen);
-			await WaitQuietlyAsync(_listenTask).ConfigureAwait(false);
+			await WaitQuietlyAsync(listenTask).ConfigureAwait(false);
 			throw;
 		}
 	}
@@ -367,21 +381,28 @@ public sealed class RealtimeVoiceSession : IDisposable
 	}
 
 	/// <summary>
-	/// 主动打断。朗读期间麦克风是停着的，这个入口仍然可用。
-	/// 打断会取消这一轮并停掉播放，不会再次提交，也不会撤销已经发生的工具副作用。
+	/// 主动打断，覆盖全链路各阶段（监听中/识别中/思考中/朗读中）。
+	/// 空闲或策略关闭时无副作用并返回 false。
+	/// 打断仅取消后续生成、识别与朗读，不会自动撤销已经执行的外部工具动作。
 	/// </summary>
 	public bool Interrupt()
 	{
 		lock (_gate)
 		{
 			if (_disposed || !_tuning.InterruptEnabled) return false;
-			if (_phase is not (RealtimeVoicePhase.Transcribing or RealtimeVoicePhase.Thinking or RealtimeVoicePhase.Speaking)
-				&& !(_phase == RealtimeVoicePhase.Listening && _stream is not null)) return false;
+			if (_phase is not (RealtimeVoicePhase.Listening
+				or RealtimeVoicePhase.Transcribing
+				or RealtimeVoicePhase.Thinking
+				or RealtimeVoicePhase.Speaking))
+			{
+				return false;
+			}
 			_generation++;
 			CancelTurnLocked();
 			_pushHeld = false;
 			ResetInputLevelLocked();
 			ClearAudioLocked();
+			_activity.ResetSpeech();
 			SetPhaseLocked(RealtimeVoicePhase.Interrupting);
 		}
 		_stopSpeech();
@@ -392,7 +413,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 		{
 			if (_phase != RealtimeVoicePhase.Interrupting) return true;
 			resume = CanResumeLocked();
-			_capturePaused = _externalPlayback;
+			bool allowExternalBargeIn = _externalPlayback && VoiceBargeInSupported && _tuning.InterruptEnabled;
+			_capturePaused = _externalPlayback && !allowExternalBargeIn;
 			_error = "";
 			SetPhaseLocked(resume ? RealtimeVoicePhase.Listening : RealtimeVoicePhase.Idle);
 			if (resume) _activity.ResetSpeech();
@@ -431,8 +453,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 	}
 
 	/// <summary>
-	/// 外部播放开始或结束。实时会话自己的朗读阶段不用再靠它暂停。
-	/// 监听中的麦克风会先放开，播放结束后如果还在听就重新打开。
+	/// 外部播放开始或结束。无真实已验证 AEC 时在播放期间强制暂停采集防止扬声器回声自触发；
+	/// 播放结束后如果还在听就重新打开。
 	/// </summary>
 	public void SetPlaybackHold(bool held)
 	{
@@ -444,6 +466,12 @@ public sealed class RealtimeVoiceSession : IDisposable
 			_externalPlayback = held;
 			if (_phase is RealtimeVoicePhase.Speaking or RealtimeVoicePhase.Interrupting)
 				return;
+			bool allowBargeIn = held && VoiceBargeInSupported && _tuning.InterruptEnabled;
+			if (allowBargeIn)
+			{
+				_capturePaused = false;
+				return;
+			}
 			_capturePaused = held;
 			if (held)
 			{
@@ -469,14 +497,18 @@ public sealed class RealtimeVoiceSession : IDisposable
 	/// <summary>宿主准备朗读这一轮时调用。代号不符就拒绝，避免旧回答继续出声。</summary>
 	public bool TryBeginSpeaking(long generation)
 	{
+		bool stopCapture;
 		lock (_gate)
 		{
 			if (!IsActiveTurnLocked(generation)) return false;
 			if (_phase is not (RealtimeVoicePhase.Thinking or RealtimeVoicePhase.Speaking)) return false;
-			_capturePaused = true;
+			bool allowBargeIn = VoiceBargeInSupported && _tuning.InterruptEnabled;
+			_capturePaused = !allowBargeIn;
+			stopCapture = !allowBargeIn;
 			SetPhaseLocked(RealtimeVoicePhase.Speaking);
 		}
-		StopDevice(generation, RealtimeVoicePhase.Speaking);
+		if (stopCapture) StopDevice(generation, RealtimeVoicePhase.Speaking);
+		else RequestResume();
 		PublishPhase();
 		return true;
 	}
@@ -487,7 +519,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 		lock (_gate)
 		{
 			if (!IsActiveTurnLocked(generation) || _phase != RealtimeVoicePhase.Speaking) return;
-			_capturePaused = _externalPlayback;
+			bool allowExternalBargeIn = _externalPlayback && VoiceBargeInSupported && _tuning.InterruptEnabled;
+			_capturePaused = _externalPlayback && !allowExternalBargeIn;
 			FinishTurnLocked();
 		}
 		PublishPhase();
@@ -495,58 +528,104 @@ public sealed class RealtimeVoiceSession : IDisposable
 
 	/// <summary>
 	/// 喂入一帧交错样本。不在这里做识别或播放。
-	/// 不是监听阶段时直接忽略，所以朗读期间的声音不会开新的一轮。
+	/// 无已验证 AEC 时朗读期间直接忽略；仅当存在已验证 AEC 且检测到近端双讲时才触发语音打断。
 	/// </summary>
 	public void Observe(ReadOnlySpan<float> interleaved, int channels, int sampleRate)
 	{
 		if (channels <= 0 || sampleRate <= 0 || interleaved.IsEmpty) return;
-		bool commit = false;
-		bool overflowAbort = false;
-		bool transcriptChanged = false;
-		long targetGeneration = 0;
-		RealtimeStreamingUtterance? targetStream = null;
-		lock (_gate)
+
+		float[]? pooled = interleaved.Length <= 2048 ? null : ArrayPool<float>.Shared.Rent(interleaved.Length);
+		Span<float> cleanedBuffer = pooled is null
+			? stackalloc float[interleaved.Length]
+			: pooled.AsSpan(0, interleaved.Length);
+		scoped ReadOnlySpan<float> effective = interleaved;
+
+		try
 		{
-			if (_phase != RealtimeVoicePhase.Listening || _capturePaused) return;
-			EnsureFormatLocked(sampleRate, channels);
-			float[] mono = _inputProcessor!.ProcessMono(interleaved, out double inputLevel);
-			_currentInputLevel = inputLevel;
-			if (TryPrepareInputLevelPublishLocked(out double levelToPublish))
-				EnqueueInputLevelLocked(levelToPublish);
-			if (mono.Length > 0)
+			bool triggerBargeIn = false;
+			bool commit = false;
+			bool overflowAbort = false;
+			bool transcriptChanged = false;
+			long targetGeneration = 0;
+			RealtimeStreamingUtterance? targetStream = null;
+			lock (_gate)
 			{
-				PushRingLocked(mono);
-				EnergyVoiceDecision decision = _activity.Push(
-					mono,
-					1,
-					sampleRate,
-					_tuning.Sensitivity,
-					_tuning.SilenceMilliseconds,
-					_pushHeld);
-				if (decision.SpeechStarted) BeginCaptureLocked();
-				else if (_capturing) AppendLocked(mono);
-				int maximum = MaximumMonoSamplesLocked();
-				bool reachedCap = _capturing && _utterance is { } utterance && utterance.Count >= maximum;
-				targetGeneration = _generation;
-				targetStream = _stream;
-				if (_stream is { IsOverflowed: true } && !CanFallbackToBatchLocked())
+				if (_capturePaused) return;
+				if (_phase == RealtimeVoicePhase.Speaking)
 				{
-					overflowAbort = true;
+					if (!VoiceBargeInSupported || !_tuning.InterruptEnabled) return;
+					int cleanedLen = _aec.ProcessCapture(interleaved, cleanedBuffer, channels, sampleRate);
+					if (cleanedLen > 0 && _aec.DetectDoubleTalk(cleanedBuffer[..cleanedLen], channels, sampleRate))
+						triggerBargeIn = true;
 				}
 				else
 				{
-					commit = _capturing && (decision.SpeechEnded || reachedCap);
+					if (_phase != RealtimeVoicePhase.Listening) return;
+					if (_externalPlayback)
+					{
+						if (!VoiceBargeInSupported || !_tuning.InterruptEnabled) return;
+						int cleanedLen = _aec.ProcessCapture(interleaved, cleanedBuffer, channels, sampleRate);
+						if (cleanedLen <= 0 || !_aec.DetectDoubleTalk(cleanedBuffer[..cleanedLen], channels, sampleRate))
+							return;
+						effective = cleanedBuffer[..cleanedLen];
+					}
+					else if (_aec.Capabilities.HasAcousticEchoCancellation)
+					{
+						int cleanedLen = _aec.ProcessCapture(interleaved, cleanedBuffer, channels, sampleRate);
+						if (cleanedLen <= 0) return;
+						effective = cleanedBuffer[..cleanedLen];
+					}
+
+					EnsureFormatLocked(sampleRate, channels);
+					float[] mono = _inputProcessor!.ProcessMono(effective, out double inputLevel);
+					_currentInputLevel = inputLevel;
+					if (TryPrepareInputLevelPublishLocked(out double levelToPublish))
+						EnqueueInputLevelLocked(levelToPublish);
+					if (mono.Length > 0)
+					{
+						PushRingLocked(mono);
+						EnergyVoiceDecision decision = _activity.Push(
+							mono,
+							1,
+							sampleRate,
+							_tuning.Sensitivity,
+							_tuning.SilenceMilliseconds,
+							_pushHeld);
+						if (decision.SpeechStarted) BeginCaptureLocked();
+						else if (_capturing) AppendLocked(mono);
+						int maximum = MaximumMonoSamplesLocked();
+						bool reachedCap = _capturing && _utterance is { } utterance && utterance.Count >= maximum;
+						targetGeneration = _generation;
+						targetStream = _stream;
+						if (_stream is { IsOverflowed: true } && !CanFallbackToBatchLocked())
+						{
+							overflowAbort = true;
+						}
+						else
+						{
+							commit = _capturing && (decision.SpeechEnded || reachedCap);
+						}
+					}
+					transcriptChanged = _pendingTranscriptChange is not null;
 				}
 			}
-			transcriptChanged = _pendingTranscriptChange is not null;
+			if (triggerBargeIn)
+			{
+				Interrupt();
+				return;
+			}
+			if (transcriptChanged) PublishTranscriptChanges();
+			if (overflowAbort)
+			{
+				HandleStreamingOverflowAbort(targetGeneration, targetStream!);
+				return;
+			}
+			if (commit) CommitUtterance(targetGeneration, targetStream);
 		}
-		if (transcriptChanged) PublishTranscriptChanges();
-		if (overflowAbort)
+		finally
 		{
-			HandleStreamingOverflowAbort(targetGeneration, targetStream!);
-			return;
+			if (pooled is not null) ArrayPool<float>.Shared.Return(pooled, clearArray: true);
 		}
-		if (commit) CommitUtterance(targetGeneration, targetStream);
 	}
 
 	/// <summary>
@@ -625,7 +704,9 @@ public sealed class RealtimeVoiceSession : IDisposable
 					throw new AudioDeviceException("麦克风采集中断，本轮已结束");
 				}
 				Observe(buffer.AsSpan(0, read), format.Channels, format.SampleRate);
-				if (Phase != RealtimeVoicePhase.Listening) break;
+				bool keepListening;
+				lock (_gate) keepListening = !_capturePaused && CanCaptureInPhaseLocked();
+				if (!keepListening) break;
 			}
 		}
 		catch (Exception exception)
@@ -669,7 +750,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		{
 			_loopRunning = false;
 			transcribe = _phase == RealtimeVoicePhase.Transcribing;
-			resume = _resumeWhenLoopExits && _phase == RealtimeVoicePhase.Listening && !_capturePaused;
+			resume = _resumeWhenLoopExits && CanCaptureInPhaseLocked() && !_capturePaused;
 			_resumeWhenLoopExits = false;
 		}
 		if (transcribe) BeginTranscribe();
@@ -700,11 +781,15 @@ public sealed class RealtimeVoiceSession : IDisposable
 		else PublishPhase();
 	}
 
+	private bool CanCaptureInPhaseLocked() =>
+		_phase == RealtimeVoicePhase.Listening
+		|| (_phase == RealtimeVoicePhase.Speaking && VoiceBargeInSupported && _tuning.InterruptEnabled);
+
 	private void RequestResume()
 	{
 		lock (_gate)
 		{
-			if (_disposed || _phase != RealtimeVoicePhase.Listening || _openDevice is null || _capturePaused) return;
+			if (_disposed || !CanCaptureInPhaseLocked() || _openDevice is null || _capturePaused) return;
 			if (_loopRunning)
 			{
 				_resumeWhenLoopExits = true;
@@ -879,8 +964,9 @@ public sealed class RealtimeVoiceSession : IDisposable
 		{
 			// 打断或停止已经改了阶段，这里不再覆盖。
 		}
-		catch (Exception)
+		catch (Exception exception)
 		{
+			bool agentBusy = exception is VoiceConversationBusyException or AgentSessionBusyException;
 			lock (_gate)
 			{
 				if (!IsActiveTurnLocked(generation)) return;
@@ -888,6 +974,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 				ClearTranscriptLocked();
 				_error = bufferOverflow ? "网络发送过慢，本轮音频缓冲已满，已重置本轮"
 					: replayForbidden ? "实时语音提交后识别失败，本轮已结束且未重发录音"
+					: agentBusy ? "已有对话正在进行，请等待当前回复完成后再试"
 					: transcribed ? "实时语音对话失败，本轮已结束" : "语音识别连接已断开，本轮已结束";
 				SetPhaseLocked(RealtimeVoicePhase.Error);
 			}

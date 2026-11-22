@@ -208,6 +208,12 @@ public sealed class AgentEngine
 		_replyReaction = replyReaction;
 	}
 
+	/// <summary>当前活动的 Agent 会话标识；无活动会话时为 null。</summary>
+	public string? ActiveSessionId => _sessionCoordinator.ActiveSessionId;
+
+	/// <summary>当前是否有未释放的 Agent 会话。</summary>
+	public bool IsSessionBusy => _sessionCoordinator.ActiveSessionId is not null;
+
 	/// <summary>同步保留唯一会话；清空历史也必须持有同一闸门，避免迟到落库。</summary>
 	public AgentSessionLease ReserveSession(string sessionId, CancellationToken cancellationToken = default)
 	{

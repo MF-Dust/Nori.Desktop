@@ -538,6 +538,64 @@ public partial class BridgeCommandsTests
 		Assert.Throws<InvalidOperationException>(() => _runtime.ExtendApproval(source, requestId));
 	}
 
+	[Fact]
+	public Task ActiveManualChatIsNotPreemptedByIncomingRealtimeVoiceTurn() => WithSettingsUiAsync(async () =>
+	{
+		NativeChatHttpHandler handler = new();
+		using HttpClient http = new(handler);
+		await using AppRuntime runtime = CreateNativeChatRuntime(http);
+		_config.Set("tts_auto_play", new ConfigValue.Boolean(false));
+		using NativeChatTestSource manualSource = new();
+		TaskCompletionSource<JsonElement> manualCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		manualSource.Received = payload =>
+		{
+			if (payload.GetProperty("type").GetString() == "complete") manualCompleted.TrySetResult(payload);
+		};
+
+		string manualSessionId = runtime.StartChat(manualSource, "手动文字输入");
+		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		Assert.True(runtime.IsSessionActive(manualSessionId));
+
+		// 语音轮次到达时严禁抢占或破坏正在运行的手动对话。
+		RealtimeVoiceTurn voiceTurn = new(12, "抢占尝试", CancellationToken.None);
+		VoiceConversationBusyException busy = await Assert.ThrowsAsync<VoiceConversationBusyException>(() =>
+			runtime.HandleRealtimeVoiceTurnAsync(voiceTurn));
+		Assert.Contains("已有对话正在进行", busy.Message, StringComparison.Ordinal);
+		Assert.True(runtime.IsSessionActive(manualSessionId));
+
+		// 手动对话照常完成并落库。
+		handler.ReleaseStream.TrySetResult();
+		JsonElement done = await manualCompleted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		Assert.Equal("服务端最终文本", done.GetProperty("message").GetProperty("text").GetString());
+		Assert.False(runtime.IsSessionActive(manualSessionId));
+		Assert.False(runtime.VoiceConversation.IsBusy);
+	});
+
+	[Fact]
+	public Task ChatViewLiveVoiceShowsInterruptInListeningPhaseWithinCompactBounds() => WithSettingsUiAsync(() =>
+	{
+		Window owner = new() { Width = 720, Height = 480 };
+		using NativeChatService service = new(_services, owner);
+		using ChatView view = new(service);
+		owner.Content = view;
+		owner.Show();
+		try
+		{
+			view.ApplySnapshot(Args(new { chat = new { configured = true }, general = new { language = "zh-CN" } }));
+			var bar = Assert.Single(view.GetVisualDescendants().OfType<Border>(), control => control.Name == "ChatLiveVoice");
+			var interrupt = Assert.Single(view.GetVisualDescendants().OfType<Button>(), control => control.Name == "ChatLiveVoiceInterrupt");
+			var status = new RealtimeVoiceStatus(RealtimeVoicePhase.Listening, 1, "", false, true, true, true, false, false);
+			view.ApplyLiveVoiceSnapshot(new(status, false, 0.2, null));
+			Assert.True(bar.IsVisible);
+			Assert.True(interrupt.IsVisible);
+			Assert.Contains("外部动作", ToolTip.GetTip(interrupt)?.ToString() ?? "", StringComparison.Ordinal);
+			owner.UpdateLayout();
+			Assert.InRange(bar.Bounds.Height, 1, 150);
+		}
+		finally { owner.Close(); }
+		return Task.CompletedTask;
+	});
+
 	private static CancellationToken GetPendingApprovalToken(AppRuntime runtime, string requestId)
 	{
 		object? pending = ((System.Collections.IDictionary)typeof(AppRuntime)

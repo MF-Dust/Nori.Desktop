@@ -99,6 +99,7 @@ public sealed partial class BridgeCommands
 			inputLevel,
 			fallbackReason = status.FallbackReason,
 			bargeIn = status.VoiceBargeInSupported,
+			aecVerified = status.Aec.CanEnableVoiceBargeIn,
 		};
 	}
 

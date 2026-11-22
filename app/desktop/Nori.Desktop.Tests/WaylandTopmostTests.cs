@@ -14,8 +14,9 @@ public class WaylandTopmostTests
 	[Fact]
 	public void Hyprland旧版Socket路径()
 	{
-		Assert.Equal("/tmp/hypr/pet-instance/.socket.sock", HyprlandTopmost.ResolveSocketPath(null, "pet-instance"));
-		Assert.Equal("/tmp/hypr/pet-instance/.socket.sock", HyprlandTopmost.ResolveSocketPath("/does-not-exist", "pet-instance"));
+		string expected = Path.Combine("/tmp/hypr", "pet-instance", ".socket.sock");
+		Assert.Equal(expected, HyprlandTopmost.ResolveSocketPath(null, "pet-instance"));
+		Assert.Equal(expected, HyprlandTopmost.ResolveSocketPath("/does-not-exist", "pet-instance"));
 	}
 
 	[Theory]

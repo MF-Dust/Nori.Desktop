@@ -292,6 +292,8 @@ public sealed partial class BridgeCommands
 		JsonElement args,
 		CancellationToken cancellationToken)
 	{
+		if (_services.SafeMode)
+			throw new InvalidOperationException("安全模式已禁用联网和外部服务，请退出安全模式后重试");
 		string templatePath = OptionalStr(args, "filePath") ?? "";
 		if (string.IsNullOrWhiteSpace(templatePath))
 		{

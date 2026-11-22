@@ -175,14 +175,29 @@ public partial class BridgeCommandsTests
 		RealtimeVoiceTurn turn = new(7, "语音提问", CancellationToken.None);
 		var started = runtime.StartRealtimeChat(source, turn);
 		Assert.True(runtime.IsSessionActive(started.SessionId));
-		Assert.Throws<AgentSessionBusyException>(() => runtime.StartRealtimeChat(source, turn));
+		Assert.Throws<InvalidOperationException>(() => runtime.StartRealtimeChat(source, turn));
 		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
 		handler.ReleaseStream.TrySetResult();
 		await started.Completion.WaitAsync(TimeSpan.FromSeconds(3));
 		Assert.False(runtime.IsSessionActive(started.SessionId));
+		Assert.Throws<InvalidOperationException>(() => runtime.StartRealtimeChat(source, turn));
 		Assert.Contains(events, item => item.GetProperty("type").GetString() == "complete"
 			&& item.GetProperty("sessionId").GetString() == started.SessionId);
 		Assert.Equal("服务端最终文本", _services.Chat.GetHistory()[^1].Content);
+	});
+
+	[Fact]
+	public Task RealtimeVoiceAgentRejectsCancelledDeliveredAndTextTurns() => WithRealtimeChatSourceAsync((source, _) =>
+	{
+		RealtimeVoiceTurn cancelled = new(1, "已取消", new CancellationToken(true));
+		RealtimeVoiceTurn delivered = new(1, "已交付", CancellationToken.None);
+		RealtimeVoiceTurn text = new(1, "普通文本", CancellationToken.None, origin: VoiceTurnOrigin.Text);
+		Assert.True(delivered.TryMarkFinalDelivered());
+		Assert.ThrowsAny<OperationCanceledException>(() => _runtime.StartRealtimeChat(source, cancelled));
+		Assert.Throws<InvalidOperationException>(() => _runtime.StartRealtimeChat(source, delivered));
+		Assert.Throws<InvalidOperationException>(() => _runtime.StartRealtimeChat(source, text));
+		using AgentSessionLease lease = _runtime.Engine.ReserveSession("no-rejected-voice-turn");
+		return Task.CompletedTask;
 	});
 
 	[Fact]
@@ -196,7 +211,18 @@ public partial class BridgeCommandsTests
 		RealtimeVoiceTurn turn = new(8, "可被打断的输入", interrupt.Token);
 		var started = runtime.StartRealtimeChat(source, turn);
 		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		ToolApprovalRequest approval = new()
+		{
+			RequestId = "interrupted-voice-approval",
+			ToolName = "writeFile",
+			PermissionLevel = "confirm",
+		};
+		Task<bool> pending = runtime.RequestApprovalAsync(source, started.SessionId, approval, CancellationToken.None);
+		Assert.False(pending.IsCompleted);
+		Assert.Throws<InvalidOperationException>(() => runtime.StartRealtimeChat(source, turn));
 		interrupt.Cancel();
+		Assert.False(await pending.WaitAsync(TimeSpan.FromSeconds(3)));
+		Assert.False(runtime.RespondApproval(source, approval.RequestId, true));
 		await started.Completion.WaitAsync(TimeSpan.FromSeconds(3));
 		Assert.False(runtime.IsSessionActive(started.SessionId));
 		Assert.DoesNotContain(events, item => item.GetProperty("type").GetString() == "complete");

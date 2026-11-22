@@ -50,6 +50,8 @@ public sealed partial class AppRuntime
 		if (source is not NativeChatContext)
 			throw new InvalidOperationException("实时语音必须从可信原生对话窗口发起");
 		NativeBridgePolicy.Validate(source, "chat_start");
+		if (turn.Origin != VoiceTurnOrigin.Voice)
+			throw new InvalidOperationException("实时语音入口只接受语音轮次");
 		return StartChatCore(source, turn.Text, turn);
 	}
 
@@ -58,9 +60,19 @@ public sealed partial class AppRuntime
 		if (Volatile.Read(ref _disposed) != 0) throw new InvalidOperationException("应用正在退出");
 		if (Services.SafeMode) throw new InvalidOperationException("安全模式已禁用联网和外部服务");
 		if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("消息内容不能为空");
+		if (voiceTurn is not null)
+		{
+			voiceTurn.CancellationToken.ThrowIfCancellationRequested();
+			if (!voiceTurn.TrySubmitToAgent())
+			{
+				voiceTurn.CancellationToken.ThrowIfCancellationRequested();
+				throw new InvalidOperationException("此语音轮次已提交，不能重复发送");
+			}
+		}
 		string sessionId = $"agent-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():x}-{Interlocked.Increment(ref _sessionCounter):x}";
 		CancellationToken lifetimeToken = _lifetimeCts.Token;
-		AgentSessionState session = new(source, lifetimeToken, voiceTurn?.CancellationToken ?? CancellationToken.None, voiceTurn is not null);
+		AgentSessionState session = new(source, lifetimeToken, voiceTurn?.CancellationToken ?? CancellationToken.None,
+			voiceTurn?.Origin ?? VoiceTurnOrigin.Text);
 		AgentSessionLease lease;
 		try
 		{
@@ -102,6 +114,7 @@ public sealed partial class AppRuntime
 			bool failed = false;
 			try
 			{
+				session.Cts.Token.ThrowIfCancellationRequested();
 				using ITelemetryTransaction operation = Services.Telemetry.StartTransaction("agent.run");
 				// 聊天优先于伴侣轻量互动，但两者不共用聊天历史。
 				CancelPetInteractionRequest(true);

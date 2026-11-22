@@ -14,6 +14,79 @@ public sealed class RealtimeVoiceSessionTests
 	private const int SampleRate = 16000;
 
 	[Fact]
+	public void RealtimeVoiceTurn记录轮次来源且只能标记交付一次()
+	{
+		RealtimeVoiceTurn turn = new(42, "最终文本", CancellationToken.None, providerItemId: "item-1");
+		RealtimeVoiceTurn other = new(42, turn.Text, turn.CancellationToken);
+		Assert.Equal(42, turn.Generation);
+		Assert.True(Guid.TryParseExact(turn.TurnId, "N", out _));
+		Assert.NotEqual(turn.TurnId, other.TurnId);
+		Assert.Equal("item-1", turn.ProviderItemId);
+		Assert.Null(other.ProviderItemId);
+		Assert.Equal(VoiceTurnOrigin.Voice, turn.Origin);
+		Assert.Equal(RealtimeVoicePhase.Thinking, turn.State);
+		Assert.False(turn.FinalDelivered);
+		Assert.True(turn.TryMarkFinalDelivered());
+		Assert.True(turn.FinalDelivered);
+		Assert.False(turn.TryMarkFinalDelivered());
+		Assert.False(turn.TrySubmitToAgent());
+	}
+
+	[Fact]
+	public async Task 停止后不等待忽略取消的识别也不交付迟到文本()
+	{
+		TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource<string> result = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		int accepted = 0;
+		using RealtimeVoiceSession session = new(
+			() => new RealtimeVoiceSettings(true, true, 0.5, 700, true, "", false),
+			false, null, null, (_, _) => { entered.TrySetResult(); return result.Task; }, () => { }, false);
+		session.TurnAccepted = _ => { Interlocked.Increment(ref accepted); return Task.CompletedTask; };
+		await session.StartAsync();
+		Feed(session, 300, 0.4f);
+		Feed(session, 800, 0);
+		await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		try { await session.StopAsync().WaitAsync(TimeSpan.FromSeconds(3)); }
+		finally { result.TrySetResult("迟到的文本"); }
+		Assert.Equal(RealtimeVoicePhase.Idle, session.Phase);
+		Assert.Equal(0, Volatile.Read(ref accepted));
+	}
+
+	[Fact]
+	public async Task Dispose在不处理回调的同步上下文中释放麦克风()
+	{
+		BlockingCapture capture = new();
+		CaptureOwnership ownership = new();
+		RealtimeVoiceSession session = new(
+			() => new RealtimeVoiceSettings(true, false, 0.5, 700, true, "", false),
+			false, ownership, () => capture, null, () => { }, false);
+		await session.StartAsync();
+		int cleaned = 0;
+		session.PhaseChanged += phase =>
+		{
+			if (phase == RealtimeVoicePhase.Idle && SynchronizationContext.Current is null)
+				Interlocked.Increment(ref cleaned);
+		};
+		await Task.Run(() =>
+		{
+			SynchronizationContext? previous = SynchronizationContext.Current;
+			SynchronizationContext.SetSynchronizationContext(new NonPumpingContext());
+			try { session.Dispose(); }
+			finally { SynchronizationContext.SetSynchronizationContext(previous); }
+		}).WaitAsync(TimeSpan.FromSeconds(3));
+		Assert.True(capture.DisposedOnce);
+		Assert.Equal(1, Volatile.Read(ref cleaned));
+		Assert.True(ownership.TryAcquire());
+		ownership.Release();
+		await Assert.ThrowsAsync<ObjectDisposedException>(() => session.StartAsync());
+	}
+
+	private sealed class NonPumpingContext : SynchronizationContext
+	{
+		public override void Post(SendOrPostCallback d, object? state) { }
+	}
+
+	[Fact]
 	public void Whisper整段接口不是流式()
 	{
 		Assert.False(WhisperUtteranceTranscriber.SupportsStreaming);
@@ -100,6 +173,13 @@ public sealed class RealtimeVoiceSessionTests
 		Feed(session, 800, 0);
 		string text = await harness.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
 		Assert.Equal("你好", text);
+		RealtimeVoiceTurn turn = await harness.TurnGate.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.True(turn.FinalDelivered);
+		Assert.False(turn.TryMarkFinalDelivered());
+		Assert.True(turn.TrySubmitToAgent());
+		Assert.False(turn.TrySubmitToAgent());
+		Feed(session, 300, 0.4f);
+		Feed(session, 800, 0);
 		Assert.Equal(1, harness.TranscribeCalls);
 		Assert.Equal(1, harness.ToolRuns);
 		Assert.Equal(0, session.BufferedSampleCount);
@@ -213,7 +293,7 @@ public sealed class RealtimeVoiceSessionTests
 		session.SetPlaybackHold(false);
 		Feed(session, 300, 0.4f);
 		Feed(session, 800, 0);
-		await harness.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		await harness.SecondTurnEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
 		Assert.Equal(2, harness.ToolRuns);
 	}
 
@@ -569,6 +649,7 @@ public sealed class RealtimeVoiceSessionTests
 		public TaskCompletionSource TranscribeEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		public TaskCompletionSource ReleaseTranscribe { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		public TaskCompletionSource<RealtimeVoiceTurn> TurnGate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		public TaskCompletionSource SecondTurnEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		public TaskCompletionSource ReleaseTurn { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		public TaskCompletionSource TurnFinished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		public TaskCompletionSource<RecordedAudio> AudioGate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -617,6 +698,7 @@ public sealed class RealtimeVoiceSessionTests
 			Assert.False(turn.CancellationToken.IsCancellationRequested);
 			using AgentSessionLease lease = _coordinator.Start("voice-" + turn.Generation.ToString(), turn.CancellationToken);
 			ToolRuns++;
+			if (ToolRuns == 2) SecondTurnEntered.TrySetResult();
 			TurnGate.TrySetResult(turn);
 			Entered.TrySetResult(turn.Text);
 			try

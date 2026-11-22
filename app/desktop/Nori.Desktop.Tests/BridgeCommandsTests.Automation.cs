@@ -388,6 +388,27 @@ public partial class BridgeCommandsTests
 	}
 
 	[Fact]
+	public async Task 安全模式拒绝IndexTTS克隆且不归档模板或联网()
+	{
+		using BridgeCommandsTests safeFixture = new(true);
+		CloudSafeModeHandler handler = new();
+		using HttpClient http = new(handler);
+		safeFixture._services.Http = http;
+		safeFixture._config.Set("tts_api_key", new ConfigValue.Text("test-key"));
+		string template = Path.Combine(safeFixture._tempDir, "template.wav");
+		await File.WriteAllBytesAsync(template, [1, 2, 3]);
+
+		InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+			safeFixture.CreateCommands().InvokeAsync(new NativeSettingsCommandSource(),
+				"indextts_clone_voice", Args(new {filePath = template})));
+
+		Assert.Contains("安全模式", error.Message, StringComparison.Ordinal);
+		Assert.Equal(0, handler.Requests);
+		string archive = safeFixture._services.Paths.IndexTtsVoicesDirectory;
+		if (Directory.Exists(archive)) Assert.Empty(Directory.EnumerateFileSystemEntries(archive));
+	}
+
+	[Fact]
 	public async Task 安全模式在Bridge入口拒绝联网命令()
 	{
 		using BridgeCommandsTests safeFixture = new(true);

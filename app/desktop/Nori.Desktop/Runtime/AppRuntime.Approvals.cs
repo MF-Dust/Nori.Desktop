@@ -2,6 +2,7 @@ using Nori.Core.Agent;
 using Nori.Core.Automation;
 using Nori.Core.Logging;
 using Nori.Core.Tools;
+using Nori.Core.Voice.Realtime;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Windows;
 
@@ -41,8 +42,12 @@ public sealed partial class AppRuntime
 		 * 又消失，用户以为自己看漏了什么。 */
 		// 实时语音可能接收到周围人声：需确认的工具不继承 Trusted、Bypass 或本轮授权。
 		// safe 仍按原注册表策略放行；原生来源、用户批准与取消检查保持不变。
-		bool voiceOrigin = _sessions.TryGetValue(sessionId, out AgentSessionState? active) && active.VoiceOrigin;
-		PermissionGear authorizationGear = voiceOrigin ? PermissionGear.Ask : EffectiveGear;
+		_sessions.TryGetValue(sessionId, out AgentSessionState? active);
+		CancellationToken turnToken = active?.TurnToken ?? CancellationToken.None;
+		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
+			cancellationToken, request.CancellationToken, _lifetimeCts.Token, source.LifetimeToken, turnToken);
+		if (linked.IsCancellationRequested) return false;
+		PermissionGear authorizationGear = active?.Origin == VoiceTurnOrigin.Voice ? PermissionGear.Ask : EffectiveGear;
 		if (Permissions.Decide(authorizationGear, sessionId, request.ToolName, request.PermissionLevel)
 			== PermissionDecision.Allow)
 		{
@@ -52,8 +57,6 @@ public sealed partial class AppRuntime
 			return true;
 		}
 
-		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
-			cancellationToken, request.CancellationToken, _lifetimeCts.Token, source.LifetimeToken);
 		PendingApproval approval = new(request.RequestId, request.ToolName, source, sessionId,
 			request.DeadlineUtc ?? DateTimeOffset.UtcNow.AddSeconds(AgentEngine.CallTimeoutSeconds), linked.Token);
 		lock (_approvalGate)
@@ -98,7 +101,7 @@ public sealed partial class AppRuntime
 		HideApprovalNotice(approval.RequestId);
 		// 只有用户**真的按了允许**才记。超时、取消、拒绝都不是同意 —— 把它们也记进来，
 		// 等于一次没人看见的超时换来后面整轮的静默放行。
-		if (approved && (!_sessions.TryGetValue(approval.SessionId, out AgentSessionState? active) || !active.VoiceOrigin))
+		if (approved && (!_sessions.TryGetValue(approval.SessionId, out AgentSessionState? active) || active.Origin != VoiceTurnOrigin.Voice))
 			Permissions.Remember(approval.SessionId, approval.ToolName);
 		PostAgentEvent(approval.Source, new
 		{

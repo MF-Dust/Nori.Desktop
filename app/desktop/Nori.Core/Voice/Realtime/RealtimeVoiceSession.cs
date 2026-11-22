@@ -2,27 +2,6 @@ using Nori.Core.Voice.Audio;
 
 namespace Nori.Core.Voice.Realtime;
 
-/// <summary>交给一轮处理的最终识别结果。取消这次令牌不会再执行这一轮。</summary>
-public sealed class RealtimeVoiceTurn
-{
-	/// <summary>创建一轮结果。</summary>
-	public RealtimeVoiceTurn(long generation, string text, CancellationToken cancellationToken)
-	{
-		Generation = generation;
-		Text = text;
-		CancellationToken = cancellationToken;
-	}
-
-	/// <summary>这一轮的代号。打断、停止和新的一轮都会让旧代号失效。</summary>
-	public long Generation { get; }
-
-	/// <summary>最终识别文本。会话本身不写日志。</summary>
-	public string Text { get; }
-
-	/// <summary>这一轮的取消令牌。打断和停止都会取消它。</summary>
-	public CancellationToken CancellationToken { get; }
-}
-
 /// <summary>外部可读的实时语音状态。不含录音、识别正文或设备原文。</summary>
 public sealed record RealtimeVoiceStatus(
 	RealtimeVoicePhase Phase,
@@ -77,9 +56,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 	private float[]? _pendingSamples;
 	private int _pendingChannels;
 	private int _pendingRate;
-	private long _pendingGeneration;
-	private CancellationToken _pendingToken;
-	private bool _turnScheduled;
+	private RealtimeVoiceTurn? _activeTurn;
 	private CancellationTokenSource? _listenCts;
 	private CancellationTokenSource? _turnCts;
 	private Task? _listenTask;
@@ -213,7 +190,6 @@ public sealed class RealtimeVoiceSession : IDisposable
 			_error = "";
 			_capturePaused = _externalPlayback;
 			_pushHeld = false;
-			_turnScheduled = false;
 			_activity.ResetAll();
 			ClearAudioLocked();
 			listen = CancellationTokenSource.CreateLinkedTokenSource(_lifetime);
@@ -239,7 +215,9 @@ public sealed class RealtimeVoiceSession : IDisposable
 	}
 
 	/// <summary>停止监听和这一轮。已经不在朗读时不会再去停播放。</summary>
-	public async Task StopAsync()
+	public Task StopAsync() => StopCoreAsync(disposing: false);
+
+	private async Task StopCoreAsync(bool disposing)
 	{
 		Task? loop;
 		Task? turn;
@@ -249,12 +227,12 @@ public sealed class RealtimeVoiceSession : IDisposable
 		lock (_gate)
 		{
 			if (_disposed) return;
+			_disposed = disposing;
 			stopSpeech = _phase is RealtimeVoicePhase.Speaking or RealtimeVoicePhase.Interrupting;
 			_generation++;
 			CancelTurnLocked();
 			_capturePaused = _externalPlayback;
 			_pushHeld = false;
-			_turnScheduled = false;
 			ClearAudioLocked();
 			loop = _listenTask;
 			turn = _turnTask;
@@ -264,11 +242,27 @@ public sealed class RealtimeVoiceSession : IDisposable
 			SetPhaseLocked(RealtimeVoicePhase.Idle);
 			_error = "";
 		}
-		StopCaptured(listen, device);
-		if (stopSpeech) _stopSpeech();
-		await WaitQuietlyAsync(loop).ConfigureAwait(false);
-		await WaitQuietlyAsync(turn).ConfigureAwait(false);
-		PublishPhase();
+		try
+		{
+			StopCaptured(listen, device);
+			if (stopSpeech) _stopSpeech();
+			await WaitQuietlyAsync(loop).ConfigureAwait(false);
+			await WaitQuietlyAsync(turn).ConfigureAwait(false);
+			PublishPhase();
+		}
+		finally
+		{
+			if (disposing)
+			{
+				lock (_gate)
+				{
+					_listenCts?.Dispose();
+					_listenCts = null;
+					_turnCts?.Dispose();
+					_turnCts = null;
+				}
+			}
+		}
 	}
 
 	/// <summary>
@@ -284,7 +278,6 @@ public sealed class RealtimeVoiceSession : IDisposable
 				return false;
 			_generation++;
 			CancelTurnLocked();
-			_turnScheduled = false;
 			ClearAudioLocked();
 			SetPhaseLocked(RealtimeVoicePhase.Interrupting);
 		}
@@ -352,12 +345,12 @@ public sealed class RealtimeVoiceSession : IDisposable
 	{
 		lock (_gate)
 		{
-			if (_disposed || generation != _generation) return false;
+			if (!IsActiveTurnLocked(generation)) return false;
 			if (_phase is not (RealtimeVoicePhase.Thinking or RealtimeVoicePhase.Speaking)) return false;
 			_capturePaused = true;
 			SetPhaseLocked(RealtimeVoicePhase.Speaking);
 		}
-		StopDevice();
+		StopDevice(generation, RealtimeVoicePhase.Speaking);
 		PublishPhase();
 		return true;
 	}
@@ -365,16 +358,12 @@ public sealed class RealtimeVoiceSession : IDisposable
 	/// <summary>这一轮朗读结束。连续模式会回到监听，否则回到空闲。</summary>
 	public void CompleteSpeaking(long generation)
 	{
-		bool resume;
 		lock (_gate)
 		{
-			if (generation != _generation || _phase != RealtimeVoicePhase.Speaking) return;
+			if (!IsActiveTurnLocked(generation) || _phase != RealtimeVoicePhase.Speaking) return;
 			_capturePaused = _externalPlayback;
-			resume = CanResumeLocked();
-			SetPhaseLocked(resume ? RealtimeVoicePhase.Listening : RealtimeVoicePhase.Idle);
-			if (resume) _activity.ResetSpeech();
+			FinishTurnLocked();
 		}
-		if (resume && !_capturePaused) RequestResume();
 		PublishPhase();
 	}
 
@@ -413,27 +402,17 @@ public sealed class RealtimeVoiceSession : IDisposable
 	public void ReportPartial(long generation, string? text)
 	{
 		if (!_supportsStreaming || string.IsNullOrWhiteSpace(text)) return;
+		Action<long, string>? partialHandler;
 		lock (_gate)
 		{
-			if (generation != _generation || _phase != RealtimeVoicePhase.Transcribing) return;
+			if (!IsActiveTurnLocked(generation) || _phase != RealtimeVoicePhase.Transcribing) return;
+			partialHandler = PartialTranscript;
 		}
-		PartialTranscript?.Invoke(generation, text);
+		partialHandler?.Invoke(generation, text);
 	}
 
 	/// <summary>停止并放开设备。</summary>
-	public void Dispose()
-	{
-		StopAsync().GetAwaiter().GetResult();
-		lock (_gate)
-		{
-			if (_disposed) return;
-			_disposed = true;
-			_listenCts?.Dispose();
-			_listenCts = null;
-			_turnCts?.Dispose();
-			_turnCts = null;
-		}
-	}
+	public void Dispose() => Task.Run(() => StopCoreAsync(disposing: true)).GetAwaiter().GetResult();
 
 	private void RejectBeforeOpen()
 	{
@@ -582,6 +561,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 	private void CommitUtterance()
 	{
 		bool hasDevice;
+		long generation;
 		lock (_gate)
 		{
 			if (_phase != RealtimeVoicePhase.Listening || !_capturing || _utterance is not { Count: > 0 } utterance)
@@ -596,94 +576,83 @@ public sealed class RealtimeVoiceSession : IDisposable
 			_pendingChannels = _channels;
 			_pendingRate = _sampleRate;
 			_activity.ResetSpeech();
-			_pendingGeneration = ++_generation;
+			generation = ++_generation;
 			ReplaceTurnLocked();
-			_pendingToken = _turnCts!.Token;
-			_turnScheduled = false;
+			_activeTurn = new RealtimeVoiceTurn(generation, "", _turnCts!.Token, state: RealtimeVoicePhase.Transcribing);
 			_error = "";
 			hasDevice = _openDevice is not null;
 			SetPhaseLocked(RealtimeVoicePhase.Transcribing);
 		}
 		PublishPhase();
 		// 有设备时等采集循环放开占用后再识别；没有设备时样本是直接喂进来的。
-		if (hasDevice) StopDevice();
-		else BeginTranscribe();
+		if (hasDevice) StopDevice(generation, RealtimeVoicePhase.Transcribing);
+		else BeginTranscribe(generation);
 	}
 
-	private void BeginTranscribe()
+	private void BeginTranscribe(long? expectedGeneration = null)
 	{
-		float[]? samples;
-		int channels;
-		int sampleRate;
-		long generation;
-		CancellationToken token;
-		Func<RealtimeVoiceTurn, Task>? handler;
-		bool upload;
 		lock (_gate)
 		{
-			if (_turnScheduled || _pendingSamples is null || _phase != RealtimeVoicePhase.Transcribing) return;
-			samples = _pendingSamples;
+			if (_pendingSamples is not { } samples || _activeTurn is not { } turn
+				|| (expectedGeneration is not null && turn.Generation != expectedGeneration)
+				|| !IsActiveTurnLocked(turn.Generation) || _phase != RealtimeVoicePhase.Transcribing) return;
 			_pendingSamples = null;
-			channels = _pendingChannels;
-			sampleRate = _pendingRate;
-			generation = _pendingGeneration;
-			token = _pendingToken;
-			handler = TurnAccepted;
-			_turnScheduled = true;
-			upload = handler is not null && _transcribe is not null;
-			if (!upload)
+			if (TurnAccepted is { } handler && _transcribe is not null)
 			{
-				_error = "实时对话还没有接上，这段语音没有上传识别";
-				SetPhaseLocked(RealtimeVoicePhase.Error);
+				int channels = _pendingChannels;
+				int sampleRate = _pendingRate;
+				_turnTask = Task.Run(() => RunTurnAsync(turn, samples, sampleRate, channels, handler));
+				return;
 			}
-		}
-		if (samples is null) return;
-		if (!upload || handler is null)
-		{
 			Array.Clear(samples);
-			PublishPhase();
-			return;
+			_error = "实时对话还没有接上，这段语音没有上传识别";
+			SetPhaseLocked(RealtimeVoicePhase.Error);
 		}
-		RecordedAudio audio = EncodeUtterance(samples, sampleRate, channels);
-		Array.Clear(samples);
-		_turnTask = RunTurnAsync(generation, audio, token, handler);
+		PublishPhase();
 	}
 
 	private async Task RunTurnAsync(
-		long generation,
-		RecordedAudio audio,
-		CancellationToken token,
+		RealtimeVoiceTurn turn,
+		float[] samples,
+		int sampleRate,
+		int channels,
 		Func<RealtimeVoiceTurn, Task> handler)
 	{
+		long generation = turn.Generation;
+		CancellationToken token = turn.CancellationToken;
 		bool transcribed = false;
 		try
 		{
-			string text = _transcribe is null ? "" : await _transcribe(audio, token).ConfigureAwait(false);
-			if (!StillTurn(generation, RealtimeVoicePhase.Transcribing)) return;
+			RecordedAudio audio;
+			try
+			{
+				token.ThrowIfCancellationRequested();
+				audio = EncodeUtterance(samples, sampleRate, channels);
+			}
+			finally { Array.Clear(samples); }
+
+			token.ThrowIfCancellationRequested();
+			string text = await _transcribe!(audio, token).WaitAsync(token).ConfigureAwait(false);
 			transcribed = true;
 			if (string.IsNullOrWhiteSpace(text))
 			{
-				FinishQuiet(generation);
+				FinishTurn(generation, RealtimeVoicePhase.Transcribing);
 				return;
 			}
 			lock (_gate)
 			{
-				if (generation != _generation || _phase != RealtimeVoicePhase.Transcribing) return;
+				if (!IsActiveTurnLocked(generation) || _phase != RealtimeVoicePhase.Transcribing) return;
 				SetPhaseLocked(RealtimeVoicePhase.Thinking);
 			}
 			PublishPhase();
-			token.ThrowIfCancellationRequested();
-			await handler(new RealtimeVoiceTurn(generation, text, token)).ConfigureAwait(false);
-			bool resume = false;
 			lock (_gate)
 			{
-				if (generation != _generation || _phase != RealtimeVoicePhase.Thinking) return;
-				resume = CanResumeLocked();
-				SetPhaseLocked(resume ? RealtimeVoicePhase.Listening : RealtimeVoicePhase.Idle);
-				if (resume) _activity.ResetSpeech();
+				if (!IsActiveTurnLocked(generation) || _phase != RealtimeVoicePhase.Thinking
+					|| !turn.TryPublishFinal(text)) return;
 			}
-			if (resume) ResumeLoop();
-			PublishPhase();
+			Task accepted = handler(turn);
+			await accepted.WaitAsync(token).ConfigureAwait(false);
+			FinishTurn(generation, RealtimeVoicePhase.Thinking);
 		}
 		catch (OperationCanceledException)
 		{
@@ -693,34 +662,37 @@ public sealed class RealtimeVoiceSession : IDisposable
 		{
 			lock (_gate)
 			{
-				if (generation != _generation) return;
+				if (!IsActiveTurnLocked(generation)) return;
 				ClearAudioLocked();
 				_error = transcribed ? "实时语音对话失败，本轮已结束" : "语音识别连接已断开，本轮已结束";
 				SetPhaseLocked(RealtimeVoicePhase.Error);
 			}
-			StopDevice();
 			PublishPhase();
 		}
 	}
 
-	private void FinishQuiet(long generation)
+	private void FinishTurn(long generation, RealtimeVoicePhase expected)
 	{
-		bool resume;
 		lock (_gate)
 		{
-			if (generation != _generation || _phase != RealtimeVoicePhase.Transcribing) return;
-			resume = CanResumeLocked();
-			SetPhaseLocked(resume ? RealtimeVoicePhase.Listening : RealtimeVoicePhase.Idle);
-			if (resume) _activity.ResetSpeech();
+			if (!IsActiveTurnLocked(generation) || _phase != expected) return;
+			FinishTurnLocked();
 		}
-		if (resume) ResumeLoop();
 		PublishPhase();
 	}
 
-	private bool StillTurn(long generation, RealtimeVoicePhase phase)
+	private void FinishTurnLocked()
 	{
-		lock (_gate) return generation == _generation && _phase == phase && !_disposed;
+		bool resume = CanResumeLocked();
+		SetPhaseLocked(resume ? RealtimeVoicePhase.Listening : RealtimeVoicePhase.Idle);
+		if (!resume) return;
+		_activity.ResetSpeech();
+		RequestResume();
 	}
+
+	private bool IsActiveTurnLocked(long generation) =>
+		!_disposed && generation == _generation
+		&& _activeTurn is { CancellationToken.IsCancellationRequested: false } turn && turn.Generation == generation;
 
 	private static RecordedAudio EncodeUtterance(float[] samples, int sampleRate, int channels)
 	{
@@ -796,6 +768,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 
 	private void CancelTurnLocked()
 	{
+		_activeTurn = null;
 		try { _turnCts?.Cancel(); }
 		catch (ObjectDisposedException) { }
 	}
@@ -829,12 +802,13 @@ public sealed class RealtimeVoiceSession : IDisposable
 		PhaseChanged?.Invoke(phase);
 	}
 
-	private void StopDevice()
+	private void StopDevice(long generation, RealtimeVoicePhase phase)
 	{
 		IAudioCaptureDevice? device;
 		CancellationTokenSource? listen;
 		lock (_gate)
 		{
+			if (generation != _generation || phase != _phase) return;
 			device = _device;
 			listen = _listenCts;
 			_device = null;

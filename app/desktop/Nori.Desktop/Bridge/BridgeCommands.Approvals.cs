@@ -27,6 +27,7 @@ public sealed partial class BridgeCommands
 			or "model_download_remote"
 			or "updater_install"
 			or "tts_test"
+			or "indextts_clone_voice"
 			or "stt_start"
 			or "stt_stop"
 			or "realtime_voice_start"

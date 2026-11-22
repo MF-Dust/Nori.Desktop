@@ -65,8 +65,8 @@
 		<PropertyGroup>
 			<NoriUdaPublishPath Condition="'$(NoriCoreRid)' == 'linux-x64'">../UniDesktop/native/linux-x64/libuda_ffi.so</NoriUdaPublishPath>
 			<NoriUdaPublishPath Condition="'$(NoriCoreRid)' == 'win-x64'">../UniDesktop/native/win-x64/uda_ffi.dll</NoriUdaPublishPath>
-			<NoriUdaExpectedHash Condition="'$(NoriCoreRid)' == 'linux-x64'">14bc1883da4b89c1e3d5a20ba8d08004ad041592eb364d65d06d984f51da19ba</NoriUdaExpectedHash>
-			<NoriUdaExpectedHash Condition="'$(NoriCoreRid)' == 'win-x64'">ff919cc7f42bfdc2eff6808399482a5dac1c7c8f7e8a9b41a2aca011b7a6c934</NoriUdaExpectedHash>
+			<NoriUdaExpectedHash Condition="'$(NoriCoreRid)' == 'linux-x64'">793ac30f6ba18dde8b2b7ec0ba72ce2fbb3b0a40ec3d816e44365f400d76f4bf</NoriUdaExpectedHash>
+			<NoriUdaExpectedHash Condition="'$(NoriCoreRid)' == 'win-x64'">c6864481c30fba7dce8cc814000f8f9e918ee0ab75932d7af08efd7e13d492fd</NoriUdaExpectedHash>
 		</PropertyGroup>
 		<Error Condition="!Exists('$(NoriUdaPublishPath)')" Text="缺少 UniDesktop 原生库，请先运行 node scripts/prepare-unidesktop.mjs $(NoriCoreRid)。" />
 		<GetFileHash Files="$(NoriUdaPublishPath)" Algorithm="SHA256">

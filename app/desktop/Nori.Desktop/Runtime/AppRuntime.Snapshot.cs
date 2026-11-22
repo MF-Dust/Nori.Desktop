@@ -177,9 +177,9 @@ public sealed partial class AppRuntime
 				// 目录被删除或移动后配置仍在，但工具已不再注册，界面需要区分这两种状态。
 				available = new WorkspaceAccess(config.GetStringOr(ConfigStore.KeyWorkspaceRoot, "")).IsConfigured,
 				maxToolIterations = Engine.ConfiguredToolIterations,
-				// 待决授权是否也发成系统通知。非 Windows 上界面据此显示「本平台不支持」。
+				// 分别报告用户开关与当前环境是否具备发送通知的前提。
 				toastApprovals = config.GetBoolOr(ConfigStore.KeyToastApprovals, true),
-				toastSupported = OperatingSystem.IsWindows(),
+				toastSupported = Nori.Core.Platform.PlatformServices.SupportsApprovalNotifications,
 				tasks = WorkspaceTaskList.Read(config.Get(ConfigStore.KeyWorkspaceTasks))
 					.Select(task => new { name = task.Name, command = task.Command }),
 				// 界面要能说清「命令跑在什么边界里」：无隔离与 AppContainer 的安全含义完全不同。

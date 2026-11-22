@@ -1,12 +1,17 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Avalonia.Controls;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Nori.Core.Agent;
 using Nori.Core.Configuration;
 using Nori.Core.Notifications;
+using Nori.Core.Platform;
 using Nori.Core.Tools;
 using Nori.Desktop.Bridge;
+using Nori.Desktop.Settings;
 using Nori.Desktop.Windows;
+using Tmds.DBus.Protocol;
 
 namespace Nori.Desktop.Tests;
 
@@ -330,16 +335,42 @@ public partial class BridgeCommandsTests
 		Assert.Empty(notifier.Shown);
 	}
 
-	[Fact]
-	public void 快照带出通知开关与本平台支不支持()
+	[Theory]
+	[InlineData(720, 480)]
+	[InlineData(1920, 1080)]
+	public Task WorkspaceSettingsPage_通知说明随界面语言刷新(int width, int height) => WithSettingsUiAsync(() =>
 	{
+		Window owner = new() { Width = width, Height = height };
+		using SettingsService service = new(_services, owner);
+		using WorkspaceSettingsPage page = new(service);
+		SettingsFieldViewModel field = Assert.Single(page.Sections.SelectMany(section => section.Fields), item => item.Key == "toastApprovals");
+		owner.Content = new SettingsFieldPresenter { DataContext = field };
+		SettingsText expected = WorkspaceSettingsPage.ApprovalNotificationDescription(PlatformServices.DetectSession());
+		try
+		{
+			owner.Show();
+			owner.UpdateLayout();
+			TextBlock description = Assert.Single(owner.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == expected.Chinese);
+			Assert.True(description.IsVisible);
+			page.SetLanguage("en-US");
+			Assert.Equal(expected.English, description.Text);
+		}
+		finally { owner.Close(); }
+		return Task.CompletedTask;
+	});
+
+	[Fact]
+	public void Snapshot_通知开关与平台支持相互独立()
+	{
+		// 自动化测试的 OperatingSystem 别名恒为 Windows；通知契约必须看真实宿主平台。
+		bool supported = System.OperatingSystem.IsWindows()
+			|| (System.OperatingSystem.IsLinux() && !string.IsNullOrWhiteSpace(DBusAddress.Session));
 		JsonElement workspace = JsonSerializer
 			.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options)
 			.GetProperty("workspace");
 
 		Assert.True(workspace.GetProperty("toastApprovals").GetBoolean());
-		// 自动化测试的 OperatingSystem 别名恒为 Windows；通知契约必须看真实宿主平台。
-		Assert.Equal(System.OperatingSystem.IsWindows(), workspace.GetProperty("toastSupported").GetBoolean());
+		Assert.Equal(supported, workspace.GetProperty("toastSupported").GetBoolean());
 
 		// 这里只验证快照投影，不能调用会删除真实快捷方式与注册表项的注销命令。
 		_config.Set(ConfigStore.KeyToastApprovals, new ConfigValue.Boolean(false));
@@ -349,6 +380,6 @@ public partial class BridgeCommandsTests
 			.SerializeToElement(_runtime.BuildSnapshot(), BridgeJson.Options)
 			.GetProperty("workspace");
 		Assert.False(after.GetProperty("toastApprovals").GetBoolean());
-		Assert.Equal(System.OperatingSystem.IsWindows(), after.GetProperty("toastSupported").GetBoolean());
+		Assert.Equal(supported, after.GetProperty("toastSupported").GetBoolean());
 	}
 }

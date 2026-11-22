@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace Nori.Core.Platform;
 
-/// <summary>绑定 UDA v0.2.0 C ABI，只加载应用目录内的原生库。调用涉及 IPC，须在后台线程执行。</summary>
+/// <summary>绑定 UDA v0.2.1 C ABI，只加载应用目录内的原生库。调用涉及 IPC，须在后台线程执行。</summary>
 public sealed class UniDesktopIntegration
 {
 	private const CallingConvention Convention = CallingConvention.Cdecl;
@@ -108,8 +108,16 @@ public sealed class UniDesktopIntegration
 	{
 		RequireAvailable();
 		Check(_detectTheme!(out int theme));
-		return theme is 1 or 2 ? (DesktopTheme)theme : DesktopTheme.Unknown;
+		return DecodeTheme(theme);
 	}
+
+	// UDA v0.2.1 在 Linux 无法判断主题时返回 0；未识别的 ABI 值也不应被当成已知配色。
+	internal static DesktopTheme DecodeTheme(int theme) => theme switch
+	{
+		1 => DesktopTheme.Dark,
+		2 => DesktopTheme.Light,
+		_ => DesktopTheme.Unknown,
+	};
 
 	public string? GetWallpaper()
 	{

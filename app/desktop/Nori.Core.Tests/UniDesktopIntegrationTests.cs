@@ -86,6 +86,16 @@ public sealed class UniDesktopIntegrationTests
 		Assert.Contains("明确确认", error.Message);
 	}
 
+	[Theory]
+	[InlineData(0, DesktopTheme.Unknown)]
+	[InlineData(1, DesktopTheme.Dark)]
+	[InlineData(2, DesktopTheme.Light)]
+	[InlineData(3, DesktopTheme.Unknown)]
+	public void DecodeTheme_未知主题不冒充已知配色(int value, DesktopTheme expected)
+	{
+		Assert.Equal(expected, UniDesktopIntegration.DecodeTheme(value));
+	}
+
 	[Fact]
 	public void 强调色保持四通道字节序且无值不冒充黑色()
 	{

@@ -4,10 +4,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync } 
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// 固定官方 v0.2.0 产物及摘要；不向仓库提交二进制文件。
+// 固定官方产物及摘要；原生库摘要须与 Nori.Desktop.csproj 的发布校验一致。
+const version = "v0.2.1";
 const assets = new Map([
-	["linux-x64", ["x86_64-unknown-linux-gnu.tar.gz", "libuda_ffi.so", "30aa24afd915215320c8aed21d40ac53e050b64fda0cb8ab0e9e7bd4e56ca019", "14bc1883da4b89c1e3d5a20ba8d08004ad041592eb364d65d06d984f51da19ba"]],
-	["win-x64", ["x86_64-pc-windows-gnu.zip", "uda_ffi.dll", "84d26d413da7a515ec9187402c38979442141951c81e6b6aeb13a567e54f1858", "ff919cc7f42bfdc2eff6808399482a5dac1c7c8f7e8a9b41a2aca011b7a6c934"]],
+	["linux-x64", ["x86_64-unknown-linux-gnu.tar.gz", "libuda_ffi.so", "87999c3d4ffb9ac10411f480cf7745182c3a1702bd67fa911b645eb638981919", "793ac30f6ba18dde8b2b7ec0ba72ce2fbb3b0a40ec3d816e44365f400d76f4bf"]],
+	["win-x64", ["x86_64-pc-windows-gnu.zip", "uda_ffi.dll", "3e1655e7b5c20f8031c1ab2e58d3d19e2fc26ddb8c812c3fb2584285989dbe73", "c6864481c30fba7dce8cc814000f8f9e918ee0ab75932d7af08efd7e13d492fd"]],
 ]);
 const rid = process.argv[2];
 if (!rid) throw new Error("请指定目标 RID，例如 linux-x64 或 win-x64。");
@@ -15,7 +16,7 @@ const root = fileURLToPath(new URL("../UniDesktop/native/", import.meta.url));
 const asset = assets.get(rid);
 if (!asset) {
 	if (!["linux-arm64", "osx-x64", "osx-arm64"].includes(rid)) throw new Error(`未知 RID：${rid}`);
-	console.log(`UniDesktop v0.2.0 不提供 ${rid} 产物，使用现有平台能力。`);
+	console.log(`UniDesktop ${version} 不提供 ${rid} 产物，使用现有平台能力。`);
 } else {
 	const [suffix, library, archiveHash, libraryHash] = asset;
 	const output = join(root, rid, library);
@@ -28,7 +29,7 @@ if (!asset) {
 		const scratch = mkdtempSync(join(root, ".download-"));
 		try {
 			const archive = resolve(scratch, suffix);
-			execFileSync("curl", ["--fail", "--location", "--retry", "2", "--connect-timeout", "20", "--max-time", "180", "--output", archive, `https://github.com/UniDesktop/SDK/releases/download/v0.2.0/uda-ffi-v0.2.0-${suffix}`], { stdio: "inherit" });
+			execFileSync("curl", ["--fail", "--location", "--retry", "2", "--connect-timeout", "20", "--max-time", "180", "--output", archive, `https://github.com/UniDesktop/SDK/releases/download/${version}/uda-ffi-${version}-${suffix}`], { stdio: "inherit" });
 			if (hash(archive) !== archiveHash) throw new Error("UniDesktop 下载文件 SHA-256 校验失败。");
 			if (suffix.endsWith(".zip") && process.platform !== "win32") {
 				execFileSync("unzip", ["-q", archive, library, "-d", scratch]);
@@ -44,5 +45,5 @@ if (!asset) {
 			renameSync(extracted, output); // nosemgrep
 		} finally { rmSync(scratch, { recursive: true, force: true }); }
 	}
-	console.log(`UniDesktop v0.2.0 ${rid} 校验完成。`);
+	console.log(`UniDesktop ${version} ${rid} 校验完成。`);
 }

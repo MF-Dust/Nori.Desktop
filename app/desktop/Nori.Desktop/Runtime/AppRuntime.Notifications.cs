@@ -10,12 +10,12 @@ namespace Nori.Desktop.Runtime;
 /// <summary>
 /// 待决授权的第二个呈现面：系统通知。
 ///
-/// **不取代应用内的授权卡片。** 通知可能被系统设置关掉、被专注模式折叠、快捷方式
-/// 可能建不出来 —— 授权是一条不能只剩一个入口的路。两条路解同一个
+/// **不取代应用内的授权卡片。** 通知可能被系统设置关掉、被专注模式折叠，或因桌面服务不可用而无法发送。
+/// 两条路解同一个
 /// <c>TaskCompletionSource</c>，谁先到算谁的（<c>TryRemove</c> + <c>TrySetResult</c>
 /// 本来就保证了这一点）。
 ///
-/// 注册要往用户机器上留两样东西（开始菜单快捷方式、HKCU 的 COM 激活器），所以
+/// Windows 注册要写入开始菜单快捷方式与 HKCU 的 COM 激活器，所以
 /// **懒到第一次真的要弹才做**：一个从来不触发授权的用户不该在开始菜单里多出一项。
 /// </summary>
 public sealed partial class AppRuntime
@@ -27,8 +27,7 @@ public sealed partial class AppRuntime
 	/// <summary>
 	/// 换掉呈现层。**只给测试用。**
 	///
-	/// 真的那条要起 COM、要在开始菜单建快捷方式、要写注册表；把它跑进单元测试里
-	/// 会在跑测试的机器上留下东西，而且 CI 的会话里根本弹不出来。
+	/// 测试不调用桌面通知服务，也不往 Windows 开始菜单与注册表写入通知入口。
 	/// </summary>
 	internal void UseNotifierForTests(INativeNotifier notifier)
 	{
@@ -162,7 +161,7 @@ public sealed partial class AppRuntime
 	/// <summary>
 	/// 用户在通知上点了什么。
 	///
-	/// 这条回调跑在 COM 的线程上，而且那串参数**出过进程** —— 解析认不出来一律忽略，
+	/// 回调可来自 COM 或 D-Bus 后台线程，而且那串参数**出过进程** —— 解析认不出来一律忽略，
 	/// 绝不回落到允许（<see cref="ToastActivation.Parse"/> 里也有同一道）。
 	/// 找不到对应的待决授权同样忽略：系统可能把 exe 拉起来送一条早已超时的点击。
 	/// </summary>
@@ -237,8 +236,7 @@ public sealed partial class AppRuntime
 	/// <summary>
 	/// 设置变了之后对齐一次。
 	///
-	/// 开着就什么都不做（真正的注册懒到第一次要弹时）；关掉就把留在机器上的两样东西
-	/// 清干净 —— 用户关的是「别在我机器上留东西」，只停止发送等于留了一半。
+	/// 开着就等首次发送再初始化；关掉时释放通知资源，也清理 Windows 的快捷方式与 COM 注册。
 	/// </summary>
 	internal void SyncNotificationRegistration()
 	{

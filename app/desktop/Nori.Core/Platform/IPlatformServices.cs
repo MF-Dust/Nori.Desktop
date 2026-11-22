@@ -122,6 +122,10 @@ public static class PlatformServices
 	/// </summary>
 	public static IPlatformServices Current { get; } = Create();
 
+	/// <summary>只判断当前环境能否尝试发送授权通知，不连接通知服务。</summary>
+	internal static bool SupportsApprovalNotifications =>
+		OperatingSystem.IsWindows() || (OperatingSystem.IsLinux() && LinuxNativeNotifier.HasSessionBus);
+
 	private static IPlatformServices Create()
 	{
 		if (OperatingSystem.IsWindows()) return new WindowsPlatformServices();

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Nori.Core.Platform;
 
 namespace Nori.Desktop.Settings;
 
@@ -11,6 +12,23 @@ namespace Nori.Desktop.Settings;
 public sealed class WorkspaceSettingsPage : SettingsPageBase
 {
 	private const string GearOptionAsk = "ask";
+
+	internal static SettingsText ApprovalNotificationDescription(SessionType session) => session switch
+	{
+		SessionType.Windows => new(
+			"需要确认时，除了应用内的卡片，再发一条 Windows 通知，可以直接在通知上允许或拒绝。"
+				+ "第一次发送通知时会创建开始菜单快捷方式（用于让 Windows 识别通知来源），关闭此设置时会移除它。",
+			"When a confirmation is needed, send a Windows notification alongside the in-app card so you "
+				+ "can allow or deny the request right from the notification. The first notification creates a Start menu shortcut so Windows "
+				+ "can identify the sender. Turning this setting off removes the shortcut."),
+		SessionType.X11 or SessionType.Wayland => new(
+			"需要确认时，除了应用内的卡片，再发一条 Linux 桌面通知。通知服务支持按钮时，可以直接在通知上允许或拒绝；否则请使用应用内卡片。",
+			"When a confirmation is needed, send a Linux desktop notification alongside the in-app card. "
+				+ "If your notification service supports buttons, you can allow or deny the request right from the notification. Otherwise, use the in-app card."),
+		_ => new(
+			"当前平台不支持系统授权通知。需要确认时，请使用应用内的卡片。",
+			"System notifications for approvals are not supported on this platform. Use the in-app card to respond."),
+	};
 
 	/// <summary>
 	/// 四个档位。措辞按**她会怎么做**写，不按内部名字写 —— 用户要判断的是
@@ -98,12 +116,7 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 			notifications,
 			"toastApprovals",
 			new("同时发系统通知", "Also send a system notification"),
-			new(
-				"需要确认时，除了应用内的卡片，再发一条 Windows 通知，可以直接在通知上允许或拒绝。"
-					+ "打开后会在开始菜单建一个快捷方式（系统据此归属通知），关掉时一并清除。",
-				"When a confirmation is needed, send a Windows notification alongside the in-app card so you "
-					+ "can allow or deny from the notification. Turning this on creates a Start menu shortcut "
-					+ "(Windows needs it to attribute notifications); turning it off removes the shortcut."),
+			ApprovalNotificationDescription(PlatformServices.DetectSession()),
 			SettingsEditorKind.Boolean,
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, true, "workspace", "toastApprovals"),
 			true,

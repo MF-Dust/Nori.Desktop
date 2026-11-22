@@ -38,7 +38,17 @@ internal sealed class LinuxNativeNotifier : INativeNotifier, IDisposable, IAsync
 		_worker = Task.Run(RunAsync);
 	}
 
-	public bool Available { get { lock (_gate) return !_disposed && !string.IsNullOrWhiteSpace(DBusAddress.Session); } }
+	internal static bool HasSessionBus
+	{
+		get
+		{
+			try { return !string.IsNullOrWhiteSpace(DBusAddress.Session); }
+			// 没有环境地址时，Tmds 会尝试从 X11 发现地址；缺少可选库不应阻断快照。
+			catch (Exception failure) when (failure is DllNotFoundException or EntryPointNotFoundException) { return false; }
+		}
+	}
+
+	public bool Available { get { lock (_gate) return !_disposed && HasSessionBus; } }
 
 	public void Show(ApprovalNotice notice)
 	{

@@ -18,6 +18,23 @@ namespace Nori.Desktop.Tests;
 
 public partial class BridgeCommandsTests
 {
+	[Fact]
+	public Task VoiceMetricsTracker_AppRuntime只为语音轮次采样首个助手增量() => WithRealtimeChatSourceAsync(async (source, _) =>
+	{
+		NativeChatHttpHandler handler = new();
+		using HttpClient http = new(handler);
+		await using AppRuntime runtime = CreateNativeChatRuntime(http);
+		_config.Set("tts_auto_play", new ConfigValue.Boolean(false));
+		Assert.Same(_services.VoiceMetrics, runtime.VoiceMetrics);
+		var started = runtime.StartRealtimeChat(source, new RealtimeVoiceTurn(90, "私密语音转写", CancellationToken.None));
+		await handler.StreamEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		handler.ReleaseStream.TrySetResult();
+		await started.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+		var latency = _services.VoiceMetrics.CaptureSnapshot().AgentFirstTokenLatencyMs;
+		Assert.Equal(1, latency.Count);
+		Assert.True(latency.P50 > 0);
+	});
+
 	[Theory]
 	[InlineData("realtime_voice_start")]
 	[InlineData("stt_start")]
@@ -196,7 +213,8 @@ public partial class BridgeCommandsTests
 		_services.Logger.Write(LogSource.Backend, "error", $"语音识别失败 api_key={key} {pathInError}",
 			exception: new IOException($"{transcript} {endpoint} {Convert.ToBase64String(pcm)}"));
 
-		VoiceMetricsTracker tracker = _services.VoiceMetrics;
+		VoiceMetricsTracker tracker = _runtime.VoiceMetrics;
+		Assert.Same(_services.VoiceMetrics, tracker);
 		tracker.RecordFirstDeltaLatency(TimeSpan.FromMilliseconds(42));
 		tracker.ObserveAudioBufferBytes(pcm.LongLength);
 		tracker.ObserveProcessResources(1024, 1.25);

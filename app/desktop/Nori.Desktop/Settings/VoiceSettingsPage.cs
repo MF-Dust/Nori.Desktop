@@ -32,6 +32,8 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	private bool _cloning;
 	private bool _speaking;
 	private int _realtimeRequest;
+	private readonly SettingsFieldViewModel _inputDevice;
+	private readonly SettingsFieldViewModel _outputDevice;
 	private readonly SettingsFieldViewModel _micLevel;
 	private readonly SettingsCommand _micStart;
 	private readonly SettingsCommand _micStop;
@@ -140,11 +142,24 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeBatchModel = value }, token));
 		AddVoiceText(advanced, "realtimeLanguage", new("识别语言", "Recognition language"), new("例如 zh 或 en；留空自动识别。", "For example, zh or en. Leave empty for automatic detection."), RealtimeVoiceSettings.Defaults.Language,
 			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeLanguage = value }, token));
-		AddField(devices, "realtimeInputDevice", new("麦克风", "Microphone"), new("留空使用系统默认输入。当前采集不能按设备名切换，填了别的标识会拒绝开始。", "Leave empty for the system default. Capture cannot switch by device name; another id is rejected."), SettingsEditorKind.Text,
-			snapshot => SettingsSnapshotReader.String(snapshot, string.Empty, "voice", "realtimeInputDevice"), string.Empty,
-			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeInputDevice = Convert.ToString(value)?.Trim() ?? string.Empty }, token));
-		AddVoiceText(devices, "realtimeOutputDevice", new("输出设备", "Output device"), new("此标识供后续版本使用；当前始终在系统默认设备上播放。", "This identifier is reserved for a later release. Playback still uses the system default."), "",
-			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeOutputDevice = value }, token));
+		_inputDevice = AddDeviceChoice("realtimeInputDevice", new("麦克风", "Microphone"),
+			new("使用蓝牙麦克风可能切换到免提双向模式，降低播放音质和声道数。", "A Bluetooth microphone may switch to hands-free mode, reducing playback quality and channel count."), SaveInputDevice);
+		_outputDevice = AddDeviceChoice("realtimeOutputDevice", new("输出设备", "Output device"),
+			new("选择语音朗读输出设备；留空使用系统默认设备。与蓝牙麦克风同时使用时可能降为免提模式。", "Choose the speech output device; leave blank for the system default. Pairing with a Bluetooth microphone may drop to hands-free mode."), SaveOutputDevice);
+		AddVoiceText(devices, "realtimeInputDevice", new("手动输入麦克风标识", "Manual microphone ID"),
+			new("兼容未列出的设备。更换麦克风会停止当前实时监听。", "For devices not listed. Changing the microphone stops live listening."), "", SaveInputDevice);
+		AddVoiceText(devices, "realtimeOutputDevice", new("手动输入输出设备标识", "Manual output device ID"),
+			new("兼容未列出的设备。留空使用系统默认设备。", "For devices not listed. Leave blank for the system default."), "", SaveOutputDevice);
+
+		Task<JsonElement> SaveInputDevice(string value, CancellationToken token) =>
+			ExecuteAsync("settings_update_voice", new { realtimeInputDevice = value.Trim() }, token);
+		Task<JsonElement> SaveOutputDevice(string value, CancellationToken token) =>
+			ExecuteAsync("settings_update_voice", new { realtimeOutputDevice = value.Trim() }, token);
+		SettingsFieldViewModel AddDeviceChoice(string setting, SettingsText label, SettingsText description, Func<string, CancellationToken, Task<JsonElement>> save) =>
+			AddField(devices, $"{setting}Choice", label, description,
+				SettingsEditorKind.Choice,
+				snapshot => SettingsSnapshotReader.String(snapshot, "", "voice", setting), "",
+				(value, token) => save(Convert.ToString(value) ?? "", token));
 		_micStart = new SettingsCommand(command => _ = TestMicrophoneAsync(), _ => _micTest is null);
 		_micStop = new SettingsCommand(_ => CancelMicrophoneTest(), _ => _micTest is not null);
 		AddAction(devices, "testMicrophone", new("测试麦克风", "Test microphone"), new("测试最多持续 10 秒，只在本机测量输入电平，不保存或上传录音。", "Measures input level locally for up to 10 seconds. No recording is saved or uploaded."), _micStart);
@@ -170,9 +185,35 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	internal override void ApplySnapshot(JsonElement snapshot)
 	{
 		base.ApplySnapshot(snapshot);
+		UpdateDeviceOptions(_inputDevice, snapshot, "inputs");
+		UpdateDeviceOptions(_outputDevice, snapshot, "outputs");
 		_speaking = SettingsSnapshotReader.Boolean(snapshot, false, "voice", "speaking");
 		_previewCommand.RaiseCanExecuteChanged();
 		UpdateProviderVisibility();
+	}
+
+	private static void UpdateDeviceOptions(SettingsFieldViewModel field, JsonElement snapshot, string direction)
+	{
+		List<SettingsOption> options = [new("", new("系统默认设备", "System default"))];
+		if (SettingsSnapshotReader.Get(snapshot, "voice", "audioDevices", direction) is { ValueKind: JsonValueKind.Array } devices)
+		{
+			foreach (JsonElement device in devices.EnumerateArray())
+			{
+				string id = SettingsSnapshotReader.String(device, "", "id");
+				if (id.Length == 0) continue;
+				string name = SettingsSnapshotReader.String(device, id, "name");
+				bool bluetooth = SettingsSnapshotReader.Boolean(device, false, "isBluetooth");
+				bool isDefault = SettingsSnapshotReader.Boolean(device, false, "isDefault");
+				string chinese = name + (isDefault ? "（当前默认）" : "") + (bluetooth ? " · 蓝牙（免提模式可能降低音质）" : "");
+				string english = name + (isDefault ? " (current default)" : "") + (bluetooth ? " · Bluetooth (hands-free may reduce quality)" : "");
+				options.Add(new(id, new(chinese, english)));
+			}
+		}
+		string selected = field.Selected;
+		if (!options.Any(option => option.Value == selected))
+			options.Add(new(selected, new($"{selected}（手动指定）", $"{selected} (manual ID)")));
+		if (!field.Options.Select(option => (option.Value, option.Text)).SequenceEqual(options.Select(option => (option.Value, option.Text))))
+			field.SetOptions(options);
 	}
 
 	private void AddVoiceText(SettingsSectionViewModel section, string key, SettingsText label, SettingsText description, string fallback,

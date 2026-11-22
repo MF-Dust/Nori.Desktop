@@ -119,7 +119,6 @@ public sealed record RealtimeVoiceSettings
 		ArgumentNullException.ThrowIfNull(config);
 		string rawDevice = config.GetStringOr(InputDeviceKey, "");
 		bool invalid = IsInvalidDevice(rawDevice);
-		string outputDevice = config.GetStringOr(OutputDeviceKey, "");
 		return new RealtimeVoiceSettings(
 			config.GetBoolOr(EnabledKey, false),
 			config.GetBoolOr(ContinuousKey, false),
@@ -133,7 +132,7 @@ public sealed record RealtimeVoiceSettings
 			invalid ? "" : rawDevice,
 			invalid)
 		{
-			OutputDeviceId = IsInvalidDevice(outputDevice) ? "" : outputDevice.Trim(),
+			OutputDeviceId = ReadOutputDeviceId(config),
 			SttMode = config.GetStringOr(SttModeKey, "batch").Trim().ToLowerInvariant() switch
 			{
 				"realtime" => SttMode.RealtimeCloud,
@@ -148,6 +147,13 @@ public sealed record RealtimeVoiceSettings
 
 	private static string ReadModel(ConfigStore config, string key, string fallback) =>
 		config.GetStringOr(key, fallback).Trim() is { Length: > 0 } model ? model : fallback;
+
+	/// <summary>读取播放设备标识；留空或无效值使用系统默认设备。</summary>
+	public static string ReadOutputDeviceId(ConfigStore config)
+	{
+		string device = config.GetStringOr(OutputDeviceKey, "");
+		return IsInvalidDevice(device) ? "" : device.Trim();
+	}
 
 	/// <summary>设备标识是否不能安全保存。不把原文放进异常。</summary>
 	public static bool IsInvalidDevice(string? value)

@@ -391,6 +391,7 @@ public sealed partial class AppRuntime
 				realtimeSensitivity = realtimeSettings.Sensitivity,
 				realtimeSilenceMs = realtimeSettings.SilenceMilliseconds,
 				realtimeInterruptEnabled = realtimeSettings.InterruptEnabled,
+				audioDevices = ListAudioDevices(cached: true),
 				realtimeInputDevice = realtimeSettings.InputDeviceId,
 				realtimeOutputDevice = realtimeSettings.OutputDeviceId,
 				realtimeSttMode = realtimeSettings.SttModeId,

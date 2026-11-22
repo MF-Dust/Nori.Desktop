@@ -1,3 +1,5 @@
+using Nori.Core.Logging;
+using Nori.Core.Security;
 using Nori.Core.Voice.Audio;
 using Nori.Core.Voice.Realtime;
 using Nori.Desktop.Audio;
@@ -10,6 +12,55 @@ internal sealed record ChatVoiceSnapshot(RealtimeVoiceStatus Status, bool Speaki
 public sealed partial class AppRuntime
 {
 	private double _microphoneTestLevel;
+	private string _openedOutputDeviceId = "";
+
+	internal object ListAudioDevices(bool cached = false)
+	{
+		IReadOnlyList<AudioDeviceInfo> Read(AudioDeviceDirection direction) =>
+			cached && _audioDevices is NativeAudioDeviceManager native && native.GetCachedDevices(direction) is { } devices
+				? devices : _audioDevices.EnumerateDevices(direction);
+		static object Describe(AudioDeviceInfo device) => new
+		{
+			id = device.Id, name = device.Name, isDefault = device.IsDefault, isBluetooth = device.IsBluetooth, note = device.Note,
+		};
+		return new
+		{
+			inputs = Read(AudioDeviceDirection.Input).Select(Describe).ToArray(),
+			outputs = Read(AudioDeviceDirection.Output).Select(Describe).ToArray(),
+		};
+	}
+
+	private void OnAudioDevicesChanged(AudioDeviceChangedEventArgs change)
+	{
+		if (Volatile.Read(ref _disposed) != 0) return;
+		try
+		{
+			if (change.Direction != AudioDeviceDirection.Output || !Voice.IsSpeaking) return;
+			string output = _playback.IsPlaying ? Volatile.Read(ref _openedOutputDeviceId)
+				: RealtimeVoiceSettings.ReadOutputDeviceId(Services.Config);
+			bool affected = change.Kind switch
+			{
+				AudioDeviceChangeKind.DefaultChanged => output.Length == 0,
+				AudioDeviceChangeKind.Removed or AudioDeviceChangeKind.Disconnected =>
+					output.Length == 0 ? change.IsDefault != false : change.DeviceId == output,
+				_ => false,
+			};
+			if (affected)
+			{
+				TrackTask(Task.Run(() =>
+				{
+					if (Volatile.Read(ref _disposed) != 0) return;
+					try { Voice.RecoverPlayback(); }
+					catch (Exception exception)
+					{
+						Services.Logger.Write(LogSource.Backend, "warn",
+							$"音频设备变更后恢复播放状态失败: {SensitiveDataRedactor.ExceptionSummary(exception)}");
+					}
+				}));
+			}
+		}
+		finally { InvalidateSnapshot(); }
+	}
 
 	internal double MicrophoneTestLevel => Volatile.Read(ref _microphoneTestLevel);
 
@@ -28,10 +79,10 @@ public sealed partial class AppRuntime
 			using var test = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime);
 			test.Token.ThrowIfCancellationRequested();
 			RealtimeVoiceSettings settings = RealtimeVoiceSettings.Read(Services.Config);
-			if (settings.InputDeviceInvalid || settings.InputDeviceId.Length > 0)
-				throw new InvalidOperationException("麦克风测试只支持系统默认输入，请将设备标识留空");
+			if (settings.InputDeviceInvalid)
+				throw new InvalidOperationException("麦克风标识无效");
 			test.CancelAfter(TimeSpan.FromSeconds(10));
-			CaptureMicrophoneLevel(_captureOwnership, NativeAudioFactory.OpenCapture,
+			CaptureMicrophoneLevel(_captureOwnership, () => _openCapture(settings.InputDeviceId.Length == 0 ? null : settings.InputDeviceId),
 				level => Volatile.Write(ref _microphoneTestLevel, level), test.Token);
 		}, cancellationToken);
 		TrackTask(testTask);

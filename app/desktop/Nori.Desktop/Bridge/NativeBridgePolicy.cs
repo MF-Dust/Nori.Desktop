@@ -32,6 +32,7 @@ internal static class NativeBridgePolicy
 		"realtime_voice_interrupt",
 		"realtime_voice_status",
 		"voice_mic_test",
+		"audio_list_devices",
 		"settings_update_workspace",
 		"settings_pick_workspace",
 		"settings_pick_splash_background",
@@ -156,6 +157,8 @@ internal static class NativeBridgePolicy
 		};
 		if (allowed is not null && !allowed.Contains(command))
 			throw new InvalidOperationException($"当前窗口不允许执行命令: {command}");
+		if (command == "audio_list_devices" && source is not WindowContext { Label: WindowLabels.Settings })
+			throw new InvalidOperationException("只有设置窗口可以枚举音频设备");
 		if (command == "voice_mic_test" && source is not WindowContext { Label: WindowLabels.Settings })
 			throw new InvalidOperationException("只有设置窗口可以测试麦克风");
 		if (allowed is null && source.Label != WindowLabels.Main && command is

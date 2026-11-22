@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Nori.Core.Agent;
 using Nori.Core.Security;
 using Nori.Core.Telemetry;
@@ -90,10 +91,18 @@ public sealed partial class AppRuntime
 		catch { session.Dispose(); throw; }
 		_sessions[sessionId] = session;
 
+		long? voiceStartedAt = voiceTurn is not null ? Stopwatch.GetTimestamp() : null;
+		int firstVoiceToken = 0;
 		AgentCallbacks callbacks = new()
 		{
 			OnState = state => PostAgentEvent(session.Source, new {type = "state", sessionId, state = state.ToString().ToLowerInvariant()}),
-			OnTextChunk = chunk => PostAgentEvent(session.Source, new {type = "chunk", sessionId, chunk}),
+			OnTextChunk = chunk =>
+			{
+				if (voiceStartedAt is { } started && !string.IsNullOrEmpty(chunk)
+					&& Interlocked.Exchange(ref firstVoiceToken, 1) == 0)
+					VoiceMetrics.RecordAgentFirstTokenLatency(Stopwatch.GetElapsedTime(started));
+				PostAgentEvent(session.Source, new {type = "chunk", sessionId, chunk});
+			},
 			OnToolExecuting = (name, args) => PostAgentEvent(session.Source, new {type = "tool-executing", sessionId, toolName = name, arguments = args}),
 			OnToolExecuted = (name, result, error) => PostAgentEvent(session.Source, new
 			{

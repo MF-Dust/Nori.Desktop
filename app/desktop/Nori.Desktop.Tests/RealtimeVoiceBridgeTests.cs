@@ -10,6 +10,8 @@ using System.Text.Json;
 using Avalonia.Input;
 using Nori.Core.Configuration;
 using Nori.Core.Voice.Realtime;
+using Nori.Core.Voice.Stt;
+using Nori.Desktop.Audio;
 using Nori.Desktop.Windows;
 
 namespace Nori.Desktop.Tests;
@@ -59,10 +61,6 @@ public partial class BridgeCommandsTests
 		{
 			realtimeInputDevice = "hw:1",
 		}));
-		InvalidOperationException device = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-			CreateCommands().InvokeAsync(new FakeBridgeSource(WindowLabels.Main), "realtime_voice_start", Args(new { })));
-		Assert.Contains("默认", device.Message, StringComparison.Ordinal);
-		Assert.DoesNotContain("hw:1", device.Message, StringComparison.Ordinal);
 
 		_config.Set(RealtimeVoiceSettings.EnabledKey, new ConfigValue.Boolean(true));
 		InvalidOperationException partial = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -130,14 +128,94 @@ public partial class BridgeCommandsTests
 			Assert.Throws<InvalidOperationException>(() => NativeBridgePolicy.Validate(chat, "voice_mic_test"));
 			Assert.Throws<InvalidOperationException>(() => NativeBridgePolicy.Validate(new FakeBridgeSource(WindowLabels.Main), "voice_mic_test"));
 			var settings = new WindowContext(owner, WindowLabels.Settings);
-			safeFixture._config.Set(RealtimeVoiceSettings.InputDeviceKey, new ConfigValue.Text("not-default"));
+			safeFixture._config.Set(RealtimeVoiceSettings.InputDeviceKey, new ConfigValue.Text("bad\nmic"));
 			var localTest = await Assert.ThrowsAsync<InvalidOperationException>(() => commands.InvokeAsync(settings, "voice_mic_test", Args(new { })));
-			Assert.Contains("系统默认输入", localTest.Message);
+			Assert.Contains("麦克风标识无效", localTest.Message);
 			owner.Hide();
 			Assert.Throws<InvalidOperationException>(() => NativeBridgePolicy.Validate(chat, "realtime_voice_start"));
 		}
 		finally { owner.Close(); }
 	});
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public Task AudioListDevices_设置窗口列出设备且安全模式不选云端(bool safeMode) => WithSettingsUiAsync(async () =>
+	{
+		NativeAudioDeviceManager devices = new(direction => direction == AudioDeviceDirection.Input
+			? [new("mic-bt", "蓝牙麦克风", direction, true, true, true, null, null, "免提双向模式")]
+			: [new("speaker-usb", "USB 扬声器", direction, true, false, true, null, null, null)]);
+		using BridgeCommandsTests fixture = new(safeMode, null, audioDevices: devices,
+			openCapture: _ => throw new InvalidOperationException("设备枚举不应打开麦克风"));
+		Window owner = new();
+		try
+		{
+			WindowContext settings = new(owner, WindowLabels.Settings);
+			BridgeCommands commands = fixture.CreateCommands();
+			JsonElement result = JsonSerializer.SerializeToElement(await commands.InvokeAsync(settings, "audio_list_devices", Args(new { })));
+			JsonElement input = Assert.Single(result.GetProperty("inputs").EnumerateArray());
+			Assert.Equal("mic-bt", input.GetProperty("id").GetString());
+			Assert.Equal("蓝牙麦克风", input.GetProperty("name").GetString());
+			Assert.True(input.GetProperty("isDefault").GetBoolean());
+			Assert.True(input.GetProperty("isBluetooth").GetBoolean());
+			Assert.Equal("免提双向模式", input.GetProperty("note").GetString());
+			Assert.Equal("speaker-usb", Assert.Single(result.GetProperty("outputs").EnumerateArray()).GetProperty("id").GetString());
+			Assert.Throws<InvalidOperationException>(() => NativeBridgePolicy.Validate(new FakeBridgeSource(WindowLabels.Main), "audio_list_devices"));
+
+			fixture._config.Set(RealtimeVoiceSettings.SttModeKey, new ConfigValue.Text("realtime"));
+			fixture._config.Set(RealtimeVoiceSettings.InputDeviceKey, new ConfigValue.Text("mic-bt"));
+			await fixture._runtime.RealtimeVoice.ApplySettingsAsync(RealtimeVoiceSettings.Read(fixture._config));
+			Assert.Equal(!safeMode, fixture._runtime.RealtimeVoice.TranscriberSupportsStreaming);
+			Assert.Equal(safeMode ? 1 : 4, fixture._runtime.SttProviders.List().Count);
+			Assert.Equal(!safeMode, fixture._runtime.SttProviders.List().Any(entry => entry.Descriptor.RequiresNetwork));
+			Assert.Null(fixture._runtime.SttProviders.SelectBest(new() { AllowNetwork = false, RequireBatch = true }));
+			Assert.IsType<LocalOfflineSttProvider>(fixture._runtime.SttProviders.SelectBestProvider(new() { AllowNetwork = false, RequireLocalOffline = true }));
+
+			using SettingsService service = new(fixture._services, owner);
+			using VoiceSettingsPage page = new(service);
+			page.ApplySnapshot(JsonSerializer.SerializeToElement(fixture._runtime.BuildSnapshot()));
+			var fields = page.Sections.SelectMany(section => section.Fields).ToArray();
+			var picker = Assert.Single(fields, field => field.Key == "realtimeInputDeviceChoice");
+			Assert.Equal("mic-bt", picker.Selected);
+			Assert.Contains(picker.Options, option => option.Value == "mic-bt" && option.DisplayText.Contains("免提"));
+			Assert.Contains(picker.Options, option => option.Value == "");
+			Assert.Contains(fields, field => field.Key == "realtimeInputDevice" && field.EditorKind == SettingsEditorKind.Text);
+		}
+		finally { owner.Close(); }
+	});
+
+	[Fact]
+	public async Task RealtimeVoice_打开指定麦克风且切换后必须重新开始()
+	{
+		List<string?> openedIds = [];
+		using BridgeCommandsTests fixture = new(false, null, audioDevices: new NativeAudioDeviceManager(_ => []), openCapture: id =>
+		{
+			openedIds.Add(id);
+			return new WaitingCapture();
+		});
+		BridgeCommands commands = fixture.CreateCommands();
+		FakeBridgeSource main = new(WindowLabels.Main);
+		await commands.InvokeAsync(main, "settings_update_voice", Args(new { realtimeEnabled = true, realtimeInputDevice = "mic-usb" }));
+		await commands.InvokeAsync(main, "realtime_voice_start", Args(new { }));
+		await commands.InvokeAsync(main, "settings_update_voice", Args(new { realtimeInputDevice = "mic-bt" }));
+		Assert.Equal(RealtimeVoicePhase.Idle, fixture._runtime.RealtimeVoice.Phase);
+		Assert.Equal(["mic-usb"], openedIds);
+		await commands.InvokeAsync(main, "realtime_voice_start", Args(new { }));
+		await commands.InvokeAsync(main, "realtime_voice_stop", Args(new { }));
+		Assert.Equal(["mic-usb", "mic-bt"], openedIds);
+	}
+
+	private sealed class WaitingCapture : IAudioCaptureDevice
+	{
+		public AudioFormat Open() => new(16000, 1);
+		public int Read(Span<float> buffer, CancellationToken cancellationToken)
+		{
+			cancellationToken.WaitHandle.WaitOne();
+			return 0;
+		}
+		public void Stop() { }
+		public void Dispose() { }
+	}
 
 	[Fact]
 	public void VoiceMicTestUsesExclusiveCaptureAndClearsLevelOnCancellation()

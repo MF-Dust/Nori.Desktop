@@ -18,6 +18,7 @@ using Nori.Desktop.Expression;
 using Nori.Desktop.Observation;
 using Nori.Core.Voice;
 using Nori.Core.Voice.Audio;
+using Nori.Core.Voice.Metrics;
 using Nori.Core.Voice.Realtime;
 using Nori.Core.Voice.Stt;
 using Nori.Desktop.Audio;
@@ -70,6 +71,10 @@ public sealed partial class AppRuntime : IAsyncDisposable
 
 	/// <summary>实际在用的播放后端。三平台都是原生设备。</summary>
 	private readonly IAudioPlayback _playback;
+	private readonly IAudioDeviceManager _audioDevices;
+	private readonly Func<string?, IAudioCaptureDevice> _openCapture;
+	internal VoiceMetricsTracker VoiceMetrics => Services.VoiceMetrics;
+	internal SttProviderRegistry SttProviders { get; }
 	private readonly IMicrophoneRecorder _recorder;
 	private readonly CaptureOwnership _captureOwnership = new();
 
@@ -178,8 +183,10 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	/// <summary>取走并清除“初始化开始”标志 (只能被消费一次)</summary>
 	public bool ConsumeInitStartPending() => Interlocked.Exchange(ref _initStartPending, 0) == 1;
 
+	public AppRuntime(AppServices services) : this(services, NativeAudioFactory.CreateDeviceManager(), NativeAudioFactory.OpenCapture) { }
+
 	[System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "S2486", Justification = "诊断回调失败必须隔离，不能阻断运行时构造。")]
-	public AppRuntime(AppServices services)
+	internal AppRuntime(AppServices services, IAudioDeviceManager audioDevices, Func<string?, IAudioCaptureDevice> openCapture)
 	{
 		Services = services;
 		ConfigStore config = services.Config;
@@ -227,21 +234,32 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			Focus.Checkpoint);
 
 		// 三平台都直接推声卡。旧的 audio_backend=webview 配置不再读取。
-		_playback = Audio.NativeAudioFactory.CreatePlayback();
+		_audioDevices = audioDevices;
+		_openCapture = openCapture;
+		_playback = NativeAudioFactory.CreatePlayback(() =>
+		{
+			string output = RealtimeVoiceSettings.ReadOutputDeviceId(config);
+			Volatile.Write(ref _openedOutputDeviceId, output);
+			return output;
+		});
 		_recorder = Audio.NativeAudioFactory.CreateRecorder(_captureOwnership);
 		AudioBackendName = "native";
 		services.Logger.Write(LogSource.Backend, "info", "音频后端：原生设备");
 
-		Voice = new VoiceService(services.Http, config, _playback, () => _recorder, services.Paths);
+		Voice = new VoiceService(services.Http, config, _playback, () => _recorder, services.Paths, VoiceMetrics);
+		SttProviders = SttProviderRegistry.CreateDefault(services.Http, config, includeCloudProviders: !services.SafeMode);
 		RealtimeVoice = new RealtimeVoiceSession(
 			() => RealtimeVoiceSettings.Read(config),
 			services.SafeMode,
 			_captureOwnership,
-			Audio.NativeAudioFactory.OpenCapture,
-			services.SafeMode ? null : new OpenAiRealtimeSttProvider(config),
-			services.SafeMode ? null : new GptTranscribeProvider(services.Http, config, new WhisperSttProvider(services.Http, config)),
-			() => Voice.Stop(),
-			lifetime: _lifetimeCts.Token);
+			openDevice: null,
+			streamingSttProvider: null,
+			batchSttProvider: null,
+			stopSpeech: Voice.Stop,
+			lifetime: _lifetimeCts.Token,
+			openDeviceById: openCapture,
+			metrics: VoiceMetrics,
+			sttRegistry: SttProviders);
 		RealtimeVoice.PhaseChanged += OnRealtimeVoicePhaseChanged;
 		RealtimeVoice.TurnAccepted = HandleRealtimeVoiceTurnAsync;
 		_petInteractionService = new PetInteractionReactionService(services.Http, config, customProviders: services.Chat.CustomProviders);
@@ -297,6 +315,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 				InvalidateSnapshot();
 			};
 		}
+		_audioDevices.DevicesChanged += OnAudioDevicesChanged;
 	}
 
 	private IReadOnlyList<IExpressionChannel>? _expressionChannels;
@@ -329,6 +348,8 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	{
 		if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 		_lifetimeCts.Cancel();
+		_audioDevices.DevicesChanged -= OnAudioDevicesChanged;
+		_audioDevices.Dispose();
 		RealtimeVoice.PhaseChanged -= OnRealtimeVoicePhaseChanged;
 		try { RealtimeVoice.Dispose(); } catch { /* 实时语音收尾失败不挡住其余释放。 */ }
 		// 先于插件运行时释放：同步注销租约并取消进行中的插件请求，再进入异步清理。

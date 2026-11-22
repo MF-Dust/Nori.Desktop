@@ -12,9 +12,9 @@
 
 | 边界 | 核心类型 / 文件 | 职责与隔离约束 |
 | --- | --- | --- |
-| 1. 音频采集与连续重采样 | `IAudioCaptureDevice`、`CaptureOwnership`、`ContinuousAudioProcessor`、`StatefulLinearResampler`、`PcmLevel`、`WasapiCaptureDevice` / `CoreAudioCaptureDevice` / `AlsaCaptureDevice` | 按次打开平台默认输入设备，进程内由 `CaptureOwnership` 互斥占用；对任意设备块大小做残余帧对齐、多声道下混与跨块无漂移线性重采样，输出标准化 `0..1` 输入电平。 |
+| 1. 音频采集与连续重采样 | `IAudioCaptureDevice`、`CaptureOwnership`、`ContinuousAudioProcessor`、`StatefulLinearResampler`、`PcmLevel`、`WasapiCaptureDevice` / `CoreAudioCaptureDevice` / `AlsaCaptureDevice` | 按次打开显式选择的输入设备（留空使用系统默认设备），进程内由 `CaptureOwnership` 互斥占用；对任意设备块大小做残余帧对齐、多声道下混与跨块无漂移线性重采样，输出标准化 `0..1` 输入电平。 |
 | 2. VAD 与有界音频缓冲 | `EnergyVoiceActivity`、`BoundedAudioQueue` | 本地能量语音活动检测（灵敏度 `0..1` 与静音收尾阈值夹紧），维护前置环形缓冲与有界待发送队列；溢出时立即释放缓冲，避免内存无限增长。 |
-| 3. STT 提供商与能力注册表 | `ISttProvider`、`SttProviderCapabilities`、`SttProviderRegistry`、`OpenAiRealtimeSttProvider`、`GptTranscribeProvider`、`WhisperSttProvider`、`ILocalSttEngine`、`LocalOfflineSttProvider` | 统一声明流式、整段、语言提示、本地离线与硬件加速能力。**集成现状**：`OpenAiRealtimeSttProvider`、`GptTranscribeProvider` 与 `WhisperSttProvider` 已接入 `AppRuntime` → `RealtimeVoiceSession`；`SttProviderRegistry`、`ILocalSttEngine`、`LocalOfflineSttProvider` 与 `ProcessLocalSttEngine` 已作为独立能力接缝与受控进程适配器实现并通过单元测试，待后续运行时接线及外部引擎包挂接后接入 `AppRuntime`。 |
+| 3. STT 提供商与能力注册表 | `ISttProvider`、`SttProviderCapabilities`、`SttProviderRegistry`、`OpenAiRealtimeSttProvider`、`GptTranscribeProvider`、`WhisperSttProvider`、`ILocalSttEngine`、`LocalOfflineSttProvider` | 统一声明流式、整段、语言提示、本地离线与硬件加速能力。`AppRuntime` 通过注册表与 `RealtimeSttPipeline` 按模式和能力选择服务。普通模式注册云端流式、云端整段及本地离线接缝；本地接缝不内置可用引擎。 |
 | 4. 会话编排与统一轮次状态机 | `RealtimeVoiceSession`、`RealtimeVoicePhase`、`RealtimeVoiceTurn`、`RealtimeSttPipeline`、`RealtimeTranscriptionCoordinator`、`BoundedSttEventChannel` | 维护单调递增 `Generation` 与不可逆轮次交付状态机；处理流式会话创建、事件背压消费、提交前失败自动回退整段转写，以及旧代号陈旧结果丢弃。 |
 | 5. TTS 合成与原生播放 | `VoiceService`、`ITtsProvider`、`IAudioPlayback`、`NativeAudioPlayback`、`SentenceChunker`、`AudioSynthesisCache` | 按句切段并行预取（有界流水线）、LRU 缓存音频并经平台原生声卡输出 PCM WAV；播放期间实时采样音量驱动 Live2D 口型，并与 `RealtimeVoiceSession` 联动暂停监听。 |
 | 6. 原生 UI、桥接与安全诊断 | `ChatView.LiveVoice`、`NativeChatState`、`VoiceSettingsPage`、`BridgeCommands.RealtimeVoice`、`RealtimeVoiceSettings`、`SttSanitizer`、`DiagnosticExporter` | 原生聊天栏通过独立 80ms 轻量定时器读取内存态快照（不进入通用快照与日志），提供失败转写草稿保护；诊断导出与日志严格屏蔽录音、转写正文、凭据与设备原文。 |
@@ -36,7 +36,7 @@ Idle ──▶ Listening ──▶ Transcribing ──▶ Thinking ──▶ Spe
 - **模式与回退策略（`RealtimeSttPipeline`）**：
   - `SttMode.RealtimeCloud`：优先建立流式 WebSocket 会话；若在 `Commit` 之前发生传输/建连/队列溢出失败，允许按配置自动回退到同代号的整段文件转写，并在状态中标记 `UsedBatchFallback` 与 `FallbackReason`。
   - `SttMode.BatchCloud`：本地 VAD 截断完整一句话后，上传经 `AudioMime.ValidateRecorded` 校验的 WAV 录音至 `/audio/transcriptions`（默认 `gpt-transcribe`，兼容端点不支持时自动降级 `whisper-1`）。
-  - `SttMode.Local`：在 `RealtimeSttPipeline` 与 `SttProviderRegistry` 中已强制约束仅匹配本地离线提供商、严禁降级到任何云端或联网 STT 服务；在 `AppRuntime` 尚未接入本地引擎包或 `LocalOfflineSttProvider` 前，运行时切换至 `local` 模式将提示当前无可用离线识别服务。
+  - `SttMode.Local`：在 `RealtimeSttPipeline` 与 `SttProviderRegistry` 中已强制约束仅匹配本地离线提供商、严禁降级到任何云端或联网 STT 服务；当前已注册 `LocalOfflineSttProvider`，但未挂载本地引擎，因此普通模式下尝试以 `local` 启动监听会提示当前无可用离线识别服务。
 
 ### 1.3 OpenAI Realtime GA WebSocket 协议
 
@@ -74,26 +74,26 @@ Idle ──▶ Listening ──▶ Transcribing ──▶ Thinking ──▶ Spe
 ### 1.7 安全隐私与指标体系
 
 - **默认关闭与 `--safe-mode` 现状边界**：
-  - **已集成到 `AppRuntime` / `RealtimeVoiceSession`**：`realtime_voice_enabled` 默认为 `false`；即使设为 `true` 也不会在启动时自动打开麦克风，必须由用户主动触发。`--safe-mode` 下 `AppRuntime` 向 `RealtimeVoiceSession` 传入 `null` 作为云端 STT 提供商，严格禁止初始化/调用外部联网 STT 服务与远端模型下载。
-  - **已实现独立接缝待运行时接线**：`SttProviderRegistry`（在 `AllowNetwork = false` 时强制要求 `Mode == SttMode.Local && SupportsLocalOffline && !RequiresNetwork && !UploadsAudioToCloud`）、`ILocalSttEngine`、`LocalOfflineSttProvider` 与 `ProcessLocalSttEngine` 已完成独立实现与单元测试覆盖，但当前尚未接入 `AppRuntime` 主运行时；因此当前版本在 `--safe-mode` 下仅保证严禁联网 STT，尚不具备端到端开箱可用的本地离线识别交付，需待后续运行时接线并挂载外部本地引擎与模型包。
+  - `realtime_voice_enabled` 默认为 `false`；即使设为 `true` 也不会在启动时自动打开麦克风。`--safe-mode` 下注册表只注册本地离线接缝，实时语音按 `AllowNetwork = false` 筛选，且桥接与会话入口均拒绝启动实时语音。安全模式仍可在设置窗口纯本地枚举设备、测量麦克风电平；不会发起外部网络语音连接或远端模型下载。
 - **零正文与零凭据泄露**：`SttSanitizer` 规范化并检查 API Key 不含控制字符，对所有错误文本执行密钥替换与 `SensitiveDataRedactor` 脱敏、单行化及 300 字符截断；日志与 `DiagnosticExporter` 不包含原始音频字节、识别正文、提示词或真实设备路径。
-- **内存指标**：`RealtimeVoiceSession.LastPeakBufferedBytes`、`BoundedAudioQueue` 与 `RealtimeVoiceStatus` 仅在内存记录缓冲峰值与回退原因等结构化状态字段，不落盘敏感内容。
+- **指标采样**：`AppRuntime` 与诊断导出共享 `VoiceMetricsTracker`。实时会话记录开口检测到首个真实增量、提交到最终流式转写、待发送音频队列峰值，以及监听恢复时设备重开失败次数；语音 Agent 轮次记录首个助手文本增量延迟；TTS 记录首段交给播放器的延迟。诊断 ZIP 仅导出数值汇总，不包含文本、音频、设备标识或凭据。
 
 ### 1.8 三平台设备管理
 
 | 平台 | 音频后端 | 系统前提与注意事项 |
 | --- | --- | --- |
-| Windows | `WasapiAudioDevice` / `WasapiCaptureDevice` | 直接连接默认 WASAPI 端点；蓝牙耳机 HFP（通话麦克风）与 A2DP（立体声播放）切换时设备采样率可能变化，依赖 `ContinuousAudioProcessor` 适配。 |
+| Windows | `WasapiAudioDevice` / `WasapiCaptureDevice` | 直接连接默认或指定 WASAPI 端点；蓝牙耳机 HFP（通话麦克风）与 A2DP（立体声播放）切换时设备采样率可能变化，依赖 `ContinuousAudioProcessor` 适配。 |
 | macOS | `CoreAudioOutputDevice` / `CoreAudioCaptureDevice`（AudioQueue） | 打包 `Info.plist` 必须包含 `NSMicrophoneUsageDescription` 权限描述，否则系统直接拒绝采集；UI 线程不得同步阻塞音频停机。 |
-| Linux | `AlsaAudioDevice` / `AlsaCaptureDevice`（`default` 设备） | 需安装 `libasound2t64`（Ubuntu 24.04+）或 `libasound2`，通过 `default` 设备接入 ALSA / PipeWire-ALSA；读取、挂起恢复与停止支持取消与限时收尾。 |
+| Linux | `AlsaAudioDevice` / `AlsaCaptureDevice`（`default` 设备） | 需安装 `libasound2t64`（Ubuntu 24.04+）或 `libasound2`，通过默认或指定设备接入 ALSA / PipeWire-ALSA；读取、挂起恢复与停止支持取消与限时收尾。 |
 
-- **按次打开策略**：`NativeAudioFactory` 每次播放或录音按需打开默认设备，不长期独占声卡句柄；用户中途切换系统默认设备时，下一轮自动生效；设备标识符通过 `RealtimeVoiceSettings.IsInvalidDevice` 拦截超长或含控制字符的值。
-
+- **选择与枚举**：`AppRuntime` 持有并释放 `IAudioDeviceManager`。设置页从快照读取设备清单，也有设置窗口专用的纯本地 `audio_list_devices` 桥接命令。实时采集和麦克风自检使用配置的输入设备；原生 TTS 读取配置的输出设备。可选系统默认、枚举项或手动标识；设置页提示蓝牙免提双向模式可能降低音质。更改输入设备会停止实时语音，须手动重启。
+- **输出切换**：设备管理器轮询发现正在使用的输出断开或默认输出路由变更时，终止受影响的当前朗读并复位播放状态；下一次播放按配置重新打开，不自动重放。
+- **输入恢复边界**：`AudioDeviceRecoveryPolicy` 已独立实现并通过策略单测，但输入热插拔或系统睡眠/唤醒尚未接入自动重开麦克风的桌面链路。须先接入三平台真实电源/设备通知并完成真机验证；用户主动停止后不得自动开麦。
 ---
 
 ## 2. H1 本地离线语音引擎评估（`whisper.cpp` vs `sherpa-onnx`）
 
-Nori.Desktop 2.1 在 `Nori.Core/Voice/Stt` 中定义了 `ILocalSttEngine`、`LocalOfflineSttProvider` 与 `SttProviderRegistry` 扩展接缝，以及 `ProcessLocalSttEngine` / `WhisperCppProcessEngine` 受控进程适配器。**当前版本未将本地离线 STT 接缝接入 `AppRuntime` 主运行链路，也不内置本地引擎二进制与模型权重，且不自动下载任何模型文件。** 以下基于架构特性与工程约束对两个主流开源方案进行评估：
+Nori.Desktop 2.1 在 `Nori.Core/Voice/Stt` 中定义了 `ILocalSttEngine`、`LocalOfflineSttProvider` 与 `SttProviderRegistry` 扩展接缝，以及 `ProcessLocalSttEngine` / `WhisperCppProcessEngine` 受控进程适配器。**`AppRuntime` 已注册本地离线接缝，但不内置本地引擎二进制或模型权重，也不自动下载任何模型文件。** 以下基于架构特性与工程约束对两个主流开源方案进行评估：
 
 ### 2.1 核心指标对比
 
@@ -113,8 +113,8 @@ Nori.Desktop 2.1 在 `Nori.Core/Voice/Stt` 中定义了 `ILocalSttEngine`、`Loc
 
 ### 2.2 推荐分阶段接入方案
 
-1. **阶段一（当前 2.1 已落地独立接缝与单测，待运行时接线）：扩展接缝 + 受控外部进程适配器**
-   - 保持主安装包轻量化，不绑定任何本地推理二进制或模型权重；`AppRuntime` 目前仍仅直接装配云端 STT 提供商（`--safe-mode` 下为 `null`），`SttProviderRegistry` 与 `LocalOfflineSttProvider` 已作为可测试接缝就绪。
+1. **阶段一（当前 2.1 已完成注册表运行时接线与单测，待挂载外部引擎与模型）：扩展接缝 + 受控外部进程适配器**
+   - 保持主安装包轻量化，不绑定任何本地推理二进制或模型权重；`AppRuntime` 通过注册表装配 `LocalOfflineSttProvider` 接缝，仍需挂载外部引擎和模型。
    - `SttProviderRegistry` 严格依据能力与隐私策略路由，拒绝 `Mode == Local` 且未声明 `SupportsLocalOffline` 或矛盾声明 `RequiresNetwork`/`UploadsAudioToCloud` 的注册；`LocalOfflineSttProvider` 如实保留底层引擎 `SupportsLocalOffline` 声明并拒绝非离线引擎执行。
    - 提供 `ProcessLocalSttEngine` 与 `WhisperCppProcessEngine` 作为受控外部进程适配器：仅使用 `ProcessStartInfo.ArgumentList`（防命令注入）；在任何 `File.Exists`/`Directory.Exists` 探测前严格拒绝 UNC/网络路径（`\\server\share`、`//server/share`、`\\?\UNC\...`、`file://` 等）及解析目标指向 UNC/网络路径的符号链接；取消或超时时先终止进程树并有界等待子进程退出释放文件句柄，再在 `finally` 中对临时 WAV 文件执行尽力零值覆写并删除（注：用户态覆写属于尽力清理，在现代 SSD 磨损均衡或 CoW 文件系统上不构成物理扇区不可恢复销毁保证），若最终删除失败则通过 `TempFileCleanupFailed` 事件、回调与 `LastCleanupFailure` 状态记录暴露而非静默吞掉。
    - **安全边界诚实说明**：宿主侧本地离线适配器仅运行用户显式配置的可信离线引擎二进制，宿主自身不发起任何网络请求，但路径与参数校验不等同于对任意第三方外部二进制的操作系统级网络沙箱。
@@ -156,12 +156,13 @@ Nori.Desktop 2.1 在 `Nori.Core/Voice/Stt` 中定义了 `ILocalSttEngine`、`Loc
   - `EnergyVoiceActivityTests`、`RealtimeVoiceSessionTests`：能量检测灵敏度、静音超时收尾、前置环形缓冲、`BoundedAudioQueue` 容量上限与溢出保护。
 - **OpenAI Realtime GA 与事件背压**：
   - `OpenAiRealtimeSttTests`、`RealtimeStreamingSttIntegrationTests`：`OpenAiRealtimeSttUriBuilder` 安全校验（拒绝非环回明文/URL 凭据/非法查询参数）、`session.update` 握手、24kHz PCM16 帧分片与提交、`BoundedSttEventChannel` 背压、超时关闭与 `SttSanitizer` 密钥脱敏。
-- **提供商契约与独立能力接缝（待 `AppRuntime` 运行时接线）**：
+- **提供商契约与能力注册表**：
   - `SttProvidersTests`：`OpenAiRealtimeSttProvider`、`GptTranscribeProvider`（含 `whisper-1` 降级）、`WhisperSttProvider` 协议与异常契约（已接入 `AppRuntime`）。
-  - `LocalOfflineSttAndCapabilitiesTests`：`SttProviderRegistry` 能力路由与零名称硬编码验证、拒绝矛盾本地/非离线声明、`AllowNetwork = false` 严格本地且零云上传过滤、`LocalOfflineSttProvider` 如实保留底层离线声明并拒绝非离线引擎、`ProcessLocalSttEngine` 拒绝 UNC/网络路径与指向 UNC 的符号链接（零提前文件探测）、取消/超时等待子进程退出后再执行尽力覆写与删除、以及删除失败可观测暴露（以上为独立接缝与单元测试覆盖，尚未接入 `AppRuntime`）。
+  - `LocalOfflineSttAndCapabilitiesTests`：`SttProviderRegistry` 能力路由与零名称硬编码验证、拒绝矛盾本地/非离线声明、`AllowNetwork = false` 严格本地且零云上传过滤、`LocalOfflineSttProvider` 如实保留底层离线声明并拒绝非离线引擎、`ProcessLocalSttEngine` 拒绝 UNC/网络路径与指向 UNC 的符号链接（零提前文件探测）、取消/超时等待子进程退出后再执行尽力覆写与删除、以及删除失败可观测暴露（外部进程适配器仍未挂载到桌面运行时）。
 - **会话状态机、桥接与原生长链路**：
   - `RealtimeVoiceSessionTests`：代号递增防陈旧、打断与播放期 `CapturePaused` 护栏、失败前自动回退整段转写、草稿/文本零泄露状态字段。
-  - `RealtimeVoiceBridgeTests`：原生桥接命令路由、白名单与安全模式拦截。
+  - `RealtimeVoiceBridgeTests`：原生桥接命令路由、指定输入设备、设置页枚举、STT 注册表装配与安全模式拦截。
+  - `VoiceConversationIntegrationTests`、`VoiceSecurityAndPrivacyTests`：模拟流式转写与首段播放指标、设备重开失败、语音 Agent 首个增量与诊断 ZIP 隐私。
   - `NativeAudioPlaybackTests`、`NativeMicrophoneRecorderTests`、`WaveDecoderTests`、`VoiceAudioTests`、`VoicePipelineTests`、`VoiceProviderTests`、`VoiceServiceTests`、`VoiceTextSanitizerTests`：WAV 解码、有界合成预取流水线、LRU 缓存与文本清洗。
   - `WasapiAudioDeviceTests`、`CoreAudioDeviceTests`、`AlsaAudioDeviceTests`、`NativeAudioFactoryTests`：三平台设备适配器生命周期、异常处理与工厂分发逻辑（含模拟/接口层测试）。
 
@@ -172,7 +173,7 @@ Nori.Desktop 2.1 在 `Nori.Core/Voice/Stt` 中定义了 `ILocalSttEngine`、`Loc
 1. **Windows 10/11（`win-x64`）实机验证**
    - [ ] 默认麦克风与扬声器（WASAPI 共享模式）在连续对话 5 轮以上时的采集稳定性、无爆音/漂移与口型同步。
    - [ ] 蓝牙耳机（如 AirPods / Sony WH 系列）连接与通话：切换 HFP 免提麦克风与 A2DP 播放时，采样率切换下 `ContinuousAudioProcessor` 是否正常收敛且不崩溃。
-   - [ ] 系统设置热切换默认输入/输出设备后，下一轮语音输入与 TTS 朗读是否自动跟随新设备。
+   - [ ] 实际列出并选择指定输入/输出设备、切回系统默认；变更默认输出或断开选定输出时确认当前朗读安全停止，下一次播放使用正确路由。
    - [ ] 拔掉唯一麦克风或禁用录音权限时，UI 是否在聊天栏展示清晰中文提示并安全回到 `Error`/`Idle`，不卡死窗口。
 2. **macOS（`osx-arm64` / `osx-x64`）实机验证**
    - [ ] 从 `.app` 包启动时，`Info.plist` 中 `NSMicrophoneUsageDescription` 正确触发系统麦克风授权弹窗；拒绝授权后重新开启实时语音或测试麦克风，确认给出友好中文提示且不崩溃。
@@ -183,6 +184,6 @@ Nori.Desktop 2.1 在 `Nori.Core/Voice/Stt` 中定义了 `ILocalSttEngine`、`Loc
    - [ ] KDE Plasma Wayland / GNOME Wayland 桌面下，聊天窗口实时语音栏刷新、快捷键/按钮打断与桌宠透明穿透无互相干扰。
    - [ ] 蓝牙耳机切换 HSP/HFP 配置文件后重新开始监听，确认采集与重采样正常。
 4. **跨平台系统休眠与真实端点验证**
-   - [ ] 三平台在开启或暂停实时语音后使设备进入睡眠/合盖休眠再唤醒，验证音频设备恢复、WebSocket 断线重连或安全回到可重试状态，不残留僵尸线程或占用锁。
+   - [ ] 三平台在开启或暂停实时语音后使设备进入睡眠/合盖休眠再唤醒，验证现有链路安全回到可手动重试状态，不残留僵尸线程或占用锁；主动停止后重新插入设备及唤醒不能自动开麦。
    - [ ] 配置真实 OpenAI API Key 验证 `wss://api.openai.com/v1/realtime?intent=transcription`（`gpt-live-transcribe`）增量字幕、提交与打断；并在人为断网/断开代理时验证超时释放、提交前批处理回退与「将转写追加到草稿」草稿保护功能。
-   - [ ] **（待 `AppRuntime` 运行时接线与外部引擎包挂接后执行）**接入真实本地 `whisper.cpp`（或外部 `ILocalSttEngine` 扩展）配合真实模型权重在三平台实测冷加载耗时、内存峰值与端到端延迟，并确认 `--safe-mode` 与断网状态下可完整离线识别且临时音频目录零残留。
+   - [ ] **（待外部引擎包挂接及本地模式启动路径开放后执行）**接入真实本地 `whisper.cpp`（或外部 `ILocalSttEngine` 扩展）配合真实模型权重在三平台实测冷加载耗时、内存峰值与端到端延迟，并确认 `--safe-mode` 与断网状态下可完整离线识别且临时音频目录零残留。

@@ -7,35 +7,59 @@ namespace Nori.Core.Voice.Realtime;
 internal sealed class RealtimeSttPipeline(
 	ISttProvider? streamingProvider,
 	ISttProvider? batchProvider,
-	Func<SttRequestOptions>? requestOptions)
+	Func<SttRequestOptions>? requestOptions,
+	SttProviderRegistry? registry = null,
+	bool allowNetwork = true)
 {
 	public bool SupportsStreaming(RealtimeVoiceSettings settings) =>
-		settings.SttMode == SttMode.RealtimeCloud
-		&& streamingProvider?.Capabilities is { SupportsRealtimePcm: true, SupportsIncrementalDelta: true };
+		settings.SttMode == SttMode.RealtimeCloud && StreamingProvider() is not null;
 
-	public bool SupportsLocal => batchProvider?.Capabilities is { SupportsBatch: true, SupportsLocalOffline: true };
+	public bool SupportsLocal => BatchProvider(SttMode.Local) is not null;
 
-	public bool CanTranscribeBatch(RealtimeVoiceSettings settings) =>
-		batchProvider?.Capabilities is { SupportsBatch: true }
-		&& !(settings.SttMode == SttMode.Local && !SupportsLocal)
-		&& !(settings.SttMode != SttMode.Local && batchProvider.Mode == SttMode.Local);
+	public bool CanTranscribeBatch(RealtimeVoiceSettings settings) => BatchProvider(settings.SttMode) is not null;
 
 	public RealtimeStreamingUtterance Open(
 		RealtimeVoiceSettings settings, int sampleRate, int channels,
 		Func<StreamingSttEvent, TranscriptionEventResult> handle, CancellationToken token,
 		int maxBufferedBytes = BoundedAudioQueue.DefaultMaxBufferedBytes) =>
-		new(streamingProvider!, () => Options(settings, settings.StreamingSttModel), sampleRate, channels, handle, token, maxBufferedBytes);
+		new(StreamingProvider() ?? throw new InvalidOperationException("当前没有可用的流式语音识别服务"),
+			() => Options(settings, settings.StreamingSttModel), sampleRate, channels, handle, token, maxBufferedBytes);
 
 	public Task<string> TranscribeAsync(RealtimeVoiceSettings settings, RecordedAudio audio, CancellationToken token)
 	{
 		token.ThrowIfCancellationRequested();
-		if (!CanTranscribeBatch(settings))
-			throw new InvalidOperationException("当前模式没有可用的整段语音识别服务");
+		ISttProvider provider = BatchProvider(settings.SttMode)
+			?? throw new InvalidOperationException("当前模式没有可用的整段语音识别服务");
 		SttRequestOptions options = settings.SttMode == SttMode.Local
 			? new SttRequestOptions { Language = settings.Language }
 			: Options(settings, settings.BatchSttModel);
-		return batchProvider!.TranscribeAsync(audio, options, token);
+		return provider.TranscribeAsync(audio, options, token);
 	}
+
+	private ISttProvider? StreamingProvider() => registry is null
+		? streamingProvider?.Capabilities is { SupportsRealtimePcm: true, SupportsIncrementalDelta: true } ? streamingProvider : null
+		: Select(SttMode.RealtimeCloud, new()
+		{
+			RequireRealtimePcm = true,
+			RequireIncrementalDelta = true,
+		});
+
+	private ISttProvider? BatchProvider(SttMode mode)
+	{
+		bool local = mode == SttMode.Local;
+		if (registry is null)
+			return batchProvider?.Capabilities is { SupportsBatch: true } capabilities
+				&& (local ? capabilities.SupportsLocalOffline : batchProvider.Mode != SttMode.Local) ? batchProvider : null;
+		return Select(local ? SttMode.Local : SttMode.BatchCloud, new()
+		{
+			RequireBatch = true,
+			RequireLocalOffline = local,
+		});
+	}
+
+	private ISttProvider? Select(SttMode mode, SttSelectionCriteria criteria) =>
+		registry!.FindMatching(criteria with { PreferredMode = mode, AllowNetwork = allowNetwork })
+			.FirstOrDefault(entry => entry.Descriptor.Mode == mode)?.Provider;
 
 	private SttRequestOptions Options(RealtimeVoiceSettings settings, string model) =>
 		(requestOptions?.Invoke() ?? new()) with { Model = model, Language = settings.Language };

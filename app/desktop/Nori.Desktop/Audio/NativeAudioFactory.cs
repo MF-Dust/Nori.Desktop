@@ -16,8 +16,8 @@ namespace Nori.Desktop.Audio;
 /// </summary>
 internal static class NativeAudioFactory
 {
-	internal static IAudioPlayback CreatePlayback() =>
-		new NativeAudioPlayback(OpenOutput, Decode);
+	internal static IAudioPlayback CreatePlayback(Func<string?>? outputDeviceId = null) =>
+		new NativeAudioPlayback(() => OpenOutput(outputDeviceId?.Invoke()), Decode);
 
 	internal static IMicrophoneRecorder CreateRecorder(CaptureOwnership? ownership = null) =>
 		new NativeMicrophoneRecorder(OpenCapture, ownership);

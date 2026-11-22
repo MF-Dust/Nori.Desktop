@@ -571,6 +571,12 @@ public sealed partial class BridgeCommands
 		"realtime_voice_status" => RealtimeVoiceStatusPayload(),
 
 		/// <summary>
+		/// 枚举本机输入与输出音频设备，不打开设备或访问网络。
+		/// 前端调用：invoke("audio_list_devices") → {inputs, outputs}
+		/// </summary>
+		"audio_list_devices" => await Task.Run(() => Runtime.ListAudioDevices(), cancellationToken),
+
+		/// <summary>
 		/// 运行本地麦克风电平自检，只检测输入电平，不上传也不保存录音。
 		/// 前端调用：invoke("voice_mic_test")
 		/// </summary>

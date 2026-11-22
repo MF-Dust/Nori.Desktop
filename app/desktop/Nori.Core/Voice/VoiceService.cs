@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using Nori.Core.Configuration;
+using Nori.Core.Voice.Metrics;
 
 namespace Nori.Core.Voice;
 
@@ -26,6 +28,7 @@ public sealed record VoicePlaybackMetrics(
 public sealed class VoiceService : IDisposable
 {
 	private readonly HttpClient _httpClient;
+	private readonly VoiceMetricsTracker? _metrics;
 	private readonly ConfigStore _config;
 	private readonly IAudioPlayback? _playback;
 	private readonly Func<IMicrophoneRecorder?> _recorderFactory;
@@ -60,13 +63,15 @@ public sealed class VoiceService : IDisposable
 		ConfigStore config,
 		IAudioPlayback? playback,
 		Func<IMicrophoneRecorder?> recorderFactory,
-		Nori.Core.Data.AppStoragePaths? paths = null)
+		Nori.Core.Data.AppStoragePaths? paths = null,
+		VoiceMetricsTracker? metrics = null)
 	{
 		_httpClient = httpClient;
 		_config = config;
 		_playback = playback;
 		_recorderFactory = recorderFactory;
 		_paths = paths;
+		_metrics = metrics;
 	}
 
 	private readonly Nori.Core.Data.AppStoragePaths? _paths;
@@ -229,6 +234,7 @@ public sealed class VoiceService : IDisposable
 			SingleWriter = true,
 			SingleReader = true,
 		});
+		long startedTimestamp = Stopwatch.GetTimestamp();
 		DateTimeOffset startedAt = DateTimeOffset.UtcNow;
 		DateTimeOffset? firstSynthesizedAt = null;
 		DateTimeOffset? firstPlaybackStartedAt = null;
@@ -293,7 +299,8 @@ public sealed class VoiceService : IDisposable
 					{
 						PublishMetrics(new VoicePlaybackMetrics(
 							startedAt, synthesizedAt, playbackStartedAt, null,
-							chunks.Count, Volatile.Read(ref synthesizedCount), 0, false, false));
+							chunks.Count, Volatile.Read(ref synthesizedCount), 0, false, false),
+							Stopwatch.GetElapsedTime(startedTimestamp));
 					}
 					await player.PlayAsync(audio, pipelineCts.Token);
 					pipelineCts.Token.ThrowIfCancellationRequested();
@@ -352,9 +359,10 @@ public sealed class VoiceService : IDisposable
 		}
 	}
 
-	private void PublishMetrics(VoicePlaybackMetrics metrics)
+	private void PublishMetrics(VoicePlaybackMetrics metrics, TimeSpan? firstPlaybackLatency = null)
 	{
 		lock (_metricsGate) _lastPlaybackMetrics = metrics;
+		if (firstPlaybackLatency is { } latency) _metrics?.RecordTtsFirstSegmentLatency(latency);
 		PlaybackMetricsUpdated?.Invoke(metrics);
 	}
 

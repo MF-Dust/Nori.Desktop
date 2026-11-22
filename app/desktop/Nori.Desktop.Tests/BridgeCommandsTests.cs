@@ -9,6 +9,7 @@ using Nori.Core.Logging;
 using Nori.Core.Mcp;
 using Nori.Core.Platform;
 using Nori.Core.Tools;
+using Nori.Core.Voice.Audio;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Automation.Desktop;
 using Nori.Desktop.Bridge;
@@ -247,7 +248,9 @@ public partial class BridgeCommandsTests : IDisposable
 		Func<IDesktopVisionWindowCatalog>? desktopVisionWindowCatalogFactory = null,
 		DesktopVisionApprovalCallback? desktopVisionApprovalCallback = null,
 		Func<DesktopAutomationPlatform>? desktopAutomationPlatformProvider = null,
-		Func<AutomationBounds>? screenBoundsProvider = null)
+		Func<AutomationBounds>? screenBoundsProvider = null,
+		IAudioDeviceManager? audioDevices = null,
+		Func<string?, IAudioCaptureDevice>? openCapture = null)
 	{
 		Directory.CreateDirectory(_tempDir);
 		_dbPath = Path.Combine(_tempDir, "nori.db");
@@ -300,7 +303,8 @@ public partial class BridgeCommandsTests : IDisposable
 		// 关于页首个快照会读取贡献者；预置新鲜的空缓存，避免测试访问真实 GitHub。
 		File.WriteAllText(_services.Paths.ContributorsCachePath, Nori.Core.Community.GitHubContributorCatalog.ToCacheJson(
 			new Nori.Core.Community.GitHubContributorCatalog.ContributorSnapshot(DateTimeOffset.UtcNow, [])));
-		_runtime = new AppRuntime(_services);
+		_runtime = audioDevices is not null && openCapture is not null
+			? new AppRuntime(_services, audioDevices, openCapture) : new AppRuntime(_services);
 		_services.Runtime = _runtime;
 		_services.Commands = new BridgeCommands(_services, new SynchronousUiDispatcher());
 	}

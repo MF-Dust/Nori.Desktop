@@ -52,6 +52,11 @@ internal sealed class NativeAudioDeviceManager() : IAudioDeviceManager, IAudioCa
 		return TryEnumerate(direction) ?? [];
 	}
 
+	internal IReadOnlyList<AudioDeviceInfo>? GetCachedDevices(AudioDeviceDirection direction)
+	{
+		lock (_gate) return _snapshots.GetValueOrDefault(direction);
+	}
+
 	public AudioDeviceInfo? GetDefaultDevice(AudioDeviceDirection direction) =>
 		EnumerateDevices(direction).FirstOrDefault(device => device.IsDefault);
 

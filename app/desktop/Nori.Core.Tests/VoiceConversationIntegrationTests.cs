@@ -7,6 +7,7 @@ using Nori.Core.Data;
 using Nori.Core.Tests.TestSupport;
 using Nori.Core.Voice;
 using Nori.Core.Voice.Audio;
+using Nori.Core.Voice.Metrics;
 using Nori.Core.Voice.Realtime;
 using Nori.Core.Voice.Stt;
 
@@ -142,6 +143,66 @@ public sealed class VoiceConversationIntegrationTests : IDisposable
 			Assert.Equal(RealtimeVoicePhase.Idle, session.Phase);
 			await WaitUntilAsync(() => !ownership.IsHeld);
 		}
+	}
+
+	[Fact]
+	public async Task RealtimeVoiceSession_流式转写与首段播放采样且只计一次()
+	{
+		VoiceMetricsTracker metrics = new();
+		FakeStreamingSttSession stream = new();
+		SttProviderRegistry registry = new();
+		registry.Register(new FakeStreamingSttProvider([stream]));
+		using NativeAudioPlayback playback = new(() => new ImmediateAudioDevice(), (_, _) => Tone(frames: 4410));
+		using HttpClient http = new(new ImmediateWavHandler());
+		using VoiceService voice = new(http, _config, playback, () => null, metrics: metrics);
+		TaskCompletionSource accepted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		using RealtimeVoiceSession session = new(
+			() => RealtimeVoiceSettings.Defaults with { Enabled = true, SttMode = SttMode.RealtimeCloud },
+			false, null, null, null, null, voice.Stop, metrics: metrics, sttRegistry: registry);
+		session.TurnAccepted = async turn =>
+		{
+			Assert.Equal("私密转写", turn.Text);
+			await voice.SpeakAsync("这是实际播放的首段。", cancellationToken: turn.CancellationToken);
+			accepted.TrySetResult();
+		};
+
+		await session.StartAsync().WaitAsync(Deadline);
+		Feed(session, 300, 0.4f);
+		await stream.FirstAudioReceived.Task.WaitAsync(Deadline);
+		stream.Emit(StreamingSttEventKind.Delta, "item", "私密");
+		stream.Emit(StreamingSttEventKind.Delta, "item", "转写");
+		Feed(session, 850, 0);
+		await stream.CommitCalled.Task.WaitAsync(Deadline);
+		stream.Emit(StreamingSttEventKind.Completed, "item", "私密转写");
+		await accepted.Task.WaitAsync(Deadline);
+
+		VoiceMetricsSnapshot snapshot = metrics.CaptureSnapshot();
+		Assert.Equal(1, snapshot.FirstDeltaLatencyMs.Count);
+		Assert.Equal(1, snapshot.FinalTranscriptLatencyMs.Count);
+		Assert.Equal(1, snapshot.TtsFirstSegmentLatencyMs.Count);
+		Assert.True(snapshot.FirstDeltaLatencyMs.P50 > 0);
+		Assert.True(snapshot.FinalTranscriptLatencyMs.P50 > 0);
+		Assert.True(snapshot.TtsFirstSegmentLatencyMs.P50 > 0);
+		Assert.True(snapshot.PeakAudioBufferBytes > 0);
+	}
+
+	[Fact]
+	public async Task RealtimeVoiceSession_连续监听重开失败计入指标()
+	{
+		VoiceMetricsTracker metrics = new();
+		ControlledCapture firstCapture = new();
+		int attempts = 0;
+		using RealtimeVoiceSession session = new(
+			() => RealtimeVoiceSettings.Defaults with { Enabled = true, Continuous = true },
+			false, new CaptureOwnership(), null, (_, _) => Task.FromResult("转写"), () => { }, false,
+			openDeviceById: _ => Interlocked.Increment(ref attempts) == 1 ? firstCapture : throw new AudioDeviceException("无法打开麦克风"),
+			metrics: metrics);
+		session.TurnAccepted = _ => Task.CompletedTask;
+		await session.StartAsync().WaitAsync(Deadline);
+		Feed(session, 300, 0.4f);
+		Feed(session, 850, 0);
+		await WaitUntilAsync(() => session.Phase == RealtimeVoicePhase.Error);
+		Assert.Equal(1, metrics.CaptureSnapshot().DeviceRecoveryFailureCount);
 	}
 
 	[Fact]

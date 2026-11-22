@@ -1,7 +1,9 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nori.Core.Agent;
 using Nori.Core.Voice.Audio;
+using Nori.Core.Voice.Metrics;
 using Nori.Core.Voice.Stt;
 
 namespace Nori.Core.Voice.Realtime;
@@ -37,7 +39,11 @@ public sealed class RealtimeVoiceSession : IDisposable
 	private readonly Func<RealtimeVoiceSettings> _settings;
 	private readonly bool _safeMode;
 	private readonly CaptureOwnership? _ownership;
-	private readonly Func<IAudioCaptureDevice>? _openDevice;
+	private readonly Func<string?, IAudioCaptureDevice>? _openDevice;
+	private readonly bool _supportsDeviceSelection;
+	private readonly VoiceMetricsTracker? _metrics;
+	private long? _firstDeltaStartedAt;
+	private long? _audioEndedAt;
 	private readonly Func<RecordedAudio, CancellationToken, Task<string>>? _transcribe;
 	private readonly Action _stopSpeech;
 	private readonly CancellationToken _lifetime;
@@ -99,12 +105,16 @@ public sealed class RealtimeVoiceSession : IDisposable
 		Action stopSpeech,
 		bool supportsStreaming,
 		CancellationToken lifetime = default,
-		IAecProcessor? aecProcessor = null)
+		IAecProcessor? aecProcessor = null,
+		Func<string?, IAudioCaptureDevice>? openDeviceById = null,
+		VoiceMetricsTracker? metrics = null)
 	{
 		_settings = settings ?? throw new ArgumentNullException(nameof(settings));
 		_safeMode = safeMode;
 		_ownership = ownership;
-		_openDevice = openDevice;
+		_openDevice = openDeviceById ?? (openDevice is null ? null : _ => openDevice());
+		_supportsDeviceSelection = openDeviceById is not null;
+		_metrics = metrics;
 		_transcribe = transcribe;
 		_stopSpeech = stopSpeech ?? throw new ArgumentNullException(nameof(stopSpeech));
 		_legacySupportsStreaming = supportsStreaming;
@@ -125,10 +135,13 @@ public sealed class RealtimeVoiceSession : IDisposable
 		Action stopSpeech,
 		Func<SttRequestOptions>? requestOptions = null,
 		CancellationToken lifetime = default,
-		IAecProcessor? aecProcessor = null)
-		: this(settings, safeMode, ownership, openDevice, null, stopSpeech, false, lifetime, aecProcessor)
+		IAecProcessor? aecProcessor = null,
+		Func<string?, IAudioCaptureDevice>? openDeviceById = null,
+		VoiceMetricsTracker? metrics = null,
+		SttProviderRegistry? sttRegistry = null)
+		: this(settings, safeMode, ownership, openDevice, null, stopSpeech, false, lifetime, aecProcessor, openDeviceById, metrics)
 	{
-		_stt = new(streamingSttProvider, batchSttProvider, requestOptions);
+		_stt = new(streamingSttProvider, batchSttProvider, requestOptions, sttRegistry, allowNetwork: !safeMode);
 	}
 
 	/// <summary>阶段变化。音频帧本身不会触发。</summary>
@@ -233,14 +246,15 @@ public sealed class RealtimeVoiceSession : IDisposable
 		lock (_gate) return (Status(), _publishedInputLevel, _coordinator?.Snapshot);
 	}
 
-	/// <summary>换上新选项。关闭总开关或切换识别模式时停止当前监听，不沿用上一轮的上传设置。</summary>
+	/// <summary>换上新选项。关闭总开关、切换识别模式或更换麦克风时停止当前监听。</summary>
 	public Task ApplySettingsAsync(RealtimeVoiceSettings settings)
 	{
 		ArgumentNullException.ThrowIfNull(settings);
 		bool stop;
 		lock (_gate)
 		{
-			stop = (!settings.Enabled || settings.SttMode != _tuning.SttMode)
+			stop = (!settings.Enabled || settings.SttMode != _tuning.SttMode
+				|| settings.InputDeviceId != _tuning.InputDeviceId || settings.InputDeviceInvalid != _tuning.InputDeviceInvalid)
 				&& _phase is not (RealtimeVoicePhase.Idle or RealtimeVoicePhase.Error);
 			_tuning = settings;
 		}
@@ -653,26 +667,27 @@ public sealed class RealtimeVoiceSession : IDisposable
 		if (_tuning.SttMode == SttMode.Local && _stt?.SupportsLocal != true)
 			throw new InvalidOperationException("当前没有可用的本地语音识别服务");
 		if (_tuning.InputDeviceInvalid) throw new InvalidOperationException("麦克风标识无效");
-		if (_tuning.InputDeviceId.Length > 0)
+		if (_tuning.InputDeviceId.Length > 0 && !_supportsDeviceSelection)
 			throw new InvalidOperationException("当前采集只打开系统默认麦克风，不能按设备标识切换");
 	}
 
 	private bool CanResumeLocked() =>
-		_tuning.Enabled && _tuning.Continuous && !_safeMode && !_tuning.InputDeviceInvalid && _tuning.InputDeviceId.Length == 0;
+		_tuning.Enabled && _tuning.Continuous && !_safeMode && !_tuning.InputDeviceInvalid && (_supportsDeviceSelection || _tuning.InputDeviceId.Length == 0);
 
-	private Task StartLoopLocked(CancellationTokenSource listen)
+	private Task StartLoopLocked(CancellationTokenSource listen, bool recovering = false)
 	{
 		TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		_loopRunning = true;
-		_listenTask = Task.Run(() => ListenAsync(listen, ready));
+		string deviceId = _tuning.InputDeviceId;
+		_listenTask = Task.Run(() => ListenAsync(listen, ready, deviceId, recovering));
 		return ready.Task;
 	}
 
-	private async Task ListenAsync(CancellationTokenSource listen, TaskCompletionSource ready)
+	private async Task ListenAsync(CancellationTokenSource listen, TaskCompletionSource ready, string deviceId, bool recovering)
 	{
 		if (_ownership is not null && !_ownership.TryAcquire())
 		{
-			FailOpen(ready, new InvalidOperationException("麦克风正被占用"));
+			FailOpen(listen, ready, new InvalidOperationException("麦克风正被占用"), recovering);
 			lock (_gate) _loopRunning = false;
 			return;
 		}
@@ -680,7 +695,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 		IAudioCaptureDevice? device = null;
 		try
 		{
-			device = _openDevice!();
+			listen.Token.ThrowIfCancellationRequested();
+			device = _openDevice!(deviceId.Length == 0 ? null : deviceId);
 			AudioFormat format = device.Open();
 			lock (_gate)
 			{
@@ -727,7 +743,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 			}
 			else if (!alreadyLeft)
 			{
-				FailOpen(ready, exception);
+				FailOpen(listen, ready, exception, recovering && !ready.Task.IsCompleted);
 			}
 			else
 			{
@@ -757,7 +773,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		else if (resume) ResumeLoop();
 	}
 
-	private void FailOpen(TaskCompletionSource ready, Exception exception)
+	private void FailOpen(CancellationTokenSource listen, TaskCompletionSource ready, Exception exception, bool recovering)
 	{
 		string message = exception is OperationCanceledException
 			? "实时语音启动已取消"
@@ -766,6 +782,12 @@ public sealed class RealtimeVoiceSession : IDisposable
 				: "麦克风打开失败";
 		lock (_gate)
 		{
+			if (!ReferenceEquals(_listenCts, listen) || listen.IsCancellationRequested)
+			{
+				ready.TrySetCanceled();
+				return;
+			}
+			if (recovering) _metrics?.RecordDeviceRecoveryFailure();
 			CancelTurnLocked();
 			ClearAudioLocked();
 			ResetInputLevelLocked();
@@ -805,7 +827,9 @@ public sealed class RealtimeVoiceSession : IDisposable
 	{
 		CancellationTokenSource listen = CancellationTokenSource.CreateLinkedTokenSource(_lifetime);
 		ReplaceListenLocked(listen);
-		_ = StartLoopLocked(listen);
+		_ = StartLoopLocked(listen, recovering: true).ContinueWith(
+			static task => _ = task.Exception, CancellationToken.None,
+			TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 	}
 
 	private void CommitUtterance(long? expectedGeneration = null, RealtimeStreamingUtterance? expectedStream = null)
@@ -835,6 +859,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 			_activity.ResetSpeech();
 			if (_stream is null) CreateTurnLocked();
 			generation = _generation;
+			_audioEndedAt = Stopwatch.GetTimestamp();
 			_stream?.EndAudio();
 			_error = "";
 			hasDevice = _openDevice is not null;
@@ -895,7 +920,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 			{
 				if (!IsActiveTurnLocked(generation)) return;
 				if (stream is not null)
-					_lastPeakBufferedBytes = Math.Max(_lastPeakBufferedBytes, stream.PeakBufferedBytes);
+					ObserveBufferPeakLocked(stream);
 				_stream = null;
 				if (streamingResult == StreamingUtteranceResult.OverflowBeforeCommit)
 				{
@@ -1046,6 +1071,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		if (SupportsStreaming && TurnAccepted is not null)
 		{
 			RealtimeVoiceTurn turn = CreateTurnLocked();
+			_firstDeltaStartedAt = Stopwatch.GetTimestamp();
 			_coordinator = new RealtimeTranscriptionCoordinator(turn.Generation, turn.TurnId);
 			_stream = _stt!.Open(_turnSettings, _sampleRate, 1,
 				sttEvent => HandleStreamingEvent(turn.Generation, sttEvent), turn.CancellationToken, MaxStreamingBufferedBytes);
@@ -1058,6 +1084,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 		long generation = ++_generation;
 		ReplaceTurnLocked();
 		_turnSettings = _tuning;
+		_firstDeltaStartedAt = null;
+		_audioEndedAt = null;
 		return _activeTurn = new RealtimeVoiceTurn(generation, "", _turnCts!.Token, state: RealtimeVoicePhase.Transcribing);
 	}
 
@@ -1070,6 +1098,14 @@ public sealed class RealtimeVoiceSession : IDisposable
 				return TranscriptionEventResult.Ignored;
 			RealtimeTranscriptSnapshot? previous = coordinator.Snapshot;
 			result = coordinator.Handle(generation, sttEvent);
+			if (result == TranscriptionEventResult.Partial && _firstDeltaStartedAt is { } started
+				&& !string.IsNullOrWhiteSpace(sttEvent.Text))
+			{
+				_firstDeltaStartedAt = null;
+				_metrics?.RecordFirstDeltaLatency(Stopwatch.GetElapsedTime(started));
+			}
+			if (result == TranscriptionEventResult.Completed && _audioEndedAt is { } ended)
+				_metrics?.RecordFinalTranscriptLatency(Stopwatch.GetElapsedTime(ended));
 			if (!ReferenceEquals(previous, coordinator.Snapshot))
 				_pendingTranscriptChange = (coordinator.Snapshot, result == TranscriptionEventResult.Partial);
 		}
@@ -1292,12 +1328,19 @@ public sealed class RealtimeVoiceSession : IDisposable
 		if (_ring.Length > 0) Array.Clear(_ring);
 	}
 
+	private void ObserveBufferPeakLocked(RealtimeStreamingUtterance stream)
+	{
+		long peak = stream.PeakBufferedBytes;
+		_lastPeakBufferedBytes = Math.Max(_lastPeakBufferedBytes, peak);
+		_metrics?.ObserveAudioBufferBytes(peak);
+	}
+
 	private void CancelTurnLocked()
 	{
 		_activeTurn = null;
 		if (_stream is { } stream)
 		{
-			_lastPeakBufferedBytes = Math.Max(_lastPeakBufferedBytes, stream.PeakBufferedBytes);
+			ObserveBufferPeakLocked(stream);
 			stream.Abort();
 			_stream = null;
 		}

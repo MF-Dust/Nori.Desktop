@@ -38,7 +38,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 	private readonly Func<RecordedAudio, CancellationToken, Task<string>>? _transcribe;
 	private readonly Action _stopSpeech;
 	private readonly CancellationToken _lifetime;
-	private readonly EnergyVoiceActivity _activity = new();
+	private readonly EnergyVoiceActivity _defaultActivity = new();
+	private EnergyVoiceActivity _activity;
 	private readonly bool _legacySupportsStreaming;
 	private readonly RealtimeSttPipeline? _stt;
 
@@ -48,6 +49,13 @@ public sealed class RealtimeVoiceSession : IDisposable
 	private bool _publishingTranscript;
 	private RealtimeVoiceSettings _turnSettings = RealtimeVoiceSettings.Defaults;
 	private string _fallbackReason = "";
+	private ContinuousAudioProcessor? _inputProcessor;
+	private double _currentInputLevel;
+	private double _publishedInputLevel;
+	private long _lastInputLevelTickMs;
+	private double? _pendingInputLevel;
+	private bool _publishingInputLevel;
+	private long _lastPeakBufferedBytes;
 
 	private RealtimeVoiceSettings _tuning = RealtimeVoiceSettings.Defaults;
 	private RealtimeVoicePhase _phase = RealtimeVoicePhase.Idle;
@@ -97,6 +105,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		_legacySupportsStreaming = supportsStreaming;
 		_lifetime = lifetime;
 		_tuning = settings();
+		_activity = _defaultActivity;
 	}
 
 	/// <summary>创建使用提供商的会话；请求参数在识别时读取，不在会话中保存密钥。</summary>
@@ -123,6 +132,29 @@ public sealed class RealtimeVoiceSession : IDisposable
 
 	/// <summary>当前识别器是否会给出临时结果。Whisper 整段接口为 false。</summary>
 	public bool TranscriberSupportsStreaming => _legacySupportsStreaming || SupportsStreaming;
+
+	/// <summary>当前标准化输入电平（0.0–1.0），停止或空闲时归零。</summary>
+	public double CurrentInputLevel
+	{
+		get { lock (_gate) return _currentInputLevel; }
+	}
+
+	/// <summary>输入电平变化通知（节流，停止或离开监听时立即归零）。</summary>
+	public event Action<double>? InputLevelChanged;
+
+	/// <summary>本轮或最近一轮流式队列的待发送字节峰值。</summary>
+	public long LastPeakBufferedBytes
+	{
+		get { lock (_gate) return Math.Max(_lastPeakBufferedBytes, _stream?.PeakBufferedBytes ?? 0); }
+	}
+
+	internal int MaxStreamingBufferedBytes { get; init; } = BoundedAudioQueue.DefaultMaxBufferedBytes;
+
+	internal EnergyVoiceActivityOptions VadOptions
+	{
+		get { lock (_gate) return _activity.Options; }
+		init { _activity = new EnergyVoiceActivity(value); }
+	}
 
 	public bool SupportsStreaming
 	{
@@ -245,6 +277,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 			_fallbackReason = "";
 			_capturePaused = _externalPlayback;
 			_pushHeld = false;
+			_lastPeakBufferedBytes = 0;
+			ResetInputLevelLocked();
 			_activity.ResetAll();
 			ClearAudioLocked();
 			listen = CancellationTokenSource.CreateLinkedTokenSource(_lifetime);
@@ -290,6 +324,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 			CancelTurnLocked();
 			_capturePaused = _externalPlayback;
 			_pushHeld = false;
+			ResetInputLevelLocked();
 			ClearAudioLocked();
 			loop = _listenTask;
 			turn = _turnTask;
@@ -338,6 +373,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 			_generation++;
 			CancelTurnLocked();
 			_pushHeld = false;
+			ResetInputLevelLocked();
 			ClearAudioLocked();
 			SetPhaseLocked(RealtimeVoicePhase.Interrupting);
 		}
@@ -370,14 +406,21 @@ public sealed class RealtimeVoiceSession : IDisposable
 	public void SetPushToTalk(bool held)
 	{
 		bool finish = false;
+		long generation = 0;
+		RealtimeStreamingUtterance? stream = null;
 		lock (_gate)
 		{
 			if (_phase != RealtimeVoicePhase.Listening || _capturePaused) return;
 			bool wasHeld = _pushHeld;
 			_pushHeld = held;
 			finish = wasHeld && !held && _capturing;
+			if (finish)
+			{
+				generation = _generation;
+				stream = _stream;
+			}
 		}
-		if (finish) CommitUtterance();
+		if (finish) CommitUtterance(generation, stream);
 	}
 
 	/// <summary>
@@ -402,6 +445,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 				{
 					CancelTurnLocked();
 					ClearAudioLocked();
+					ResetInputLevelLocked();
 					_activity.ResetSpeech();
 				}
 				device = _device;
@@ -448,31 +492,54 @@ public sealed class RealtimeVoiceSession : IDisposable
 	/// </summary>
 	public void Observe(ReadOnlySpan<float> interleaved, int channels, int sampleRate)
 	{
-		if (channels <= 0 || sampleRate <= 0 || interleaved.Length < channels) return;
-		interleaved = interleaved[..(interleaved.Length - interleaved.Length % channels)];
-		bool commit;
-		bool transcriptChanged;
+		if (channels <= 0 || sampleRate <= 0 || interleaved.IsEmpty) return;
+		bool commit = false;
+		bool overflowAbort = false;
+		bool transcriptChanged = false;
+		long targetGeneration = 0;
+		RealtimeStreamingUtterance? targetStream = null;
 		lock (_gate)
 		{
 			if (_phase != RealtimeVoicePhase.Listening || _capturePaused) return;
 			EnsureFormatLocked(sampleRate, channels);
-			PushRingLocked(interleaved);
-			EnergyVoiceDecision decision = _activity.Push(
-				interleaved,
-				channels,
-				sampleRate,
-				_tuning.Sensitivity,
-				_tuning.SilenceMilliseconds,
-				_pushHeld);
-			if (decision.SpeechStarted) BeginCaptureLocked();
-			else if (_capturing) AppendLocked(interleaved);
-			int maximum = MaximumSamplesLocked();
-			bool reachedCap = _capturing && _utterance is { } utterance && maximum - utterance.Count < channels;
-			commit = _capturing && (decision.SpeechEnded || reachedCap);
+			float[] mono = _inputProcessor!.ProcessMono(interleaved, out double inputLevel);
+			_currentInputLevel = inputLevel;
+			if (TryPrepareInputLevelPublishLocked(out double levelToPublish))
+				EnqueueInputLevelLocked(levelToPublish);
+			if (mono.Length > 0)
+			{
+				PushRingLocked(mono);
+				EnergyVoiceDecision decision = _activity.Push(
+					mono,
+					1,
+					sampleRate,
+					_tuning.Sensitivity,
+					_tuning.SilenceMilliseconds,
+					_pushHeld);
+				if (decision.SpeechStarted) BeginCaptureLocked();
+				else if (_capturing) AppendLocked(mono);
+				int maximum = MaximumMonoSamplesLocked();
+				bool reachedCap = _capturing && _utterance is { } utterance && utterance.Count >= maximum;
+				targetGeneration = _generation;
+				targetStream = _stream;
+				if (_stream is { IsOverflowed: true } && !CanFallbackToBatchLocked())
+				{
+					overflowAbort = true;
+				}
+				else
+				{
+					commit = _capturing && (decision.SpeechEnded || reachedCap);
+				}
+			}
 			transcriptChanged = _pendingTranscriptChange is not null;
 		}
 		if (transcriptChanged) PublishTranscriptChanges();
-		if (commit) CommitUtterance();
+		if (overflowAbort)
+		{
+			HandleStreamingOverflowAbort(targetGeneration, targetStream!);
+			return;
+		}
+		if (commit) CommitUtterance(targetGeneration, targetStream);
 	}
 
 	/// <summary>
@@ -613,6 +680,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		{
 			CancelTurnLocked();
 			ClearAudioLocked();
+			ResetInputLevelLocked();
 			_error = message;
 			SetPhaseLocked(RealtimeVoicePhase.Error);
 		}
@@ -648,7 +716,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		_ = StartLoopLocked(listen);
 	}
 
-	private void CommitUtterance()
+	private void CommitUtterance(long? expectedGeneration = null, RealtimeStreamingUtterance? expectedStream = null)
 	{
 		bool hasDevice;
 		long generation;
@@ -658,11 +726,20 @@ public sealed class RealtimeVoiceSession : IDisposable
 			{
 				return;
 			}
+			if (expectedGeneration is not null && _generation != expectedGeneration)
+			{
+				return;
+			}
+			if (expectedStream is not null && !ReferenceEquals(_stream, expectedStream))
+			{
+				return;
+			}
 			_pendingSamples = utterance.ToArray();
 			// 连续监听的下一轮不能从预卷缓冲重新上传已经提交的声音。
 			ClearCaptureLocked();
-			_pendingChannels = _channels;
+			_pendingChannels = 1;
 			_pendingRate = _sampleRate;
+			ResetInputLevelLocked();
 			_activity.ResetSpeech();
 			if (_stream is null) CreateTurnLocked();
 			generation = _generation;
@@ -715,6 +792,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 		CancellationToken token = turn.CancellationToken;
 		bool transcribed = false;
 		bool replayForbidden = false;
+		bool bufferOverflow = false;
 		try
 		{
 			StreamingUtteranceResult? streamingResult = stream is null
@@ -724,8 +802,20 @@ public sealed class RealtimeVoiceSession : IDisposable
 			lock (_gate)
 			{
 				if (!IsActiveTurnLocked(generation)) return;
+				if (stream is not null)
+					_lastPeakBufferedBytes = Math.Max(_lastPeakBufferedBytes, stream.PeakBufferedBytes);
 				_stream = null;
-				if (streamingResult == StreamingUtteranceResult.FailedBeforeCommit
+				if (streamingResult == StreamingUtteranceResult.OverflowBeforeCommit)
+				{
+					if (!CanFallbackToBatchLocked())
+					{
+						bufferOverflow = true;
+						throw new InvalidOperationException("网络发送过慢，本轮音频缓冲已满，已重置本轮");
+					}
+					_fallbackReason = "网络发送过慢，实时音频缓冲已满，改用整段识别";
+					ClearTranscriptLocked();
+				}
+				else if (streamingResult == StreamingUtteranceResult.FailedBeforeCommit
 					|| (stream is null && settings.SttMode == SttMode.RealtimeCloud))
 				{
 					_fallbackReason = stream is null ? "实时语音识别不可用，改用整段识别" : "实时语音提交前连接或发送失败，改用整段识别";
@@ -789,7 +879,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 				if (!IsActiveTurnLocked(generation)) return;
 				ClearAudioLocked();
 				ClearTranscriptLocked();
-				_error = replayForbidden ? "实时语音提交后识别失败，本轮已结束且未重发录音"
+				_error = bufferOverflow ? "网络发送过慢，本轮音频缓冲已满，已重置本轮"
+					: replayForbidden ? "实时语音提交后识别失败，本轮已结束且未重发录音"
 					: transcribed ? "实时语音对话失败，本轮已结束" : "语音识别连接已断开，本轮已结束";
 				SetPhaseLocked(RealtimeVoicePhase.Error);
 			}
@@ -811,6 +902,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 	private void FinishTurnLocked()
 	{
 		ClearTranscriptLocked();
+		ResetInputLevelLocked();
 		bool resume = CanResumeLocked();
 		SetPhaseLocked(resume ? RealtimeVoicePhase.Listening : RealtimeVoicePhase.Idle);
 		if (!resume) return;
@@ -824,10 +916,26 @@ public sealed class RealtimeVoiceSession : IDisposable
 
 	private static RecordedAudio EncodeUtterance(float[] samples, int sampleRate, int channels)
 	{
-		PcmAudio source = new() {Samples = samples, SampleRate = sampleRate, Channels = channels};
-		PcmAudio prepared = NativeMicrophoneRecorder.Downmix(source, NativeMicrophoneRecorder.TargetSampleRate);
-		byte[] bytes = WaveDecoder.Encode(prepared);
-		Array.Clear(prepared.Samples);
+		ContinuousAudioProcessor processor = new(sampleRate, channels, NativeMicrophoneRecorder.TargetSampleRate);
+		AudioProcessResult head = processor.Process(samples);
+		AudioProcessResult tail = processor.Flush();
+		byte[] bytes;
+		if (tail.MonoResampled.Length == 0)
+		{
+			bytes = ContinuousAudioProcessor.EncodeWaveFromMono(head.MonoResampled, NativeMicrophoneRecorder.TargetSampleRate);
+		}
+		else
+		{
+			float[] combined = new float[head.MonoResampled.Length + tail.MonoResampled.Length];
+			head.MonoResampled.CopyTo(combined, 0);
+			tail.MonoResampled.CopyTo(combined, head.MonoResampled.Length);
+			bytes = ContinuousAudioProcessor.EncodeWaveFromMono(combined, NativeMicrophoneRecorder.TargetSampleRate);
+			Array.Clear(combined);
+		}
+		Array.Clear(head.MonoResampled);
+		Array.Clear(head.Pcm16Bytes);
+		Array.Clear(tail.MonoResampled);
+		Array.Clear(tail.Pcm16Bytes);
 		if (bytes.Length > VoiceAudioLimits.MaxBytes) throw new InvalidOperationException("录音内容超过 32MiB 限制");
 		return new RecordedAudio(bytes, "audio/wav", "speech.wav");
 	}
@@ -836,7 +944,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 	{
 		_capturing = true;
 		_fallbackReason = "";
-		int capacity = Math.Min(MaximumSamplesLocked(), Math.Max(1, _sampleRate * _channels));
+		_lastPeakBufferedBytes = 0;
+		int capacity = Math.Min(MaximumMonoSamplesLocked(), Math.Max(1, _sampleRate));
 		_utterance = new List<float>(capacity);
 		for (int index = 0; index < _ringCount; index++)
 			_utterance.Add(_ring[(_ringStart + index) % _ring.Length]);
@@ -844,8 +953,8 @@ public sealed class RealtimeVoiceSession : IDisposable
 		{
 			RealtimeVoiceTurn turn = CreateTurnLocked();
 			_coordinator = new RealtimeTranscriptionCoordinator(turn.Generation, turn.TurnId);
-			_stream = _stt!.Open(_turnSettings, _sampleRate, _channels,
-				sttEvent => HandleStreamingEvent(turn.Generation, sttEvent), turn.CancellationToken);
+			_stream = _stt!.Open(_turnSettings, _sampleRate, 1,
+				sttEvent => HandleStreamingEvent(turn.Generation, sttEvent), turn.CancellationToken, MaxStreamingBufferedBytes);
 			_stream.Append(CollectionsMarshal.AsSpan(_utterance));
 		}
 	}
@@ -921,24 +1030,28 @@ public sealed class RealtimeVoiceSession : IDisposable
 		}
 	}
 
-	private void AppendLocked(ReadOnlySpan<float> samples)
+	private void AppendLocked(ReadOnlySpan<float> mono)
 	{
 		List<float> utterance = _utterance ??= new List<float>();
-		int maximum = MaximumSamplesLocked();
-		int added = Math.Min(maximum - utterance.Count, samples.Length);
-		added -= added % _channels;
-		for (int index = 0; index < added; index++) utterance.Add(samples[index]);
-		_stream?.Append(samples[..added]);
+		int maximum = MaximumMonoSamplesLocked();
+		int added = Math.Min(maximum - utterance.Count, mono.Length);
+		if (added <= 0) return;
+		for (int index = 0; index < added; index++) utterance.Add(mono[index]);
+		_stream?.Append(mono[..added]);
 	}
 
 	private void EnsureFormatLocked(int sampleRate, int channels)
 	{
-		long prerollFrames = (long)sampleRate * RealtimeVoiceLimits.PrerollMilliseconds / 1000L;
-		int capacity = (int)Math.Clamp(prerollFrames, 1, int.MaxValue / channels) * channels;
-		if (_sampleRate == sampleRate && _channels == channels && _ring.Length == capacity) return;
+		int prerollMs = RealtimeVoiceLimits.PrerollMilliseconds
+			+ _activity.MinimumSpeechMilliseconds
+			+ EnergyVoiceActivity.AnalysisWindowMilliseconds;
+		long prerollFrames = (long)sampleRate * prerollMs / 1000L;
+		int capacity = (int)Math.Clamp(prerollFrames, 1, int.MaxValue);
+		if (_sampleRate == sampleRate && _channels == channels && _ring.Length == capacity && _inputProcessor is not null) return;
 		if (_stream is not null) CancelTurnLocked();
 		_sampleRate = sampleRate;
 		_channels = channels;
+		_inputProcessor = new ContinuousAudioProcessor(sampleRate, channels, sampleRate);
 		_ring = new float[capacity];
 		_ringStart = 0;
 		_ringCount = 0;
@@ -965,7 +1078,108 @@ public sealed class RealtimeVoiceSession : IDisposable
 		}
 	}
 
-	private int MaximumSamplesLocked() => RealtimeVoiceLimits.MaximumSamples(_sampleRate, _channels);
+	private int MaximumMonoSamplesLocked() => RealtimeVoiceLimits.MaximumSamples(_sampleRate, 1);
+
+	private bool CanFallbackToBatchLocked() =>
+		_transcribe is not null || (_stt is not null && _stt.CanTranscribeBatch(_turnSettings));
+
+	private void HandleStreamingOverflowAbort(long expectedGeneration, RealtimeStreamingUtterance expectedStream)
+	{
+		IAudioCaptureDevice? device;
+		CancellationTokenSource? listen;
+		lock (_gate)
+		{
+			if (_phase != RealtimeVoicePhase.Listening
+				|| _generation != expectedGeneration
+				|| !ReferenceEquals(_stream, expectedStream))
+			{
+				return;
+			}
+			_generation++;
+			CancelTurnLocked();
+			_pushHeld = false;
+			ResetInputLevelLocked();
+			_activity.ResetSpeech();
+			ClearAudioLocked();
+			device = _device;
+			listen = _listenCts;
+			_device = null;
+			_error = "网络发送过慢，本轮音频缓冲已满，已重置本轮";
+			SetPhaseLocked(RealtimeVoicePhase.Error);
+		}
+		StopCaptured(listen, device);
+		PublishTranscriptChanges();
+		PublishPhase();
+	}
+
+	private void ResetInputLevelLocked()
+	{
+		_currentInputLevel = 0;
+		_inputProcessor?.Reset();
+		if (TryPrepareInputLevelPublishLocked(out double levelToPublish))
+			EnqueueInputLevelLocked(levelToPublish);
+	}
+
+	private bool TryPrepareInputLevelPublishLocked(out double levelToPublish)
+	{
+		double current = _currentInputLevel;
+		long now = Environment.TickCount64;
+		bool becameZero = current == 0 && _publishedInputLevel > 0;
+		bool becameActive = current > 0 && _publishedInputLevel == 0;
+		bool intervalElapsed = now - _lastInputLevelTickMs >= 40 && Math.Abs(current - _publishedInputLevel) >= 0.01;
+		if (becameZero || becameActive || intervalElapsed)
+		{
+			_publishedInputLevel = current;
+			_lastInputLevelTickMs = now;
+			levelToPublish = current;
+			return true;
+		}
+		levelToPublish = 0;
+		return false;
+	}
+
+	private void EnqueueInputLevelLocked(double level)
+	{
+		_pendingInputLevel = level;
+		if (_publishingInputLevel) return;
+		_publishingInputLevel = true;
+		_ = Task.Run(DrainInputLevelLoop);
+	}
+
+	private void DrainInputLevelLoop()
+	{
+		while (true)
+		{
+			double next;
+			lock (_gate)
+			{
+				if (_pendingInputLevel is not { } pending)
+				{
+					_publishingInputLevel = false;
+					return;
+				}
+				next = pending;
+				_pendingInputLevel = null;
+			}
+			try
+			{
+				InputLevelChanged?.Invoke(next);
+			}
+			catch
+			{
+				// 避免单个订阅者异常终止后台电平发布循环
+			}
+		}
+	}
+
+	private void PublishInputLevelIfNeeded()
+	{
+		lock (_gate)
+		{
+			if (TryPrepareInputLevelPublishLocked(out double levelToPublish))
+				EnqueueInputLevelLocked(levelToPublish);
+		}
+	}
 
 	private void ClearAudioLocked()
 	{
@@ -987,7 +1201,12 @@ public sealed class RealtimeVoiceSession : IDisposable
 	private void CancelTurnLocked()
 	{
 		_activeTurn = null;
-		_stream = null;
+		if (_stream is { } stream)
+		{
+			_lastPeakBufferedBytes = Math.Max(_lastPeakBufferedBytes, stream.PeakBufferedBytes);
+			stream.Abort();
+			_stream = null;
+		}
 		try { _turnCts?.Cancel(); }
 		catch (ObjectDisposedException) { }
 		ClearTranscriptLocked();
@@ -1012,6 +1231,7 @@ public sealed class RealtimeVoiceSession : IDisposable
 
 	private void PublishPhase(bool force = false)
 	{
+		PublishInputLevelIfNeeded();
 		PublishTranscriptChanges();
 		RealtimeVoicePhase phase;
 		lock (_gate)

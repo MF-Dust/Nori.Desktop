@@ -594,6 +594,208 @@ public sealed class RealtimeVoiceSessionTests
 		await session.StopAsync();
 	}
 
+	[Fact]
+	public async Task 低声起音被Preroll完整保留不裁剪句首()
+	{
+		Harness harness = Harness.Open();
+		using RealtimeVoiceSession session = harness.Session;
+		await session.StartAsync();
+
+		// 先喂入 80ms 极低声起音（0.025f，低于开口门槛，位于 300ms preroll 内），
+		// 再接 260ms 正常讲话（0.4f），最后 800ms 静音结束。
+		Feed(session, 80, 0.025f);
+		Feed(session, 260, 0.4f);
+		Feed(session, 800, 0);
+
+		RecordedAudio audio = await harness.AudioGate.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		PcmAudio decoded = WaveDecoder.Decode(audio.Bytes);
+		Assert.Equal(16000, decoded.SampleRate);
+		Assert.Equal(1, decoded.Channels);
+
+		// 句首前 80ms（1280 帧）应完整保留起音能量，而不是被裁剪后直接从 0.4f 开始。
+		int onsetFrames = SampleRate * 80 / 1000;
+		Assert.True(decoded.Samples.Length > onsetFrames + 3200);
+		float maxOnset = 0;
+		for (int index = 0; index < onsetFrames; index++)
+			maxOnset = Math.Max(maxOnset, Math.Abs(decoded.Samples[index]));
+		Assert.InRange(maxOnset, 0.015f, 0.04f);
+	}
+
+	[Fact]
+	public async Task 输入电平在讲话时大于零且停止或空闲后归零()
+	{
+		Harness harness = Harness.Open();
+		using RealtimeVoiceSession session = harness.Session;
+		List<double> levels = [];
+		TaskCompletionSource sawPositive = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource sawZeroAfterPositive = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		bool hadPositive = false;
+		session.InputLevelChanged += level =>
+		{
+			lock (levels)
+			{
+				levels.Add(level);
+				if (level > 0)
+				{
+					hadPositive = true;
+					sawPositive.TrySetResult();
+				}
+				else if (hadPositive && level == 0)
+				{
+					sawZeroAfterPositive.TrySetResult();
+				}
+			}
+		};
+
+		Assert.Equal(0, session.CurrentInputLevel);
+		await session.StartAsync();
+		Feed(session, 100, 0);
+		Assert.Equal(0, session.CurrentInputLevel);
+
+		Feed(session, 100, 0.4f);
+		Assert.InRange(session.CurrentInputLevel, 0.05, 1.0);
+		await sawPositive.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+		await session.StopAsync();
+		Assert.Equal(0, session.CurrentInputLevel);
+		await sawZeroAfterPositive.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		lock (levels)
+		{
+			Assert.Contains(levels, l => l > 0);
+			Assert.Equal(0, levels[^1]);
+		}
+	}
+
+	[Fact]
+	public async Task 真实设备读取循环中InputLevelChanged内同步Dispose不死锁且最终归零()
+	{
+		ContinuousSpeechCapture capture = new();
+		List<double> received = [];
+		TaskCompletionSource disposedInsideCallback = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource finalZeroPublished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		int disposeTriggered = 0;
+
+		RealtimeVoiceSession session = new(
+			() => new RealtimeVoiceSettings(true, false, 0.5, 700, true, "", false),
+			false,
+			null,
+			() => capture,
+			(_, _) => Task.FromResult(""),
+			() => { },
+			false);
+
+		session.InputLevelChanged += level =>
+		{
+			bool shouldDispose = false;
+			lock (received)
+			{
+				received.Add(level);
+				if (level > 0 && Interlocked.Exchange(ref disposeTriggered, 1) == 0)
+					shouldDispose = true;
+			}
+			if (shouldDispose)
+			{
+				session.Dispose();
+				disposedInsideCallback.TrySetResult();
+			}
+			else if (Volatile.Read(ref disposeTriggered) == 1 && level == 0)
+			{
+				finalZeroPublished.TrySetResult();
+			}
+		};
+
+		await session.StartAsync().WaitAsync(TimeSpan.FromSeconds(3));
+		await disposedInsideCallback.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		await finalZeroPublished.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+		Assert.True(capture.DisposedOnce);
+		Assert.Equal(0, session.CurrentInputLevel);
+		lock (received)
+		{
+			Assert.Contains(received, l => l > 0);
+			Assert.Equal(0, received[^1]);
+		}
+	}
+
+	[Fact]
+	public async Task 长确认窗口与大块输入下Preroll仍完整保留句首起音()
+	{
+		TaskCompletionSource<RecordedAudio> audioGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		using RealtimeVoiceSession session = new(
+			() => new RealtimeVoiceSettings(true, false, 0.5, 700, true, "", false),
+			false,
+			null,
+			null,
+			(audio, _) =>
+			{
+				audioGate.TrySetResult(audio);
+				return Task.FromResult("ok");
+			},
+			() => { },
+			false)
+		{
+			VadOptions = new EnergyVoiceActivityOptions { MinimumSpeechMilliseconds = 400 },
+			TurnAccepted = _ => Task.CompletedTask,
+		};
+
+		await session.StartAsync();
+		// 以 50ms 大块喂入：250ms 低声起音（位于 Preroll 300ms 内）+ 450ms 正常语音（覆盖 400ms 确认窗口）+ 800ms 静音。
+		FeedChunked(session, 250, 0.025f, chunkMs: 50);
+		FeedChunked(session, 450, 0.4f, chunkMs: 50);
+		FeedChunked(session, 800, 0f, chunkMs: 50);
+
+		RecordedAudio audio = await audioGate.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		PcmAudio decoded = WaveDecoder.Decode(audio.Bytes);
+		int onsetFrames = SampleRate * 250 / 1000;
+		Assert.True(decoded.Samples.Length >= onsetFrames + (SampleRate * 400 / 1000));
+		float maxOnset = 0;
+		for (int index = 0; index < onsetFrames; index++)
+			maxOnset = Math.Max(maxOnset, Math.Abs(decoded.Samples[index]));
+		Assert.InRange(maxOnset, 0.015f, 0.04f);
+	}
+
+	[Fact]
+	public async Task 短停顿不拆句且长停顿切段后两轮连续讲话互不干扰()
+	{
+		int calls = 0;
+		TaskCompletionSource firstDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource secondDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		using RealtimeVoiceSession session = new(
+			() => new RealtimeVoiceSettings(true, true, 0.5, 700, true, "", false),
+			false,
+			null,
+			null,
+			(_, _) =>
+			{
+				int count = Interlocked.Increment(ref calls);
+				return Task.FromResult(count == 1 ? "第一句" : "第二句");
+			},
+			() => { },
+			false);
+		session.TurnAccepted = turn =>
+		{
+			if (turn.Text == "第一句") firstDone.TrySetResult();
+			else if (turn.Text == "第二句") secondDone.TrySetResult();
+			return Task.CompletedTask;
+		};
+
+		await session.StartAsync();
+		// 第一句中间有 300ms 短停顿（< 700ms），应合并成同一轮。
+		Feed(session, 300, 0.4f);
+		Feed(session, 300, 0);
+		Feed(session, 300, 0.4f);
+		Feed(session, 800, 0);
+		await firstDone.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.Equal(1, Volatile.Read(ref calls));
+
+		// 连续模式下等待回到 Listening 后开始第二句。
+		await WaitForPhase(session, RealtimeVoicePhase.Listening);
+		Feed(session, 300, 0.4f);
+		Feed(session, 800, 0);
+		await secondDone.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.Equal(2, Volatile.Read(ref calls));
+	}
+
 	private static RealtimeVoiceSession CreateSession(Func<RealtimeVoiceSettings> settings, Action opened, bool safeMode = false) =>
 		new(settings, safeMode, null, () =>
 		{
@@ -615,9 +817,12 @@ public sealed class RealtimeVoiceSessionTests
 		session.PhaseChanged -= OnPhase;
 	}
 
-	private static void Feed(RealtimeVoiceSession session, int milliseconds, float amplitude)
+	private static void Feed(RealtimeVoiceSession session, int milliseconds, float amplitude) =>
+		FeedChunked(session, milliseconds, amplitude, chunkMs: 20);
+
+	private static void FeedChunked(RealtimeVoiceSession session, int milliseconds, float amplitude, int chunkMs)
 	{
-		int frame = SampleRate / 50;
+		int frame = Math.Max(1, SampleRate * chunkMs / 1000);
 		int total = Math.Max(frame, SampleRate * milliseconds / 1000);
 		bool silent = amplitude <= 0f;
 		for (int offset = 0; offset < total; offset += frame)
@@ -758,6 +963,28 @@ public sealed class RealtimeVoiceSessionTests
 			_entered.TrySetResult();
 			Assert.True(_release.Task.Wait(TimeSpan.FromSeconds(5)));
 		}
+	}
+
+	private sealed class ContinuousSpeechCapture : IAudioCaptureDevice
+	{
+		private volatile bool _stopped;
+		private int _disposed;
+		public bool DisposedOnce => Volatile.Read(ref _disposed) == 1;
+
+		public AudioFormat Open() => new(SampleRate, 1);
+
+		public int Read(Span<float> buffer, CancellationToken cancellationToken)
+		{
+			if (_stopped || cancellationToken.IsCancellationRequested) return 0;
+			for (int index = 0; index < buffer.Length; index++)
+				buffer[index] = 0.4f * MathF.Sin(index * 0.17f);
+			Thread.Sleep(5);
+			return buffer.Length;
+		}
+
+		public void Stop() => _stopped = true;
+
+		public void Dispose() => Interlocked.Increment(ref _disposed);
 	}
 
 	private sealed class BlockingCapture : IAudioCaptureDevice

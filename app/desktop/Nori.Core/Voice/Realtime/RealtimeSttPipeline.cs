@@ -1,5 +1,4 @@
-using System.Buffers.Binary;
-using System.Threading.Channels;
+using Nori.Core.Voice.Audio;
 using Nori.Core.Voice.Stt;
 
 namespace Nori.Core.Voice.Realtime;
@@ -16,22 +15,26 @@ internal sealed class RealtimeSttPipeline(
 
 	public bool SupportsLocal => batchProvider?.Capabilities is { SupportsBatch: true, SupportsLocalOffline: true };
 
+	public bool CanTranscribeBatch(RealtimeVoiceSettings settings) =>
+		batchProvider?.Capabilities is { SupportsBatch: true }
+		&& !(settings.SttMode == SttMode.Local && !SupportsLocal)
+		&& !(settings.SttMode != SttMode.Local && batchProvider.Mode == SttMode.Local);
+
 	public RealtimeStreamingUtterance Open(
 		RealtimeVoiceSettings settings, int sampleRate, int channels,
-		Func<StreamingSttEvent, TranscriptionEventResult> handle, CancellationToken token) =>
-		new(streamingProvider!, () => Options(settings, settings.StreamingSttModel), sampleRate, channels, handle, token);
+		Func<StreamingSttEvent, TranscriptionEventResult> handle, CancellationToken token,
+		int maxBufferedBytes = BoundedAudioQueue.DefaultMaxBufferedBytes) =>
+		new(streamingProvider!, () => Options(settings, settings.StreamingSttModel), sampleRate, channels, handle, token, maxBufferedBytes);
 
 	public Task<string> TranscribeAsync(RealtimeVoiceSettings settings, RecordedAudio audio, CancellationToken token)
 	{
 		token.ThrowIfCancellationRequested();
-		if (batchProvider?.Capabilities is not { SupportsBatch: true }
-			|| (settings.SttMode == SttMode.Local && !SupportsLocal)
-			|| (settings.SttMode != SttMode.Local && batchProvider.Mode == SttMode.Local))
+		if (!CanTranscribeBatch(settings))
 			throw new InvalidOperationException("当前模式没有可用的整段语音识别服务");
 		SttRequestOptions options = settings.SttMode == SttMode.Local
 			? new SttRequestOptions { Language = settings.Language }
 			: Options(settings, settings.BatchSttModel);
-		return batchProvider.TranscribeAsync(audio, options, token);
+		return batchProvider!.TranscribeAsync(audio, options, token);
 	}
 
 	private SttRequestOptions Options(RealtimeVoiceSettings settings, string model) =>
@@ -42,15 +45,17 @@ internal enum StreamingUtteranceResult
 {
 	Completed,
 	FailedBeforeCommit,
+	OverflowBeforeCommit,
 	FailedAfterCommit,
 }
 
-/// <summary>每轮单独开连接。采集只写有界队列；发送与接收互不阻塞。</summary>
+/// <summary>每轮单独开连接。采集只写有界队列；发送与接收互不阻塞，溢出时立即释放缓冲。</summary>
 internal sealed class RealtimeStreamingUtterance
 {
 	private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
-	private readonly Channel<float[]> _audio = Channel.CreateBounded<float[]>(
-		new BoundedChannelOptions(256) { SingleReader = true, SingleWriter = false });
+	private readonly BoundedAudioQueue _queue;
+	private readonly int _sampleRate;
+	private readonly int _channels;
 	private readonly Lock _commitGate = new();
 	private bool _commitAttempted;
 	private bool _terminated;
@@ -58,23 +63,32 @@ internal sealed class RealtimeStreamingUtterance
 
 	public RealtimeStreamingUtterance(
 		ISttProvider provider, Func<SttRequestOptions> options, int sampleRate, int channels,
-		Func<StreamingSttEvent, TranscriptionEventResult> handle, CancellationToken token)
+		Func<StreamingSttEvent, TranscriptionEventResult> handle, CancellationToken token,
+		int maxBufferedBytes = BoundedAudioQueue.DefaultMaxBufferedBytes)
 	{
-		Completion = Task.Run(() => RunAsync(provider, options, sampleRate, channels, handle, token));
+		_sampleRate = sampleRate;
+		_channels = Math.Max(1, channels);
+		_queue = new BoundedAudioQueue(maxBufferedBytes);
+		Completion = Task.Run(() => RunAsync(provider, options, sampleRate, _channels, handle, token));
 	}
 
 	public Task<StreamingUtteranceResult> Completion { get; }
 
+	public long PeakBufferedBytes => _queue.PeakBufferedBytes;
+
+	public long CurrentBufferedBytes => _queue.CurrentBufferedBytes;
+
+	public bool IsOverflowed => _queue.IsOverflowed;
+
 	public void Append(ReadOnlySpan<float> samples)
 	{
 		if (samples.IsEmpty || Completion.IsCompleted) return;
-		float[] copy = samples.ToArray();
-		if (_audio.Writer.TryWrite(copy)) return;
-		Array.Clear(copy);
-		_audio.Writer.TryComplete(new InvalidOperationException("实时语音发送积压"));
+		_queue.TryEnqueue(samples, _sampleRate, _channels);
 	}
 
-	public void EndAudio() => _audio.Writer.TryComplete();
+	public void EndAudio() => _queue.Complete();
+
+	public void Abort() => _queue.ClearAndAbort();
 
 	private async Task<StreamingUtteranceResult> RunAsync(
 		ISttProvider provider, Func<SttRequestOptions> options, int sampleRate, int channels,
@@ -83,15 +97,16 @@ internal sealed class RealtimeStreamingUtterance
 		try
 		{
 			token.ThrowIfCancellationRequested();
-			await using IStreamingSttSession session = await provider.OpenStreamingSessionAsync(options(), token).ConfigureAwait(false);
-			using CancellationTokenSource exchange = CancellationTokenSource.CreateLinkedTokenSource(token);
+			using CancellationTokenSource openCts = CancellationTokenSource.CreateLinkedTokenSource(token, _queue.OverflowToken);
+			await using IStreamingSttSession session = await provider.OpenStreamingSessionAsync(options(), openCts.Token).ConfigureAwait(false);
+			using CancellationTokenSource exchange = CancellationTokenSource.CreateLinkedTokenSource(token, _queue.OverflowToken);
 			Task<bool> receive = ReceiveAsync(session, handle, exchange.Token);
-			Task send = SendAsync(session, new Pcm24kEncoder(sampleRate, channels), exchange.Token);
+			Task send = SendAsync(session, new ContinuousAudioProcessor(sampleRate, channels, 24000), exchange.Token);
 			try
 			{
 				if (await Task.WhenAny(receive, send).ConfigureAwait(false) == send)
 					await send.ConfigureAwait(false);
-				if (await receive.WaitAsync(RequestTimeout, token).ConfigureAwait(false))
+				if (!_queue.IsOverflowed && await receive.WaitAsync(RequestTimeout, exchange.Token).ConfigureAwait(false))
 					return StreamingUtteranceResult.Completed;
 			}
 			finally
@@ -107,40 +122,62 @@ internal sealed class RealtimeStreamingUtterance
 		}
 		finally
 		{
-			_audio.Writer.TryComplete();
-			while (_audio.Reader.TryRead(out float[]? pending)) Array.Clear(pending);
+			_queue.Dispose();
 		}
 		token.ThrowIfCancellationRequested();
 		lock (_commitGate)
-			return _commitAttempted || _serverCommitted ? StreamingUtteranceResult.FailedAfterCommit : StreamingUtteranceResult.FailedBeforeCommit;
+		{
+			if (_commitAttempted || _serverCommitted) return StreamingUtteranceResult.FailedAfterCommit;
+			return _queue.IsOverflowed ? StreamingUtteranceResult.OverflowBeforeCommit : StreamingUtteranceResult.FailedBeforeCommit;
+		}
 	}
 
-	private async Task SendAsync(IStreamingSttSession session, Pcm24kEncoder encoder, CancellationToken token)
+	private async Task SendAsync(IStreamingSttSession session, ContinuousAudioProcessor processor, CancellationToken token)
 	{
-		await foreach (float[] samples in _audio.Reader.ReadAllAsync(token).ConfigureAwait(false))
+		try
 		{
-			byte[] pcm;
-			try { pcm = encoder.Encode(samples); }
-			finally { Array.Clear(samples); }
-			try
+			await foreach (float[] samples in _queue.ReadAllAsync(token).ConfigureAwait(false))
 			{
-				if (pcm.Length == 0) continue;
-				using CancellationTokenSource send = CancellationTokenSource.CreateLinkedTokenSource(token);
-				send.CancelAfter(RequestTimeout);
-				await session.AppendAudioAsync(pcm, send.Token).ConfigureAwait(false);
+				byte[] pcm;
+				try { pcm = processor.ProcessToPcm16Bytes(samples); }
+				finally { Array.Clear(samples); }
+				try
+				{
+					if (pcm.Length == 0) continue;
+					using CancellationTokenSource send = CancellationTokenSource.CreateLinkedTokenSource(token);
+					send.CancelAfter(RequestTimeout);
+					await session.AppendAudioAsync(pcm, send.Token).ConfigureAwait(false);
+				}
+				finally { Array.Clear(pcm); }
 			}
-			finally { Array.Clear(pcm); }
+
+			byte[] tail = processor.FlushToPcm16Bytes();
+			if (tail.Length > 0)
+			{
+				try
+				{
+					using CancellationTokenSource send = CancellationTokenSource.CreateLinkedTokenSource(token);
+					send.CancelAfter(RequestTimeout);
+					await session.AppendAudioAsync(tail, send.Token).ConfigureAwait(false);
+				}
+				finally { Array.Clear(tail); }
+			}
+
+			using CancellationTokenSource commit = CancellationTokenSource.CreateLinkedTokenSource(token);
+			commit.CancelAfter(RequestTimeout);
+			lock (_commitGate)
+			{
+				token.ThrowIfCancellationRequested();
+				if (_terminated || _serverCommitted || _queue.IsOverflowed) return;
+				// 先跨过不可重放边界：发送报错也不能证明服务端没收到 commit。
+				_commitAttempted = true;
+			}
+			await session.CommitAsync(commit.Token).ConfigureAwait(false);
 		}
-		using CancellationTokenSource commit = CancellationTokenSource.CreateLinkedTokenSource(token);
-		commit.CancelAfter(RequestTimeout);
-		lock (_commitGate)
+		finally
 		{
-			token.ThrowIfCancellationRequested();
-			if (_terminated || _serverCommitted) return;
-			// 先跨过不可重放边界：发送报错也不能证明服务端没收到 commit。
-			_commitAttempted = true;
+			processor.Reset();
 		}
-		await session.CommitAsync(commit.Token).ConfigureAwait(false);
 	}
 
 	private async Task<bool> ReceiveAsync(
@@ -162,43 +199,5 @@ internal sealed class RealtimeStreamingUtterance
 			return false;
 		}
 		finally { lock (_commitGate) _terminated = true; }
-	}
-
-	/// <summary>样本片段之间保留重采样相位，避免每帧取整导致音频时长漂移。</summary>
-	private sealed class Pcm24kEncoder(int sampleRate, int channels)
-	{
-		private const int OutputRate = 24000;
-		private int _weight;
-		private double _sum;
-
-		public byte[] Encode(ReadOnlySpan<float> samples)
-		{
-			int frames = samples.Length / channels;
-			int bytes = checked((int)(((long)frames * OutputRate + _weight) / sampleRate * 2));
-			byte[] pcm = new byte[bytes];
-			int offset = 0;
-			for (int frame = 0; frame < frames; frame++)
-			{
-				double mono = 0;
-				foreach (float sample in samples.Slice(frame * channels, channels))
-					mono += float.IsFinite(sample) ? sample : 0;
-				mono /= channels;
-				int remaining = OutputRate;
-				while (remaining > 0)
-				{
-					int take = Math.Min(remaining, sampleRate - _weight);
-					_sum += mono * take;
-					_weight += take;
-					remaining -= take;
-					if (_weight != sampleRate) continue;
-					short value = (short)Math.Round(Math.Clamp(_sum / sampleRate, -1.0, 1.0) * short.MaxValue);
-					BinaryPrimitives.WriteInt16LittleEndian(pcm.AsSpan(offset), value);
-					offset += 2;
-					_weight = 0;
-					_sum = 0;
-				}
-			}
-			return pcm;
-		}
 	}
 }

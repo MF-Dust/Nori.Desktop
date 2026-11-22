@@ -279,6 +279,187 @@ public sealed class RealtimeStreamingSttIntegrationTests
 		Assert.Equal(SttMode.BatchCloud, RealtimeVoiceSettings.Read(config).SttMode);
 	}
 
+	[Fact]
+	public async Task 慢消费网络写入触发有界队列溢出并重置本轮且峰值受限()
+	{
+		TaskCompletionSource appendEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource releaseAppend = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		SlowAppendStream slowStream = new(appendEntered, releaseAppend);
+		FakeProvider streaming = new(slowStream, true, false);
+		using RealtimeVoiceSession session = new(
+			() => RealtimeVoiceSettings.Defaults with { Enabled = true, SttMode = SttMode.RealtimeCloud },
+			false,
+			null,
+			null,
+			streaming,
+			null,
+			() => { })
+		{
+			MaxStreamingBufferedBytes = 20_480,
+			TurnAccepted = _ => Task.CompletedTask,
+		};
+
+		await session.StartAsync().WaitAsync(Deadline);
+		float[] speech = Enumerable.Repeat(0.4f, 320).ToArray(); // 1280 bytes mono @ 16kHz (20ms)
+		for (int i = 0; i < 15; i++)
+			session.Observe(speech, 1, 16000);
+
+		await appendEntered.Task.WaitAsync(Deadline);
+		for (int i = 0; i < 24 && session.Phase == RealtimeVoicePhase.Listening; i++)
+			session.Observe(speech, 1, 16000);
+
+		Assert.Equal(RealtimeVoicePhase.Error, session.Phase);
+		Assert.Contains("网络发送过慢", session.Status().Error, StringComparison.Ordinal);
+		Assert.Equal(0, session.BufferedSampleCount);
+		Assert.Equal(0, session.CurrentInputLevel);
+		Assert.InRange(session.LastPeakBufferedBytes, 1, 20_480);
+		releaseAppend.TrySetResult();
+
+		// 溢出后可立即恢复开启新一轮。
+		await session.StartAsync().WaitAsync(Deadline);
+		Assert.Equal(RealtimeVoicePhase.Listening, session.Phase);
+	}
+
+	[Fact]
+	public async Task 慢消费溢出会回退整段识别且峰值不超过上限()
+	{
+		TaskCompletionSource appendEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		TaskCompletionSource releaseAppend = new(TaskCreationOptions.RunContinuationsAsynchronously);
+		SlowAppendStream slowStream = new(appendEntered, releaseAppend);
+		FakeProvider streaming = new(slowStream, true, false);
+		FakeProvider batch = new(null, false, false);
+		ConcurrentQueue<RealtimeVoiceTurn> turns = new();
+		TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+		using RealtimeVoiceSession session = new(
+			() => RealtimeVoiceSettings.Defaults with { Enabled = true, SttMode = SttMode.RealtimeCloud },
+			false,
+			null,
+			null,
+			streaming,
+			batch,
+			() => { })
+		{
+			MaxStreamingBufferedBytes = 20_480,
+			TurnAccepted = turn => { turns.Enqueue(turn); return Task.CompletedTask; },
+		};
+		session.PhaseChanged += phase =>
+		{
+			if (phase == RealtimeVoicePhase.Idle) ended.TrySetResult();
+		};
+
+		await session.StartAsync().WaitAsync(Deadline);
+		session.SetPushToTalk(true);
+		float[] speech = Enumerable.Repeat(0.4f, 320).ToArray();
+		for (int i = 0; i < 15; i++)
+			session.Observe(speech, 1, 16000);
+		await appendEntered.Task.WaitAsync(Deadline);
+		for (int i = 0; i < 24; i++)
+			session.Observe(speech, 1, 16000);
+
+		session.SetPushToTalk(false);
+		await ended.Task.WaitAsync(Deadline);
+		releaseAppend.TrySetResult();
+
+		Assert.True(session.UsedBatchFallback);
+		Assert.Contains("网络发送过慢", session.FallbackReason, StringComparison.Ordinal);
+		Assert.Equal(1, batch.BatchCalls);
+		Assert.InRange(session.LastPeakBufferedBytes, 1, 20_480);
+		Assert.Equal("整段识别", Assert.Single(turns).Text);
+	}
+
+	[Fact]
+	public async Task 第一轮打断后第二轮绝不会收到第一轮残留音频帧()
+	{
+		FakeStream firstStream = new(false, false);
+		FakeStream secondStream = new(false, false);
+		SequenceProvider streaming = new([firstStream, secondStream]);
+		FakeProvider batch = new(null, false, false);
+		ConcurrentQueue<RealtimeVoiceTurn> turns = new();
+
+		using RealtimeVoiceSession session = new(
+			() => RealtimeVoiceSettings.Defaults with { Enabled = true, Continuous = true, SttMode = SttMode.RealtimeCloud },
+			false,
+			null,
+			null,
+			streaming,
+			batch,
+			() => { })
+		{
+			TurnAccepted = turn => { turns.Enqueue(turn); return Task.CompletedTask; },
+		};
+
+		// 第一轮输入特征幅值 0.2f（24kHz PCM16 约为 6553），未提交前打断。
+		await session.StartAsync().WaitAsync(Deadline);
+		float[] turn1Speech = Enumerable.Repeat(0.2f, 320).ToArray();
+		for (int i = 0; i < 14; i++)
+			session.Observe(turn1Speech, 1, 16000);
+		await firstStream.Audio.Reader.ReadAsync().AsTask().WaitAsync(Deadline);
+		Assert.True(session.Interrupt());
+		await firstStream.Disposed.Task.WaitAsync(Deadline);
+
+		// 第二轮输入特征幅值 0.6f（24kHz PCM16 约为 19660）。
+		float[] turn2Speech = Enumerable.Repeat(0.6f, 320).ToArray();
+		for (int i = 0; i < 14; i++)
+			session.Observe(turn2Speech, 1, 16000);
+		byte[] secondPreroll = await secondStream.Audio.Reader.ReadAsync().AsTask().WaitAsync(Deadline);
+		Assert.True(secondPreroll.Length >= 2);
+		for (int offset = 0; offset < secondPreroll.Length; offset += 2)
+		{
+			short pcm = BinaryPrimitives.ReadInt16LittleEndian(secondPreroll.AsSpan(offset, 2));
+			Assert.True(pcm >= 19000, $"第二轮首段音频出现意外样本 {pcm}，疑似第一轮残留");
+		}
+
+		float[] silence = new float[320];
+		for (int i = 0; i < 40; i++)
+			session.Observe(silence, 1, 16000);
+		await secondStream.CommitCalled.Task.WaitAsync(Deadline);
+		secondStream.Emit(StreamingSttEventKind.Completed, "item-2", "第二轮文本");
+
+		using CancellationTokenSource waitTurn = new(Deadline);
+		while (turns.IsEmpty) await Task.Delay(5, waitTurn.Token);
+		Assert.Equal("第二轮文本", Assert.Single(turns).Text);
+	}
+
+	private sealed class SequenceProvider(IReadOnlyList<FakeStream> streams) : ISttProvider
+	{
+		private int _index;
+		public string ProviderId => "seq";
+		public SttMode Mode => SttMode.RealtimeCloud;
+		public SttProviderCapabilities Capabilities { get; } = new()
+		{
+			SupportsRealtimePcm = true,
+			SupportsIncrementalDelta = true,
+		};
+
+		public Task<IStreamingSttSession> OpenStreamingSessionAsync(SttRequestOptions options, CancellationToken cancellationToken)
+		{
+			int i = Interlocked.Increment(ref _index) - 1;
+			return Task.FromResult<IStreamingSttSession>(streams[Math.Min(i, streams.Count - 1)]);
+		}
+
+		public Task<string> TranscribeAsync(RecordedAudio audio, SttRequestOptions options, CancellationToken cancellationToken) =>
+			throw new NotSupportedException();
+	}
+
+	private sealed class SlowAppendStream(TaskCompletionSource appendEntered, TaskCompletionSource releaseAppend) : IStreamingSttSession
+	{
+		private readonly Channel<StreamingSttEvent> _events = Channel.CreateUnbounded<StreamingSttEvent>();
+		public string ProviderId => "slow";
+		public bool IsConnected => true;
+		public ChannelReader<StreamingSttEvent> Events => _events.Reader;
+
+		public async Task AppendAudioAsync(ReadOnlyMemory<byte> pcm16Mono24k, CancellationToken cancellationToken)
+		{
+			appendEntered.TrySetResult();
+			await releaseAppend.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+		}
+
+		public Task CommitAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+		public Task CloseAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+		public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+	}
+
 	private static StreamingSttEvent Event(StreamingSttEventKind kind, string? id, string? text = null) =>
 		new() { Kind = kind, ItemId = id, Text = text };
 
@@ -352,7 +533,7 @@ public sealed class RealtimeStreamingSttIntegrationTests
 		public void Dispose() => _frames.Dispose();
 	}
 
-	private sealed class FakeProvider(FakeStream? stream, bool streaming, bool openFails) : ISttProvider
+	private sealed class FakeProvider(IStreamingSttSession? stream, bool streaming, bool openFails) : ISttProvider
 	{
 		public string ProviderId => "fake";
 		public SttMode Mode => streaming ? SttMode.RealtimeCloud : SttMode.BatchCloud;

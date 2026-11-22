@@ -19,6 +19,7 @@ using Nori.Desktop.Observation;
 using Nori.Core.Voice;
 using Nori.Core.Voice.Audio;
 using Nori.Core.Voice.Realtime;
+using Nori.Core.Voice.Stt;
 using Nori.Desktop.Audio;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Telemetry;
@@ -234,10 +235,10 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			services.SafeMode,
 			_captureOwnership,
 			Audio.NativeAudioFactory.OpenCapture,
-			(audio, token) => WhisperUtteranceTranscriber.TranscribeAsync(services.Http, config, audio, token),
+			services.SafeMode ? null : new OpenAiRealtimeSttProvider(config),
+			services.SafeMode ? null : new GptTranscribeProvider(services.Http, config, new WhisperSttProvider(services.Http, config)),
 			() => Voice.Stop(),
-			WhisperUtteranceTranscriber.SupportsStreaming,
-			_lifetimeCts.Token);
+			lifetime: _lifetimeCts.Token);
 		RealtimeVoice.PhaseChanged += OnRealtimeVoicePhaseChanged;
 		RealtimeVoice.TurnAccepted = HandleRealtimeVoiceTurnAsync;
 		_petInteractionService = new PetInteractionReactionService(services.Http, config, customProviders: services.Chat.CustomProviders);

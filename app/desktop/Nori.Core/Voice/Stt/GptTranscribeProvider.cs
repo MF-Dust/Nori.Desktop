@@ -12,7 +12,7 @@ namespace Nori.Core.Voice.Stt;
 /// 默认使用 <c>gpt-transcribe</c>，支持可选 <c>language</c> 与自定义兼容端点模型覆盖；
 /// 当兼容端点拒绝默认模型时自动降级到 <c>whisper-1</c>。
 /// </summary>
-public sealed class GptTranscribeProvider(HttpClient httpClient, ConfigStore config) : ISttProvider
+public sealed class GptTranscribeProvider(HttpClient httpClient, ConfigStore config, WhisperSttProvider? whisperFallback = null) : ISttProvider
 {
 	/// <summary>默认新一代转写模型。</summary>
 	public const string DefaultModel = "gpt-transcribe";
@@ -79,6 +79,15 @@ public sealed class GptTranscribeProvider(HttpClient httpClient, ConfigStore con
 
 		if (allowFallback && IsUnsupportedModelFailure(firstAttempt.StatusCode, firstAttempt.RawError))
 		{
+			if (whisperFallback is not null)
+				return await whisperFallback.TranscribeAsync(validated, options with
+				{
+					Model = FallbackModel,
+					Language = language ?? "",
+					ApiKey = apiKey,
+					BaseUrl = endpoint.AbsoluteUri,
+				}, cancellationToken).ConfigureAwait(false);
+
 			AttemptResult fallbackAttempt = await SendTranscriptionAsync(endpoint, apiKey, validated, FallbackModel, language, cancellationToken).ConfigureAwait(false);
 			if (fallbackAttempt.Success)
 			{

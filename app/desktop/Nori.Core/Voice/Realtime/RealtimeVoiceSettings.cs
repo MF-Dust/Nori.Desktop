@@ -1,4 +1,5 @@
 using Nori.Core.Configuration;
+using Nori.Core.Voice.Stt;
 
 namespace Nori.Core.Voice.Realtime;
 
@@ -27,6 +28,11 @@ public sealed record RealtimeVoiceSettings
 
 	/// <summary>输入设备标识。空字符串是系统默认麦克风。</summary>
 	public const string InputDeviceKey = "realtime_voice_input_device";
+
+	public const string SttModeKey = "realtime_voice_stt_mode";
+	public const string StreamingSttModelKey = "realtime_voice_stt_model";
+	public const string BatchSttModelKey = "realtime_voice_batch_model";
+	public const string LanguageKey = "realtime_voice_language";
 
 	/// <summary>未写入数据库时的默认值：关闭、不连续、可打断、默认麦克风。</summary>
 	public static RealtimeVoiceSettings Defaults { get; } = new(
@@ -82,6 +88,15 @@ public sealed record RealtimeVoiceSettings
 	/// <summary>设备标识含控制字符或超长。这种值不能当成默认设备悄悄用掉。</summary>
 	public bool InputDeviceInvalid { get; init; }
 
+	/// <summary>默认只在说完后上传整段录音。</summary>
+	public SttMode SttMode { get; init; } = SttMode.BatchCloud;
+
+	public string StreamingSttModel { get; init; } = OpenAiRealtimeSttProvider.DefaultModel;
+	public string BatchSttModel { get; init; } = GptTranscribeProvider.DefaultModel;
+
+	/// <summary>空字符串交由服务端自动检测。</summary>
+	public string Language { get; init; } = "zh";
+
 	/// <summary>从配置库读取。缺项用默认值，非法数字会被夹紧。</summary>
 	public static RealtimeVoiceSettings Read(ConfigStore config)
 	{
@@ -99,8 +114,22 @@ public sealed record RealtimeVoiceSettings
 				RealtimeVoiceLimits.MaximumSilenceMilliseconds)),
 			config.GetBoolOr(InterruptKey, true),
 			invalid ? "" : rawDevice,
-			invalid);
+			invalid)
+		{
+			SttMode = config.GetStringOr(SttModeKey, "batch").Trim().ToLowerInvariant() switch
+			{
+				"realtime" => SttMode.RealtimeCloud,
+				"local" => SttMode.Local,
+				_ => SttMode.BatchCloud,
+			},
+			StreamingSttModel = ReadModel(config, StreamingSttModelKey, Defaults.StreamingSttModel),
+			BatchSttModel = ReadModel(config, BatchSttModelKey, Defaults.BatchSttModel),
+			Language = config.Get(LanguageKey) is ConfigValue.Text language ? language.Value.Trim() : Defaults.Language,
+		};
 	}
+
+	private static string ReadModel(ConfigStore config, string key, string fallback) =>
+		config.GetStringOr(key, fallback).Trim() is { Length: > 0 } model ? model : fallback;
 
 	/// <summary>设备标识是否不能安全保存。不把原文放进异常。</summary>
 	public static bool IsInvalidDevice(string? value)

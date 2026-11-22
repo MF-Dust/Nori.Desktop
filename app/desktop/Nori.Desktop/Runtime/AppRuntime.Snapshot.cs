@@ -396,6 +396,8 @@ public sealed partial class AppRuntime
 				realtimeError = realtimeStatus.Error,
 				realtimeCapturePaused = realtimeStatus.CapturePaused,
 				realtimeStreaming = realtimeStatus.Streaming,
+				realtimeUsedBatchFallback = realtimeStatus.UsedBatchFallback,
+				realtimeFallbackReason = realtimeStatus.FallbackReason,
 				realtimeBargeIn = realtimeStatus.VoiceBargeInSupported,
 			},
 			embedding = embeddingSnapshot,

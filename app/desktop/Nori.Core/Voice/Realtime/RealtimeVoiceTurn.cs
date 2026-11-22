@@ -32,7 +32,7 @@ public sealed class RealtimeVoiceTurn
 
 	public long Generation { get; }
 	public string TurnId { get; } = Guid.NewGuid().ToString("N");
-	public string? ProviderItemId { get; }
+	public string? ProviderItemId { get; private set; }
 	public CancellationToken CancellationToken { get; }
 	public VoiceTurnOrigin Origin { get; }
 	public RealtimeVoicePhase State { get; private set; }
@@ -47,10 +47,11 @@ public sealed class RealtimeVoiceTurn
 		TryTransition(Delivery.PublishedBySession, Delivery.SubmittedToAgent)
 		|| TryTransition(Delivery.Pending, Delivery.SubmittedToAgent);
 
-	internal bool TryPublishFinal(string text)
+	internal bool TryPublishFinal(string text, string? providerItemId = null)
 	{
 		// 会话在锁内发布，成功之前该轮次不对外暴露。
 		Text = text;
+		ProviderItemId = providerItemId;
 		State = RealtimeVoicePhase.Thinking;
 		return TryTransition(Delivery.Pending, Delivery.PublishedBySession);
 	}

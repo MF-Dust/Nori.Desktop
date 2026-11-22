@@ -128,6 +128,37 @@ public sealed class SttProvidersTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GptTranscribeProvider使用Whisper适配器降级时保留自动检测语言()
+	{
+		List<CapturedRequest> requests = [];
+		using HttpClient client = new(new StubHandler(request =>
+		{
+			requests.Add(request);
+			return requests.Count == 1
+				? JsonResponse(HttpStatusCode.BadRequest, "{\"error\":{\"code\":\"model_not_found\"}}")
+				: JsonResponse(HttpStatusCode.OK, "{\"text\":\"兼容识别\"}");
+		}));
+		GptTranscribeProvider provider = new(client, _config, new WhisperSttProvider(client, _config));
+		RecordedAudio audio = new([1, 2, 3, 4], "audio/wav", "voice.wav");
+		Assert.Equal("兼容识别", await provider.TranscribeAsync(audio, new SttRequestOptions
+		{
+			Model = GptTranscribeProvider.DefaultModel,
+			Language = "",
+			BaseUrl = "https://compat.example.com/v1",
+			ApiKey = "sk-test-fallback",
+		}));
+		Assert.Collection(requests,
+			first => Assert.Equal("gpt-transcribe", first.FormFields["model"]),
+			fallback =>
+			{
+				Assert.Equal("whisper-1", fallback.FormFields["model"]);
+				Assert.False(fallback.FormFields.ContainsKey("language"));
+				Assert.Equal(new Uri("https://compat.example.com/v1/audio/transcriptions"), fallback.Uri);
+				Assert.Equal("Bearer sk-test-fallback", fallback.Authorization);
+			});
+	}
+
+	[Fact]
 	public async Task GptTranscribeProvider显式指定自定义模型时不盲目降级且错误脱敏()
 	{
 		const string secret = "sk-never-leak-key-777";

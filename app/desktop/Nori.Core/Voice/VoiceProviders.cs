@@ -268,14 +268,14 @@ public sealed class WhisperSttProvider(HttpClient httpClient, ConfigStore config
 		string apiKey = SttSanitizer.NormalizeApiKey(
 			!string.IsNullOrWhiteSpace(options.ApiKey) ? options.ApiKey : config.GetStringOr("stt_api_key", ""));
 		string model = !string.IsNullOrWhiteSpace(options.Model) ? options.Model.Trim() : "whisper-1";
-		string language = !string.IsNullOrWhiteSpace(options.Language) ? options.Language.Trim() : "zh";
+		string? language = options.Language is null ? "zh" : options.Language.Trim();
 
 		using MultipartFormDataContent form = new();
 		ByteArrayContent file = new(validated.Bytes);
 		file.Headers.TryAddWithoutValidation("Content-Type", validated.Mime);
 		form.Add(file, "file", validated.FileName);
 		form.Add(new StringContent(model), "model");
-		form.Add(new StringContent(language), "language");
+		if (!string.IsNullOrWhiteSpace(language)) form.Add(new StringContent(language), "language");
 
 		using HttpRequestMessage request = new(HttpMethod.Post, endpoint) {Content = form};
 		request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);

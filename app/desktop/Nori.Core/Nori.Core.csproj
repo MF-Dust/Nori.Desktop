@@ -5,6 +5,7 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<LangVersion>latest</LangVersion>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<RootNamespace>Nori.Core</RootNamespace>
 		<AssemblyName>Nori.Core</AssemblyName>
 		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>

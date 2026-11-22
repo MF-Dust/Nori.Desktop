@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
+using Nori.Core.Platform;
 using Nori.Core.Vision;
 using Nori.Desktop.Automation.Windows;
 using Nori.Desktop.Bridge;
@@ -19,8 +20,8 @@ internal sealed class WindowScanController : IDisposable
 	private readonly WindowsWindowService _windows = new();
 	private readonly List<WindowScanOverlay> _overlays = [];
 	private readonly DispatcherTimer _refresh = new() { Interval = TimeSpan.FromMilliseconds(200) };
-	private IReadOnlyList<WindowsTopLevelWindow> _targets = [];
-	private WindowsTopLevelWindow? _target;
+	private IReadOnlyList<VisionWindow> _targets = [];
+	private VisionWindow? _target;
 	private CancellationTokenSource? _operation;
 	private bool _scanning;
 	private bool _enumerating;
@@ -41,7 +42,8 @@ internal sealed class WindowScanController : IDisposable
 		if (_disposed) return;
 		if (_operation is not null) { if (!_scanning) Cancel(); return; }
 		if (_services.SafeMode) { _readout(T("安全模式已暂停扫描。", "Scanning is paused in safe mode.")); return; }
-		if (!OperatingSystem.IsWindows() || !_windows.Availability.IsAvailable)
+		SessionType session = PlatformServices.Current.Session;
+		if (session is not (SessionType.Windows or SessionType.X11 or SessionType.Wayland))
 		{
 			_readout(T("当前平台暂不支持窗口扫描。", "Window scanning is not available on this platform.")); return;
 		}
@@ -55,6 +57,15 @@ internal sealed class WindowScanController : IDisposable
 			if (_services.ScanChip.Charges(DateTimeOffset.UtcNow) <= 0)
 			{
 				_readout(T("芯片过热，请等待冷却后再扫描。", "The chip is overheating. Wait for it to cool down.")); return;
+			}
+			if (session == SessionType.Wayland)
+			{
+				_scanning = true;
+				ScreenCaptureResult capture = await new LinuxWaylandScreenCapture().CaptureAsync(operation.Token);
+				string text = await AnalyzeCaptureAsync(capture, operation.Token);
+				operation.Token.ThrowIfCancellationRequested();
+				_readout(text);
+				return;
 			}
 			await RefreshTargetsAsync();
 			if (operation.IsCancellationRequested) return;
@@ -92,7 +103,7 @@ internal sealed class WindowScanController : IDisposable
 		_enumerating = true;
 		try
 		{
-			var targets = await Task.Run(() => _windows.WithPerMonitorDpi(_windows.EnumerateTopLevelWindows));
+			IReadOnlyList<VisionWindow> targets = await Task.Run(EnumerateTargets);
 			if (operation.IsCancellationRequested || _scanning) return;
 			_targets = targets.Where(window => window.ProcessId != Environment.ProcessId && !string.IsNullOrWhiteSpace(window.Title)
 				&& _owner.Screens.All.Any(screen => Intersects(window, screen.Bounds))).ToArray();
@@ -113,7 +124,11 @@ internal sealed class WindowScanController : IDisposable
 		finally { _enumerating = false; }
 	}
 
-	private static bool Intersects(WindowsTopLevelWindow window, PixelRect screen) =>
+	private IReadOnlyList<VisionWindow> EnumerateTargets() => OperatingSystem.IsWindows()
+		? WindowsScreenCapture.EnumerateWindows(_windows, perMonitorDpi: true)
+		: LinuxX11WindowProvider.Enumerate();
+
+	private static bool Intersects(VisionWindow window, PixelRect screen) =>
 		window.Bounds.Left < screen.Right && window.Bounds.Top < screen.Bottom
 		&& (long)window.Bounds.Left + window.Bounds.Width > screen.X && (long)window.Bounds.Top + window.Bounds.Height > screen.Y;
 
@@ -149,19 +164,11 @@ internal sealed class WindowScanController : IDisposable
 			foreach (WindowScanOverlay overlay in _overlays) overlay.Show();
 			UpdateOverlays();
 			Task minimum = Task.Delay(1400, operation.Token);
-			try
-			{
-				CapturedScreen screen = capture.Screen ?? throw new InvalidOperationException(capture.Error ?? "截屏失败");
-				string text = await AnalyzeAsync(screen, new ChatVisionAnalyzer(_services.Chat, _services.AiSettings), operation.Token);
-				await minimum;
-				operation.Token.ThrowIfCancellationRequested();
-				_readout(text);
-			}
-			catch (Exception exception) when (exception is not OperationCanceledException)
-			{
-				await minimum;
-				if (!operation.IsCancellationRequested) _readout(T("扫描失败：", "Scan failed: ") + exception.Message);
-			}
+			string text;
+			try { text = await AnalyzeCaptureAsync(capture, operation.Token); }
+			finally { await minimum; }
+			operation.Token.ThrowIfCancellationRequested();
+			_readout(text);
 		}
 		catch (OperationCanceledException) when (operation.IsCancellationRequested) { }
 		catch (Exception exception)
@@ -169,6 +176,13 @@ internal sealed class WindowScanController : IDisposable
 			if (!operation.IsCancellationRequested) _readout(T("扫描失败：", "Scan failed: ") + exception.Message);
 		}
 		finally { if (ReferenceEquals(_operation, operation)) Cancel(); }
+	}
+
+	private Task<string> AnalyzeCaptureAsync(ScreenCaptureResult capture, CancellationToken cancellationToken)
+	{
+		cancellationToken.ThrowIfCancellationRequested();
+		CapturedScreen screen = capture.Screen ?? throw new InvalidOperationException(capture.Error ?? "截屏失败");
+		return AnalyzeAsync(screen, new ChatVisionAnalyzer(_services.Chat, _services.AiSettings), cancellationToken);
 	}
 
 	internal async Task<string> AnalyzeAsync(CapturedScreen screen, IVisionAnalyzer analyzer, CancellationToken cancellationToken)
@@ -192,11 +206,13 @@ internal sealed class WindowScanController : IDisposable
 		return text;
 	}
 
-	private ScreenCaptureResult Capture(WindowsTopLevelWindow target)
+	private ScreenCaptureResult Capture(VisionWindow target)
 	{
-		if (_services.SafeMode || !OperatingSystem.IsWindows()) return ScreenCaptureResult.Fail("当前模式不支持扫描");
-		WindowsTopLevelWindow? current = _windows.EnumerateTopLevelWindows().FirstOrDefault(window => window.Handle == target.Handle && window.ProcessId == target.ProcessId);
-		return current is null ? ScreenCaptureResult.Fail("目标窗口已关闭") : new WindowsScreenCapture(_windows).Capture(current);
+		if (_services.SafeMode) return ScreenCaptureResult.Fail("当前模式不支持扫描");
+		if (!OperatingSystem.IsWindows()) return LinuxX11ScreenCapture.Capture(target);
+		WindowsScreenCapture capture = new(_windows);
+		VisionWindow? current = WindowsScreenCapture.EnumerateWindows(_windows).FirstOrDefault(window => window.Handle == target.Handle && window.ProcessId == target.ProcessId);
+		return current is null ? ScreenCaptureResult.Fail("目标窗口已关闭") : capture.Capture(current);
 	}
 
 	private void UpdateOverlays(bool fried = false)

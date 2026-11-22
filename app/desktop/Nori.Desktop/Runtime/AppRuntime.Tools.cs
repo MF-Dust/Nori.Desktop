@@ -5,6 +5,7 @@ using Nori.Core.Configuration;
 using Nori.Core.Logging;
 using Nori.Core.Mcp;
 using Nori.Core.Network;
+using Nori.Core.Platform;
 using Nori.Core.Sandbox;
 using Nori.Core.Security;
 using Nori.Core.Tools;
@@ -258,9 +259,14 @@ public sealed partial class AppRuntime
 		ScreenTools.RegisterAll(registry, allowed ? ScreenCapture : null, allowed ? VisionAnalyzer : null);
 	}
 
-	/// <summary>读屏实现；非 Windows 暂无实现，返回 null 即整组不注册。</summary>
-	private IScreenCapture? ScreenCapture =>
-		OperatingSystem.IsWindows() ? _screenCapture ??= new WindowsScreenCapture() : null;
+	/// <summary>按实际桌面会话选择读屏后端，不支持的会话不注册读屏工具。</summary>
+	private IScreenCapture? ScreenCapture => _screenCapture ??= PlatformServices.Current.Session switch
+	{
+		SessionType.Windows when OperatingSystem.IsWindows() => new WindowsScreenCapture(),
+		SessionType.X11 => new LinuxX11ScreenCapture(),
+		SessionType.Wayland => new LinuxWaylandScreenCapture(),
+		_ => null,
+	};
 
 	/// <summary>截图分析器，走当前聊天 Provider 的多模态能力。</summary>
 	private IVisionAnalyzer VisionAnalyzer =>

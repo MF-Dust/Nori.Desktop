@@ -1,5 +1,4 @@
 using System.Runtime.Versioning;
-using Avalonia.Media.Imaging;
 using Nori.Core.Vision;
 using Nori.Desktop.Automation.Windows;
 
@@ -15,17 +14,6 @@ namespace Nori.Desktop.Vision;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsScreenCapture : IScreenCapture
 {
-	/// <summary>交给模型的图片最长边。</summary>
-	///
-	/// <remarks>
-	/// 视觉模型在这个量级上已经能读清界面文字，再大只是线性推高 token 成本。原始窗口常在
-	/// 2K 以上，不缩的话一张图就能占掉一轮的大半预算。
-	/// </remarks>
-	public const int MaxWidth = 1280;
-
-	/// <summary>JPEG 质量。界面截图以文字为主，再低会使小字失真。</summary>
-	public const int JpegQuality = 75;
-
 	private readonly WindowsWindowService _windows;
 	private readonly WindowsScreenshotService _screenshots;
 
@@ -40,18 +28,27 @@ public sealed class WindowsScreenCapture : IScreenCapture
 	public bool IsAvailable => OperatingSystem.IsWindows() && _windows.Availability.IsAvailable;
 
 	/// <inheritdoc />
-	public ScreenCaptureResult Capture()
+	public Task<ScreenCaptureResult> CaptureAsync(CancellationToken cancellationToken) => Task.Run(() =>
 	{
 		if (!IsAvailable) return ScreenCaptureResult.Fail(_windows.Availability.Reason);
 
-		WindowsTopLevelWindow? target = ScreenTargetPicker.Pick(_windows.EnumerateTopLevelWindows(), Environment.ProcessId);
+		VisionWindow? target = ScreenTargetPicker.Pick(EnumerateWindows(_windows), Environment.ProcessId);
+		cancellationToken.ThrowIfCancellationRequested();
 		if (target is null) return ScreenCaptureResult.Fail("没找到可以查看的窗口");
 
 		return Capture(target);
+	}, cancellationToken);
+
+	internal static IReadOnlyList<VisionWindow> EnumerateWindows(WindowsWindowService windows, bool perMonitorDpi = false)
+	{
+		IReadOnlyList<WindowsTopLevelWindow> targets = perMonitorDpi
+			? windows.WithPerMonitorDpi(windows.EnumerateTopLevelWindows)
+			: windows.EnumerateTopLevelWindows();
+		return [.. targets.Select(window => new VisionWindow(window.Handle, window.Title, window.ProcessId, window.Bounds))];
 	}
 
 	/// <summary>截取用户明确选定的窗口，不改变自动读屏的选窗规则。</summary>
-	internal ScreenCaptureResult Capture(WindowsTopLevelWindow target)
+	internal ScreenCaptureResult Capture(VisionWindow target)
 	{
 		if (!IsAvailable) return ScreenCaptureResult.Fail(_windows.Availability.Reason);
 		// 用户选定后遮罩成为前台，截图必须允许目标处于后台。
@@ -66,38 +63,11 @@ public sealed class WindowsScreenCapture : IScreenCapture
 
 		try
 		{
-			return ScreenCaptureResult.Ok(Downscale(shot, target.Title));
+			return ScreenCaptureResult.Ok(ScreenJpegEncoder.EncodePng(shot.Data, target.Title, shot.Width));
 		}
 		catch (Exception exception) when (exception is InvalidOperationException or IOException)
 		{
 			return ScreenCaptureResult.Fail($"截图编码失败: {exception.Message}");
 		}
-	}
-
-
-	/// <summary>
-	/// 缩到 <see cref="MaxWidth"/> 之内并转成 JPEG。
-	///
-	/// 用 <see cref="Bitmap.DecodeToWidth"/> 直接按目标宽度解码，而不是先解全图再缩 —— 2K 以上
-	/// 的窗口全图解出来是几十 MB 的位图。源图本来就窄于上限时它不会放大。
-	/// </summary>
-	private static CapturedScreen Downscale(WindowsScreenshot shot, string title)
-	{
-		using MemoryStream source = new(shot.Data);
-		using Bitmap decoded = shot.Width > MaxWidth
-			? Bitmap.DecodeToWidth(source, MaxWidth, BitmapInterpolationMode.HighQuality)
-			: new Bitmap(source);
-
-		using MemoryStream encoded = new();
-		decoded.Save(encoded, new JpegBitmapEncoderOptions {Quality = JpegQuality});
-
-		return new CapturedScreen
-		{
-			Bytes = encoded.ToArray(),
-			MimeType = "image/jpeg",
-			Width = (int)decoded.PixelSize.Width,
-			Height = (int)decoded.PixelSize.Height,
-			Window = title,
-		};
 	}
 }

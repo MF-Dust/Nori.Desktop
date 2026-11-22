@@ -42,8 +42,8 @@ public static class ScreenTools
 		Register(
 			registry,
 			ReadScreenName,
-			"看一眼用户当前正在看的窗口，回答关于画面内容的问题。只能看前台窗口，看不了后台窗口"
-				+ "或整个屏幕。每次调用都会请求用户确认，不要反复调用。",
+			"查看当前前台窗口并回答关于画面内容的问题。Wayland 下由系统截图面板决定共享范围。"
+				+ "不能指定后台窗口或整个屏幕。每次调用都会请求用户确认，不要反复调用。",
 			"confirm",
 			Schema(Text("question", "想从画面里知道什么；省略则给出整体描述", required: false)),
 			(args, context) => ReadAsync(capture, analyzer, args, context.CancellationToken));
@@ -59,7 +59,8 @@ public static class ScreenTools
 			? asked
 			: DefaultQuestion;
 
-		ScreenCaptureResult result = capture.Capture();
+		ScreenCaptureResult result = await capture.CaptureAsync(cancellationToken).ConfigureAwait(false);
+		cancellationToken.ThrowIfCancellationRequested();
 		if (result.Screen is not {} screen) throw new InvalidOperationException(result.Error ?? "截屏失败");
 
 		string answer = await analyzer.AnalyzeAsync(question, screen, cancellationToken).ConfigureAwait(false);

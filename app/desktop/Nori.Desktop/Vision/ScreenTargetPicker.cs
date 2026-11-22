@@ -1,14 +1,9 @@
-using Nori.Desktop.Automation.Windows;
+using Nori.Core.Vision;
 
 namespace Nori.Desktop.Vision;
 
 /// <summary>
-/// 从候选窗口里挑出要截的那一个。
-///
-/// 单独成类且**不带平台特性**：这段是纯粹的选择逻辑，与任何 Win32 调用无关。放在
-/// <see cref="WindowsScreenCapture"/> 里的话它会继承那个类的 <c>SupportedOSPlatform</c>，
-/// 测试跟着只能在 Windows 上跑 —— 而「不能截到自己」恰恰是这里最容易写错、最该每个平台
-/// 都跑到的一条。上一版就是这么错的：本地全绿，linux 与 macOS 的 CI 全红。
+/// 从按 z 序由前到后排列的可见窗口中选择目标；排除本进程，避免读到 Nori 自己的聊天窗口。
 /// </summary>
 internal static class ScreenTargetPicker
 {
@@ -21,14 +16,14 @@ internal static class ScreenTargetPicker
 	/// 排除本进程是必需的：用户在聊天窗口里说「看看我的屏幕」时，前台窗口正是 Nori 自己，
 	/// 取前台会让她对着自己的聊天记录作答。要的是被她挡住的那一个。
 	/// </summary>
-	internal static WindowsTopLevelWindow? Pick(IReadOnlyList<WindowsTopLevelWindow> windows, int selfProcessId) =>
+	internal static VisionWindow? Pick(IReadOnlyList<VisionWindow> windows, int selfProcessId) =>
 		windows.FirstOrDefault(window => IsCandidate(window, selfProcessId));
 
-	internal static WindowsTopLevelWindow? PickAt(IReadOnlyList<WindowsTopLevelWindow> windows, int x, int y, int selfProcessId) =>
+	internal static VisionWindow? PickAt(IReadOnlyList<VisionWindow> windows, int x, int y, int selfProcessId) =>
 		windows.FirstOrDefault(window => IsCandidate(window, selfProcessId) && window.Bounds.Contains(x, y));
 
 	// 无标题浮层、单像素窗口和 Win32 标记为可见的 SOUI 占位窗口都不是读屏目标。
-	private static bool IsCandidate(WindowsTopLevelWindow window, int selfProcessId) =>
+	private static bool IsCandidate(VisionWindow window, int selfProcessId) =>
 		window.ProcessId != selfProcessId
 		&& window.Bounds.Width > 1 && window.Bounds.Height > 1
 		&& !string.IsNullOrWhiteSpace(window.Title)

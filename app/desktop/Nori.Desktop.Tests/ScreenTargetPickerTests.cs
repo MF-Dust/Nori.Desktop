@@ -1,5 +1,5 @@
 using Nori.Core.Automation;
-using Nori.Desktop.Automation.Windows;
+using Nori.Core.Vision;
 using Nori.Desktop.Vision;
 
 namespace Nori.Desktop.Tests;
@@ -14,10 +14,10 @@ namespace Nori.Desktop.Tests;
 public sealed class ScreenTargetPickerTests
 {
 	/// <summary>按 z 序（清单顺序即 `EnumWindows` 的回调顺序）构造候选窗口。</summary>
-	private static WindowsTopLevelWindow? Pick(params (nint Handle, string Title, int ProcessId)[] windows) =>
+	private static VisionWindow? Pick(params (nint Handle, string Title, int ProcessId)[] windows) =>
 		ScreenTargetPicker.Pick(
-			[.. windows.Select(window => new WindowsTopLevelWindow(
-				window.Handle, window.Title, window.ProcessId, new AutomationBounds(0, 0, 1920, 1080), 96, false))],
+			[.. windows.Select(window => new VisionWindow(
+				window.Handle, window.Title, window.ProcessId, new AutomationBounds(0, 0, 1920, 1080)))],
 			Environment.ProcessId);
 
 	/// <summary>
@@ -30,7 +30,7 @@ public sealed class ScreenTargetPickerTests
 	[Fact]
 	public void 取z序上第一个别人的窗口()
 	{
-		WindowsTopLevelWindow? picked = Pick(
+		VisionWindow? picked = Pick(
 			(1, "Nori", Environment.ProcessId),
 			(2, "Visual Studio Code", 4242),
 			(3, "浏览器", 5252));
@@ -42,7 +42,7 @@ public sealed class ScreenTargetPickerTests
 	[Fact]
 	public void 跳过无标题的浮层()
 	{
-		WindowsTopLevelWindow? picked = Pick(
+		VisionWindow? picked = Pick(
 			(1, "", 4242),
 			(2, "   ", 4242),
 			(3, "Visual Studio Code", 4242));
@@ -56,10 +56,10 @@ public sealed class ScreenTargetPickerTests
 	[InlineData("其他占位窗口", 1, 1)]
 	public void 占位窗口不会挡住真正的读屏目标(string title, int width, int height)
 	{
-		WindowsTopLevelWindow[] windows =
+		VisionWindow[] windows =
 		[
-			new(1, title, 200, new(0, 0, width, height), 96, false),
-			new(2, "记事本", 300, new(0, 0, 800, 600), 96, false),
+			new(1, title, 200, new(0, 0, width, height)),
+			new(2, "记事本", 300, new(0, 0, 800, 600)),
 		];
 
 		Assert.Equal((nint)2, ScreenTargetPicker.Pick(windows, 100)?.Handle);
@@ -69,11 +69,11 @@ public sealed class ScreenTargetPickerTests
 	[Fact]
 	public void 显式扫描按物理坐标和遮挡顺序选择并排除自身()
 	{
-		WindowsTopLevelWindow[] windows =
+		VisionWindow[] windows =
 		[
-			new(1, "Nori", 100, new(-100, 0, 200, 200), 144, true),
-			new(2, "前面的应用", 200, new(-100, 0, 100, 100), 144, false),
-			new(3, "后面的应用", 300, new(-100, 0, 200, 200), 144, false),
+			new(1, "Nori", 100, new(-100, 0, 200, 200)),
+			new(2, "前面的应用", 200, new(-100, 0, 100, 100)),
+			new(3, "后面的应用", 300, new(-100, 0, 200, 200)),
 		];
 		Assert.Equal((nint)2, ScreenTargetPicker.PickAt(windows, -50, 50, 100)?.Handle);
 		Assert.Equal((nint)3, ScreenTargetPicker.PickAt(windows, 0, 50, 100)?.Handle);

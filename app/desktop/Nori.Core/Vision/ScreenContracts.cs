@@ -41,23 +41,16 @@ public sealed record ScreenCaptureResult
 }
 
 /// <summary>
-/// 屏幕内容读取。
-///
-/// **只截当前前台窗口**，既不截整屏也不截指定的后台窗口。三条理由，从强到弱：
-///
-/// 1. 后台窗口用户此刻看不见，截它比截他正看着的东西更具侵入性；
-/// 2. 整屏会把密码管理器、聊天窗口一并收进来，而用户授权时无从预料那一刻屏幕上有什么；
-/// 3. 底层的 `WindowsWindowService.ValidateTarget` 本来就要求目标是前台窗口。
-///
-/// 因此没有「选哪个窗口」这个参数 —— 一个注定失败的参数只会让模型反复重试。
+/// 屏幕内容读取：自动选取最靠前的其他应用窗口，或交由系统截图面板选择。
+/// 模型不能指定后台窗口或指定整屏作为目标。
 /// </summary>
 public interface IScreenCapture
 {
 	/// <summary>本平台是否支持截屏。</summary>
 	bool IsAvailable { get; }
 
-	/// <summary>截取当前前台窗口。</summary>
-	ScreenCaptureResult Capture();
+	/// <summary>异步获取截图，不阻塞界面线程。</summary>
+	Task<ScreenCaptureResult> CaptureAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>

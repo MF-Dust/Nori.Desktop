@@ -28,10 +28,10 @@ public sealed class ScreenToolsTests
 			Window = "Visual Studio Code",
 		});
 
-		public ScreenCaptureResult Capture()
+		public Task<ScreenCaptureResult> CaptureAsync(CancellationToken cancellationToken)
 		{
 			Calls++;
-			return Result;
+			return Task.FromResult(Result);
 		}
 	}
 
@@ -96,17 +96,18 @@ public sealed class ScreenToolsTests
 	}
 
 	/// <summary>
-	/// 工具描述必须说清看不了整屏、也看不了后台窗口。
+	/// 工具描述必须说清不能指定整屏或后台窗口。
 	///
-	/// 底层只允许截前台窗口，描述里不写的话模型会去试「看看我的浏览器」，每次都失败。
+	/// Wayland 由系统面板确定共享范围，模型不能指定目标。
 	/// </summary>
 	[Fact]
-	public void 描述里说清只能看前台窗口()
+	public void 描述里说清默认截前台窗口且Wayland由系统选择()
 	{
 		string description = Registry(new FakeCapture(), new FakeAnalyzer()).Get(ScreenTools.ReadScreenName)!.Description;
 
 		Assert.Contains("前台窗口", description, StringComparison.Ordinal);
-		Assert.Contains("整个屏幕", description, StringComparison.Ordinal);
+		Assert.Contains("不能指定后台窗口或整个屏幕", description, StringComparison.Ordinal);
+		Assert.Contains("Wayland 下由系统截图面板决定共享范围", description, StringComparison.Ordinal);
 	}
 
 	// ---- 执行 ----

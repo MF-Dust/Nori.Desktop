@@ -9,7 +9,7 @@ using Avalonia.Threading;
 using Nori.Core.Automation;
 using Nori.Core.Platform;
 using Nori.Desktop.Appearance;
-using Nori.Desktop.Automation.Windows;
+using Nori.Core.Vision;
 
 namespace Nori.Desktop.Vision;
 
@@ -25,7 +25,7 @@ internal sealed class WindowScanOverlay : Window
 	private readonly ScanCanvas _canvas;
 	private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(16) };
 	private readonly Stopwatch _elapsed = new();
-	private WindowsTopLevelWindow? _target;
+	private VisionWindow? _target;
 	private bool _scanning;
 	private bool _fried;
 	private bool _english;
@@ -84,7 +84,7 @@ internal sealed class WindowScanOverlay : Window
 		set { if (_english == value) return; _english = value; _canvas.Refresh(); }
 	}
 
-	internal void SetTarget(WindowsTopLevelWindow? target, bool scanning, bool fried = false)
+	internal void SetTarget(VisionWindow? target, bool scanning, bool fried = false)
 	{
 		if (_target == target && _scanning == scanning && _fried == fried) return;
 		if (scanning && !_scanning) _elapsed.Restart();

@@ -14,6 +14,7 @@ internal sealed class NativeChatState
 	private NativeChatMessage? _response;
 	private NativeChatMessage? _inputBubble;
 	private string _activeInput = "";
+	private bool _activeInputFromVoice;
 	private long _generation;
 	private long _historyRequest;
 
@@ -35,13 +36,34 @@ internal sealed class NativeChatState
 	internal JsonElement Metrics { get; private set; }
 	internal DateTimeOffset LastActivity { get; private set; }
 
-	internal bool BeginSend(string text)
+	internal string FailedVoiceInput { get; private set; } = "";
+	internal Runtime.ChatVoiceSnapshot? LiveVoice { get; private set; }
+
+	internal void UpdateLiveVoice(Runtime.ChatVoiceSnapshot? snapshot) => LiveVoice = snapshot;
+
+	internal void RememberFailedVoiceInput(string text)
+	{
+		FailedVoiceInput = text;
+		Changed?.Invoke();
+	}
+
+	internal void RestoreFailedVoiceInput()
+	{
+		string text = FailedVoiceInput;
+		if (text.Length == 0) return;
+		FailedVoiceInput = "";
+		Draft = Draft.Length == 0 || char.IsWhiteSpace(Draft[^1]) ? Draft + text : Draft + " " + text;
+		SetStatus("transcript");
+	}
+
+	internal bool BeginSend(string text, bool fromVoice = false)
 	{
 		text = text.Trim();
 		if (Sending || text.Length == 0) return false;
 		InvalidateHistory();
 		Error = ""; Status = ""; FailedInput = ""; _activeInput = text;
-		if (Draft.Trim() == text) Draft = "";
+		_activeInputFromVoice = fromVoice;
+		if (!fromVoice && Draft.Trim() == text) Draft = "";
 		Sending = true; CancelRequested = false; SessionId = null; AgentState = "thinking";
 		LastActivity = DateTimeOffset.UtcNow; _earlyEvents.Clear(); _resolvedApprovals.Clear();
 		_inputBubble = new NativeChatMessage($"user-{_generation}", "user", text); Messages.Add(_inputBubble);
@@ -113,8 +135,12 @@ internal sealed class NativeChatState
 	{
 		if (restore && _activeInput.Length > 0)
 		{
-			FailedInput = _activeInput;
-			if (string.IsNullOrWhiteSpace(Draft)) Draft = _activeInput;
+			if (_activeInputFromVoice) FailedVoiceInput = _activeInput;
+			else
+			{
+				FailedInput = _activeInput;
+				if (string.IsNullOrWhiteSpace(Draft)) Draft = _activeInput;
+			}
 		}
 		if (_response is not null)
 		{

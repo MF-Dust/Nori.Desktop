@@ -30,6 +30,10 @@ public sealed class NativeChatService : NativeBridgeServiceBase
 		context.EventReceived += RaiseEvent;
 	}
 
+	internal bool SupportsLiveVoice => _chatContext.Surface == NativeChatSurface.Full;
+
+	internal Runtime.ChatVoiceSnapshot? ReadLiveVoice() => SupportsLiveVoice ? Services.Runtime?.ReadChatVoice() : null;
+
 	internal long HistoryRevision => Services.Runtime?.ChatHistoryRevision ?? 0;
 
 	internal bool IsRecording => Services.Runtime?.Voice.IsRecording == true;

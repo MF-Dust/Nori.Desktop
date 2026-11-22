@@ -109,6 +109,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 		StackPanel editorStack = new() { Spacing = 4 };
 		Control editor = BuildEditor();
 		_editor = editor;
+		AutomationProperties.SetName(editor, _field.Label);
 		_editorStack = editorStack;
 		editorStack.Children.Add(editor);
 		_error = new TextBlock
@@ -181,7 +182,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 		if (_readOnlyText is not null && !_field.IsReadOnly) { Build(); return; }
 		// 气泡预览只展示，只读也不禁用，否则字体绑定看起来像失效。
 		if (_editor is not null)
-			_editor.IsEnabled = _field.EditorKind == SettingsEditorKind.BubblePreview
+			_editor.IsEnabled = _field.EditorKind is SettingsEditorKind.BubblePreview or SettingsEditorKind.Progress
 				|| !_field.IsReadOnly
 				|| _editor is TextBox or SelectableTextBlock
 				|| _field.EditorKind == SettingsEditorKind.Avatars;
@@ -373,6 +374,7 @@ public sealed class SettingsFieldPresenter : ContentControl
 		{
 			case nameof(SettingsFieldViewModel.Label):
 				if (_label is not null) _label.Text = _field.Label;
+				if (_editor is not null) AutomationProperties.SetName(_editor, _field.Label);
 				break;
 			case nameof(SettingsFieldViewModel.Description):
 				if (_description is not null)

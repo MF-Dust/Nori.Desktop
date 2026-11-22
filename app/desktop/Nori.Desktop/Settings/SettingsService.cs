@@ -27,6 +27,8 @@ public sealed class SettingsService : NativeBridgeServiceBase
 		if (services.PluginRuntime is { } plugins) plugins.ContributionsChanged += RaiseStateChanged;
 	}
 
+	internal double MicrophoneTestLevel => Services.Runtime?.MicrophoneTestLevel ?? 0;
+
 	protected override string StateNotificationFailureMessage => "设置窗口状态通知失败";
 
 	protected override bool IsStateChangingCommand(string command) =>

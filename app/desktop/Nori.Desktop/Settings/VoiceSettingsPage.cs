@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Avalonia.Threading;
+using Nori.Core.Voice.Realtime;
 
 namespace Nori.Desktop.Settings;
 
@@ -31,11 +32,18 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 	private bool _cloning;
 	private bool _speaking;
 	private int _realtimeRequest;
+	private readonly SettingsFieldViewModel _micLevel;
+	private readonly SettingsCommand _micStart;
+	private readonly SettingsCommand _micStop;
+	private readonly DispatcherTimer _micTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
+	private CancellationTokenSource? _micTest;
+	private Task? _micCancellation;
 
 	/// <summary>创建语音设置页。</summary>
 	public VoiceSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
 		: base(service, "voice", "self", new("语音", "Voice"), new("配置朗读、语音克隆和语音识别。", "Configure speech, voice cloning and speech recognition."), lifetimeToken)
 	{
+		SettingsSectionViewModel devices = AddSection(new("设备与测试", "Devices & tests"));
 		SettingsSectionViewModel general = _generalSection = AddSection(new("朗读", "Text to speech"));
 		AddField(general, "volume", new("音量", "Volume"), new("调整 Nori 的全局朗读音量。", "Adjust Nori's global speech volume."), SettingsEditorKind.Slider,
 			snapshot => SettingsSnapshotReader.Number(snapshot, 1, "voice", "volume"), 1,
@@ -64,8 +72,6 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "voice", "ttsAutoPlay"), false,
 			(value, token) => ExecuteAsync("settings_update_voice", new { ttsAutoPlay = Convert.ToBoolean(value) }, token));
 		_previewCommand = new SettingsCommand(command => _ = TestVoiceAsync(), canExecute => !_previewing && !_speaking);
-		AddAction(general, "testVoice", new("试听当前声音", "Preview voice"), new("使用当前 TTS 配置播放一条测试语音。", "Play a sample with the current TTS configuration."), _previewCommand);
-		AddAction(general, "stopVoice", new("停止播放", "Stop playback"), new("停止当前语音播放。", "Stop the current speech."), new SettingsCommand(command => _ = StopVoiceAsync()));
 
 		SettingsSectionViewModel gpt = _gptSection = AddSection(new("GPT-SoVITS", "GPT-SoVITS"));
 		AddField(gpt, "gptsovitsBaseUrl", new("服务地址", "Service URL"), new("GPT-SoVITS API 地址。", "GPT-SoVITS API endpoint."), SettingsEditorKind.Text,
@@ -94,7 +100,13 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 		AddAction(index, "cloneIndexVoice", new("克隆声音", "Clone voice"), new("使用模板音频创建声音配置。", "Create a voice configuration from the template audio."), _cloneCommand);
 
 		SettingsSectionViewModel stt = AddSection(new("语音识别", "Speech to text"));
-		AddField(stt, "sttBaseUrl", new("识别地址", "STT base URL"), new("Whisper 兼容接口地址。", "Whisper-compatible endpoint."), SettingsEditorKind.Text,
+		AddField(stt, "realtimeSttMode", new("识别模式", "Recognition mode"), new(
+			"云端流式在说话时上传音频，整段模式在说完后上传。流式连接失败时可能改用整段上传。本地离线模式不上传音频，目前尚无本地引擎。切换模式会停止当前监听。",
+			"Cloud streaming uploads audio as you speak; batch uploads after you finish. Streaming may fall back to batch. Offline recognition never uploads audio and is not available yet. Changing modes stops live listening."), SettingsEditorKind.Choice,
+			snapshot => SettingsSnapshotReader.String(snapshot, "batch", "voice", "realtimeSttMode"), "batch",
+			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeSttMode = Convert.ToString(value) }, token),
+			options: [new("batch", new("云端 · 整段", "Cloud · whole utterance")), new("realtime", new("云端 · 实时流式", "Cloud · live streaming")), new("local", new("本地离线（预留）", "Local offline (not yet available)"))]);
+		AddField(stt, "sttBaseUrl", new("识别地址", "STT base URL"), new("OpenAI 兼容识别接口地址。", "OpenAI-compatible transcription endpoint."), SettingsEditorKind.Text,
 			snapshot => SettingsSnapshotReader.String(snapshot, string.Empty, "voice", "sttBaseUrl"), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_voice", new { sttProvider = "whisper", sttBaseUrl = Convert.ToString(value)?.Trim() ?? string.Empty }, token));
 		AddField(stt, "sttApiKey", new("识别密钥", "STT API key"), new("保存成功后输入框自动清空。", "The input is cleared after a successful save."), SettingsEditorKind.Password,
@@ -110,23 +122,44 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 		AddField(live, "realtimeContinuous", new("连续对话", "Continuous"), new("一轮对话及可选自动朗读结束后继续监听。自动朗读使用现有 TTS 开关。", "Resume listening after the reply and optional auto read-aloud. The existing TTS auto-play setting applies."), SettingsEditorKind.Boolean,
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, false, "voice", "realtimeContinuous"), false,
 			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeContinuous = Convert.ToBoolean(value) }, token));
-		AddField(live, "realtimeSensitivity", new("检测灵敏度", "Detection sensitivity"), new("0 更钝，1 更灵。只用本地音量，不会把检测发给云端。", "0 is less sensitive and 1 is more sensitive. Detection stays on this computer."), SettingsEditorKind.Slider,
+		SettingsSectionViewModel advanced = AddSection(new("高级语音设置", "Advanced voice settings"), collapsible: true);
+		AddField(advanced, "realtimeSensitivity", new("检测灵敏度", "Detection sensitivity"), new("0 更钝，1 更灵。只用本地音量，不会把检测发给云端。", "0 is less sensitive and 1 is more sensitive. Detection stays on this computer."), SettingsEditorKind.Slider,
 			snapshot => SettingsSnapshotReader.Number(snapshot, 0.5, "voice", "realtimeSensitivity"), 0.5,
 			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeSensitivity = Convert.ToDouble(value).ToString(System.Globalization.CultureInfo.InvariantCulture) }, token),
 			minimum: 0, maximum: 1, increment: 0.05);
-		AddField(live, "realtimeSilenceMs", new("静音结束", "Silence before end"), new("安静持续这么久就结束这一句，范围 200 到 3000 毫秒。", "End the utterance after this much silence, from 200 to 3000 milliseconds."), SettingsEditorKind.Number,
+		AddField(advanced, "realtimeSilenceMs", new("静音结束", "Silence before end"), new("安静持续这么久就结束这一句，范围 200 到 3000 毫秒。", "End the utterance after this much silence, from 200 to 3000 milliseconds."), SettingsEditorKind.Number,
 			snapshot => SettingsSnapshotReader.Number(snapshot, 700, "voice", "realtimeSilenceMs"), 700,
 			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeSilenceMs = Math.Round(Convert.ToDouble(value)).ToString(System.Globalization.CultureInfo.InvariantCulture) }, token),
 			minimum: 200, maximum: 3000, increment: 50);
 		AddField(live, "realtimeInterruptEnabled", new("允许打断", "Allow interrupt"), new("关掉后，打断按钮和快捷键都不会停止朗读。", "When off, the interrupt button and shortcut leave playback running."), SettingsEditorKind.Boolean,
 			snapshot => SettingsSnapshotReader.Boolean(snapshot, true, "voice", "realtimeInterruptEnabled"), true,
 			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeInterruptEnabled = Convert.ToBoolean(value) }, token));
-		AddField(live, "realtimeInputDevice", new("麦克风", "Microphone"), new("留空使用系统默认输入。当前采集不能按设备名切换，填了别的标识会拒绝开始。", "Leave empty for the system default. Capture cannot switch by device name; another id is rejected."), SettingsEditorKind.Text,
+		AddVoiceText(advanced, "realtimeSttModel", new("流式识别模型", "Streaming model"), new("留空使用默认流式模型。", "Leave empty to use the default streaming model."), RealtimeVoiceSettings.Defaults.StreamingSttModel,
+			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeSttModel = value }, token));
+		AddVoiceText(advanced, "realtimeBatchModel", new("整段识别模型", "Batch model"), new("例如 gpt-transcribe 或 whisper-1；留空使用默认模型。", "For example, gpt-transcribe or whisper-1. Leave empty for the default."), RealtimeVoiceSettings.Defaults.BatchSttModel,
+			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeBatchModel = value }, token));
+		AddVoiceText(advanced, "realtimeLanguage", new("识别语言", "Recognition language"), new("例如 zh 或 en；留空自动识别。", "For example, zh or en. Leave empty for automatic detection."), RealtimeVoiceSettings.Defaults.Language,
+			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeLanguage = value }, token));
+		AddField(devices, "realtimeInputDevice", new("麦克风", "Microphone"), new("留空使用系统默认输入。当前采集不能按设备名切换，填了别的标识会拒绝开始。", "Leave empty for the system default. Capture cannot switch by device name; another id is rejected."), SettingsEditorKind.Text,
 			snapshot => SettingsSnapshotReader.String(snapshot, string.Empty, "voice", "realtimeInputDevice"), string.Empty,
 			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeInputDevice = Convert.ToString(value)?.Trim() ?? string.Empty }, token));
-		AddAction(live, "realtimeStart", new("开始监听", "Start listening"), new("主动开始后，本地静音检测会将完整语音交给已配置的识别服务，识别结果自动进入 AI 对话，可能调用工具和云端 API。聊天麦克风与实时监听不能同时占用设备。", "Once started, local VAD submits complete speech to the configured transcription service and starts an AI chat, which may call tools and cloud APIs. Live listening and the chat microphone cannot capture simultaneously."), new SettingsCommand(command => _ = StartRealtimeAsync()));
+		AddVoiceText(devices, "realtimeOutputDevice", new("输出设备", "Output device"), new("此标识供后续版本使用；当前始终在系统默认设备上播放。", "This identifier is reserved for a later release. Playback still uses the system default."), "",
+			(value, token) => ExecuteAsync("settings_update_voice", new { realtimeOutputDevice = value }, token));
+		_micStart = new SettingsCommand(command => _ = TestMicrophoneAsync(), _ => _micTest is null);
+		_micStop = new SettingsCommand(_ => CancelMicrophoneTest(), _ => _micTest is not null);
+		AddAction(devices, "testMicrophone", new("测试麦克风", "Test microphone"), new("测试最多持续 10 秒，只在本机测量输入电平，不保存或上传录音。", "Measures input level locally for up to 10 seconds. No recording is saved or uploaded."), _micStart);
+		AddAction(devices, "stopMicrophoneTest", new("结束麦克风测试", "Stop microphone test"), new("释放麦克风。", "Release the microphone."), _micStop);
+		_micLevel = AddField(devices, "micTestLevel", new("麦克风电平", "Microphone level"), new("对着麦克风说话可查看电平变化。", "Speak into the microphone to check the input level."), SettingsEditorKind.Progress,
+			_ => _micTest is null ? 0 : Service.MicrophoneTestLevel * 100, 0, (_, _) => Task.FromResult<JsonElement>(default), readOnly: true);
+		_micTimer.Tick += (_, _) => _micLevel.Number = Service.MicrophoneTestLevel * 100;
+		AddAction(devices, "testVoice", new("试听当前声音", "Preview voice"), new("使用当前 TTS 配置播放一条测试语音。", "Play a sample with the current TTS configuration."), _previewCommand);
+		AddAction(devices, "stopVoice", new("停止播放", "Stop playback"), new("停止当前语音播放。", "Stop the current speech."), new SettingsCommand(command => _ = StopVoiceAsync()));
+		AddAction(live, "realtimeStart", new("开始监听", "Start listening"), new("识别结果自动进入 AI 对话，可能调用工具和云端 API。其他录音或测试不能同时占用麦克风。", "Recognized speech starts an AI chat, which may use tools or cloud APIs. Live listening requires exclusive microphone access."), new SettingsCommand(command => _ = StartRealtimeAsync()));
 		AddAction(live, "realtimeStop", new("停止监听", "Stop listening"), new("关闭实时监听并放开麦克风。", "Stop live listening and release the microphone."), new SettingsCommand(command => _ = StopRealtimeAsync()));
 		AddAction(live, "realtimeInterrupt", new("打断朗读", "Interrupt speech"), new("立刻停止播放。朗读时麦克风是暂停的，说话不会打断；请用这个按钮，或在 Nori 窗口按 Ctrl+Shift+.（macOS 为 Command+Shift+.）。这不是系统全局热键。", "Stop playback immediately. The microphone pauses during speech, so talking does not interrupt; use this button or Ctrl+Shift+. in a Nori window (Command+Shift+. on macOS). This is not a system-wide hotkey."), new SettingsCommand(command => _ = InterruptRealtimeAsync()));
+		Sections.Move(Sections.IndexOf(live), 0);
+		Sections.Move(Sections.IndexOf(stt), 1);
+		Sections.Move(Sections.IndexOf(advanced), 3);
 		_ttsProvider.PropertyChanged += (_, args) =>
 		{
 			if (args.PropertyName == nameof(SettingsFieldViewModel.Selected)) UpdateProviderVisibility();
@@ -140,6 +173,59 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 		_speaking = SettingsSnapshotReader.Boolean(snapshot, false, "voice", "speaking");
 		_previewCommand.RaiseCanExecuteChanged();
 		UpdateProviderVisibility();
+	}
+
+	private void AddVoiceText(SettingsSectionViewModel section, string key, SettingsText label, SettingsText description, string fallback,
+		Func<string, CancellationToken, Task<JsonElement>> save) =>
+		AddField(section, key, label, description, SettingsEditorKind.Text,
+			snapshot => SettingsSnapshotReader.String(snapshot, fallback, "voice", key), fallback,
+			(value, token) => save(Convert.ToString(value) ?? "", token));
+
+	internal void CancelMicrophoneTest()
+	{
+		if (_micTest is { } test) _micCancellation ??= test.CancelAsync();
+	}
+
+	/// <inheritdoc />
+	public override async Task PrepareShutdownAsync(CancellationToken cancellationToken = default)
+	{
+		CancelMicrophoneTest();
+		if (Dispatcher.UIThread.CheckAccess()) _micTimer.Stop();
+		else await Dispatcher.UIThread.InvokeAsync(_micTimer.Stop);
+		await base.PrepareShutdownAsync(cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <inheritdoc />
+	protected override void OnDisposed()
+	{
+		CancelMicrophoneTest();
+		if (Dispatcher.UIThread.CheckAccess()) _micTimer.Stop();
+		else Dispatcher.UIThread.Post(_micTimer.Stop);
+		base.OnDisposed();
+	}
+
+	private async Task TestMicrophoneAsync()
+	{
+		if (_micTest is not null) return;
+		using var test = new CancellationTokenSource();
+		_micTest = test;
+		_micStart.RaiseCanExecuteChanged(); _micStop.RaiseCanExecuteChanged();
+		try
+		{
+			if (!await FlushPendingSavesAsync(test.Token) || test.IsCancellationRequested) return;
+			_micTimer.Start();
+			await ExecuteAsync("voice_mic_test", cancellationToken: test.Token);
+			if (!test.IsCancellationRequested) SetStatus(Text("麦克风测试结束。", "Microphone test complete."));
+		}
+		catch (OperationCanceledException) { }
+		catch (Exception exception) { SetStatus(exception); }
+		finally
+		{
+			_micTimer.Stop(); _micLevel.Number = 0;
+			if (_micCancellation is { } stopping) await stopping;
+			_micCancellation = null; _micTest = null;
+			_micStart.RaiseCanExecuteChanged(); _micStop.RaiseCanExecuteChanged();
+		}
 	}
 
 	private void UpdateProviderVisibility()
@@ -221,7 +307,9 @@ public sealed class VoiceSettingsPage : SettingsPageBase
 			"error" => english ? "Stopped" : "已停止",
 			_ => english ? "Not listening" : "未监听",
 		};
-		return error.Length == 0 ? label : label + "。 " + error;
+		if (SettingsSnapshotReader.Boolean(snapshot, false, "voice", "realtimeUsedBatchFallback"))
+			label += " · " + (english ? "Streaming unavailable; using whole-utterance recognition." : SettingsSnapshotReader.String(snapshot, "已改用整段识别", "voice", "realtimeFallbackReason"));
+		return error.Length == 0 ? label : label + " · " + SettingsErrorText.Resolve(error, english);
 	}
 
 	private async Task StartRealtimeAsync()

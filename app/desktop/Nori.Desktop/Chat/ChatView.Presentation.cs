@@ -13,7 +13,7 @@ namespace Nori.Desktop.Chat;
 public sealed partial class ChatView
 {
 	private readonly Grid _root = new();
-	private readonly Grid _main = new() { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), ClipToBounds = true };
+	private readonly Grid _main = new() { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto"), ClipToBounds = true };
 	private readonly StackPanel _messageList = new() { Spacing = 10, Margin = new Thickness(20, 16) };
 	private readonly ScrollViewer _scroll = new() { Name = "ChatHistory", HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
 	private readonly ChatComposer _composer = new()
@@ -98,6 +98,9 @@ public sealed partial class ChatView
 		_statusBar = new Border { Name = "ChatStatus", BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(16, 6), Child = status };
 		Grid.SetRow(_statusBar, 2); _main.Children.Add(_statusBar);
 
+		Control liveVoice = BuildLiveVoiceBar();
+		Grid.SetRow(liveVoice, 3); _main.Children.Add(liveVoice);
+
 		var composer = new Grid { ColumnDefinitions = new ColumnDefinitions("40,*,40"), ColumnSpacing = 12 };
 		_microphone = Button(() => VoiceLabel(), ToggleVoiceAsync, "ChatMicrophone", "mic", iconOnly: true);
 		var microphoneContent = new StackPanel { Spacing = 1, HorizontalAlignment = HorizontalAlignment.Center };
@@ -112,7 +115,7 @@ public sealed partial class ChatView
 		_send.CornerRadius = _stop.CornerRadius = new CornerRadius(NoriMetrics.RadiusPill);
 		sendSlot.Children.Add(_send); sendSlot.Children.Add(_stop); Grid.SetColumn(sendSlot, 2); composer.Children.Add(sendSlot);
 		var footer = new Border { Name = "ChatComposeBar", Background = Brushes.Transparent, BorderBrush = ChatPalette.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(12, 10), Child = composer };
-		Grid.SetRow(footer, 3); _main.Children.Add(footer);
+		Grid.SetRow(footer, 4); _main.Children.Add(footer);
 		_root.Children.Add(_main);
 		Content = new Border { Background = Brushes.Transparent, ClipToBounds = true, Child = _root };
 		Localize(() =>

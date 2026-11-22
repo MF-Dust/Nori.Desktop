@@ -29,6 +29,8 @@ public sealed record RealtimeVoiceSettings
 	/// <summary>输入设备标识。空字符串是系统默认麦克风。</summary>
 	public const string InputDeviceKey = "realtime_voice_input_device";
 
+	public const string OutputDeviceKey = "realtime_voice_output_device";
+
 	public const string SttModeKey = "realtime_voice_stt_mode";
 	public const string StreamingSttModelKey = "realtime_voice_stt_model";
 	public const string BatchSttModelKey = "realtime_voice_batch_model";
@@ -88,10 +90,24 @@ public sealed record RealtimeVoiceSettings
 	/// <summary>设备标识含控制字符或超长。这种值不能当成默认设备悄悄用掉。</summary>
 	public bool InputDeviceInvalid { get; init; }
 
-	/// <summary>默认只在说完后上传整段录音。</summary>
+	/// <summary>修剪后的输出设备标识。空字符串表示默认输出设备。</summary>
+	public string OutputDeviceId { get; init; } = "";
+
+	/// <summary>配置中使用的识别模式标识（realtime / batch / local）。</summary>
+	public string SttModeId => SttMode switch
+	{
+		SttMode.RealtimeCloud => "realtime",
+		SttMode.Local => "local",
+		_ => "batch",
+	};
+
+	/// <summary>当前语音识别模式；默认只在说完后上传整段录音。</summary>
 	public SttMode SttMode { get; init; } = SttMode.BatchCloud;
 
+	/// <summary>流式识别模型名称。</summary>
 	public string StreamingSttModel { get; init; } = OpenAiRealtimeSttProvider.DefaultModel;
+
+	/// <summary>整段文件识别模型名称。</summary>
 	public string BatchSttModel { get; init; } = GptTranscribeProvider.DefaultModel;
 
 	/// <summary>空字符串交由服务端自动检测。</summary>
@@ -103,6 +119,7 @@ public sealed record RealtimeVoiceSettings
 		ArgumentNullException.ThrowIfNull(config);
 		string rawDevice = config.GetStringOr(InputDeviceKey, "");
 		bool invalid = IsInvalidDevice(rawDevice);
+		string outputDevice = config.GetStringOr(OutputDeviceKey, "");
 		return new RealtimeVoiceSettings(
 			config.GetBoolOr(EnabledKey, false),
 			config.GetBoolOr(ContinuousKey, false),
@@ -116,6 +133,7 @@ public sealed record RealtimeVoiceSettings
 			invalid ? "" : rawDevice,
 			invalid)
 		{
+			OutputDeviceId = IsInvalidDevice(outputDevice) ? "" : outputDevice.Trim(),
 			SttMode = config.GetStringOr(SttModeKey, "batch").Trim().ToLowerInvariant() switch
 			{
 				"realtime" => SttMode.RealtimeCloud,
@@ -137,7 +155,7 @@ public sealed record RealtimeVoiceSettings
 		if (string.IsNullOrEmpty(value)) return false;
 		string trimmed = value.Trim();
 		if (trimmed.Length > RealtimeVoiceLimits.MaximumInputDeviceLength) return true;
-		foreach (char character in trimmed)
+		foreach (char character in value)
 		{
 			if (char.IsControl(character)) return true;
 		}

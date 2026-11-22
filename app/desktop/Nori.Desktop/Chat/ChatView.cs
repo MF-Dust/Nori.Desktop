@@ -52,6 +52,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 		_state.Changed += QueueRender; _state.Messages.CollectionChanged += OnMessagesChanged;
 		_service.EventReceived += OnHostEvent; _service.StateChanged += OnHostStateChanged;
 		_renderTimer.Tick += (_, _) => FlushRender();
+		_liveVoiceTimer.Tick += (_, _) => RefreshLiveVoice();
 		_clock.Tick += (_, _) => OnClock();
 		_composer.PropertyChanged += OnComposerPropertyChanged;
 		_composer.SendRequested += () => Run(SendAsync());
@@ -150,12 +151,14 @@ public sealed partial class ChatView : UserControl, IDisposable
 		_hostVisible = visible;
 		if (visible)
 		{
-			_renderTimer.Start(); _clock.Start(); QueueRefresh(); FlushRender();
+			_renderTimer.Start(); _clock.Start();
+			if (_service.SupportsLiveVoice) { RefreshLiveVoice(); _liveVoiceTimer.Start(); }
+			QueueRefresh(); FlushRender();
 			if (_followLatest) ScrollToLatest();
 		}
 		else
 		{
-			_renderTimer.Stop();
+			_renderTimer.Stop(); _liveVoiceTimer.Stop(); _state.UpdateLiveVoice(null); RenderLiveVoice();
 			Run(StopRecordingAsync());
 		}
 	}
@@ -225,7 +228,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 		{
 			_renderPending = false;
 			if (_composer.Text != _state.Draft) { _composer.Text = _state.Draft; _composer.CaretIndex = _state.Draft.Length; }
-			RenderHeader(); RenderStatus(); UpdateActions(); RenderDialog();
+			RenderHeader(); RenderStatus(); UpdateActions(); RenderDialog(); RenderLiveVoice();
 		}
 		FlushMessages();
 	}
@@ -239,10 +242,6 @@ public sealed partial class ChatView : UserControl, IDisposable
 		FlushRender();
 	}
 
-	/// <summary>
-	/// 实时语音自动进入现有 Agent 管线，保留用户未发送的草稿。
-	/// 仅由宿主在真实原生聊天窗口的 UI 线程调用。
-	/// </summary>
 	/// <summary>首次就绪需要完整快照和历史。并发刷新替换旧请求时等待最新请求完成。</summary>
 	private async Task WaitForInitialReadinessAsync(CancellationToken cancellationToken)
 	{
@@ -255,19 +254,28 @@ public sealed partial class ChatView : UserControl, IDisposable
 			throw new InvalidOperationException("原生对话首次加载失败，无法提交语音");
 	}
 
+	/// <summary>由宿主在原生聊天 UI 线程提交语音轮次，保留用户未发送的草稿。</summary>
 	internal async Task SendRealtimeTurnAsync(Nori.Core.Voice.Realtime.RealtimeVoiceTurn turn)
 	{
 		Dispatcher.UIThread.VerifyAccess();
-		turn.CancellationToken.ThrowIfCancellationRequested();
-		if (_disposed || _preparing || _clearing || _modal.IsVisible)
-			throw new InvalidOperationException("对话窗口暂时无法开始语音会话");
-		await WaitForInitialReadinessAsync(turn.CancellationToken);
-		turn.CancellationToken.ThrowIfCancellationRequested();
-		if (!_configured || !_loadedHistory || _safeMode)
-			throw new InvalidOperationException("聊天服务尚未准备好，无法发送语音转写");
-		if (!_state.BeginSend(turn.Text))
-			throw new InvalidOperationException("已有对话正在进行，语音不会重复提交");
-		ScrollToLatest();
+		try
+		{
+			turn.CancellationToken.ThrowIfCancellationRequested();
+			if (_disposed || _preparing || _clearing || _modal.IsVisible)
+				throw new InvalidOperationException("对话窗口暂时无法开始语音会话");
+			await WaitForInitialReadinessAsync(turn.CancellationToken);
+			turn.CancellationToken.ThrowIfCancellationRequested();
+			if (!_configured || !_loadedHistory || _safeMode)
+				throw new InvalidOperationException("聊天服务尚未准备好，无法发送语音转写");
+			if (!_state.BeginSend(turn.Text, fromVoice: true))
+				throw new InvalidOperationException("已有对话正在进行，语音不会重复提交");
+		}
+		catch (Exception exception) when (exception is not OperationCanceledException && !_disposed)
+		{
+			_state.RememberFailedVoiceInput(turn.Text);
+			FlushRender();
+			throw;
+		}
 		FlushRender();
 		Task completion;
 		try
@@ -404,7 +412,7 @@ public sealed partial class ChatView : UserControl, IDisposable
 	public void Dispose()
 	{
 		if (_disposed) return;
-		_disposed = true; _lifetime.Cancel(); _initialReadiness.TrySetResult(false); _renderTimer.Stop(); _clock.Stop();
+		_disposed = true; _lifetime.Cancel(); _initialReadiness.TrySetResult(false); _renderTimer.Stop(); _clock.Stop(); _liveVoiceTimer.Stop(); _state.UpdateLiveVoice(null); RenderLiveVoice();
 		_service.EventReceived -= OnHostEvent; _service.StateChanged -= OnHostStateChanged;
 		_state.Changed -= QueueRender; _state.Messages.CollectionChanged -= OnMessagesChanged;
 		_composer.PropertyChanged -= OnComposerPropertyChanged;

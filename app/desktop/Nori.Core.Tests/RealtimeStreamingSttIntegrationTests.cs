@@ -28,6 +28,7 @@ public sealed class RealtimeStreamingSttIntegrationTests
 			await harness.Changes.Reader.ReadAsync().AsTask().WaitAsync(Deadline));
 		Assert.False(partial.IsFinal);
 		Assert.Equal("临时", partial.Text);
+		Assert.Same(partial, harness.Session.ReadPresentation().Transcript);
 		Assert.Equal((partial.Generation, "临时"), await harness.Partials.Reader.ReadAsync().AsTask().WaitAsync(Deadline));
 		Assert.Equal(RealtimeVoicePhase.Listening, harness.Session.Phase);
 		Assert.Equal(0, harness.Stream.Commits);
@@ -56,6 +57,7 @@ public sealed class RealtimeStreamingSttIntegrationTests
 		Assert.Equal("最终文本", final.Text);
 		Assert.Null(await harness.Changes.Reader.ReadAsync().AsTask().WaitAsync(Deadline));
 		Assert.Null(harness.Session.ActivePartialTranscript);
+		Assert.Null(harness.Session.ReadPresentation().Transcript);
 	}
 
 	[Theory]

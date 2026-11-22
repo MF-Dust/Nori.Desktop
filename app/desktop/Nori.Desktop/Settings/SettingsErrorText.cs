@@ -13,6 +13,15 @@ internal static class SettingsErrorText
 		["请先填写接口地址。"] = "Enter an endpoint URL first.",
 		["没有找到可用模型。"] = "No available models were found.",
 		["设置保存失败，请检查输入后重试。"] = "Settings could not be saved. Check the input and retry.",
+		["实时语音对话失败，本轮已结束"] = "The live voice conversation failed. This turn has ended.",
+		["语音识别连接已断开，本轮已结束"] = "The recognition connection closed. This turn has ended.",
+		["实时语音提交后识别失败，本轮已结束且未重发录音"] = "Recognition failed after upload. The audio was not sent again.",
+		["当前没有可用的本地语音识别服务"] = "No local speech recognition engine is available.",
+		["麦克风正被占用"] = "The microphone is already in use.",
+		["麦克风正被占用，请先停止其他录音或实时监听"] = "The microphone is in use. Stop recording or live listening first.",
+		["麦克风打开失败"] = "The microphone could not be opened.",
+		["麦克风测试只支持系统默认输入，请将设备标识留空"] = "The microphone test uses the system default. Leave the device identifier empty.",
+		["当前采集只打开系统默认麦克风，不能按设备标识切换"] = "Capture uses the system default microphone. Selecting a device by identifier is not supported.",
 	};
 
 	/// <summary>按设置页语言读取异常文本；英文页不泄漏未翻译的中文后端消息。</summary>
@@ -23,10 +32,12 @@ internal static class SettingsErrorText
 	}
 
 	/// <summary>按设置页语言读取一段异常或状态文本。</summary>
-	public static string Resolve(string? message)
+	public static string Resolve(string? message) => Resolve(message, SettingsLocalization.IsEnglish);
+
+	internal static string Resolve(string? message, bool english)
 	{
 		message = message?.Trim() ?? string.Empty;
-		if (!SettingsLocalization.IsEnglish || message.Length == 0) return message;
+		if (!english || message.Length == 0) return message;
 		if (EnglishMessages.TryGetValue(message, out string? translated)) return translated;
 		if (!ContainsChinese(message)) return message;
 		if (message.Contains("尚未就绪", StringComparison.Ordinal)) return "The application is not ready.";

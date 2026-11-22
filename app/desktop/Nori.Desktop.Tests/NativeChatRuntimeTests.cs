@@ -4,7 +4,9 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Nori.Desktop.Chat;
 using Nori.Core.Agent;
 using Nori.Core.Chat.LuoLiCore;
@@ -99,6 +101,7 @@ public partial class BridgeCommandsTests
 		owner.Content = view;
 		owner.Show();
 
+		view.Composer.Text = "第一轮语音";
 		Task voice = view.SendRealtimeTurnAsync(new RealtimeVoiceTurn(81, "第一轮语音", CancellationToken.None));
 		Assert.Equal(1, snapshotCalls);
 		Task superseding = view.RefreshAsync();
@@ -114,9 +117,60 @@ public partial class BridgeCommandsTests
 		handler.ReleaseStream.TrySetResult();
 		await voice.WaitAsync(TimeSpan.FromSeconds(3));
 		Assert.True(view.HistoryLoaded);
+		Assert.Equal("第一轮语音", view.Composer.Text);
 		Assert.Equal(1, historyCalls);
 		Assert.Contains(_services.Chat.GetHistory(), message => message.Content == "第一轮语音");
 		owner.Close();
+	});
+
+	[Theory]
+	[InlineData(720, 480, "zh-CN")]
+	[InlineData(1920, 1080, "en-US")]
+	public Task NativeChatRealtimeVoiceReusesTransientControlsAndDoesNotStealComposerFocus(int width, int height, string language) => WithSettingsUiAsync(() =>
+	{
+		Window owner = new() { Width = width, Height = height };
+		using NativeChatService service = new(_services, owner);
+		using ChatView view = new(service);
+		owner.Content = view;
+		owner.Show();
+		try
+		{
+			view.ApplySnapshot(Args(new { chat = new { configured = true }, general = new { language } }));
+			view.Composer.Text = "原有草稿";
+			Assert.True(view.Composer.Focus());
+			var bar = Assert.Single(view.GetVisualDescendants().OfType<Border>(), control => control.Name == "ChatLiveVoice");
+			var caption = Assert.Single(view.GetVisualDescendants().OfType<TextBlock>(), control => control.Name == "ChatLiveVoiceTranscript");
+			var level = Assert.Single(view.GetVisualDescendants().OfType<ProgressBar>(), control => control.Name == "ChatLiveVoiceLevel");
+			var stopSpeech = Assert.Single(view.GetVisualDescendants().OfType<Button>(), control => control.Name == "ChatStopSpeaking");
+			var status = new RealtimeVoiceStatus(RealtimeVoicePhase.Listening, 2, "", false, true, true, false, true, false);
+			var partial = new RealtimeTranscriptSnapshot(2, "turn", "item", "未提交的字幕", false, false, DateTimeOffset.UtcNow);
+			view.ApplyLiveVoiceSnapshot(new(status, false, 0.35, partial));
+			Assert.True(bar.IsVisible);
+			Assert.Equal(0.35, level.Value);
+			Assert.Contains(partial.Text, caption.Text!);
+			var finalized = partial with { IsFinal = true };
+			view.ApplyLiveVoiceSnapshot(new(status with { Phase = RealtimeVoicePhase.Speaking }, true, 0, finalized));
+			Assert.Same(caption, Assert.Single(view.GetVisualDescendants().OfType<TextBlock>(), control => control.Name == "ChatLiveVoiceTranscript"));
+			Assert.Equal(language == "en-US" ? "Transcript confirmed" : "识别已确认", caption.Text);
+			Assert.True(stopSpeech.IsVisible);
+			Assert.True(stopSpeech.Focusable);
+			Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(stopSpeech)));
+			Assert.Equal(0, level.Value);
+			owner.UpdateLayout();
+			Assert.InRange(bar.Bounds.Height, 1, 150);
+			Assert.True(view.Composer.IsFocused);
+			Assert.Equal("原有草稿", view.Composer.Text);
+			Assert.Empty(view.State.Messages);
+			view.ApplyLiveVoiceSnapshot(new(status with { Phase = RealtimeVoicePhase.Idle, Enabled = false }, false, 0, null));
+			Assert.False(bar.IsVisible);
+			Assert.Empty(caption.Text!);
+			view.ApplyLiveVoiceSnapshot(new(status, false, 0.35, partial));
+			view.SetHostVisible(false);
+			Assert.Null(view.State.LiveVoice);
+			Assert.False(caption.IsVisible);
+		}
+		finally { owner.Close(); }
+		return Task.CompletedTask;
 	});
 
 	[Fact]
@@ -280,6 +334,8 @@ public partial class BridgeCommandsTests
 		Assert.Equal("服务端最终文本", terminal.GetProperty("message").GetProperty("text").GetString());
 		Assert.Equal("服务端最终文本", _services.Chat.GetHistory()[^1].Content);
 		await handler.SpeechEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+		Assert.True(runtime.ReadChatVoice().Speaking);
+		Assert.Null(runtime.ReadChatVoice().Transcript);
 		await CreateCommands().InvokeAsync(source, "chat_clear", Args(new { })).WaitAsync(TimeSpan.FromSeconds(3));
 		Assert.Equal(1, handler.ResetCount);
 		Assert.Empty(_services.Chat.GetHistory());

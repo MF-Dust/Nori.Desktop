@@ -31,6 +31,7 @@ internal static class NativeBridgePolicy
 		"realtime_voice_stop",
 		"realtime_voice_interrupt",
 		"realtime_voice_status",
+		"voice_mic_test",
 		"settings_update_workspace",
 		"settings_pick_workspace",
 		"settings_pick_splash_background",
@@ -124,6 +125,7 @@ internal static class NativeBridgePolicy
 	{
 		"chat_start", "chat_cancel", "chat_history_page", "chat_clear",
 		"approval_respond", "approval_extend", "stt_start", "stt_stop", "tts_stop",
+		"realtime_voice_start", "realtime_voice_stop", "realtime_voice_interrupt", "realtime_voice_status",
 		"clipboard_write_text", "open_url", "chat_read_generated_image", "chat_open_generated_image",
 	}.ToFrozenSet(StringComparer.Ordinal);
 
@@ -139,7 +141,7 @@ internal static class NativeBridgePolicy
 			or "automation_probe_vision" or "automation_stop_task" or "automation_stop_all"
 			or "model_import_local" or "model_download_remote"
 			or "memory_export" or "memory_import_preview" or "memory_import_commit"
-			or "skills_install_marketplace";
+			or "skills_install_marketplace" or "voice_mic_test";
 
 	public static void Validate(IBridgeSource source, string command)
 	{
@@ -154,6 +156,8 @@ internal static class NativeBridgePolicy
 		};
 		if (allowed is not null && !allowed.Contains(command))
 			throw new InvalidOperationException($"当前窗口不允许执行命令: {command}");
+		if (command == "voice_mic_test" && source is not WindowContext { Label: WindowLabels.Settings })
+			throw new InvalidOperationException("只有设置窗口可以测试麦克风");
 		if (allowed is null && source.Label != WindowLabels.Main && command is
 			("realtime_voice_start" or "realtime_voice_stop" or "realtime_voice_interrupt" or "realtime_voice_status"
 			or "focus_start" or "focus_pause" or "focus_resume" or "focus_end" or "focus_view"))

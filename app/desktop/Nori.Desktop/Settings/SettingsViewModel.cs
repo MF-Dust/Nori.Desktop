@@ -341,7 +341,11 @@ public sealed class SettingsViewModel : SettingsObservableObject, IDisposable
 	internal void SetHostVisible(bool visible)
 	{
 		if (_disposed) return;
-		if (!visible && Volatile.Read(ref _hostVisible) != 0) Interlocked.Increment(ref _snapshotEpoch);
+		if (!visible && Volatile.Read(ref _hostVisible) != 0)
+		{
+			Interlocked.Increment(ref _snapshotEpoch);
+			if (CurrentPage is VoiceSettingsPage voice) voice.CancelMicrophoneTest();
+		}
 		Volatile.Write(ref _hostVisible, visible ? 1 : 0);
 		if (visible && Interlocked.Exchange(ref _refreshWhenShown, 0) == 1)
 			_ = RefreshSnapshotAsync(_lifetimeCts.Token);

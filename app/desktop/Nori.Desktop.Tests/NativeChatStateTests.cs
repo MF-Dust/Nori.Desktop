@@ -23,6 +23,42 @@ public sealed class NativeChatStateTests
 		Assert.Equal("原有草稿 你好 Nori 继续提问", state.Draft);
 	}
 
+	[Theory]
+	[InlineData("同一段转写")]
+	[InlineData("  同一段转写  ")]
+	[InlineData("")]
+	public void VoiceSendAndFailedStartPreserveDraftUntilExplicitRestore(string draft)
+	{
+		NativeChatState state = new() { Draft = draft };
+		Assert.True(state.BeginSend("同一段转写", fromVoice: true));
+		Assert.Equal(draft, state.Draft);
+		state.StartFailed(new InvalidOperationException("暂时无法提交"));
+		Assert.Equal(draft, state.Draft);
+		Assert.Equal("同一段转写", state.FailedVoiceInput);
+		Assert.Empty(state.Messages);
+		state.Draft = "用户后来键入\n  ";
+		state.RestoreFailedVoiceInput();
+		Assert.Equal("用户后来键入\n  同一段转写", state.Draft);
+		Assert.Empty(state.FailedVoiceInput);
+		state.RestoreFailedVoiceInput();
+		Assert.Equal("用户后来键入\n  同一段转写", state.Draft);
+	}
+
+	[Fact]
+	public void VoiceAgentFailureCanBeRestoredAfterHistoryRefresh()
+	{
+		NativeChatState state = new() { Draft = "原有草稿" };
+		state.MergeLatestHistory(Event(new[] { new { id = 1, role = "user", content = "旧记录" } }));
+		Assert.True(state.BeginSend("失败的语音", fromVoice: true));
+		state.AttachSession("voice");
+		state.ApplyEvent(Event(new { type = "error", sessionId = "voice", error = "对话失败" }));
+		state.MergeLatestHistory(Event(Array.Empty<object>()));
+		Assert.Equal("原有草稿", state.Draft);
+		Assert.Equal("失败的语音", state.FailedVoiceInput);
+		state.RestoreFailedVoiceInput();
+		Assert.Equal("原有草稿 失败的语音", state.Draft);
+	}
+
 	[Fact]
 	public void EarlyEventsReplayOnlyForTheReturnedSessionAndCompleteReplacesPreview()
 	{

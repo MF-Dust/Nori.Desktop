@@ -88,6 +88,8 @@ public sealed class SettingsSectionViewModel : SettingsObservableObject
 		set => SetProperty(ref _isVisible, value);
 	}
 
+	internal bool IsCollapsible { get; init; }
+
 	private readonly SettingsText _titleText;
 	private string _language = "zh-CN";
 
@@ -232,9 +234,9 @@ public abstract class SettingsPageBase : SettingsObservableObject, IDisposable
 	protected CancellationToken LifetimeToken => _lifetimeCts.Token;
 
 	/// <summary>添加设置分组。</summary>
-	protected SettingsSectionViewModel AddSection(SettingsText title)
+	protected SettingsSectionViewModel AddSection(SettingsText title, bool collapsible = false)
 	{
-		SettingsSectionViewModel section = new(title);
+		SettingsSectionViewModel section = new(title) { IsCollapsible = collapsible };
 		section.SetLanguage(_language);
 		Sections.Add(section);
 		return section;

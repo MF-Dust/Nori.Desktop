@@ -5,6 +5,7 @@ using Nori.Core.Tests.TestSupport;
 using Nori.Core.Voice;
 using Nori.Core.Voice.Audio;
 using Nori.Core.Voice.Realtime;
+using Nori.Core.Voice.Stt;
 
 namespace Nori.Core.Tests;
 
@@ -154,6 +155,22 @@ public sealed class RealtimeVoiceSessionTests
 		Assert.Equal(RealtimeVoicePhase.Idle, session.Phase);
 		Feed(session, 1_000, 0.4f);
 		Assert.Equal(0, harness.TranscribeCalls);
+	}
+
+	[Fact]
+	public async Task SwitchingToLocalModeStopsListeningBeforeAnyCloudTranscription()
+	{
+		Harness harness = Harness.Open();
+		using RealtimeVoiceSession session = harness.Session;
+		await session.StartAsync();
+		Feed(session, 200, 0.4f);
+		harness.Settings = harness.Settings with { SttMode = SttMode.Local };
+		await session.ApplySettingsAsync(harness.Settings);
+		Feed(session, 1_000, 0);
+		Assert.Equal(RealtimeVoicePhase.Idle, session.Phase);
+		Assert.Equal(0, session.ReadPresentation().InputLevel);
+		Assert.Equal(0, harness.TranscribeCalls);
+		await Assert.ThrowsAsync<InvalidOperationException>(() => session.StartAsync());
 	}
 
 	[Fact]
@@ -655,9 +672,13 @@ public sealed class RealtimeVoiceSessionTests
 		Feed(session, 100, 0.4f);
 		Assert.InRange(session.CurrentInputLevel, 0.05, 1.0);
 		await sawPositive.Task.WaitAsync(TimeSpan.FromSeconds(2));
+		Assert.InRange(session.ReadPresentation().InputLevel, 0.05, 1.0);
 
 		await session.StopAsync();
 		Assert.Equal(0, session.CurrentInputLevel);
+		var stopped = session.ReadPresentation();
+		Assert.Equal(0, stopped.InputLevel);
+		Assert.Null(stopped.Transcript);
 		await sawZeroAfterPositive.Task.WaitAsync(TimeSpan.FromSeconds(2));
 		lock (levels)
 		{

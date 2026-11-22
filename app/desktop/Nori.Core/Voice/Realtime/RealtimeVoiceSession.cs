@@ -216,15 +216,22 @@ public sealed class RealtimeVoiceSession : IDisposable
 		}
 	}
 
-	/// <summary>换上新选项。总开关关闭时，正在进行的监听会停掉。</summary>
+	/// <summary>一次读取同一轮的内存显示数据；调用方须节流，不用于持久化。</summary>
+	public (RealtimeVoiceStatus Status, double InputLevel, RealtimeTranscriptSnapshot? Transcript) ReadPresentation()
+	{
+		lock (_gate) return (Status(), _publishedInputLevel, _coordinator?.Snapshot);
+	}
+
+	/// <summary>换上新选项。关闭总开关或切换识别模式时停止当前监听，不沿用上一轮的上传设置。</summary>
 	public Task ApplySettingsAsync(RealtimeVoiceSettings settings)
 	{
 		ArgumentNullException.ThrowIfNull(settings);
 		bool stop;
 		lock (_gate)
 		{
+			stop = (!settings.Enabled || settings.SttMode != _tuning.SttMode)
+				&& _phase is not (RealtimeVoicePhase.Idle or RealtimeVoicePhase.Error);
 			_tuning = settings;
-			stop = !settings.Enabled && _phase is not (RealtimeVoicePhase.Idle or RealtimeVoicePhase.Error);
 		}
 		return stop ? StopAsync() : Task.CompletedTask;
 	}

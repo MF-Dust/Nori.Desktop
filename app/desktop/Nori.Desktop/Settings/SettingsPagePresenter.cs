@@ -33,6 +33,7 @@ public sealed class SettingsPagePresenter : ContentControl
 		DetachedFromVisualTree += (_, _) =>
 		{
 			_attached = false;
+			if (_page is VoiceSettingsPage voice) voice.CancelMicrophoneTest();
 			UpdateFocusPresentation();
 		};
 		HorizontalContentAlignment = HorizontalAlignment.Stretch;
@@ -53,6 +54,7 @@ public sealed class SettingsPagePresenter : ContentControl
 			return;
 		}
 		if (_page is ProactiveSettingsPage previous) previous.SetPresentationActive(false);
+		if (_page is VoiceSettingsPage voice) voice.CancelMicrophoneTest();
 		_complex?.Dispose();
 		_complex = null;
 		if (_page is not null) _page.PropertyChanged -= OnPagePropertyChanged;
@@ -109,18 +111,28 @@ public sealed class SettingsPagePresenter : ContentControl
 		foreach (SettingsSectionViewModel section in _page.Sections)
 		{
 			StackPanel content = new() { Spacing = 0 };
-			content.Bind(IsVisibleProperty, new Binding(nameof(SettingsSectionViewModel.IsVisible)) {Source = section});
-			content.Children.Add(new TextBlock
+			Control group = content;
+			if (section.IsCollapsible)
 			{
-				Text = section.Title,
-				FontSize = NoriMetrics.FontBase,
-				FontWeight = FontWeight.SemiBold,
-				Foreground = Brush("SettingsPrimaryBrush"),
-				Margin = new Thickness(0, 0, 0, 10),
-			});
+				var expander = new Expander { Header = section.Title, Content = content, IsExpanded = false, HorizontalAlignment = HorizontalAlignment.Stretch };
+				Avalonia.Automation.AutomationProperties.SetName(expander, section.Title);
+				group = expander;
+			}
+			else
+			{
+				content.Children.Add(new TextBlock
+				{
+					Text = section.Title,
+					FontSize = NoriMetrics.FontBase,
+					FontWeight = FontWeight.SemiBold,
+					Foreground = Brush("SettingsPrimaryBrush"),
+					Margin = new Thickness(0, 0, 0, 10),
+				});
+			}
 			foreach (SettingsFieldViewModel field in section.Fields)
 				content.Children.Add(new SettingsFieldPresenter { DataContext = field });
-			root.Children.Add(content);
+			group.Bind(IsVisibleProperty, new Binding(nameof(SettingsSectionViewModel.IsVisible)) { Source = section });
+			root.Children.Add(group);
 		}
 
 		if (_page is ProactiveSettingsPage proactive)

@@ -28,7 +28,8 @@ public sealed partial class AppRuntime
 			turn.CancellationToken.ThrowIfCancellationRequested();
 			if (Services.SafeMode || Volatile.Read(ref _disposed) != 0)
 				throw new InvalidOperationException("应用已停止接收实时语音");
-			Services.Windows.ShowChat();
+			if (Services.Windows.Get(WindowLabels.Chat) is not ChatWindow { IsVisible: true })
+				Services.Windows.ShowChat();
 			if (Services.Windows.Get(WindowLabels.Chat) is not ChatWindow chat || !chat.IsVisible)
 				throw new InvalidOperationException("原生对话窗口未能打开");
 			return chat.Body.SendRealtimeTurnAsync(turn);

@@ -7,7 +7,7 @@ public sealed partial class BridgeCommands
 {
 	private async Task<object?> UpdateVoiceSettingsAsync(JsonElement args)
 	{
-		ValidateRealtimeInputDevice(args);
+		var voiceOptions = ReadRealtimeVoiceOptions(args);
 		UpdateOptionalConfig(args, "volume", "audio_volume");
 		UpdateOptionalConfig(args, "ttsProvider", "tts_provider");
 		UpdateOptionalConfig(args, "ttsBaseUrl", "tts_base_url");
@@ -30,7 +30,7 @@ public sealed partial class BridgeCommands
 		UpdateOptionalConfig(args, "realtimeSensitivity", RealtimeVoiceSettings.SensitivityKey);
 		UpdateOptionalConfig(args, "realtimeSilenceMs", RealtimeVoiceSettings.SilenceKey);
 		UpdateBoolConfig(args, "realtimeInterruptEnabled", RealtimeVoiceSettings.InterruptKey);
-		UpdateRealtimeInputDevice(args);
+		foreach (var (key, value) in voiceOptions) UpdateConfigDirect(key, value);
 		if (_services.Runtime is { } runtime)
 		{
 			string raw = _services.Config.GetStringOr("audio_volume", "1");
@@ -84,7 +84,7 @@ public sealed partial class BridgeCommands
 	/// </summary>
 	private object RealtimeVoiceStatusPayload()
 	{
-		RealtimeVoiceStatus status = Runtime.RealtimeVoice.Status();
+		var (status, inputLevel, _) = Runtime.RealtimeVoice.ReadPresentation();
 		return new
 		{
 			phase = status.Phase.ToString().ToLowerInvariant(),
@@ -95,31 +95,44 @@ public sealed partial class BridgeCommands
 			enabled = status.Enabled,
 			continuous = status.Continuous,
 			streaming = status.Streaming,
+			speaking = Runtime.Voice.IsSpeaking,
+			inputLevel,
+			fallbackReason = status.FallbackReason,
 			bargeIn = status.VoiceBargeInSupported,
 		};
 	}
 
-	/// <summary>在写入任何语音配置之前拒绝非法设备标识，避免半截保存。</summary>
-	private static void ValidateRealtimeInputDevice(JsonElement args)
+	/// <summary>在写入语音配置前校验所有新选项，避免部分保存。</summary>
+	private static List<(string Key, string Value)> ReadRealtimeVoiceOptions(JsonElement args)
 	{
-		if (!TryReadRealtimeInputDevice(args, out string text)) return;
-		if (RealtimeVoiceSettings.IsInvalidDevice(text)) throw new InvalidOperationException("麦克风标识无效");
+		List<(string, string)> values = [];
+		Add("realtimeInputDevice", RealtimeVoiceSettings.InputDeviceKey, (_, raw) => !RealtimeVoiceSettings.IsInvalidDevice(raw), "麦克风标识无效");
+		Add("realtimeOutputDevice", RealtimeVoiceSettings.OutputDeviceKey, (_, raw) => !RealtimeVoiceSettings.IsInvalidDevice(raw), "输出设备标识无效");
+		Add("realtimeSttMode", RealtimeVoiceSettings.SttModeKey, (text, _) => text is "batch" or "realtime" or "local", "语音识别模式无效");
+		Add("realtimeSttModel", RealtimeVoiceSettings.StreamingSttModelKey, IsModel, "流式识别模型标识无效");
+		Add("realtimeBatchModel", RealtimeVoiceSettings.BatchSttModelKey, IsModel, "整段识别模型标识无效");
+		Add("realtimeLanguage", RealtimeVoiceSettings.LanguageKey,
+			(text, raw) => text.Length <= 35 && !raw.Any(char.IsControl) && text.All(c => char.IsAsciiLetterOrDigit(c) || c == '-'), "识别语言代码无效");
+		return values;
+
+		void Add(string argument, string key, Func<string, string, bool> isValid, string error)
+		{
+			if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty(argument, out JsonElement value)) return;
+			if (value.ValueKind != JsonValueKind.String || value.GetString() is not { } raw || !isValid(raw.Trim(), raw))
+				throw new InvalidOperationException(error);
+			values.Add((key, raw.Trim()));
+		}
+
+		static bool IsModel(string text, string raw) => text.Length <= 256 && !raw.Any(char.IsControl);
 	}
 
-	/// <summary>保存输入设备标识。调用前须先通过 <see cref="ValidateRealtimeInputDevice"/>。</summary>
-	private void UpdateRealtimeInputDevice(JsonElement args)
+	/// <summary>
+	/// 进行限时本地麦克风测试，只计算电平，不录制或上传。
+	/// 前端调用：invoke("voice_mic_test")，取消调用可提前结束。
+	/// </summary>
+	private async Task<object?> VoiceMicTestAsync(CancellationToken cancellationToken)
 	{
-		if (!TryReadRealtimeInputDevice(args, out string text)) return;
-		if (RealtimeVoiceSettings.IsInvalidDevice(text)) throw new InvalidOperationException("麦克风标识无效");
-		UpdateConfigDirect(RealtimeVoiceSettings.InputDeviceKey, text.Trim());
-	}
-
-	private static bool TryReadRealtimeInputDevice(JsonElement args, out string text)
-	{
-		text = "";
-		if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty("realtimeInputDevice", out JsonElement value)) return false;
-		if (value.ValueKind != JsonValueKind.String) return false;
-		text = value.GetString() ?? "";
-		return true;
+		await Runtime.TestMicrophoneAsync(cancellationToken).ConfigureAwait(false);
+		return null;
 	}
 }

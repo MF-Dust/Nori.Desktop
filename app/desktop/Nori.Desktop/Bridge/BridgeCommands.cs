@@ -570,6 +570,12 @@ public sealed partial class BridgeCommands
 		/// </summary>
 		"realtime_voice_status" => RealtimeVoiceStatusPayload(),
 
+		/// <summary>
+		/// 运行本地麦克风电平自检，只检测输入电平，不上传也不保存录音。
+		/// 前端调用：invoke("voice_mic_test")
+		/// </summary>
+		"voice_mic_test" => await VoiceMicTestAsync(cancellationToken),
+
 		// ---- 系统能力 ----
 		/// <summary>用系统默认浏览器打开网址。调用：invoke("open_url", {url: "https://..."})</summary>
 		"open_url" => Run(() => ShellOpen.OpenUrl(Str(args, "url"))),

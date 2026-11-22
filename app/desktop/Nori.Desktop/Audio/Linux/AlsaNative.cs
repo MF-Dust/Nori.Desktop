@@ -5,12 +5,12 @@ using Nori.Core.Voice.Audio;
 namespace Nori.Desktop.Audio.Linux;
 
 /// <summary>
-/// 打开名为 <c>default</c> 的 ALSA 设备。
+/// 打开选定的 ALSA PCM，未选择时使用 <c>default</c>。
 ///
 /// <c>default</c> 走 dmix 或 PipeWire-ALSA，不打开 <c>hw:</c>，避免把整块声卡占住。
 /// 采样率和声道用 near 协商，实际值交回上层重采样。
 /// </summary>
-internal sealed class AlsaNativeFactory : IAlsaFactory
+internal sealed class AlsaNativeFactory(string? deviceId = null) : IAlsaFactory
 {
 	internal const string MissingLibraryMessage = "未找到 libasound.so.2。请安装 libasound2（Ubuntu 24.04 起为 libasound2t64）后再试。";
 
@@ -21,11 +21,15 @@ internal sealed class AlsaNativeFactory : IAlsaFactory
 	internal static AudioDeviceException MissingLibrary(Exception? inner = null) =>
 		new(MissingLibraryMessage, inner);
 
-	private static IAlsaPcm Open(bool playback, int sampleRate, int channels)
+	private IAlsaPcm Open(bool playback, int sampleRate, int channels)
 	{
 		try
 		{
-			return new AlsaPcm(playback, sampleRate, channels);
+			string id = NativeAudioDeviceManager.NormalizeDeviceId(deviceId) ?? "default";
+			if (id != "default" && !AlsaDeviceCatalog.Enumerate(playback ? AudioDeviceDirection.Output : AudioDeviceDirection.Input)
+				.Any(device => device.Id == id))
+				throw new AudioDeviceException("所选 ALSA 设备不存在或已断开，请重新选择设备。");
+			return new AlsaPcm(playback, sampleRate, channels, id);
 		}
 		catch (DllNotFoundException exception)
 		{
@@ -38,9 +42,9 @@ internal sealed class AlsaNativeFactory : IAlsaFactory
 		catch (AudioDeviceException exception)
 		{
 			string guidance = playback
-				? "无法初始化 ALSA 默认输出设备。请在系统声音设置中选择可用的输出设备，并检查音频服务。"
-				: "无法初始化 ALSA 默认录音设备。请连接或启用麦克风，并在系统声音设置中选择可用的默认输入设备。";
-			throw new AudioDeviceException($"{guidance} 原因：{exception.Message}", exception);
+				? "无法初始化 ALSA输出设备。请在系统声音设置中选择可用的输出设备，并检查音频服务。"
+				: "无法初始化 ALSA录音设备。请连接或启用麦克风，并在系统声音设置中选择可用的输入设备。";
+			throw new AudioDeviceException($"{guidance} 原因：{exception.Message}", exception) { IsBusy = exception.IsBusy };
 		}
 	}
 }
@@ -55,6 +59,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 	private const int FormatS16Le = 2;
 	private const int NonBlocking = 1;
 	private const int TryAgain = -11;
+	private const int DeviceBusy = -16;
 	internal const int Interrupted = -4;
 	internal const int Underrun = -32;
 	internal const int Suspended = -86;
@@ -65,13 +70,13 @@ internal sealed class AlsaPcm : IAlsaPcm
 	private readonly int _channels;
 	private readonly AlsaDrainTracker _drain = new();
 
-	internal AlsaPcm(bool playback, int sampleRate, int channels)
+	internal AlsaPcm(bool playback, int sampleRate, int channels, string deviceId)
 	{
 		if (sampleRate < 1) throw new AudioDeviceException("采样率无效");
 		if (channels < 1) throw new AudioDeviceException("声道数无效");
-		int opened = snd_pcm_open(out _handle, "default", playback ? StreamPlayback : StreamCapture, NonBlocking);
+		int opened = snd_pcm_open(out _handle, deviceId, playback ? StreamPlayback : StreamCapture, NonBlocking);
 		if (opened < 0 || _handle == IntPtr.Zero)
-			throw new AudioDeviceException($"打不开 ALSA 设备 default：{ErrorText(opened)}");
+			throw new AudioDeviceException($"打不开 ALSA 设备：{ErrorText(opened)}") { IsBusy = opened == DeviceBusy };
 
 		IntPtr parameters = IntPtr.Zero;
 		try
@@ -229,7 +234,7 @@ internal sealed class AlsaPcm : IAlsaPcm
 	private static void Check(int code, string action)
 	{
 		if (code >= 0) return;
-		throw new AudioDeviceException($"{action}失败：{ErrorText(code)}");
+		throw new AudioDeviceException($"{action}失败：{ErrorText(code)}") { IsBusy = code == DeviceBusy };
 	}
 
 	private static string ErrorText(int code)

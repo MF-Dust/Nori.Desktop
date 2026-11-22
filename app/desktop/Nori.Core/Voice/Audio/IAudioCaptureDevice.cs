@@ -9,7 +9,7 @@ namespace Nori.Core.Voice.Audio;
 public interface IAudioCaptureDevice : IDisposable
 {
 	/// <summary>
-	/// 打开默认输入设备，返回它**实际**给出的格式。
+	/// 打开构造时选定的输入设备，返回它**实际**给出的格式。
 	///
 	/// 不要求设备按我们想要的采样率工作：麦克风常固定在 44100 或 48000，
 	/// 而我们要的是 16000 单声道。转换由上层做，理由同输出侧 —— 那段代码可测。

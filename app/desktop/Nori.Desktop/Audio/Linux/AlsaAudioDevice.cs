@@ -17,7 +17,7 @@ internal sealed class AlsaAudioDevice : IAudioDevice
 	private volatile bool _stopped;
 	private bool _disposed;
 
-	internal AlsaAudioDevice() : this(new AlsaNativeFactory()) { }
+	internal AlsaAudioDevice(string? deviceId = null) : this(new AlsaNativeFactory(deviceId)) { }
 
 	internal AlsaAudioDevice(IAlsaFactory factory) => _factory = factory;
 

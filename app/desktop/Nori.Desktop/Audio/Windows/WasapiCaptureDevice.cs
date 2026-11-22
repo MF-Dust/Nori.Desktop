@@ -14,7 +14,7 @@ namespace Nori.Desktop.Audio.Windows;
 ///   **没有意义**，要按静音处理而不是照搬。照搬多半也是零，但这条不保证。
 /// </summary>
 [SupportedOSPlatform("windows")]
-internal sealed class WasapiCaptureDevice(bool loopback = false) : IAudioCaptureDevice
+internal sealed class WasapiCaptureDevice(bool loopback = false, string? deviceId = null) : IAudioCaptureDevice
 {
 	/// <summary>AUDCLNT_STREAMFLAGS_LOOPBACK：从**输出**端点采到正在播的东西。</summary>
 	private const uint FlagLoopback = 0x00020000;
@@ -59,23 +59,23 @@ internal sealed class WasapiCaptureDevice(bool loopback = false) : IAudioCapture
 	/// <inheritdoc />
 	public AudioFormat Open()
 	{
+		WasapiNativeApi.IMmDeviceEnumerator? enumerator = null;
+		WasapiNativeApi.IMmDevice? endpoint = null;
 		try
 		{
-			WasapiNativeApi.IMmDeviceEnumerator enumerator =
-				(WasapiNativeApi.IMmDeviceEnumerator) new WasapiNativeApi.MmDeviceEnumerator();
-			// 环回模式下要开的是**输出**端点：采的是正在播的东西。
-			// 它的用处是自证采集链路 —— 播一段已知的音再采回来比对，
-			// 不必依赖「麦克风此刻有没有信号」这种环境条件。
-			enumerator.GetDefaultAudioEndpoint(
-				loopback ? WasapiNativeApi.DataFlowRender : WasapiNativeApi.DataFlowCapture,
-				WasapiNativeApi.RoleConsole,
-				out WasapiNativeApi.IMmDevice device);
+			enumerator = (WasapiNativeApi.IMmDeviceEnumerator) new WasapiNativeApi.MmDeviceEnumerator();
+			// 环回模式从输出端点读取正在播放的声音。
+			WasapiNativeApi.IMmDevice device = WasapiDeviceCatalog.SelectEndpoint(enumerator,
+				loopback ? WasapiNativeApi.DataFlowRender : WasapiNativeApi.DataFlowCapture, deviceId);
+			endpoint = device;
 			DeviceName = WasapiNativeApi.FriendlyName(device);
 
 			Guid clientId = WasapiNativeApi.IidAudioClient;
 			device.Activate(ref clientId, 1 /* CLSCTX_INPROC_SERVER 进程内服务 */, IntPtr.Zero, out object clientObject);
 			WasapiNativeApi.IAudioClient client = (WasapiNativeApi.IAudioClient) clientObject;
 
+			// 录音编排在打开失败后仍会释放设备及已创建的客户端。
+			_client = client;
 			client.GetMixFormat(out IntPtr mixFormat);
 			try
 			{
@@ -90,7 +90,6 @@ internal sealed class WasapiCaptureDevice(bool loopback = false) : IAudioCapture
 
 				lock (_gate)
 				{
-					_client = client;
 					_capture = (WasapiNativeApi.IAudioCaptureClient) captureObject;
 					_channels = actual.Channels;
 				}
@@ -105,7 +104,16 @@ internal sealed class WasapiCaptureDevice(bool loopback = false) : IAudioCapture
 		}
 		catch (Exception failure)
 		{
-			throw new AudioDeviceException($"打不开输入设备：{failure.Message}", failure);
+			throw new AudioDeviceException(deviceId is null ? $"打不开输入设备：{failure.Message}"
+				: $"打不开所选输入设备，请检查设备是否已断开、禁用或被占用。原因：{failure.Message}", failure)
+			{
+				IsBusy = failure.HResult == WasapiDeviceCatalog.DeviceInUse,
+			};
+		}
+		finally
+		{
+			if (endpoint is not null) Marshal.ReleaseComObject(endpoint);
+			if (enumerator is not null) Marshal.ReleaseComObject(enumerator);
 		}
 	}
 

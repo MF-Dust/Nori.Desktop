@@ -51,8 +51,8 @@ internal static class WasapiNativeApi
 	[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 	internal interface IMmDeviceEnumerator
 	{
-		// 用不到，但槽位必须占住。
-		void EnumAudioEndpoints(int dataFlow, uint stateMask, out IntPtr devices);
+		void EnumAudioEndpoints(int dataFlow, uint stateMask,
+			[MarshalAs(UnmanagedType.Interface)] out IMmDeviceCollection devices);
 
 		void GetDefaultAudioEndpoint(int dataFlow, int role,
 			[MarshalAs(UnmanagedType.Interface)] out IMmDevice device);
@@ -62,6 +62,21 @@ internal static class WasapiNativeApi
 
 		void RegisterEndpointNotificationCallback(IntPtr client);
 		void UnregisterEndpointNotificationCallback(IntPtr client);
+	}
+
+	[ComImport, Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E")]
+	[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+	internal interface IMmDeviceCollection
+	{
+		void GetCount(out uint count);
+		void Item(uint index, [MarshalAs(UnmanagedType.Interface)] out IMmDevice device);
+	}
+
+	[ComImport, Guid("1BE09788-6894-4089-8586-9A2A6C265AC5")]
+	[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+	internal interface IMmEndpoint
+	{
+		void GetDataFlow(out int dataFlow);
 	}
 
 	[ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F")]

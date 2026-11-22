@@ -10,10 +10,9 @@ namespace Nori.Desktop.Audio.Mac;
 /// 共享模式由 AudioQueue 保证：不会独占声卡。回调只填已分配的缓冲，
 /// 阻塞和停止醒在 <see cref="CoreAudioOutputDevice"/> 的环形缓冲里。
 /// </summary>
-internal sealed class CoreAudioQueue : ICoreAudioQueue
+internal sealed class CoreAudioQueue(string? deviceId = null) : ICoreAudioQueue
 {
 	private const string AudioToolbox = "/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox";
-	private const string CoreAudio = "/System/Library/Frameworks/CoreAudio.framework/CoreAudio";
 	private const uint LinearPcm = 0x6C70636D;
 	private const uint FloatPacked = 9;
 	private const uint VolumeParameter = 1;
@@ -83,7 +82,7 @@ internal sealed class CoreAudioQueue : ICoreAudioQueue
 		{
 			if (_queue == IntPtr.Zero || _started) return;
 			int status = AudioQueueStart(_queue, IntPtr.Zero);
-			if (status != 0) throw new AudioDeviceException($"启动音频队列失败：{status}");
+			if (status != 0) throw QueueFailure(_capture is null ? AudioDeviceDirection.Output : AudioDeviceDirection.Input, status);
 			_started = true;
 		}
 	}
@@ -136,7 +135,7 @@ internal sealed class CoreAudioQueue : ICoreAudioQueue
 		if (_queue != IntPtr.Zero)
 		{
 			if (_started) AudioQueueStop(_queue, 1);
-			AudioQueueDispose(_queue, 0);
+			AudioQueueDispose(_queue, 1);
 			_queue = IntPtr.Zero;
 		}
 		_started = false;
@@ -149,8 +148,21 @@ internal sealed class CoreAudioQueue : ICoreAudioQueue
 
 	private AudioFormat CreateQueue(bool output, int sampleRate, int channels, Delegate callback)
 	{
-		if (!TryHardwareFormat(!output, out AudioFormat hardware))
-			hardware = new AudioFormat(Math.Max(1, sampleRate), Math.Max(1, channels));
+		if (!OperatingSystem.IsMacOS()) throw new AudioDeviceException("未找到 AudioToolbox。macOS 系统音频组件不可用。");
+		AudioDeviceDirection direction = output ? AudioDeviceDirection.Output : AudioDeviceDirection.Input;
+		AudioFormat hardware;
+		if (deviceId is null)
+		{
+			hardware = CoreAudioDeviceCatalog.GetDefaultFormat(direction)
+				?? new AudioFormat(Math.Max(1, sampleRate), Math.Max(1, channels));
+		}
+		else
+		{
+			AudioDeviceInfo? device = CoreAudioDeviceCatalog.Enumerate(direction).FirstOrDefault(device => device.Id == deviceId);
+			if (device?.DefaultSampleRate is not int rate || device.DefaultChannels is not int count)
+				throw new AudioDeviceException("所选 CoreAudio 设备不存在、已断开或不可用，请重新选择设备。");
+			hardware = new AudioFormat(rate, count);
+		}
 		AudioStreamBasicDescription description = FloatFormat(hardware);
 		_handle = GCHandle.Alloc(this);
 		int status = output
@@ -164,9 +176,18 @@ internal sealed class CoreAudioQueue : ICoreAudioQueue
 				_queue = IntPtr.Zero;
 			}
 			FreeHandle();
-			throw new AudioDeviceException(output
-				? $"打不开输出设备：AudioQueue {status}"
-				: $"打不开输入设备：AudioQueue {status}");
+			throw QueueFailure(direction, status);
+		}
+		if (deviceId is not null)
+		{
+			nint uid = CoreAudioDeviceCatalog.CreateDeviceUid(deviceId);
+			if (uid == 0) throw new AudioDeviceException("无法读取所选 CoreAudio 设备标识。");
+			try
+			{
+				status = AudioQueueSetProperty(_queue, 0x61716364, ref uid, (uint) IntPtr.Size); // aqcd
+				if (status != 0) throw QueueFailure(direction, status);
+			}
+			finally { CoreAudioDeviceCatalog.CFRelease(uid); }
 		}
 		return hardware;
 	}
@@ -281,70 +302,19 @@ internal sealed class CoreAudioQueue : ICoreAudioQueue
 		};
 	}
 
-	private static bool TryHardwareFormat(bool input, out AudioFormat format)
+	private AudioDeviceException QueueFailure(AudioDeviceDirection direction, int status)
 	{
-		format = default;
-		try
+		bool input = direction == AudioDeviceDirection.Input;
+		string kind = input ? "输入" : "输出";
+		string permission = input ? CoreAudioDeviceCatalog.MicrophonePermissionNote : "";
+		return new AudioDeviceException($"无法打开或启动 CoreAudio {kind}设备，请确认设备仍可用。{permission}（AudioQueue {status}）")
 		{
-			uint deviceSelector = input ? FourCc('d', 'I', 'n', ' ') : FourCc('d', 'O', 'u', 't');
-			AudioObjectPropertyAddress address = new()
-			{
-				Selector = deviceSelector,
-				Scope = FourCc('g', 'l', 'o', 'b'),
-				Element = 0,
-			};
-			uint size = sizeof(uint);
-			IntPtr deviceData = Marshal.AllocHGlobal(sizeof(uint));
-			try
-			{
-				int status = AudioObjectGetPropertyData(1, ref address, 0, IntPtr.Zero, ref size, deviceData);
-				if (status != 0) return false;
-				uint deviceId = (uint) Marshal.ReadInt32(deviceData);
-				if (deviceId == 0) return false;
-
-				address = new AudioObjectPropertyAddress
-				{
-					Selector = FourCc('s', 'f', 'm', 't'),
-					Scope = input ? FourCc('i', 'n', 'p', 't') : FourCc('o', 'u', 't', 'p'),
-					Element = 0,
-				};
-				int descriptionSize = Marshal.SizeOf<AudioStreamBasicDescription>();
-				IntPtr descriptionData = Marshal.AllocHGlobal(descriptionSize);
-				try
-				{
-					size = (uint) descriptionSize;
-					status = AudioObjectGetPropertyData(deviceId, ref address, 0, IntPtr.Zero, ref size, descriptionData);
-					if (status != 0) return false;
-					AudioStreamBasicDescription description = Marshal.PtrToStructure<AudioStreamBasicDescription>(descriptionData);
-					if (description.SampleRate < 1 || description.ChannelsPerFrame < 1) return false;
-					format = new AudioFormat((int) Math.Round(description.SampleRate), (int) description.ChannelsPerFrame);
-					return true;
-				}
-				finally
-				{
-					Marshal.FreeHGlobal(descriptionData);
-				}
-			}
-			finally
-			{
-				Marshal.FreeHGlobal(deviceData);
-			}
-		}
-		catch (DllNotFoundException)
-		{
-			return false;
-		}
-		catch (EntryPointNotFoundException)
-		{
-			return false;
-		}
+			IsBusy = OperatingSystem.IsMacOS() && CoreAudioDeviceCatalog.IsHeldByAnotherProcess(direction, deviceId),
+		};
 	}
 
-	private static uint FourCc(char a, char b, char c, char d) =>
-		((uint) a << 24) | ((uint) b << 16) | ((uint) c << 8) | d;
-
 	[StructLayout(LayoutKind.Sequential)]
-	private struct AudioStreamBasicDescription
+	internal struct AudioStreamBasicDescription
 	{
 		public double SampleRate;
 		public uint FormatId;
@@ -363,14 +333,6 @@ internal sealed class CoreAudioQueue : ICoreAudioQueue
 		[FieldOffset(0)] public uint AudioDataBytesCapacity;
 		[FieldOffset(8)] public IntPtr AudioData;
 		[FieldOffset(16)] public uint AudioDataByteSize;
-	}
-
-	[StructLayout(LayoutKind.Sequential)]
-	private struct AudioObjectPropertyAddress
-	{
-		public uint Selector;
-		public uint Scope;
-		public uint Element;
 	}
 
 	[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -408,8 +370,6 @@ internal sealed class CoreAudioQueue : ICoreAudioQueue
 	[DllImport(AudioToolbox)]
 	private static extern int AudioQueueSetParameter(IntPtr queue, uint parameter, float value);
 
-	[DllImport(CoreAudio)]
-	private static extern int AudioObjectGetPropertyData(
-		uint objectId, ref AudioObjectPropertyAddress address, uint qualifierSize, IntPtr qualifier,
-		ref uint dataSize, IntPtr data);
+	[DllImport(AudioToolbox)]
+	private static extern int AudioQueueSetProperty(IntPtr queue, uint property, ref nint value, uint size);
 }

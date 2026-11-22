@@ -20,7 +20,7 @@ namespace Nori.Desktop.Audio.Windows;
 /// 可以忽略。
 /// </summary>
 [SupportedOSPlatform("windows")]
-internal sealed class WasapiAudioDevice : IAudioDevice
+internal sealed class WasapiAudioDevice(string? deviceId = null) : IAudioDevice
 {
 	/// <summary>缓冲时长。太短会在负载高时断音，太长会让 Stop 之后还拖一截声音。</summary>
 	private const int BufferMilliseconds = 200;
@@ -68,9 +68,8 @@ internal sealed class WasapiAudioDevice : IAudioDevice
 			{
 				enumerator =
 					(WasapiNativeApi.IMmDeviceEnumerator) new WasapiNativeApi.MmDeviceEnumerator();
-				enumerator.GetDefaultAudioEndpoint(
-					WasapiNativeApi.DataFlowRender, WasapiNativeApi.RoleConsole,
-					out WasapiNativeApi.IMmDevice device);
+				WasapiNativeApi.IMmDevice device = WasapiDeviceCatalog.SelectEndpoint(
+					enumerator, WasapiNativeApi.DataFlowRender, deviceId);
 				endpoint = device;
 				DeviceName = WasapiNativeApi.FriendlyName(device);
 
@@ -107,7 +106,8 @@ internal sealed class WasapiAudioDevice : IAudioDevice
 			catch (Exception failure)
 			{
 				Dispose();
-				throw new AudioDeviceException($"打不开输出设备：{failure.Message}", failure);
+				throw new AudioDeviceException(deviceId is null ? $"打不开输出设备：{failure.Message}"
+					: $"打不开所选输出设备，请检查设备是否已断开、禁用或被占用。原因：{failure.Message}", failure);
 			}
 			finally
 			{

@@ -20,24 +20,30 @@ internal static class NativeAudioFactory
 		new NativeAudioPlayback(OpenOutput, Decode);
 
 	internal static IMicrophoneRecorder CreateRecorder(CaptureOwnership? ownership = null) =>
-		new NativeMicrophoneRecorder(OpenInput, ownership);
+		new NativeMicrophoneRecorder(OpenCapture, ownership);
 
-	internal static IAudioCaptureDevice OpenCapture() => OpenInput();
+	internal static NativeAudioDeviceManager CreateDeviceManager() => new();
 
-	private static IAudioDevice OpenOutput()
+	internal static IAudioCaptureDevice OpenCapture() => OpenCapture(null);
+
+	internal static IAudioCaptureDevice OpenCapture(string? deviceId = null)
 	{
-		if (OperatingSystem.IsWindows()) return new WasapiAudioDevice();
-		if (OperatingSystem.IsMacOS()) return new CoreAudioOutputDevice();
-		if (OperatingSystem.IsLinux()) return new AlsaAudioDevice();
-		throw new AudioDeviceException("这个平台还没有原生输出设备实现");
+		deviceId = NativeAudioDeviceManager.NormalizeDeviceId(deviceId);
+		if (OperatingSystem.IsWindows()) return new WasapiCaptureDevice(deviceId: deviceId);
+		if (OperatingSystem.IsMacOS()) return new CoreAudioCaptureDevice(deviceId);
+		if (OperatingSystem.IsLinux()) return new AlsaCaptureDevice(deviceId);
+		throw new AudioDeviceException("这个平台还没有原生输入设备实现");
 	}
 
-	private static IAudioCaptureDevice OpenInput()
+	internal static IAudioDevice OpenOutput() => OpenOutput(null);
+
+	internal static IAudioDevice OpenOutput(string? deviceId = null)
 	{
-		if (OperatingSystem.IsWindows()) return new WasapiCaptureDevice();
-		if (OperatingSystem.IsMacOS()) return new CoreAudioCaptureDevice();
-		if (OperatingSystem.IsLinux()) return new AlsaCaptureDevice();
-		throw new AudioDeviceException("这个平台还没有原生输入设备实现");
+		deviceId = NativeAudioDeviceManager.NormalizeDeviceId(deviceId);
+		if (OperatingSystem.IsWindows()) return new WasapiAudioDevice(deviceId);
+		if (OperatingSystem.IsMacOS()) return new CoreAudioOutputDevice(deviceId);
+		if (OperatingSystem.IsLinux()) return new AlsaAudioDevice(deviceId);
+		throw new AudioDeviceException("这个平台还没有原生输出设备实现");
 	}
 
 	/// <summary>

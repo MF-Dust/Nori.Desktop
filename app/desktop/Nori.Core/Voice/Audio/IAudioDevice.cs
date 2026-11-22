@@ -44,4 +44,8 @@ public readonly record struct AudioFormat(int SampleRate, int Channels);
 
 /// <summary>打不开设备时抛这个，调用方据此降级成「这台机器上没有声音」而不是崩掉。</summary>
 public sealed class AudioDeviceException(string message, Exception? inner = null)
-	: Exception(message, inner);
+	: Exception(message, inner)
+{
+	/// <summary>平台明确报告设备占用；其他错误不得按占用重试。</summary>
+	public bool IsBusy { get; init; }
+}

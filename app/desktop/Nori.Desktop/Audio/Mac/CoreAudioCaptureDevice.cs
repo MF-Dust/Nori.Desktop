@@ -11,7 +11,7 @@ internal sealed class CoreAudioCaptureDevice : IAudioCaptureDevice
 	private PcmBlockingBuffer? _buffer;
 	private bool _disposed;
 
-	internal CoreAudioCaptureDevice() : this(new CoreAudioQueue(), 0, ownsQueue: true) { }
+	internal CoreAudioCaptureDevice(string? deviceId = null) : this(new CoreAudioQueue(deviceId), 0, ownsQueue: true) { }
 
 	internal CoreAudioCaptureDevice(ICoreAudioQueue queue, int bufferSamples = 0)
 		: this(queue, bufferSamples, ownsQueue: false) { }

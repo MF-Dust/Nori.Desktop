@@ -16,7 +16,7 @@ internal sealed class CoreAudioOutputDevice : IAudioDevice
 	private bool _open;
 	private bool _disposed;
 
-	internal CoreAudioOutputDevice() : this(new CoreAudioQueue(), 0, ownsQueue: true) { }
+	internal CoreAudioOutputDevice(string? deviceId = null) : this(new CoreAudioQueue(deviceId), 0, ownsQueue: true) { }
 
 	internal CoreAudioOutputDevice(ICoreAudioQueue queue, int bufferSamples = 0)
 		: this(queue, bufferSamples, ownsQueue: false) { }

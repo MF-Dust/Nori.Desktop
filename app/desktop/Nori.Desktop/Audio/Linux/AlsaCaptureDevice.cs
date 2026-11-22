@@ -13,7 +13,7 @@ internal sealed class AlsaCaptureDevice : IAudioCaptureDevice
 	private volatile bool _stopped;
 	private bool _disposed;
 
-	internal AlsaCaptureDevice() : this(new AlsaNativeFactory()) { }
+	internal AlsaCaptureDevice(string? deviceId = null) : this(new AlsaNativeFactory(deviceId)) { }
 
 	internal AlsaCaptureDevice(IAlsaFactory factory) => _factory = factory;
 

@@ -302,11 +302,9 @@ public sealed class OpenAiRealtimeSttSession : IStreamingSttSession
 				VoiceFailureKind.Timeout,
 				"连接实时语音识别服务超时");
 		}
-		catch (Exception exception)
+		catch (Exception)
 		{
-			string safeMessage = SttSanitizer.RedactError(exception.Message, _apiKey);
-			string detail = safeMessage.Length > 0 ? $"连接实时语音识别服务失败: {safeMessage}" : "连接实时语音识别服务失败";
-			throw new VoiceProviderException(ProviderId, VoiceFailureKind.Network, detail);
+			throw new VoiceProviderException(ProviderId, VoiceFailureKind.Network, "连接实时语音识别服务失败");
 		}
 	}
 
@@ -351,9 +349,7 @@ public sealed class OpenAiRealtimeSttSession : IStreamingSttSession
 		catch (Exception ex) when (ex is WebSocketException or IOException)
 		{
 			_isConnected = false;
-			string safeMessage = SttSanitizer.RedactError(ex.Message, _apiKey);
-			string detail = safeMessage.Length > 0 ? $"{failurePrefix}: {safeMessage}" : failurePrefix;
-			throw new VoiceProviderException(ProviderId, VoiceFailureKind.Network, detail);
+			throw new VoiceProviderException(ProviderId, VoiceFailureKind.Network, failurePrefix);
 		}
 		finally
 		{
@@ -391,9 +387,7 @@ public sealed class OpenAiRealtimeSttSession : IStreamingSttSession
 		}
 		catch (Exception ex) when (ex is WebSocketException or IOException)
 		{
-			string safeMessage = SttSanitizer.RedactError(ex.Message, _apiKey);
-			string detail = safeMessage.Length > 0 ? $"发送实时语音会话配置失败: {safeMessage}" : "发送实时语音会话配置失败";
-			throw new VoiceProviderException(ProviderId, VoiceFailureKind.Network, detail);
+			throw new VoiceProviderException(ProviderId, VoiceFailureKind.Network, "发送实时语音会话配置失败");
 		}
 		finally
 		{
@@ -484,8 +478,7 @@ public sealed class OpenAiRealtimeSttSession : IStreamingSttSession
 		{
 			_isConnected = false;
 			skipCloseBackpressureWait = true;
-			string safeMessage = SttSanitizer.RedactError(ex.Message, _apiKey);
-			string detail = safeMessage.Length > 0 ? $"实时语音识别连接异常: {safeMessage}" : "实时语音识别连接异常";
+			const string detail = "实时语音识别连接异常";
 
 			if (!_sessionReadyTcs.Task.IsCompleted)
 			{
@@ -623,7 +616,7 @@ public sealed class OpenAiRealtimeSttSession : IStreamingSttSession
 
 				case "conversation.item.input_audio_transcription.failed":
 					isTerminalEvent = true;
-					ExtractError(root, out string? failedCode, out string? failedType, out string? failedMessage);
+					ExtractError(root, out string? failedCode, out string? failedType);
 					eventToPublish = new StreamingSttEvent
 					{
 						Kind = StreamingSttEventKind.Failed,
@@ -631,16 +624,14 @@ public sealed class OpenAiRealtimeSttSession : IStreamingSttSession
 						ContentIndex = GetOptionalInt32(root, "content_index"),
 						ErrorCode = failedCode,
 						ErrorType = failedType,
-						ErrorMessage = failedMessage,
+						ErrorMessage = "实时语音转写失败",
 					};
 					break;
 
 				case "error":
 					isTerminalEvent = true;
-					ExtractError(root, out string? errorCode, out string? errorType, out string? errorMessage);
-					string finalMessage = string.IsNullOrWhiteSpace(errorMessage)
-						? "实时语音识别服务返回错误"
-						: errorMessage;
+					ExtractError(root, out string? errorCode, out string? errorType);
+					const string finalMessage = "实时语音识别服务返回错误";
 
 					if (!_sessionReadyTcs.Task.IsCompleted)
 					{
@@ -725,24 +716,30 @@ public sealed class OpenAiRealtimeSttSession : IStreamingSttSession
 		_events.ForceEnqueueTerminal(item with { Sequence = sequence });
 	}
 
-	private void ExtractError(JsonElement root, out string? code, out string? type, out string? message)
+	private static void ExtractError(JsonElement root, out string? code, out string? type)
 	{
 		code = null;
 		type = null;
-		message = null;
-
-		if (!root.TryGetProperty("error", out JsonElement errorElement) || errorElement.ValueKind != JsonValueKind.Object)
-		{
+		if (!root.TryGetProperty("error", out JsonElement error) || error.ValueKind != JsonValueKind.Object)
 			return;
-		}
 
-		code = GetOptionalString(errorElement, "code");
-		type = GetOptionalString(errorElement, "type");
-		string? rawMessage = GetOptionalString(errorElement, "message");
-		if (!string.IsNullOrWhiteSpace(rawMessage))
+		// 服务端的代码与类别同样不可信，只保留已知的协议值。
+		code = GetOptionalString(error, "code") switch
 		{
-			message = SttSanitizer.RedactError(rawMessage, _apiKey);
-		}
+			"tx_fail" => "tx_fail",
+			"rate_limit" => "rate_limit",
+			"rate_limit_exceeded" => "rate_limit_exceeded",
+			"invalid_api_key" => "invalid_api_key",
+			"model_not_found" => "model_not_found",
+			_ => null,
+		};
+		type = GetOptionalString(error, "type") switch
+		{
+			"server_error" => "server_error",
+			"invalid_request_error" => "invalid_request_error",
+			"rate_limit_error" => "rate_limit_error",
+			_ => null,
+		};
 	}
 
 	private bool TryEnterSend()

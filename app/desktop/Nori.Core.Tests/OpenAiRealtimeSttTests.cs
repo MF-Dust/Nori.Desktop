@@ -338,7 +338,7 @@ public sealed class OpenAiRealtimeSttTests : IDisposable
 				{
 					type = "server_error",
 					code = "tx_fail",
-					message = $"failed with {secret}",
+					message = $"failed with {secret}: 私有转写内容",
 				},
 			}));
 		transport.QueueIncomingText(
@@ -347,9 +347,9 @@ public sealed class OpenAiRealtimeSttTests : IDisposable
 				type = "error",
 				error = new
 				{
-					type = "rate_limit_error",
+					type = secret,
 					code = "rate_limit",
-					message = $"slow down {secret}",
+					message = $"slow down {secret}: 私有转写内容",
 				},
 			}));
 		transport.QueueClose();
@@ -401,10 +401,11 @@ public sealed class OpenAiRealtimeSttTests : IDisposable
 		Assert.Equal(1, events[6].ContentIndex);
 		Assert.Equal("tx_fail", events[6].ErrorCode);
 		Assert.Equal("server_error", events[6].ErrorType);
-		Assert.DoesNotContain(secret, events[6].ErrorMessage ?? "", StringComparison.Ordinal);
+		Assert.Equal("实时语音转写失败", events[6].ErrorMessage);
 
 		Assert.Equal("rate_limit", events[7].ErrorCode);
-		Assert.DoesNotContain(secret, events[7].ErrorMessage ?? "", StringComparison.Ordinal);
+		Assert.Null(events[7].ErrorType);
+		Assert.Equal("实时语音识别服务返回错误", events[7].ErrorMessage);
 		Assert.False(session.IsConnected);
 	}
 

@@ -47,7 +47,8 @@ public sealed partial class AppRuntime
 		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
 			cancellationToken, request.CancellationToken, _lifetimeCts.Token, source.LifetimeToken, turnToken);
 		if (linked.IsCancellationRequested) return false;
-		PermissionGear authorizationGear = active?.Origin == VoiceTurnOrigin.Voice ? PermissionGear.Ask : EffectiveGear;
+		bool isVoiceTurn = active?.Origin == VoiceTurnOrigin.Voice;
+		PermissionGear authorizationGear = isVoiceTurn ? PermissionGear.Ask : EffectiveGear;
 		if (Permissions.Decide(authorizationGear, sessionId, request.ToolName, request.PermissionLevel)
 			== PermissionDecision.Allow)
 		{
@@ -57,7 +58,7 @@ public sealed partial class AppRuntime
 			return true;
 		}
 
-		PendingApproval approval = new(request.RequestId, request.ToolName, source, sessionId,
+		PendingApproval approval = new(request.RequestId, request.ToolName, source, sessionId, isVoiceTurn,
 			request.DeadlineUtc ?? DateTimeOffset.UtcNow.AddSeconds(AgentEngine.CallTimeoutSeconds), linked.Token);
 		lock (_approvalGate)
 		{
@@ -82,6 +83,12 @@ public sealed partial class AppRuntime
 		return await approval.Tcs.Task.ConfigureAwait(false);
 	}
 
+	private static void RequireActiveVoiceApprovalWindow(PendingApproval approval)
+	{
+		if (approval.IsVoiceTurn && approval.Source is not Nori.Desktop.Chat.NativeChatContext { IsVisible: true, IsActive: true })
+			throw new InvalidOperationException("语音对话窗口未激活，无法批准或延长工具授权");
+	}
+
 	private void ExpireApproval(PendingApproval approval)
 	{
 		lock (_approvalGate)
@@ -101,7 +108,7 @@ public sealed partial class AppRuntime
 		HideApprovalNotice(approval.RequestId);
 		// 只有用户**真的按了允许**才记。超时、取消、拒绝都不是同意 —— 把它们也记进来，
 		// 等于一次没人看见的超时换来后面整轮的静默放行。
-		if (approved && (!_sessions.TryGetValue(approval.SessionId, out AgentSessionState? active) || active.Origin != VoiceTurnOrigin.Voice))
+		if (approved && !approval.IsVoiceTurn)
 			Permissions.Remember(approval.SessionId, approval.ToolName);
 		PostAgentEvent(approval.Source, new
 		{
@@ -129,6 +136,7 @@ public sealed partial class AppRuntime
 			}
 			if (source is Nori.Desktop.Chat.NativeChatContext { IsVisible: false })
 				throw new InvalidOperationException("对话窗口不可见，无法延长工具授权");
+			RequireActiveVoiceApprovalWindow(approval);
 			approval.Extend();
 			PostAgentEvent(approval.Source, new
 			{
@@ -237,6 +245,7 @@ public sealed partial class AppRuntime
 				}
 				if (approved && source is Nori.Desktop.Chat.NativeChatContext { IsVisible: false })
 					throw new InvalidOperationException("对话窗口不可见，无法批准工具执行");
+				if (approved) RequireActiveVoiceApprovalWindow(approval);
 				return FinishApproval(approval, approved, approved ? "approved" : "denied");
 			}
 		}

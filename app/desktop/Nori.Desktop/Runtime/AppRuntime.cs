@@ -517,7 +517,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	}
 
 	/// <summary>待决授权请求</summary>
-	private sealed class PendingApproval(string requestId, string toolName, IBridgeSource source, string sessionId, DateTimeOffset maximumDeadlineUtc, CancellationToken cancellationToken) : IDisposable
+	private sealed class PendingApproval(string requestId, string toolName, IBridgeSource source, string sessionId, bool isVoiceTurn, DateTimeOffset maximumDeadlineUtc, CancellationToken cancellationToken) : IDisposable
 	{
 		public string RequestId { get; } = requestId;
 
@@ -525,6 +525,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		public string ToolName { get; } = toolName;
 		public IBridgeSource Source { get; } = source;
 		public string SessionId { get; } = sessionId;
+		public bool IsVoiceTurn { get; } = isVoiceTurn;
 		public CancellationToken CancellationToken { get; } = cancellationToken;
 		public TaskCompletionSource<bool> Tcs { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 		public DateTimeOffset DeadlineUtc { get; private set; } = Cap(DateTimeOffset.UtcNow.AddSeconds(ApprovalTimeoutSeconds), maximumDeadlineUtc);

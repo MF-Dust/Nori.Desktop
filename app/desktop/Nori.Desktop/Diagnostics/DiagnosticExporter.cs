@@ -5,6 +5,7 @@ using Nori.Core.Agent;
 using Nori.Core.Data;
 using Nori.Core.Logging;
 using Nori.Core.Security;
+using Nori.Core.Voice.Metrics;
 using Nori.Desktop.Live2D;
 
 namespace Nori.Desktop.Diagnostics;
@@ -31,7 +32,8 @@ public static class DiagnosticExporter
 		bool safeMode,
 		CancellationToken cancellationToken = default,
 		AgentTraceCollector? trace = null,
-		AgentExecutionJournal? execution = null)
+		AgentExecutionJournal? execution = null,
+		VoiceMetricsSnapshot? voiceMetrics = null)
 	{
 		ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
 		ArgumentNullException.ThrowIfNull(logger);
@@ -85,6 +87,10 @@ public static class DiagnosticExporter
 			})
 			.ToArray();
 
+			List<string> archiveEntries = ["diagnostics.json", "runtime.json", "recent-logs.json", "agent-trace.json", "agent-execution.json"];
+			if (voiceMetrics is not null) archiveEntries.Add("voice-metrics.json");
+			archiveEntries.Add("README.txt");
+
 			using (FileStream stream = new(temporary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
 			using (ZipArchive archive = new(stream, ZipArchiveMode.Create, leaveOpen: true))
 			{
@@ -97,11 +103,12 @@ public static class DiagnosticExporter
 					summary = executionSnapshot.Summary,
 					events = executionSnapshot.Events,
 				}, cancellationToken);
-				WriteText(archive, "README.txt", "本压缩包只包含脱敏的运行诊断、Agent 性能元数据、执行记录与最近日志，不包含数据库、聊天、记忆、工具参数、工具结果、资源或密钥。\n", cancellationToken);
+				if (voiceMetrics is not null) WriteJson(archive, "voice-metrics.json", voiceMetrics, cancellationToken);
+				WriteText(archive, "README.txt", "本压缩包只包含脱敏的运行诊断、Agent 与可选语音性能元数据、执行记录与最近日志，不包含数据库、聊天、记忆、工具参数、工具结果、资源或密钥。\n", cancellationToken);
 				WriteJson(archive, "manifest.json", new
 				{
 					formatVersion = 1,
-					files = new[] {"diagnostics.json", "runtime.json", "recent-logs.json", "agent-trace.json", "agent-execution.json", "README.txt"},
+					files = archiveEntries,
 					skipped,
 				}, cancellationToken);
 				archive.Dispose();

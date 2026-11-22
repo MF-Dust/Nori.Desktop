@@ -21,7 +21,7 @@ internal static class VoiceHttp
 		HttpRequestMessage request,
 		string provider,
 		CancellationToken cancellationToken,
-		string? apiKey = null)
+		bool discardTransportMessage = false)
 	{
 		try
 		{
@@ -37,7 +37,7 @@ internal static class VoiceHttp
 		}
 		catch (HttpRequestException exception)
 		{
-			string safeMessage = SttSanitizer.RedactError(exception.Message, apiKey);
+			string safeMessage = discardTransportMessage ? "" : SttSanitizer.RedactError(exception.Message);
 			HttpRequestException sanitizedInner = new(
 				exception.HttpRequestError,
 				safeMessage.Length > 0 ? safeMessage : "语音服务网络请求失败",
@@ -279,28 +279,19 @@ public sealed class WhisperSttProvider(HttpClient httpClient, ConfigStore config
 
 		using HttpRequestMessage request = new(HttpMethod.Post, endpoint) {Content = form};
 		request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-		using HttpResponseMessage response = await VoiceHttp.SendAsync(httpClient, request, "whisper", cancellationToken, apiKey);
+		using HttpResponseMessage response = await VoiceHttp.SendAsync(httpClient, request, "whisper", cancellationToken, discardTransportMessage: true);
 		if (!response.IsSuccessStatusCode)
 		{
-			string error = SttSanitizer.RedactError(await ReadTextAsync(response.Content, cancellationToken), apiKey);
 			throw new VoiceProviderException(
 				"whisper", VoiceFailureKind.HttpRejected,
-				$"Whisper 识别失败: HTTP {(int)response.StatusCode} {error}".TrimEnd(),
+				$"Whisper 识别失败: HTTP {(int)response.StatusCode}",
 				httpStatusCode: (int)response.StatusCode);
 		}
 
-		string json = await ReadTextAsync(response.Content, cancellationToken);
-		JsonNode? data = JsonNode.Parse(json);
-		return data?["text"]?.GetValue<string>() ?? "";
+		return await SttSanitizer.ReadTranscriptAsync(response.Content, ProviderId, cancellationToken);
 	}
 
 	/// <inheritdoc />
 	public Task<IStreamingSttSession> OpenStreamingSessionAsync(SttRequestOptions options, CancellationToken cancellationToken = default) =>
 		throw new NotSupportedException("Whisper 仅支持整段音频转写，不支持实时流式识别");
-
-	private static async Task<string> ReadTextAsync(HttpContent content, CancellationToken cancellationToken)
-	{
-		byte[] bytes = await VoiceHttpContent.ReadBytesAsync(content, cancellationToken, allowEmpty: true);
-		return Encoding.UTF8.GetString(bytes);
-	}
 }

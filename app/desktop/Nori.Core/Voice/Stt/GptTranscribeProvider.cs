@@ -94,10 +94,10 @@ public sealed class GptTranscribeProvider(HttpClient httpClient, ConfigStore con
 				return fallbackAttempt.Transcript!;
 			}
 
-			throw BuildHttpException(fallbackAttempt.StatusCode, fallbackAttempt.RawError, apiKey);
+			throw BuildHttpException(fallbackAttempt.StatusCode);
 		}
 
-		throw BuildHttpException(firstAttempt.StatusCode, firstAttempt.RawError, apiKey);
+		throw BuildHttpException(firstAttempt.StatusCode);
 	}
 
 	private async Task<AttemptResult> SendTranscriptionAsync(
@@ -124,32 +124,15 @@ public sealed class GptTranscribeProvider(HttpClient httpClient, ConfigStore con
 			request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 		}
 
-		using HttpResponseMessage response = await VoiceHttp.SendAsync(_httpClient, request, ProviderId, cancellationToken, apiKey).ConfigureAwait(false);
+		using HttpResponseMessage response = await VoiceHttp.SendAsync(_httpClient, request, ProviderId, cancellationToken, discardTransportMessage: true).ConfigureAwait(false);
 		if (!response.IsSuccessStatusCode)
 		{
 			string rawError = await ReadCappedTextSafeAsync(response.Content, cancellationToken).ConfigureAwait(false);
 			return new AttemptResult(false, null, response.StatusCode, rawError);
 		}
 
-		byte[] bytes = await VoiceHttpContent.ReadBytesAsync(response.Content, cancellationToken, allowEmpty: true).ConfigureAwait(false);
-		string json = System.Text.Encoding.UTF8.GetString(bytes);
-
-		JsonNode? root;
-		try
-		{
-			root = JsonNode.Parse(json);
-		}
-		catch (System.Text.Json.JsonException)
-		{
-			throw new VoiceProviderException(ProviderId, VoiceFailureKind.InvalidResponse, "语音识别响应不是有效的 JSON");
-		}
-
-		if (root?["text"] is not JsonValue textValue || !textValue.TryGetValue(out string? transcript))
-		{
-			throw new VoiceProviderException(ProviderId, VoiceFailureKind.InvalidResponse, "语音识别响应缺少 text 字段");
-		}
-
-		return new AttemptResult(true, transcript ?? "", response.StatusCode, "");
+		string transcript = await SttSanitizer.ReadTranscriptAsync(response.Content, ProviderId, cancellationToken).ConfigureAwait(false);
+		return new AttemptResult(true, transcript, response.StatusCode, "");
 	}
 
 	private Uri ResolveEndpointUri(string? optionBaseUrl)
@@ -192,22 +175,11 @@ public sealed class GptTranscribeProvider(HttpClient httpClient, ConfigStore con
 				|| text.Contains("not supported", StringComparison.OrdinalIgnoreCase)
 				|| text.Contains("unsupported", StringComparison.OrdinalIgnoreCase)));
 
-	private VoiceProviderException BuildHttpException(HttpStatusCode statusCode, string rawError, string apiKey)
-	{
-		string summary = TryExtractErrorFields(rawError, out _, out string? message) && !string.IsNullOrWhiteSpace(message)
-			? message
-			: rawError;
-		string safeError = SttSanitizer.RedactError(summary, apiKey);
-		string text = safeError.Length > 0
-			? $"语音识别请求失败: HTTP {(int)statusCode} {safeError}"
-			: $"语音识别请求失败: HTTP {(int)statusCode}";
-
-		return new VoiceProviderException(
-			ProviderId,
-			VoiceFailureKind.HttpRejected,
-			text,
-			httpStatusCode: (int)statusCode);
-	}
+	private VoiceProviderException BuildHttpException(HttpStatusCode statusCode) => new(
+		ProviderId,
+		VoiceFailureKind.HttpRejected,
+		$"语音识别请求失败: HTTP {(int)statusCode}",
+		httpStatusCode: (int)statusCode);
 
 	private static bool TryExtractErrorFields(string rawError, out string? code, out string? message)
 	{

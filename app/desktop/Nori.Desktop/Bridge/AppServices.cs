@@ -6,6 +6,7 @@ using Nori.Core.Data;
 using Nori.Core.Logging;
 using Nori.Core.Resources;
 using Nori.Core.Telemetry;
+using Nori.Core.Voice.Metrics;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Automation.Desktop;
 using Nori.Desktop.Live2D;
@@ -234,6 +235,9 @@ public sealed class AppServices : IAsyncDisposable
 
 	/// <summary>桌面视觉审批回调；未装配时高风险动作必须拒绝。</summary>
 	public DesktopVisionApprovalCallback? AutomationDesktopVisionApprovalCallback { get; set; }
+
+	/// <summary>进程内语音性能指标，只保存数值。</summary>
+	public VoiceMetricsTracker VoiceMetrics { get; } = new();
 
 	/// <summary>有界的 Agent 性能 Trace；只保存阶段/用量元数据，不保存正文。</summary>
 	public AgentTraceCollector AgentTrace { get; } = new();

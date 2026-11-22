@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Nori.Core.Security;
 
 namespace Nori.Core.Voice.Stt;
@@ -27,27 +28,39 @@ internal static class SttSanitizer
 		return trimmed;
 	}
 
-	/// <summary>对错误文本做脱敏、单行化与长度截断，确保不包含 API Key。</summary>
-	public static string RedactError(string? message, string? apiKey)
+	/// <summary>只在有效成功响应中读取转写；错误不回显上游内容。</summary>
+	public static async Task<string> ReadTranscriptAsync(HttpContent content, string provider, CancellationToken cancellationToken)
 	{
-		if (string.IsNullOrWhiteSpace(message)) return string.Empty;
-
-		string scrubbed = message;
-		if (!string.IsNullOrWhiteSpace(apiKey))
+		try
 		{
-			string trimmedKey = apiKey.Trim();
-			scrubbed = scrubbed.Replace(apiKey, "[redacted]", StringComparison.Ordinal);
-			if (trimmedKey.Length > 0 && !string.Equals(trimmedKey, apiKey, StringComparison.Ordinal))
-			{
-				scrubbed = scrubbed.Replace(trimmedKey, "[redacted]", StringComparison.Ordinal);
-			}
+			byte[] bytes = await VoiceHttpContent.ReadBytesAsync(content, cancellationToken, allowEmpty: true).ConfigureAwait(false);
+			using JsonDocument document = JsonDocument.Parse(bytes);
+			if (document.RootElement.ValueKind == JsonValueKind.Object
+				&& document.RootElement.TryGetProperty("text", out JsonElement text) && text.ValueKind == JsonValueKind.String)
+				return text.GetString()!;
 		}
+		catch (JsonException)
+		{
+			throw new VoiceProviderException(provider, VoiceFailureKind.InvalidResponse, "语音识别响应不是有效的 JSON");
+		}
+		catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+		{
+			throw new VoiceProviderException(provider, VoiceFailureKind.Timeout, "读取语音识别响应超时");
+		}
+		catch (Exception exception) when (exception is IOException or HttpRequestException)
+		{
+			throw new VoiceProviderException(provider, VoiceFailureKind.Network, "读取语音识别响应失败");
+		}
+		throw new VoiceProviderException(provider, VoiceFailureKind.InvalidResponse, "语音识别响应缺少 text 字段");
+	}
 
-		scrubbed = SensitiveDataRedactor.Redact(scrubbed)
+	/// <summary>为非转写语音请求清理并截断传输错误；转写请求不回显此文本。</summary>
+	public static string RedactError(string? message)
+	{
+		string scrubbed = SensitiveDataRedactor.Redact(message)
 			.Replace('\r', ' ')
 			.Replace('\n', ' ')
 			.Trim();
-
 		return scrubbed.Length > MaxErrorLength ? scrubbed[..MaxErrorLength] : scrubbed;
 	}
 }

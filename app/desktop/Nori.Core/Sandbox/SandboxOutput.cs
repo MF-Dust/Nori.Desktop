@@ -38,21 +38,23 @@ public static class SandboxOutput
 	public static (string Text, bool Truncated) Fit(string text, int maxCharacters)
 	{
 		ArgumentNullException.ThrowIfNull(text);
-		if (maxCharacters <= 0) return ("", text.Length > 0);
-		if (text.Length <= maxCharacters) return (text, false);
+		return Fit(text, text, text.Length, maxCharacters);
+	}
 
-		// 预留 64 个字符给标注本身，剩下的首尾对半分。
-		int half = Math.Max(1, (maxCharacters - 64) / 2);
-		if (half * 2 >= text.Length) return (text, false);
+	internal static (string Text, bool Truncated) Fit(string head, string tail, long length, int maxCharacters)
+	{
+		if (maxCharacters <= 0) return ("", length > 0);
+		if (length <= maxCharacters) return (head, false);
 
-		int omitted = text.Length - (half * 2);
-		string marker = string.Concat(
-			Environment.NewLine,
-			"…… 中间省略 ",
-			omitted.ToString(CultureInfo.InvariantCulture),
-			" 个字符 ……",
-			Environment.NewLine);
+		// 预留 64 个字符给标注；上限过小时直接保留首尾，不让标注撑破上限。
+		bool showMarker = maxCharacters > 64;
+		int retained = showMarker ? maxCharacters - 64 : maxCharacters;
+		int prefix = (retained + 1) / 2;
+		int suffix = retained - prefix;
+		string marker = showMarker
+			? $"{Environment.NewLine}…… 中间省略 {(length - retained).ToString(CultureInfo.InvariantCulture)} 个字符 ……{Environment.NewLine}"
+			: "";
 
-		return (string.Concat(text.AsSpan(0, half), marker, text.AsSpan(text.Length - half)), true);
+		return (string.Concat(head.AsSpan(0, prefix), marker, tail.AsSpan(tail.Length - suffix)), true);
 	}
 }

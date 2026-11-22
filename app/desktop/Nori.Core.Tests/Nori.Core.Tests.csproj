@@ -19,6 +19,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nori.Core\Nori.Core.csproj" />
+    <ProjectReference Include="../Nori.SandboxHost/Nori.SandboxHost.csproj" OutputItemType="Content"
+      ReferenceOutputAssembly="false" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never"
+      Condition="'$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Linux'))" />
   </ItemGroup>
 
 </Project>

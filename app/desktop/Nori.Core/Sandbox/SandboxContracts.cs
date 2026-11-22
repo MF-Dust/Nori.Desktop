@@ -47,7 +47,7 @@ public sealed record SandboxResult
 /// <summary>
 /// 实际达到的隔离强度。
 ///
-/// 调用方必须能区分这两档：<see cref="None"/> 时进程拥有当前用户的全部权限，
+/// 调用方必须能区分是否存在隔离：<see cref="None"/> 时进程拥有当前用户的全部权限，
 /// 把它当成受限执行来放宽确认要求是错的。
 /// </summary>
 public enum SandboxIsolation
@@ -57,6 +57,9 @@ public enum SandboxIsolation
 
 	/// <summary>Windows AppContainer。文件按 ACL 授权，网络按 capability 授权。</summary>
 	AppContainer,
+
+	/// <summary>Linux Landlock 文件访问边界。ABI v4 起可另外限制 TCP 绑定和连接。</summary>
+	Landlock,
 }
 
 /// <summary>受限执行的启动器。</summary>

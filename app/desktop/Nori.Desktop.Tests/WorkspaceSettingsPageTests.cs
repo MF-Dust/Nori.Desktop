@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Nori.Core.Platform;
 using Nori.Desktop.Settings;
 
@@ -5,6 +6,22 @@ namespace Nori.Desktop.Tests;
 
 public sealed class WorkspaceSettingsPageTests
 {
+	[Theory]
+	[InlineData(false, "可读写工作文件夹", "ABI v1–v2 不限制文件截断", "ABI v4", "TCP 绑定和连接", "并非完全断网")]
+	[InlineData(true, "read/write in the working folder", "ABI v1–v2 do not restrict file truncation", "ABI v4", "TCP bind and connect", "not all network traffic")]
+	public void IsolationText_Landlock区分文件边界和按ABI限制TCP(bool isEnglish, string files, string truncate, string tcpAbi, string tcp, string caveat)
+	{
+		JsonElement snapshot = JsonSerializer.SerializeToElement(new { workspace = new { isolation = "landlock" } });
+
+		string text = WorkspaceSettingsPage.IsolationText(snapshot, isEnglish);
+
+		Assert.Contains(files, text);
+		Assert.Contains(truncate, text);
+		Assert.Contains(tcpAbi, text);
+		Assert.Contains(tcp, text);
+		Assert.Contains(caveat, text);
+	}
+
 	[Theory]
 	[InlineData(SessionType.X11)]
 	[InlineData(SessionType.Wayland)]

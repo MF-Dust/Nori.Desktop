@@ -1,3 +1,4 @@
+using Nori.Core.Sandbox.Linux;
 using Nori.Core.Sandbox.Windows;
 
 namespace Nori.Core.Sandbox;
@@ -14,20 +15,14 @@ public static class SandboxLauncherFactory
 	public const string DefaultContainerName = "Nori.Desktop.Task";
 
 	/// <summary>
-	/// 建立启动器。
-	///
-	/// Windows 上优先 AppContainer，建立容器失败时退回无隔离执行而不是让整条功能不可用 ——
-	/// 隔离强度由 <see cref="ISandboxLauncher.Isolation"/> 如实报告，调用方据此决定确认强度。
-	/// 其余平台目前只有无隔离执行；Linux 的 Landlock 与 macOS 的 Seatbelt 在此处接入。
-	/// </summary>
-	/// <summary>
-	/// 本平台预期会用的隔离强度。纯平台判断，不建立任何东西。
+	/// 本平台预期会用的隔离强度。查询平台能力，不建立任何持久状态。
 	///
 	/// 界面要在用户配置命令之前就说清「命令会跑在什么边界里」，而那时启动器还没建。真正建起来
 	/// 之后以实例上报的为准 —— AppContainer 建不起来时会退回无隔离，两者可能不一致。
 	/// </summary>
 	public static SandboxIsolation PlannedIsolation =>
-		OperatingSystem.IsWindows() ? SandboxIsolation.AppContainer : SandboxIsolation.None;
+		OperatingSystem.IsWindows() ? SandboxIsolation.AppContainer :
+		LinuxLandlockLauncher.AvailableAbi > 0 ? SandboxIsolation.Landlock : SandboxIsolation.None;
 
 	/// <summary>
 	/// 建立一个**不创建任何持久状态**的启动器，专供释放授权使用。
@@ -40,9 +35,12 @@ public static class SandboxLauncherFactory
 			? new AppContainerLauncher(containerName ?? DefaultContainerName)
 			: new UnsandboxedLauncher();
 
+	/// <summary>建立可用的隔离启动器；平台不支持时如实退回无隔离执行。</summary>
 	public static ISandboxLauncher Create(bool preferIsolation = true, string? containerName = null)
 	{
-		if (!preferIsolation || !OperatingSystem.IsWindows()) return new UnsandboxedLauncher();
+		if (!preferIsolation) return new UnsandboxedLauncher();
+		if (OperatingSystem.IsLinux()) return CreateLinux(LinuxLandlockLauncher.AvailableAbi);
+		if (!OperatingSystem.IsWindows()) return new UnsandboxedLauncher();
 
 		try
 		{
@@ -56,4 +54,7 @@ public static class SandboxLauncherFactory
 			return new UnsandboxedLauncher();
 		}
 	}
+
+	internal static ISandboxLauncher CreateLinux(int abi) =>
+		abi > 0 ? new LinuxLandlockLauncher(abi) : new UnsandboxedLauncher();
 }

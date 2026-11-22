@@ -79,6 +79,10 @@ for rid in "${@:-$(runtime_rid)}"; do
 	# 启动画面与宿主共用相同版本的 Avalonia 运行库，随部署槽更新。
 	dotnet publish Nori.SplashHost/Nori.SplashHost.csproj -c Release -r "$rid" --self-contained false -p:NoriProductVersion="$APP_VERSION" -p:NoriDeploymentRevision="$REVISION" -p:PublishSingleFile=false -p:PublishReadyToRun=false -o "$desktop_temp"
 	chmod +x "$desktop_temp/Nori.SplashHost"
+	if [[ "$rid" == linux-* ]]; then
+		dotnet publish Nori.SandboxHost/Nori.SandboxHost.csproj -c Release -r "$rid" --self-contained false -p:NoriProductVersion="$APP_VERSION" -p:NoriDeploymentRevision="$REVISION" -p:PublishSingleFile=false -p:PublishReadyToRun=false -o "$desktop_temp"
+		chmod +x "$desktop_temp/Nori.SandboxHost"
+	fi
 	if [[ "$KEEP_SYMBOLS" != "1" && "$KEEP_SYMBOLS" != "true" ]]; then find "$desktop_temp" -name '*.pdb' -delete; fi
 	if [[ "$rid" == osx-* ]]; then
 		mkdir -p "$slot/Nori.Desktop.app/Contents/MacOS" "$slot/Nori.Desktop.app/Contents/Resources"

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+	</PropertyGroup>
+	<ItemGroup>
+		<Compile Include="../Nori.Core/Sandbox/Linux/LandlockAbi.cs" Link="LandlockAbi.cs" />
+		<Compile Include="../Nori.Core/Sandbox/Linux/SandboxHostRequest.cs" Link="SandboxHostRequest.cs" />
+	</ItemGroup>
+</Project>

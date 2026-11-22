@@ -182,7 +182,7 @@ public sealed partial class AppRuntime
 				toastSupported = Nori.Core.Platform.PlatformServices.SupportsApprovalNotifications,
 				tasks = WorkspaceTaskList.Read(config.Get(ConfigStore.KeyWorkspaceTasks))
 					.Select(task => new { name = task.Name, command = task.Command }),
-				// 界面要能说清「命令跑在什么边界里」：无隔离与 AppContainer 的安全含义完全不同。
+				// 界面要能说清「命令跑在什么边界里」：无隔离、AppContainer 与 Landlock 的安全边界不同。
 				// 启动器尚未建立时报本平台的预期值，不报 unknown —— 用户在配置命令之前就该知道。
 				isolation = (ExistingSandbox?.Isolation ?? SandboxLauncherFactory.PlannedIsolation)
 					.ToString().ToLowerInvariant(),

@@ -89,7 +89,7 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 				"命令跑在什么范围里。由系统能力决定，不可配置。",
 				"What the command can reach. Determined by the platform; not configurable."),
 			SettingsEditorKind.Text,
-			IsolationText,
+			snapshot => IsolationText(snapshot, IsEnglish),
 			"",
 			(_, _) => Task.FromResult(default(JsonElement)),
 			readOnly: true);
@@ -272,21 +272,23 @@ public sealed class WorkspaceSettingsPage : SettingsPageBase
 	/// <summary>
 	/// 把隔离强度翻成用户能判断的话。
 	///
-	/// 这条是安全信息而不是装饰：无隔离时命令拥有你的全部权限，与 AppContainer 下「只能读写
-	/// 工作文件夹、默认不联网」是两回事。界面上不说，用户在 Linux 与 macOS 上无从察觉这个差别。
+	/// 这条是安全信息而不是装饰：要区分无隔离、平台文件访问边界与网络限制。
 	///
 	/// 文案放在呈现层而不是 <c>ISandboxLauncher</c> 上：那是 Core 的契约，给不出双语。
 	/// </summary>
-	private string IsolationText(JsonElement snapshot) =>
+	internal static string IsolationText(JsonElement snapshot, bool isEnglish) =>
 		SettingsSnapshotReader.String(snapshot, "", "workspace", "isolation") switch
 		{
-			"appcontainer" => IsEnglish
+			"appcontainer" => isEnglish
 				? "Sandboxed (AppContainer) — limited to the working folder, no network"
 				: "受限执行（AppContainer）—— 只能读写工作文件夹，默认无法联网",
-			"none" => IsEnglish
+			"landlock" => isEnglish
+				? "Sandboxed (Landlock) — read/write in the working folder; other approved paths are read/execute only. ABI v1–v2 do not restrict file truncation; ABI v4+ blocks TCP bind and connect, not all network traffic."
+				: "受限执行（Landlock）—— 可读写工作文件夹，其他获准路径只能读取或执行。ABI v1–v2 不限制文件截断；ABI v4 及以上禁止 TCP 绑定和连接，并非完全断网。",
+			"none" => isEnglish
 				? "Not sandboxed — commands run with your full permissions; only configure commands you trust"
 				: "无隔离 —— 命令以你的身份运行，可访问全部文件与网络；只配置你信任的命令",
-			_ => IsEnglish ? "Unknown" : "未知",
+			_ => isEnglish ? "Unknown" : "未知",
 		};
 
 	/// <summary>

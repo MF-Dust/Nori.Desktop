@@ -38,6 +38,9 @@
 		<Compile Include="../Nori.Startup/SplashOptions.cs" Link="Startup/SplashOptions.cs" />
 		<InternalsVisibleTo Include="Nori.Desktop.Tests" />
 		<ProjectReference Include="../Nori.Core/Nori.Core.csproj" />
+		<ProjectReference Include="../Nori.SandboxHost/Nori.SandboxHost.csproj" OutputItemType="Content"
+			ReferenceOutputAssembly="false" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never"
+			Condition="'$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Linux'))" />
 		<ProjectReference Include="../Nori.PluginRuntime/Nori.PluginRuntime.csproj" />
 		<ProjectReference Include="../Nori.Live2D/Nori.Live2D.csproj" />
 

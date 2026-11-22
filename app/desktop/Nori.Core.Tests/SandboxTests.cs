@@ -1,5 +1,6 @@
 using System.Text;
 using Nori.Core.Sandbox;
+using Nori.Core.Sandbox.Linux;
 using Nori.Core.Sandbox.Windows;
 
 namespace Nori.Core.Tests;
@@ -172,7 +173,7 @@ public sealed class SandboxTests : IDisposable
 	}
 
 	/// <summary>
-	/// Windows 上应当拿到 AppContainer，其余平台目前只有无隔离实现。
+	/// 按平台能力选用 AppContainer、Landlock 或无隔离实现。
 	///
 	/// 传入独立容器名并在结束时删除：默认名的配置文件是应用的持久状态，测试不该留下它。
 	/// </summary>
@@ -183,9 +184,10 @@ public sealed class SandboxTests : IDisposable
 		ISandboxLauncher launcher = SandboxLauncherFactory.Create(containerName: name);
 		try
 		{
-			Assert.Equal(
-				OperatingSystem.IsWindows() ? SandboxIsolation.AppContainer : SandboxIsolation.None,
-				launcher.Isolation);
+			SandboxIsolation expected = OperatingSystem.IsWindows() ? SandboxIsolation.AppContainer :
+				LandlockAbi.Probe() > 0 ? SandboxIsolation.Landlock : SandboxIsolation.None;
+			Assert.Equal(expected, launcher.Isolation);
+			Assert.Equal(expected, SandboxLauncherFactory.PlannedIsolation);
 		}
 		finally
 		{

@@ -6,7 +6,7 @@ namespace Nori.Core.Sandbox;
 /// <summary>
 /// 无隔离的执行：进程以当前用户身份运行，只有工作目录、环境变量与超时三项约束。
 ///
-/// 这是 Windows 以外平台的当前实现，也是 AppContainer 不可用时的退路。
+/// 平台没有可用的隔离机制时使用此实现。
 /// <see cref="Isolation"/> 如实报告为 <see cref="SandboxIsolation.None"/>，调用方据此
 /// 决定确认强度 —— 把它当成受限执行来放宽确认是错的。
 /// </summary>

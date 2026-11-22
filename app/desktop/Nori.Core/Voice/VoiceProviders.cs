@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Nori.Core.Chat;
 using Nori.Core.Configuration;
 using Nori.Core.Network;
+using Nori.Core.Voice.Stt;
 
 namespace Nori.Core.Voice;
 
@@ -19,7 +20,8 @@ internal static class VoiceHttp
 		HttpClient client,
 		HttpRequestMessage request,
 		string provider,
-		CancellationToken cancellationToken)
+		CancellationToken cancellationToken,
+		string? apiKey = null)
 	{
 		try
 		{
@@ -29,13 +31,19 @@ internal static class VoiceHttp
 		{
 			throw;
 		}
-		catch (OperationCanceledException exception)
+		catch (OperationCanceledException)
 		{
-			throw new VoiceProviderException(provider, VoiceFailureKind.Timeout, "语音服务请求超时", exception);
+			throw new VoiceProviderException(provider, VoiceFailureKind.Timeout, "语音服务请求超时");
 		}
 		catch (HttpRequestException exception)
 		{
-			throw new VoiceProviderException(provider, VoiceFailureKind.Network, "语音服务网络请求失败", exception);
+			string safeMessage = SttSanitizer.RedactError(exception.Message, apiKey);
+			HttpRequestException sanitizedInner = new(
+				exception.HttpRequestError,
+				safeMessage.Length > 0 ? safeMessage : "语音服务网络请求失败",
+				inner: null,
+				exception.StatusCode);
+			throw new VoiceProviderException(provider, VoiceFailureKind.Network, "语音服务网络请求失败", sanitizedInner);
 		}
 	}
 }
@@ -223,32 +231,61 @@ public sealed class GptSoVitsTtsProvider(HttpClient httpClient, ConfigStore conf
 }
 
 /// <summary>OpenAI Whisper 录音识别 (/v1/audio/transcriptions)。</summary>
-public sealed class WhisperSttProvider(HttpClient httpClient, ConfigStore config)
+public sealed class WhisperSttProvider(HttpClient httpClient, ConfigStore config) : ISttProvider
 {
-	/// <summary>识别一段录音，保留 MediaRecorder 的 MIME 与文件名。</summary>
-	public async Task<string> TranscribeAsync(RecordedAudio audio, CancellationToken cancellationToken)
+	/// <inheritdoc />
+	public string ProviderId => "whisper";
+
+	/// <inheritdoc />
+	public SttMode Mode => SttMode.BatchCloud;
+
+	/// <inheritdoc />
+	public SttProviderCapabilities Capabilities { get; } = new()
 	{
+		SupportsBatch = true,
+		SupportsRealtimePcm = false,
+		SupportsIncrementalDelta = false,
+		SupportsLanguageHint = true,
+		SupportsLocalOffline = false,
+		SupportsHardwareAcceleration = false,
+		RequiredSampleRate = 16000,
+		RequiredChannels = 1,
+	};
+
+	/// <summary>识别一段录音，保留 MediaRecorder 的 MIME 与文件名。</summary>
+	public Task<string> TranscribeAsync(RecordedAudio audio, CancellationToken cancellationToken) =>
+		TranscribeAsync(audio, new SttRequestOptions { Language = "zh" }, cancellationToken);
+
+	/// <inheritdoc />
+	public async Task<string> TranscribeAsync(RecordedAudio audio, SttRequestOptions options, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(options);
 		RecordedAudio validated = AudioMime.ValidateRecorded(audio.Bytes, audio.Mime, audio.FileName);
-		string baseUrl = (config.GetStringOr("stt_base_url", "") is {Length: > 0} saved ? saved : "https://api.openai.com/v1").Trim().TrimEnd('/');
-		if (!baseUrl.EndsWith("/audio/transcriptions", StringComparison.OrdinalIgnoreCase)) baseUrl += "/audio/transcriptions";
-		string apiKey = config.GetStringOr("stt_api_key", "");
+		string rawBaseUrl = !string.IsNullOrWhiteSpace(options.BaseUrl)
+			? options.BaseUrl
+			: config.GetStringOr("stt_base_url", "") is {Length: > 0} saved ? saved : OpenAiRealtimeSttUriBuilder.DefaultBaseUrl;
+		Uri endpoint = OpenAiRealtimeSttUriBuilder.BuildBatchUri(rawBaseUrl);
+		string apiKey = SttSanitizer.NormalizeApiKey(
+			!string.IsNullOrWhiteSpace(options.ApiKey) ? options.ApiKey : config.GetStringOr("stt_api_key", ""));
+		string model = !string.IsNullOrWhiteSpace(options.Model) ? options.Model.Trim() : "whisper-1";
+		string language = !string.IsNullOrWhiteSpace(options.Language) ? options.Language.Trim() : "zh";
 
 		using MultipartFormDataContent form = new();
 		ByteArrayContent file = new(validated.Bytes);
 		file.Headers.TryAddWithoutValidation("Content-Type", validated.Mime);
 		form.Add(file, "file", validated.FileName);
-		form.Add(new StringContent("whisper-1"), "model");
-		form.Add(new StringContent("zh"), "language");
+		form.Add(new StringContent(model), "model");
+		form.Add(new StringContent(language), "language");
 
-		using HttpRequestMessage request = new(HttpMethod.Post, baseUrl) {Content = form};
+		using HttpRequestMessage request = new(HttpMethod.Post, endpoint) {Content = form};
 		request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-		using HttpResponseMessage response = await VoiceHttp.SendAsync(httpClient, request, "whisper", cancellationToken);
+		using HttpResponseMessage response = await VoiceHttp.SendAsync(httpClient, request, "whisper", cancellationToken, apiKey);
 		if (!response.IsSuccessStatusCode)
 		{
-			string error = await ReadTextAsync(response.Content, cancellationToken);
+			string error = SttSanitizer.RedactError(await ReadTextAsync(response.Content, cancellationToken), apiKey);
 			throw new VoiceProviderException(
 				"whisper", VoiceFailureKind.HttpRejected,
-				$"Whisper 识别失败: HTTP {(int)response.StatusCode} {error}",
+				$"Whisper 识别失败: HTTP {(int)response.StatusCode} {error}".TrimEnd(),
 				httpStatusCode: (int)response.StatusCode);
 		}
 
@@ -256,6 +293,10 @@ public sealed class WhisperSttProvider(HttpClient httpClient, ConfigStore config
 		JsonNode? data = JsonNode.Parse(json);
 		return data?["text"]?.GetValue<string>() ?? "";
 	}
+
+	/// <inheritdoc />
+	public Task<IStreamingSttSession> OpenStreamingSessionAsync(SttRequestOptions options, CancellationToken cancellationToken = default) =>
+		throw new NotSupportedException("Whisper 仅支持整段音频转写，不支持实时流式识别");
 
 	private static async Task<string> ReadTextAsync(HttpContent content, CancellationToken cancellationToken)
 	{

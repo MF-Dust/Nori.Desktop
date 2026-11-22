@@ -36,4 +36,12 @@ public static class ExpressionColors
 	/// <summary>转成 Windows 那边用的 `0x00BBGGRR`。注册表与 DWM 都按这个字节序存颜色。</summary>
 	public static uint ToWindowsBgr(Color color) =>
 		(uint)(color.B << 16 | color.G << 8 | color.R);
+
+	/// <summary>旧版备份是十进制 AABBGGRR；还原 RGB 时按原字节序拆开。</summary>
+	internal static bool TryParseWindowsAccentBackup(string backup, out Color color)
+	{
+		bool parsed = uint.TryParse(backup, CultureInfo.InvariantCulture, out uint stored);
+		color = Color.FromRgb((byte)stored, (byte)(stored >> 8), (byte)(stored >> 16));
+		return parsed;
+	}
 }

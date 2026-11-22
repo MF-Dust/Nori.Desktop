@@ -65,12 +65,9 @@ public sealed partial class AppRuntime
 			string? recoveredNotice = Focus.ConsumeCompletionNotice(UiLanguage.IsEnglish(Services.Config));
 			if (recoveredNotice is not null) Dispatcher.UIThread.Post(() => NotifyFocusComplete(recoveredNotice));
 			Proactive.Message += message => Dispatcher.UIThread.Post(() => OnProactiveMessage(message));
-			// 情绪一变就扇出到各条表达通道；协调器自己做节流，这里不判。
+			// 启动时在后台还原崩溃留下的原值；强调色通道在还原完成前不会写入。
+			_desktopAppearanceStartup = TrackBackground(InitializeDesktopAppearanceAsync, "启动桌面外观");
 			Emotion.Changed += state => _ = Expression.ApplyAsync(state, Services.ShutdownToken);
-
-			// 上一次若是崩溃或被强制结束，桌面会停在她改过的样子。原值存在配置库里，
-			// 启动时先还原一次；用户仍开着这些通道的话，下一次情绪变化会重新改回去。
-			RestoreDesktopState();
 			Proactive.Start();
 
 			// 插件贡献动作 → AI 工具 (plugin 分类): 活跃插件变化时防抖刷新

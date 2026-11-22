@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.Versioning;
 using Avalonia.Media;
 using Microsoft.Win32;
@@ -6,21 +7,24 @@ using Nori.Core.Platform;
 namespace Nori.Desktop.Expression;
 
 /// <summary>
-/// 桌面外观的读写。
-///
-/// 抽成接口不是为了跨平台 —— 目前只有 Windows 实现 —— 而是为了**测试不碰真实桌面**。
-/// 这一族改的是持久的系统设置，用例跑一遍把开发机的强调色换掉是不可接受的。
+/// 桌面外观的读写；测试必须使用替身，不能修改真实桌面的持久设置。
 /// </summary>
 public interface IDesktopAppearance
 {
 	/// <summary>本平台能不能读写这些设置。</summary>
 	bool IsAvailable { get; }
 
-	/// <summary>当前强调色的原始存储值；读不到返回 null。</summary>
-	uint? GetAccentColor();
+	/// <summary>备份按桌面环境隔离；Windows 沿用未加后缀的旧键。</summary>
+	string? BackupScope => null;
+
+	/// <summary>捕获可还原的原值；读不到返回 null。</summary>
+	string? CaptureBackup();
 
 	/// <summary>换强调色。</summary>
 	void SetAccentColor(Color color);
+
+	/// <summary>用原值还原；忽略损坏的备份，写入失败时抛出异常以保留备份。</summary>
+	void RestoreBackup(string backup);
 }
 
 /// <summary>
@@ -35,10 +39,15 @@ public sealed class UnsupportedDesktopAppearance : IDesktopAppearance
 	public bool IsAvailable => false;
 
 	/// <inheritdoc />
-	public uint? GetAccentColor() => null;
+	public string? CaptureBackup() => null;
 
 	/// <inheritdoc />
 	public void SetAccentColor(Color color)
+	{
+	}
+
+	/// <inheritdoc />
+	public void RestoreBackup(string backup)
 	{
 	}
 }
@@ -64,6 +73,15 @@ public sealed class WindowsDesktopAppearance : IDesktopAppearance
 	public bool IsAvailable => OperatingSystem.IsWindows() && PlatformServices.Current.DesktopIntegration.IsAvailable;
 
 	/// <inheritdoc />
+	public string? CaptureBackup() => GetAccentColor()?.ToString(CultureInfo.InvariantCulture);
+
+	/// <inheritdoc />
+	public void RestoreBackup(string backup)
+	{
+		if (ExpressionColors.TryParseWindowsAccentBackup(backup, out Color color)) SetAccentColor(color);
+	}
+
+	/// <summary>当前强调色的 Windows AABBGGRR 原始存储值。</summary>
 	public uint? GetAccentColor()
 	{
 		if (!IsAvailable) return null;

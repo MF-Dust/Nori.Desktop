@@ -299,6 +299,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 	private RgbLightingChannel? _rgbChannel;
 	private AmbientSoundChannel? _ambientChannel;
 	private AccentColorChannel? _accentChannel;
+	private Task? _desktopAppearanceStartup;
 	private ISandboxLauncher? _sandbox;
 	private IScreenCapture? _screenCapture;
 	private IVisionAnalyzer? _visionAnalyzer;
@@ -352,6 +353,7 @@ public sealed partial class AppRuntime : IAsyncDisposable
 			approval.Dispose();
 			HideApprovalNotice(approval.RequestId);
 		}
+		if (_desktopAppearanceStartup is not null) await Task.Run(RestoreDesktopState).ConfigureAwait(false);
 		await DisposeNotifierAsync().ConfigureAwait(false);
 		foreach ((string _, PendingDesktopApproval approval) in _desktopApprovals)
 		{

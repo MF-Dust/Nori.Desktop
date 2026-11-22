@@ -3,6 +3,7 @@ using Nori.Core.Emotion;
 using Nori.Core.Expression;
 using Nori.Desktop.Appearance;
 using Nori.Desktop.Expression;
+using Nori.Desktop.Settings;
 
 namespace Nori.Desktop.Tests;
 
@@ -18,6 +19,18 @@ public sealed class ExpressionChannelTests
 		EmotionExpression.For(new EmotionState {Type = emotion, Intensity = intensity, LastUpdated = 0});
 
 	private static void RunInline(Action action) => action();
+
+	[Fact]
+	public void ExpressionSettingsPage_强调色的中英文文案不局限于Windows()
+	{
+		SettingsText description = ExpressionSettingsPage.AccentColorDescription;
+		Assert.Contains("受支持的桌面环境", description.Chinese);
+		Assert.Contains("还原", description.Chinese);
+		Assert.Contains("supported desktops", description.English);
+		Assert.Contains("restores", description.English);
+		Assert.DoesNotContain("Windows", description.Chinese);
+		Assert.DoesNotContain("Windows", description.English);
+	}
 
 	// ---- 颜色解析 ----
 

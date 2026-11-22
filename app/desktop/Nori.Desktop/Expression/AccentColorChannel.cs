@@ -1,5 +1,3 @@
-using System.Globalization;
-using Avalonia.Media;
 using Nori.Core.Expression;
 
 namespace Nori.Desktop.Expression;
@@ -19,14 +17,17 @@ public sealed class AccentColorChannel : IExpressionChannel
 
 	private readonly IDesktopAppearance _appearance;
 	private readonly DesktopStateBackup _backup;
+	private readonly Func<bool>? _canApply;
+	private readonly string _backupKey;
+	private readonly Lock _gate = new();
 
-	/// <summary>创建通道。</summary>
-	public AccentColorChannel(IDesktopAppearance appearance, DesktopStateBackup backup)
+	/// <summary>创建通道；写入前再次检查开关，避免排队的颜色覆盖还原结果。</summary>
+	public AccentColorChannel(IDesktopAppearance appearance, DesktopStateBackup backup, Func<bool>? canApply = null)
 	{
-		ArgumentNullException.ThrowIfNull(appearance);
-		ArgumentNullException.ThrowIfNull(backup);
 		_appearance = appearance;
 		_backup = backup;
+		_canApply = canApply;
+		_backupKey = appearance.BackupScope is { } scope ? $"{ChannelKey}_{scope}" : ChannelKey;
 	}
 
 	/// <inheritdoc />
@@ -39,37 +40,30 @@ public sealed class AccentColorChannel : IExpressionChannel
 	public bool IsAvailable => _appearance.IsAvailable;
 
 	/// <inheritdoc />
-	public Task ApplyAsync(ExpressionPalette palette, CancellationToken cancellationToken)
+	public Task ApplyAsync(ExpressionPalette palette, CancellationToken cancellationToken) => Task.Run(() =>
 	{
-		ArgumentNullException.ThrowIfNull(palette);
-		if (!_appearance.IsAvailable) return Task.CompletedTask;
+		lock (_gate)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			if (!_appearance.IsAvailable || _canApply?.Invoke() == false) return;
 
-		// 改之前先记原值。Remember 自身不覆盖，所以第二次调用不会把她改过的值当成原值存下来。
-		// SDK 可能在库可用时仍无法读取强调色；没有可还原的原值就不改系统设置。
-		if (_appearance.GetAccentColor() is not {} original) return Task.CompletedTask;
-		_backup.Remember(ChannelKey, original.ToString(CultureInfo.InvariantCulture));
-		_appearance.SetAccentColor(ExpressionColors.Parse(palette.Primary));
-		return Task.CompletedTask;
-	}
+			// 没有可还原的原值就不改系统设置；备份、写入与还原不能交错。
+			if (_appearance.CaptureBackup() is not { } original) return;
+			_backup.Remember(_backupKey, original);
+			_appearance.SetAccentColor(ExpressionColors.Parse(palette.Primary));
+		}
+	}, cancellationToken);
 
 	/// <summary>
 	/// 还原用户原来的强调色。关掉这条通道、退出应用、以及启动时发现上次没还原干净都要调。
 	/// </summary>
 	public void Restore()
 	{
-		if (_backup.Original(ChannelKey) is not {} saved) return;
-		if (!uint.TryParse(saved, CultureInfo.InvariantCulture, out uint stored))
+		lock (_gate)
 		{
-			// 备份值坏了：清掉它，否则每次启动都会拿它去试一遍。
-			_backup.Forget(ChannelKey);
-			return;
+			if (!_appearance.IsAvailable || _backup.Original(_backupKey) is not { } saved) return;
+			_appearance.RestoreBackup(saved);
+			_backup.Forget(_backupKey);
 		}
-
-		// AccentColor 存的是 AABBGGRR，还原时要按同一个字节序拆回来。
-		_appearance.SetAccentColor(Color.FromRgb(
-			(byte)(stored & 0xFF),
-			(byte)((stored >> 8) & 0xFF),
-			(byte)((stored >> 16) & 0xFF)));
-		_backup.Forget(ChannelKey);
 	}
 }

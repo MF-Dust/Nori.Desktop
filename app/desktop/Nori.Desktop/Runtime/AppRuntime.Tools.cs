@@ -323,17 +323,21 @@ public sealed partial class AppRuntime
 	/// <summary>改持久系统设置前的原值备份。</summary>
 	private DesktopStateBackup DesktopBackup => _desktopBackup ??= new DesktopStateBackup(Services.Config);
 
-	private IDesktopAppearance Appearance => _appearance ??=
-		OperatingSystem.IsWindows() ? new WindowsDesktopAppearance() : new UnsupportedDesktopAppearance();
+	private IDesktopAppearance Appearance => _appearance ??= OperatingSystem.IsWindows()
+		? new WindowsDesktopAppearance()
+		: OperatingSystem.IsLinux() ? new LinuxDesktopAppearance() : new UnsupportedDesktopAppearance();
 
-	private AccentColorChannel AccentChannel => _accentChannel ??= new AccentColorChannel(Appearance, DesktopBackup);
+	private AccentColorChannel AccentChannel => _accentChannel ??= new AccentColorChannel(Appearance, DesktopBackup,
+		() => Volatile.Read(ref _disposed) == 0 && _desktopAppearanceStartup?.IsCompleted == true
+			&& Services.Config.GetBoolOr(AccentColorChannel.ChannelKey, false));
 
-	/// <summary>
-	/// 把改过的桌面设置还回去。
-	///
-	/// 三个时机都要调：关掉某条通道、退出应用、以及**启动时** —— 上一次若是崩溃或被强制结束，
-	/// 桌面会停在她改过的样子，而原值存在配置库里，下次启动仍然还得回来。
-	/// </summary>
+	private async Task InitializeDesktopAppearanceAsync()
+	{
+		_ = AccentChannel;
+		await Task.Run(RestoreDesktopState).ConfigureAwait(false);
+		InvalidateSnapshot();
+	}
+
 	/// <summary>丢掉设备探测缓存，下次访问时重新探测。用户刚开 OpenRGB、刚插新外设时用。</summary>
 	public IReadOnlyList<string> RefreshDevices()
 	{
@@ -341,19 +345,17 @@ public sealed partial class AppRuntime
 		return [.. RgbChannel.Devices.Select(device => device.Name)];
 	}
 
+	/// <summary>启动、关闭强调色通道或退出时在后台还原桌面设置。</summary>
 	public void RestoreDesktopState()
 	{
-		foreach (Action restore in new Action[] {AccentChannel.Restore})
+		try
 		{
-			try
-			{
-				restore();
-			}
-			catch (Exception exception) when (exception is InvalidOperationException or IOException
-				or UnauthorizedAccessException)
-			{
-				Services.Logger.Write(LogSource.Backend, "warn", "还原桌面设置失败", exception: exception);
-			}
+			if (Appearance is LinuxDesktopAppearance linux && !linux.Availability.GetAwaiter().GetResult()) return;
+			AccentChannel.Restore();
+		}
+		catch (Exception exception) when (exception is InvalidOperationException or IOException or UnauthorizedAccessException)
+		{
+			Services.Logger.Write(LogSource.Backend, "warn", "还原桌面设置失败", exception: exception);
 		}
 	}
 

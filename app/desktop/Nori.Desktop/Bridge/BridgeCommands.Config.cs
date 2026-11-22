@@ -5,6 +5,7 @@ using Nori.Core.Configuration;
 using Nori.Core.Logging;
 using Nori.Core.Tools;
 using Nori.Desktop.Appearance;
+using Nori.Desktop.Expression;
 using Nori.Desktop.Windows;
 using Nori.Startup;
 
@@ -110,8 +111,8 @@ public sealed partial class BridgeCommands
 
 		UpdateBoolConfig(args, "enabled", key);
 
-		// 关掉会改桌面设置的通道时立刻还原，不等退出 —— 用户关它多半就是想让桌面变回去。
-		if (!_services.Config.GetBoolOr(key, false)) Runtime.RestoreDesktopState();
+		// 关闭强调色时立即还原；关闭其它通道不影响系统强调色。
+		if (key == AccentColorChannel.ChannelKey && !_services.Config.GetBoolOr(key, false)) Runtime.RestoreDesktopState();
 		Runtime.InvalidateSnapshot();
 	}
 

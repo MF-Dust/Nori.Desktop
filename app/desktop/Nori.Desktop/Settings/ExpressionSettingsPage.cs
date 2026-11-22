@@ -15,6 +15,10 @@ namespace Nori.Desktop.Settings;
 /// </summary>
 public sealed class ExpressionSettingsPage : SettingsPageBase
 {
+	internal static readonly SettingsText AccentColorDescription = new(
+		"在受支持的桌面环境中，系统强调色会随情绪变化。关闭后会还原原设置。",
+		"On supported desktops, the system accent colour follows her mood. Turning this off restores your original setting.");
+
 	/// <summary>创建情绪表达设置页。</summary>
 	public ExpressionSettingsPage(SettingsService service, CancellationToken lifetimeToken = default)
 		: base(
@@ -61,9 +65,7 @@ public sealed class ExpressionSettingsPage : SettingsPageBase
 			desktop,
 			AccentColorChannel.ChannelKey,
 			new("系统强调色", "System accent colour"),
-			new(
-				"Windows 的强调色随情绪变化，你看到的每个窗口都会受影响。关掉时会还原成你原来的颜色。",
-				"Windows accent colour follows her mood, affecting every window. Restores your original on switch-off."));
+			AccentColorDescription);
 	}
 
 	/// <summary>

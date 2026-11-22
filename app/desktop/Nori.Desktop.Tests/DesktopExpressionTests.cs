@@ -27,7 +27,12 @@ public sealed class DesktopExpressionTests : IDisposable
 
 		public List<Color> AccentWrites { get; } = [];
 
-		public uint? GetAccentColor() => Accent;
+		public string? CaptureBackup() => Accent?.ToString(CultureInfo.InvariantCulture);
+
+		public void RestoreBackup(string backup)
+		{
+			if (ExpressionColors.TryParseWindowsAccentBackup(backup, out Color color)) SetAccentColor(color);
+		}
 
 		public void SetAccentColor(Color color)
 		{
@@ -202,6 +207,18 @@ public sealed class DesktopExpressionTests : IDisposable
 	}
 
 	[Fact]
+	public void WindowsDesktopAppearance_旧版纯数字备份无需重新捕获即可还原()
+	{
+		_config.Set(AccentColorChannel.ChannelKey + "_original", new ConfigValue.Text("4292134519"));
+		FakeAppearance appearance = new() { Accent = null };
+
+		new AccentColorChannel(appearance, _backup).Restore();
+
+		Assert.Equal(Color.FromRgb(0x77, 0xC6, 0xD4), Assert.Single(appearance.AccentWrites));
+		Assert.False(_backup.HasBackup(AccentColorChannel.ChannelKey));
+	}
+
+	[Fact]
 	public void 没有备份时还原不做任何事()
 	{
 		FakeAppearance appearance = new();
@@ -234,6 +251,158 @@ public sealed class DesktopExpressionTests : IDisposable
 
 		Assert.False(channel.IsAvailable);
 		Assert.Empty(appearance.AccentWrites);
+	}
+
+	[Theory]
+	[InlineData("5", null)]
+	[InlineData("6", null)]
+	[InlineData("5", "17,123,222")]
+	[InlineData("6", "17,123,222")]
+	public async Task LinuxDesktopAppearance_KDE只改指定键并无损还原(string version, string? original)
+	{
+		string? kdeAccent = original;
+		List<string> writes = [];
+		int notifications = 0;
+		LinuxDesktopAppearance appearance = new("KDE", null, version, (tool, args, userConfigOnly) =>
+		{
+			if (tool == $"kreadconfig{version}"
+				&& args is ["--file", "kdeglobals", "--group", "General", "--key", "AccentColor", "--default", var missing])
+				return kdeAccent ?? missing;
+			Assert.False(userConfigOnly);
+			if (tool == $"kwriteconfig{version}" && args is ["--help"]) return "--delete";
+			if (tool == $"kwriteconfig{version}")
+			{
+				Assert.Equal(["--file", "kdeglobals", "--group", "General", "--key", "AccentColor"], args[..^1]);
+				writes.Add(args[^1]);
+				kdeAccent = args[^1] == "--delete" ? null : args[^1];
+				return "";
+			}
+			Assert.Equal("gdbus", tool);
+			if (args[0] == "emit")
+			{
+				Assert.Equal(["emit", "--session", "--object-path", "/KGlobalSettings", "--signal",
+					"org.kde.KGlobalSettings.notifyChange", "0", "0"], args);
+				notifications++;
+			}
+			else Assert.Equal("call", args[0]);
+			return "";
+		});
+		Assert.True(await appearance.Availability);
+		AccentColorChannel channel = new(appearance, _backup);
+		ExpressionPalette palette = Palette();
+		Color color = ExpressionColors.Parse(palette.Primary);
+		_backup.Remember(AccentColorChannel.ChannelKey, "4292134519");
+
+		await channel.ApplyAsync(palette, CancellationToken.None);
+		channel.Restore();
+
+		Assert.Equal([FormattableString.Invariant($"{color.R},{color.G},{color.B}"), original ?? "--delete"], writes);
+		Assert.Equal(original, kdeAccent);
+		Assert.Equal(2, notifications);
+		Assert.False(_backup.HasBackup(AccentColorChannel.ChannelKey + "_kde"));
+		Assert.Equal("4292134519", _backup.Original(AccentColorChannel.ChannelKey));
+	}
+
+	[Theory]
+	[InlineData("Hyprland", "KDE", "6", null)]
+	[InlineData("sway", null, null, null)]
+	[InlineData("XFCE", null, null, null)]
+	[InlineData("KDE", null, "4", null)]
+	[InlineData("KDE", null, "6", "kwriteconfig6")]
+	[InlineData("plasma", null, "5", "kwriteconfig5")]
+	[InlineData("ubuntu:GNOME", null, null, "gsettings")]
+	public async Task LinuxDesktopAppearance_不支持的桌面或缺少工具和设置键时不写入(
+		string desktop, string? session, string? kdeVersion, string? probeTool)
+	{
+		List<string> calls = [];
+		LinuxDesktopAppearance appearance = new(desktop, session, kdeVersion, (tool, args, _) =>
+		{
+			calls.Add(tool);
+			if (tool == "gsettings") Assert.Equal(["writable", "org.gnome.desktop.interface", "accent-color"], args);
+			else Assert.Equal(["--help"], args);
+			return null;
+		});
+		Assert.False(await appearance.Availability);
+		AccentColorChannel channel = new(appearance, _backup);
+		await channel.ApplyAsync(Palette(), CancellationToken.None);
+		channel.Restore();
+		Assert.False(channel.IsAvailable);
+		Assert.Equal(probeTool is null ? [] : [probeTool], calls);
+	}
+
+	[Fact]
+	public async Task LinuxDesktopAppearance_KDE不覆盖继承的系统默认值()
+	{
+		LinuxDesktopAppearance appearance = new("KDE", null, "6", (tool, args, userConfigOnly) => (tool, args, userConfigOnly) switch
+		{
+			("kwriteconfig6", ["--help"], false) => "--delete",
+			("kreadconfig6", ["--file", "kdeglobals", .., var missing], true) => missing,
+			("kreadconfig6", ["--file", "kdeglobals", ..], false) => "17,123,222",
+			_ => throw new InvalidOperationException("不应写入继承的系统默认值"),
+		});
+		Assert.False(await appearance.Availability);
+		await new AccentColorChannel(appearance, _backup).ApplyAsync(Palette(), CancellationToken.None);
+	}
+
+	[Theory]
+	[InlineData("#3685E5", "blue")]
+	[InlineData("#2091A3", "teal")]
+	[InlineData("#39954B", "green")]
+	[InlineData("#C98901", "yellow")]
+	[InlineData("#EC5A01", "orange")]
+	[InlineData("#E72E41", "red")]
+	[InlineData("#D66298", "pink")]
+	[InlineData("#9042AB", "purple")]
+	[InlineData("#6E8495", "slate")]
+	public async Task LinuxDesktopAppearance_GNOME按九色调色板映射并还原原枚举(string hex, string expected)
+	{
+		string current = "pink";
+		List<string> writes = [];
+		LinuxDesktopAppearance appearance = new("ubuntu:GNOME", null, null, (tool, args, _) =>
+		{
+			Assert.Equal("gsettings", tool);
+			Assert.Equal("org.gnome.desktop.interface", args[1]);
+			Assert.Equal("accent-color", args[2]);
+			if (args[0] == "writable") return "true";
+			if (args[0] == "get") return $"'{current}'";
+			Assert.Equal("set", args[0]);
+			writes.Add(current = args[3]);
+			return "";
+		});
+		Assert.True(await appearance.Availability);
+		AccentColorChannel channel = new(appearance, _backup);
+
+		await channel.ApplyAsync(Palette() with { Primary = hex }, CancellationToken.None);
+		Assert.Equal("pink", _backup.Original(AccentColorChannel.ChannelKey + "_gnome"));
+		channel.Restore();
+
+		Assert.Equal([expected, "pink"], writes);
+		Assert.False(_backup.HasBackup(AccentColorChannel.ChannelKey + "_gnome"));
+	}
+
+	[Fact]
+	public async Task LinuxDesktopAppearance_GNOME还原命令失败时保留备份()
+	{
+		LinuxDesktopAppearance appearance = new("GNOME", null, null, (_, args, _) => args[0] switch
+		{
+			"writable" => "true",
+			"get" => "'red'",
+			_ => null,
+		});
+		Assert.True(await appearance.Availability);
+		string key = AccentColorChannel.ChannelKey + "_gnome";
+		_backup.Remember(key, "teal");
+		AccentColorChannel channel = new(appearance, _backup);
+		Assert.Throws<IOException>(channel.Restore);
+		Assert.Equal("teal", _backup.Original(key));
+	}
+
+	[Theory]
+	[InlineData("kdeglobals\n")]
+	[InlineData("1,2,3\0")]
+	public void LinuxDesktopAppearance_命令启动前拒绝控制字符(string argument)
+	{
+		Assert.Throws<ArgumentException>(() => LinuxDesktopAppearance.RunCommand("nori-test-never-start", [argument]));
 	}
 
 	// ---- 灯效（A6）----

@@ -10,7 +10,6 @@ using Nori.Core.Resources;
 using Nori.Core.Security;
 using Nori.Core.Telemetry;
 using Nori.Desktop.Appearance;
-using Nori.Desktop.Automation.Desktop;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Diagnostics;
 using Nori.Desktop.Telemetry;
@@ -213,12 +212,8 @@ internal sealed class DesktopBootstrapper
 			Automation = new Automation.AutomationRuntime(
 				config,
 				safeMode,
-				OperatingSystem.IsWindows(),
 				visionAvailable: !safeMode,
-				chatService: safeMode ? null : chat,
-				desktopVisionPlannerFactory: safeMode
-					? null
-					: () => new ChatServiceDesktopVisionPlanner(chat, new AiSettingsStore(config))),
+				chatService: safeMode ? null : chat),
 			ShutdownToken = _shutdownCts.Token,
 			SafeMode = safeMode,
 		};

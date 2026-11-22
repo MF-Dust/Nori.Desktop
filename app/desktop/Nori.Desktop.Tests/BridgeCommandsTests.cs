@@ -7,10 +7,10 @@ using Nori.Core.Configuration;
 using Nori.Core.Data;
 using Nori.Core.Logging;
 using Nori.Core.Mcp;
+using Nori.Core.Platform;
 using Nori.Core.Tools;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Automation.Desktop;
-using Nori.Desktop.Automation.Windows;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Runtime;
 using Nori.Desktop.Windows;
@@ -61,9 +61,9 @@ public partial class BridgeCommandsTests : IDisposable
 
 	private sealed class FakeDesktopWindowCatalog : IDesktopVisionWindowCatalog
 	{
-		public IReadOnlyList<WindowsTopLevelWindow> Enumerate() =>
+		public IReadOnlyList<DesktopVisionWindow> Enumerate() =>
 		[
-			new(new nint(0x1234), "窗口标题-secret", 4321, new AutomationBounds(10, 20, 800, 600), 96, true),
+			new(new nint(0x1234), "窗口标题-secret", 4321, new AutomationBounds(10, 20, 800, 600), true),
 		];
 	}
 
@@ -245,7 +245,9 @@ public partial class BridgeCommandsTests : IDisposable
 		Func<IDesktopVisionActionExecutor>? desktopVisionActionFactory = null,
 		Func<IDesktopVisionScreenshotSource>? desktopVisionScreenshotFactory = null,
 		Func<IDesktopVisionWindowCatalog>? desktopVisionWindowCatalogFactory = null,
-		DesktopVisionApprovalCallback? desktopVisionApprovalCallback = null)
+		DesktopVisionApprovalCallback? desktopVisionApprovalCallback = null,
+		Func<DesktopAutomationPlatform>? desktopAutomationPlatformProvider = null,
+		Func<AutomationBounds>? screenBoundsProvider = null)
 	{
 		Directory.CreateDirectory(_tempDir);
 		_dbPath = Path.Combine(_tempDir, "nori.db");
@@ -274,7 +276,8 @@ public partial class BridgeCommandsTests : IDisposable
 			Automation = new Nori.Desktop.Automation.AutomationRuntime(
 				_config,
 				safeMode,
-				automationWindows ?? OperatingSystem.IsWindows(),
+				desktopAutomationPlatformProvider ?? (() => (automationWindows ?? OperatingSystem.IsWindows())
+					? new(SessionType.Windows, null) : new(SessionType.Unknown, DesktopAutomationPlatform.UnsupportedReason)),
 				visionAvailable: automationVision,
 				chatService: chat,
 				desktopVisionRunnerFactory: desktopVisionRunnerFactory,
@@ -282,7 +285,8 @@ public partial class BridgeCommandsTests : IDisposable
 				desktopVisionActionFactory: desktopVisionActionFactory,
 				desktopVisionScreenshotFactory: desktopVisionScreenshotFactory,
 				desktopVisionWindowCatalogFactory: desktopVisionWindowCatalogFactory,
-				desktopVisionApprovalCallback: desktopVisionApprovalCallback),
+				desktopVisionApprovalCallback: desktopVisionApprovalCallback,
+				screenBoundsProvider: screenBoundsProvider),
 			Windows = _windows,
 			SafeMode = safeMode,
 			// 不用自动挑选：Windows 上它会创建 AppContainer 配置文件，测试跑完会留在机器上。

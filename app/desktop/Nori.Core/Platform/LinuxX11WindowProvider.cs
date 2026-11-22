@@ -7,7 +7,7 @@ namespace Nori.Core.Platform;
 
 internal static class LinuxX11WindowProvider
 {
-	private const string LibX11 = "libX11.so.6";
+	internal const string LibX11 = "libX11.so.6";
 	private const int IsViewable = 2;
 	private const int ZPixmap = 2;
 	private const nint CardinalAtom = 6;
@@ -21,28 +21,57 @@ internal static class LinuxX11WindowProvider
 
 	internal sealed record Frame(byte[] Bgra, int Width, int Height);
 
-	internal static IReadOnlyList<VisionWindow> Enumerate() => WithDisplay(display =>
+	internal static IReadOnlyList<VisionWindow> Enumerate() => WithDisplay(Enumerate);
+
+	internal static IReadOnlyList<VisionWindow> Enumerate(nint display)
 	{
 		nint root = XDefaultRootWindow(display);
 		nint[] windows = ReadProperty(display, root, XInternAtom(display, "_NET_CLIENT_LIST_STACKING", 1), WindowAtom, 32, 65536, ReadWindows)
 			?? ReadFallbackStacking(display, root);
-		nint pidAtom = XInternAtom(display, "_NET_WM_PID", 1);
-		nint titleAtom = XInternAtom(display, "_NET_WM_NAME", 1);
-		nint utf8Atom = XInternAtom(display, "UTF8_STRING", 1);
+		WindowAtoms atoms = GetWindowAtoms(display);
 		List<VisionWindow> result = [];
 		// EWMH 堆叠顺序从底到顶，读屏选择最靠前的目标。
 		for (int index = windows.Length - 1; index >= 0; index--)
 		{
-			nint window = windows[index];
-			if (GetBounds(display, window) is not { } bounds) continue;
-			int pid = GetProcessId(display, window, pidAtom);
-			if (pid == Environment.ProcessId) continue;
-			string? title = utf8Atom != 0 ? ReadTitle(display, window, titleAtom, utf8Atom, Encoding.UTF8) : null;
-			if (string.IsNullOrWhiteSpace(title)) title = ReadLegacyTitle(display, window);
-			result.Add(new(window, string.IsNullOrWhiteSpace(title) ? "未命名窗口" : title, pid, bounds));
+			if (GetWindow(display, windows[index], atoms) is { } window && window.ProcessId != Environment.ProcessId)
+				result.Add(window);
 		}
 		return result;
-	});
+	}
+
+	internal static VisionWindow? GetWindow(nint display, nint window) => GetWindow(display, window, GetWindowAtoms(display));
+
+	private readonly record struct WindowAtoms(nint Pid, nint Title, nint Utf8);
+
+	private static WindowAtoms GetWindowAtoms(nint display) => new(
+		XInternAtom(display, "_NET_WM_PID", 1), XInternAtom(display, "_NET_WM_NAME", 1), XInternAtom(display, "UTF8_STRING", 1));
+
+	private static VisionWindow? GetWindow(nint display, nint window, WindowAtoms atoms)
+	{
+		if (GetBounds(display, window) is not { } bounds) return null;
+		int pid = GetProcessId(display, window, atoms.Pid);
+		string? title = atoms.Utf8 != 0 ? ReadTitle(display, window, atoms.Title, atoms.Utf8, Encoding.UTF8) : null;
+		if (string.IsNullOrWhiteSpace(title)) title = ReadLegacyTitle(display, window);
+		return new(window, string.IsNullOrWhiteSpace(title) ? "未命名窗口" : title, pid, bounds);
+	}
+
+	internal static nint GetForegroundWindow(nint display) =>
+		ReadProperty(display, XDefaultRootWindow(display), XInternAtom(display, "_NET_ACTIVE_WINDOW", 1), WindowAtom, 32, 1,
+			static (data, count) => count == 1 ? Marshal.ReadIntPtr(data) : 0);
+
+	internal static AutomationBounds GetScreenBounds() => WithDisplay(GetScreenBounds);
+
+	internal static AutomationBounds GetScreenBounds(nint display)
+	{
+		if (XGetWindowAttributes(display, XDefaultRootWindow(display), out XWindowAttributes root) == 0)
+			throw new InvalidOperationException("无法读取 X11 屏幕边界");
+		return new(0, 0, root.Width, root.Height);
+	}
+
+	internal enum TargetStatus { Valid, Invalid, NotForeground }
+
+	internal static TargetStatus ValidateTarget(nint target, AutomationBounds? bounds, nint foreground) =>
+		bounds is null ? TargetStatus.Invalid : target == foreground ? TargetStatus.Valid : TargetStatus.NotForeground;
 
 	// _NET_CLIENT_LIST 是首次映射顺序，不是 z 序；按根窗口的子窗口（可能是装饰框）重新排序。
 	private static nint[] ReadFallbackStacking(nint display, nint root)
@@ -72,28 +101,31 @@ internal static class LinuxX11WindowProvider
 		}
 	}
 
-	internal static Frame Capture(VisionWindow target) => WithDisplay(display =>
+	internal static Frame Capture(VisionWindow target) => WithDisplay(display => Capture(display, target));
+
+	internal static Frame Capture(nint display, VisionWindow target, bool limitForAutomation = false)
 	{
 		if (GetBounds(display, target.Handle) is not { } bounds
 			|| GetProcessId(display, target.Handle, XInternAtom(display, "_NET_WM_PID", 1)) != target.ProcessId)
 			throw new InvalidOperationException("目标 X11 窗口已关闭或不可见");
 
 		// XGetImage 要求请求区域全部位于屏幕内，只读窗口仍在屏幕上的部分。
-		if (XGetWindowAttributes(display, XDefaultRootWindow(display), out XWindowAttributes root) == 0)
-			throw new InvalidOperationException("无法读取 X11 屏幕边界");
+		AutomationBounds screen = GetScreenBounds(display);
 		int left = Math.Max(0, bounds.Left), top = Math.Max(0, bounds.Top);
-		int width = Math.Min(root.Width, bounds.Left + bounds.Width) - left;
-		int height = Math.Min(root.Height, bounds.Top + bounds.Height) - top;
+		int width = Math.Min(screen.Width, bounds.Left + bounds.Width) - left;
+		int height = Math.Min(screen.Height, bounds.Top + bounds.Height) - top;
 		if (width <= 0 || height <= 0) throw new InvalidOperationException("目标 X11 窗口不在屏幕内");
+		if (limitForAutomation && !AutomationCaptureLimits.TryValidate(width, height, out string? error))
+			throw new InvalidOperationException(error);
 		nint image = XGetImage(display, target.Handle, left - bounds.Left, top - bounds.Top, (uint)width, (uint)height, nuint.MaxValue, ZPixmap);
 		if (image == 0) throw new InvalidOperationException("无法读取目标 X11 窗口像素");
 		try { return DecodeImage(image); }
 		finally { XDestroyImage(image); }
-	});
+	}
 
-	private static AutomationBounds? GetBounds(nint display, nint window)
+	internal static AutomationBounds? GetBounds(nint display, nint window)
 	{
-		if (XGetWindowAttributes(display, window, out XWindowAttributes attributes) == 0
+		if (window == 0 || XGetWindowAttributes(display, window, out XWindowAttributes attributes) == 0
 			|| !IsVisibleWindow(attributes.MapState, attributes.Width, attributes.Height)
 			|| XTranslateCoordinates(display, window, attributes.Root, 0, 0, out int x, out int y, out _) == 0)
 			return null;
@@ -154,11 +186,11 @@ internal static class LinuxX11WindowProvider
 			info.ByteOrder == 1, (uint)info.RedMask, (uint)info.GreenMask, (uint)info.BlueMask), info.Width, info.Height);
 	}
 
-	private static T WithDisplay<T>(Func<nint, T> use)
+	internal static T WithDisplay<T>(Func<nint, T> use)
 	{
 		nint display;
 		try { display = XOpenDisplay(0); }
-		catch (DllNotFoundException exception) { throw new InvalidOperationException("缺少 X11 截图所需的 libX11.so.6", exception); }
+		catch (DllNotFoundException exception) { throw new InvalidOperationException("缺少连接 X11 所需的 libX11.so.6", exception); }
 		if (display == 0) throw new InvalidOperationException("无法连接 X11 显示服务器");
 
 		// Xlib 的错误处理器属于进程；仅本次连接的同步请求依靠各自返回值报告错误。
@@ -226,19 +258,19 @@ internal static class LinuxX11WindowProvider
 	[DllImport(LibX11)] private static extern nint XOpenDisplay(nint name);
 	[DllImport(LibX11)] private static extern int XCloseDisplay(nint display);
 	[DllImport(LibX11)] private static extern nint XSetErrorHandler(nint handler);
-	[DllImport(LibX11)] private static extern nint XDefaultRootWindow(nint display);
+	[DllImport(LibX11)] internal static extern nint XDefaultRootWindow(nint display);
 	[DllImport(LibX11)] private static extern nint XInternAtom(nint display, [MarshalAs(UnmanagedType.LPStr)] string name, int onlyIfExists);
-	[DllImport(LibX11)] private static extern int XQueryTree(nint display, nint window, out nint root, out nint parent, out nint children, out uint count);
+	[DllImport(LibX11)] internal static extern int XQueryTree(nint display, nint window, out nint root, out nint parent, out nint children, out uint count);
 	[DllImport(LibX11)] private static extern int XGetWMName(nint display, nint window, out XTextProperty property);
 	[DllImport(LibX11)] private static extern int Xutf8TextPropertyToTextList(nint display, ref XTextProperty property, out nint list, out int count);
 	[DllImport(LibX11)] private static extern void XFreeStringList(nint list);
 	[DllImport(LibX11)] private static extern int XGetWindowAttributes(nint display, nint window, out XWindowAttributes attributes);
-	[DllImport(LibX11)] private static extern int XTranslateCoordinates(nint display, nint source, nint destination,
+	[DllImport(LibX11)] internal static extern int XTranslateCoordinates(nint display, nint source, nint destination,
 		int sourceX, int sourceY, out int x, out int y, out nint child);
 	[DllImport(LibX11)] private static extern int XGetWindowProperty(nint display, nint window, nint property,
 		nint offset, nint length, int delete, nint requestedType, out nint actualType, out int actualFormat,
 		out nuint itemCount, out nuint bytesAfter, out nint data);
-	[DllImport(LibX11)] private static extern int XFree(nint data);
+	[DllImport(LibX11)] internal static extern int XFree(nint data);
 	[DllImport(LibX11)] private static extern nint XGetImage(nint display, nint window, int x, int y, uint width, uint height, nuint planeMask, int format);
 	[DllImport(LibX11)] private static extern int XDestroyImage(nint image);
 }

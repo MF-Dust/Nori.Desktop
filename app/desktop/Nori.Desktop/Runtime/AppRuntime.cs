@@ -182,7 +182,6 @@ public sealed partial class AppRuntime : IAsyncDisposable
 		services.Automation ??= new AutomationRuntime(
 			config,
 			services.SafeMode,
-			OperatingSystem.IsWindows(),
 			visionAvailable: !services.SafeMode,
 			chatService: services.SafeMode ? null : services.Chat,
 			desktopVisionRunnerFactory: services.SafeMode ? null : services.AutomationDesktopVisionRunnerFactory,

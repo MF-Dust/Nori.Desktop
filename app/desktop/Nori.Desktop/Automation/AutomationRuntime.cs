@@ -1,6 +1,7 @@
 using Nori.Core.Automation;
 using Nori.Core.Chat;
 using Nori.Core.Configuration;
+using Nori.Core.Platform;
 using Nori.Desktop.Automation.Desktop;
 using Nori.Desktop.Automation.Windows;
 
@@ -22,6 +23,9 @@ public sealed record AutomationCapabilitiesSnapshot(
 	bool Scroll,
 	string? UnavailableReason)
 {
+	/// <summary>当前平台是否支持配置和执行桌面自动化。</summary>
+	public bool PlatformSupported { get; init; }
+
 	/// <summary>桌面视觉自动化能力是否已满足平台、配置和显式开关。</summary>
 	public bool Desktop { get; init; }
 
@@ -73,7 +77,7 @@ public sealed record AutomationSnapshot(
 /// <summary>
 /// 自动化宿主接线层。
 ///
-/// 装配任务生命周期与 Windows adapter 能力探测。所有执行入口都经过安全模式、平台、
+/// 装配任务生命周期与桌面平台能力探测。所有执行入口都经过安全模式、平台、
 /// 总开关和显式能力授权校验。浏览器自动化由独立插件 io.nori.browser 提供，不在宿主内。
 /// </summary>
 public sealed class AutomationRuntime : IAsyncDisposable
@@ -82,7 +86,7 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	private readonly AiSettingsStore _aiSettings;
 	private readonly AutomationTaskManager _tasks;
 	private readonly bool _safeMode;
-	private readonly bool _isWindows;
+	private readonly Lazy<DesktopAutomationPlatform> _platform;
 	private readonly bool _visionAvailable;
 	private readonly Func<DesktopVisionRunnerRequest, IAutomationTaskRunner>? _desktopVisionRunnerFactory;
 	private readonly Func<IDesktopVisionPlanner>? _desktopVisionPlannerFactory;
@@ -106,15 +110,36 @@ public sealed class AutomationRuntime : IAsyncDisposable
 
 	/// <summary>按宿主实际平台装配自动化运行时。</summary>
 	public AutomationRuntime(ConfigStore config, bool safeMode, AutomationTaskManager? taskManager = null)
-		: this(config, safeMode, OperatingSystem.IsWindows(), visionAvailable: false, taskManager)
+		: this(config, safeMode, visionAvailable: false, taskManager)
 	{
 	}
 
-	/// <summary>可注入平台与视觉能力的构造函数，供宿主边界测试使用。</summary>
+	/// <summary>按宿主实际平台装配自动化视觉依赖。</summary>
 	public AutomationRuntime(
 		ConfigStore config,
 		bool safeMode,
-		bool isWindows,
+		bool visionAvailable,
+		AutomationTaskManager? taskManager = null,
+		ChatService? chatService = null,
+		Func<DesktopVisionRunnerRequest, IAutomationTaskRunner>? desktopVisionRunnerFactory = null,
+		Func<IDesktopVisionPlanner>? desktopVisionPlannerFactory = null,
+		Func<IDesktopVisionActionExecutor>? desktopVisionActionFactory = null,
+		Func<IDesktopVisionScreenshotSource>? desktopVisionScreenshotFactory = null,
+		Func<IDesktopVisionWindowCatalog>? desktopVisionWindowCatalogFactory = null,
+		DesktopVisionApprovalCallback? desktopVisionApprovalCallback = null,
+		AutomationAuditRepository? auditSink = null,
+		Func<AutomationBounds>? screenBoundsProvider = null)
+		: this(config, safeMode, () => DesktopAutomationPlatform.Detect(safeMode), visionAvailable, taskManager,
+			chatService, desktopVisionRunnerFactory, desktopVisionPlannerFactory, desktopVisionActionFactory,
+			desktopVisionScreenshotFactory, desktopVisionWindowCatalogFactory, desktopVisionApprovalCallback, auditSink, screenBoundsProvider)
+	{
+	}
+
+	/// <summary>可注入平台探测结果，供宿主边界测试使用。</summary>
+	internal AutomationRuntime(
+		ConfigStore config,
+		bool safeMode,
+		Func<DesktopAutomationPlatform> platformProvider,
 		bool visionAvailable,
 		AutomationTaskManager? taskManager = null,
 		ChatService? chatService = null,
@@ -130,7 +155,8 @@ public sealed class AutomationRuntime : IAsyncDisposable
 		_config = config;
 		_aiSettings = new AiSettingsStore(config);
 		_safeMode = safeMode;
-		_isWindows = isWindows;
+		// 仅在后台快照或桥接命令首次访问时连接 X11。
+		_platform = new(platformProvider);
 		_visionAvailable = visionAvailable;
 		_tasks = taskManager ?? new AutomationTaskManager();
 		_auditSink = auditSink;
@@ -151,9 +177,12 @@ public sealed class AutomationRuntime : IAsyncDisposable
 			_desktopVisionRunnerFactory = desktopVisionRunnerFactory ?? DefaultDesktopVisionRunnerFactory;
 			_desktopVisionPlannerFactory = desktopVisionPlannerFactory
 				?? (chatService is null ? null : () => new ChatServiceDesktopVisionPlanner(chatService, _aiSettings));
-			_desktopVisionActionFactory = desktopVisionActionFactory ?? (() => new WindowsDesktopVisionActionExecutor());
-			_desktopVisionScreenshotFactory = desktopVisionScreenshotFactory ?? (() => new WindowsDesktopVisionScreenshotSource());
-			_desktopVisionWindowCatalogFactory = desktopVisionWindowCatalogFactory ?? (() => new WindowsDesktopVisionWindowCatalog());
+			_desktopVisionActionFactory = desktopVisionActionFactory ?? (() => _platform.Value.Session == SessionType.X11
+				? new LinuxX11DesktopVisionActionExecutor() : new WindowsDesktopVisionActionExecutor());
+			_desktopVisionScreenshotFactory = desktopVisionScreenshotFactory ?? (() => _platform.Value.Session == SessionType.X11
+				? new LinuxX11DesktopVisionScreenshotSource() : new WindowsDesktopVisionScreenshotSource());
+			_desktopVisionWindowCatalogFactory = desktopVisionWindowCatalogFactory ?? (() => _platform.Value.Session == SessionType.X11
+				? new LinuxX11DesktopVisionWindowCatalog() : new WindowsDesktopVisionWindowCatalog());
 			_desktopVisionApprovalCallback = desktopVisionApprovalCallback;
 		}
 
@@ -190,14 +219,17 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	{
 		AutomationSettingsSnapshot settings = GetSettings();
 		bool visionReady = IsVisionConfigurationValid();
+		DesktopAutomationPlatform platform = _platform.Value;
+		bool inputEnabled = !_safeMode && platform.IsSupported && settings.Enabled;
 		return new(
-			_isWindows,
+			platform.Session == SessionType.Windows,
 			visionReady,
-			_isWindows && settings.Enabled && settings.AllowPointer,
-			_isWindows && settings.Enabled && settings.AllowKeyboard,
-			_isWindows && settings.Enabled && settings.AllowScroll,
+			inputEnabled && settings.AllowPointer,
+			inputEnabled && settings.AllowKeyboard,
+			inputEnabled && settings.AllowScroll,
 			GetUnavailableReason(settings))
 		{
+			PlatformSupported = platform.IsSupported,
 			Desktop = IsExecutionAvailable(settings),
 			VisionReady = visionReady,
 		};
@@ -246,7 +278,7 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	public AutomationVisionProbeSnapshot ProbeVision()
 	{
 		if (_safeMode) return new(false, "安全模式已禁用自动化视觉能力");
-		if (!_isWindows) return new(false, "Windows 桌面自动化仅支持 Windows");
+		if (_platform.Value.UnavailableReason is { } reason) return new(false, reason);
 		if (!_visionAvailable || _desktopVisionRunnerFactory is null || _desktopVisionPlannerFactory is null
 			|| _desktopVisionActionFactory is null || _desktopVisionScreenshotFactory is null)
 			return new(false, "当前版本未接入桌面多模态视觉能力");
@@ -259,13 +291,13 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	{
 		ThrowIfDesktopExecutionBlocked();
 		IDesktopVisionWindowCatalog catalog = CreateWindowCatalog();
-		IReadOnlyList<WindowsTopLevelWindow> windows;
+		IReadOnlyList<DesktopVisionWindow> windows;
 		try { windows = catalog.Enumerate(); }
 		catch { throw new InvalidOperationException("桌面窗口列表不可用"); }
 
 		Dictionary<string, DesktopWindowTarget> targets = new(StringComparer.Ordinal);
 		List<AutomationDesktopWindowSnapshot> result = [];
-		foreach (WindowsTopLevelWindow window in windows)
+		foreach (DesktopVisionWindow window in windows)
 		{
 			if (window.Handle == 0 || window.Bounds.Width <= 0 || window.Bounds.Height <= 0) continue;
 			string token = $"desktop-{Guid.NewGuid():N}";
@@ -453,7 +485,7 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	private string? GetUnavailableReason(AutomationSettingsSnapshot settings)
 	{
 		if (_safeMode) return "安全模式已禁用自动化";
-		if (!_isWindows) return "Windows 桌面自动化仅支持 Windows";
+		if (_platform.Value.UnavailableReason is { } reason) return reason;
 		if (!settings.Enabled) return "自动化默认关闭，请在设置中显式启用";
 		if (!settings.AllowPointer && !settings.AllowKeyboard && !settings.AllowScroll)
 			return "未显式授权任何自动化输入能力";
@@ -465,7 +497,7 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	}
 
 	private bool IsVisionConfigurationValid() =>
-		!_safeMode && _isWindows && _visionAvailable
+		!_safeMode && _platform.Value.IsSupported && _visionAvailable
 		&& _desktopVisionRunnerFactory is not null
 		&& _desktopVisionPlannerFactory is not null
 		&& _desktopVisionActionFactory is not null
@@ -561,7 +593,7 @@ public sealed class AutomationRuntime : IAsyncDisposable
 	{
 		ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 		if (_safeMode) throw new InvalidOperationException("安全模式已禁用自动化设置");
-		if (!_isWindows) throw new InvalidOperationException("Windows 桌面自动化仅支持 Windows");
+		if (_platform.Value.UnavailableReason is { } reason) throw new InvalidOperationException(reason);
 	}
 
 	private void ThrowIfExecutionBlocked(AutomationCapability requiredCapability)
@@ -580,6 +612,8 @@ public sealed class AutomationRuntime : IAsyncDisposable
 
 	private AutomationBounds ResolveScreenBounds()
 	{
+		// X11 断开时不能用虚构坐标继续执行。
+		if (_platform.Value.Session == SessionType.X11) return _screenBoundsProvider();
 		try
 		{
 			return _screenBoundsProvider();
@@ -590,20 +624,12 @@ public sealed class AutomationRuntime : IAsyncDisposable
 		}
 	}
 
-	private static AutomationBounds GetDefaultScreenBounds()
+	private AutomationBounds GetDefaultScreenBounds()
 	{
-		if (!OperatingSystem.IsWindows()) return AutomationPolicy.Default.ScreenBounds;
-		try
-		{
-			IWindowsInputNativeApi input = new Win32InputNativeApi();
-			return input.TryGetVirtualScreenBounds(out AutomationBounds bounds)
-				? bounds
-				: AutomationPolicy.Default.ScreenBounds;
-		}
-		catch (Exception exception) when (exception is InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
-		{
-			return AutomationPolicy.Default.ScreenBounds;
-		}
+		if (_platform.Value.Session == SessionType.X11) return LinuxX11WindowProvider.GetScreenBounds();
+		return OperatingSystem.IsWindows() && new Win32InputNativeApi().TryGetVirtualScreenBounds(out AutomationBounds bounds)
+			? bounds
+			: AutomationPolicy.Default.ScreenBounds;
 	}
 
 	private static AutomationCapability GetGrantedCapabilities(AutomationSettingsSnapshot settings) =>

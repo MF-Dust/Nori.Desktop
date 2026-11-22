@@ -15,11 +15,14 @@ public sealed record DesktopVisionRunnerRequest(
 	AutomationPolicy Policy,
 	Action<DesktopVisionProgress>? Progress);
 
+/// <summary>本地可见顶层窗口元数据。</summary>
+public sealed record DesktopVisionWindow(nint Handle, string Title, int ProcessId, AutomationBounds Bounds, bool IsForeground);
+
 /// <summary>桌面顶层窗口枚举入口；生产实现只在运行时读取窗口元数据。</summary>
 public interface IDesktopVisionWindowCatalog
 {
 	/// <summary>读取当前可见顶层窗口；调用方不得把标题或进程信息带出本地边界。</summary>
-	IReadOnlyList<WindowsTopLevelWindow> Enumerate();
+	IReadOnlyList<DesktopVisionWindow> Enumerate();
 }
 
 /// <summary>现有 Windows 窗口 adapter 的桌面视觉枚举适配。</summary>
@@ -31,7 +34,9 @@ public sealed class WindowsDesktopVisionWindowCatalog : IDesktopVisionWindowCata
 	public WindowsDesktopVisionWindowCatalog(WindowsWindowService? windows = null) => _windows = windows ?? new WindowsWindowService();
 
 	/// <inheritdoc />
-	public IReadOnlyList<WindowsTopLevelWindow> Enumerate() => _windows.EnumerateTopLevelWindows();
+	public IReadOnlyList<DesktopVisionWindow> Enumerate() => _windows.EnumerateTopLevelWindows()
+		.Select(window => new DesktopVisionWindow(window.Handle, window.Title, window.ProcessId, window.Bounds, window.IsForeground))
+		.ToArray();
 }
 
 /// <summary>桥接层允许读取的脱敏桌面窗口信息。</summary>

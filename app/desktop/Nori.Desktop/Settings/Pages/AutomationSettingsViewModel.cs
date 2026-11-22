@@ -92,7 +92,8 @@ public sealed class AutomationSettingsViewModel : SettingsPageViewModelBase
 			JsonElement detailed = _isSupported
 				? await Service.ExecuteAsync("automation_get_snapshot", cancellationToken: cancellationToken).ConfigureAwait(true)
 				: default;
-			_platformSupported = SettingsJson.Bool(SettingsJson.Object(detailed, "capabilities"), "isWindows");
+			JsonElement capabilities = SettingsJson.Object(detailed, "capabilities");
+			_platformSupported = SettingsJson.Bool(capabilities, "platformSupported", SettingsJson.Bool(capabilities, "isWindows"));
 			State = ParseState(detailed);
 			NotifyChanged();
 		}

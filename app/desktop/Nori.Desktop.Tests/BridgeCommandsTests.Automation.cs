@@ -5,7 +5,7 @@ using Nori.Core.Logging;
 using Nori.Core.Mcp;
 using Nori.Desktop.Automation;
 using Nori.Desktop.Automation.Desktop;
-using Nori.Desktop.Automation.Windows;
+using Nori.Desktop.Settings.Pages;
 using Nori.Core.Tools;
 using Nori.Desktop.Bridge;
 using Nori.Desktop.Settings;
@@ -81,6 +81,95 @@ public partial class BridgeCommandsTests
 		InvalidOperationException linuxError = Assert.Throws<InvalidOperationException>(() =>
 			linuxFixture._services.Automation!.ListDesktopWindows());
 		Assert.Contains("Windows", linuxError.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public Task AutomationRuntime_X11支持设置及默认截图和输入适配器() => WithSettingsUiAsync(async () =>
+	{
+		DesktopVisionRunnerRequest? request = null;
+		AutomationBounds screen = new(0, 0, 3840, 2160);
+		using BridgeCommandsTests fixture = new(
+			false,
+			false,
+			automationVision: true,
+			desktopAutomationPlatformProvider: () => DesktopAutomationPlatform.DetectLinux("x11", null, () => null),
+			desktopVisionWindowCatalogFactory: () => new FakeDesktopWindowCatalog(),
+			screenBoundsProvider: () => screen,
+			desktopVisionRunnerFactory: value =>
+			{
+				request = value;
+				return new FakeDesktopRunner(value.Progress);
+			});
+		fixture.ConfigureDesktop();
+		Avalonia.Controls.Window owner = new();
+		owner.Show();
+		using SettingsService service = new(fixture._services, owner);
+		AutomationSettingsViewModel viewModel = new(service);
+		AutomationRuntime runtime = fixture._services.Automation!;
+		await viewModel.RefreshAsync();
+
+		Assert.True(viewModel.CanConfigure);
+		Assert.True(viewModel.State.VisionReady);
+		Assert.True(runtime.GetCapabilities().PlatformSupported);
+		Assert.False(runtime.GetCapabilities().IsWindows);
+		Assert.True(runtime.GetCapabilities().Pointer);
+		Assert.True(runtime.ProbeVision().Available);
+		await viewModel.UpdateSettingsAsync(allowKeyboard: true);
+		Assert.True(runtime.GetCapabilities().Keyboard);
+		Assert.False(runtime.GetCapabilities().Scroll);
+
+		string token = Assert.Single(runtime.ListDesktopWindows()).Token;
+		runtime.StartDesktopTask("窗口测试", token);
+		Assert.NotNull(request);
+		Assert.IsType<LinuxX11DesktopVisionActionExecutor>(request.ActionExecutor);
+		Assert.IsType<LinuxX11DesktopVisionScreenshotSource>(request.ScreenshotSource);
+		Assert.Equal(screen, request.Policy.ScreenBounds);
+		owner.Close();
+	});
+
+	[Theory]
+	[InlineData("wayland", null)]
+	[InlineData(null, "wayland-1")]
+	public Task AutomationSettingsViewModel_Wayland显示原因且不探测XTest(string? sessionType, string? waylandDisplay) => WithSettingsUiAsync(async () =>
+	{
+		using BridgeCommandsTests fixture = new(
+			false,
+			false,
+			automationVision: true,
+			desktopAutomationPlatformProvider: () => DesktopAutomationPlatform.DetectLinux(sessionType, waylandDisplay,
+				() => throw new InvalidOperationException("Wayland 不应调用 X11 探测")));
+		fixture.ConfigureDesktop();
+		Avalonia.Controls.Window owner = new();
+		owner.Show();
+		using SettingsService service = new(fixture._services, owner);
+		AutomationSettingsViewModel viewModel = new(service);
+		await viewModel.RefreshAsync();
+
+		AutomationRuntime runtime = fixture._services.Automation!;
+		Assert.False(runtime.GetCapabilities().PlatformSupported);
+		Assert.False(runtime.GetCapabilities().IsWindows);
+		Assert.False(runtime.GetCapabilities().Pointer);
+		Assert.False(viewModel.CanConfigure);
+		Assert.False(viewModel.State.Available);
+		(bool available, string? reason) = await viewModel.ProbeVisionAsync();
+		Assert.False(available);
+		Assert.Contains("Wayland", reason, StringComparison.Ordinal);
+		Assert.Contains("切换到 X11", reason, StringComparison.Ordinal);
+		Assert.Equal(reason, viewModel.State.UnavailableReason);
+		Assert.Equal(reason, Assert.Throws<InvalidOperationException>(() => runtime.UpdateSettings(true, true, true, true)).Message);
+		owner.Close();
+	});
+
+	[Fact]
+	public void AutomationRuntime_X11传播原生探测失败原因()
+	{
+		const string reason = "缺少 X11 XTest 扩展（libXtst.so.6），无法注入键鼠事件";
+		using BridgeCommandsTests fixture = new(false, false,
+			desktopAutomationPlatformProvider: () => DesktopAutomationPlatform.DetectLinux("x11", null, () => reason));
+		AutomationRuntime runtime = fixture._services.Automation!;
+		Assert.False(runtime.GetCapabilities().PlatformSupported);
+		Assert.Equal(reason, runtime.GetSnapshot().UnavailableReason);
+		Assert.Equal(reason, runtime.ProbeVision().Reason);
 	}
 
 	[Fact]

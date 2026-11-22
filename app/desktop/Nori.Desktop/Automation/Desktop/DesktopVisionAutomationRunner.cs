@@ -4,7 +4,7 @@ using Nori.Core.Chat;
 namespace Nori.Desktop.Automation.Desktop;
 
 /// <summary>
-/// 独立的 Windows 桌面视觉执行器。
+/// 独立的桌面视觉执行器。
 /// 每一步只在内存中保留当前截图和模型结果，所有对外状态均为脱敏稳定类别。
 /// </summary>
 public sealed class DesktopVisionAutomationRunner : IAutomationTaskRunner

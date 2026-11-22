@@ -11,21 +11,27 @@ namespace Nori.Desktop.Appearance;
 /// <summary>统一常规窗口的系统背景模糊、实际效果回退及临时窗口生命周期。</summary>
 internal sealed class WindowBackdropController : IDisposable
 {
-	private readonly HashSet<Window> _windows = [];
+	private readonly Dictionary<Window, int> _windows = [];
 	private readonly HashSet<Window> _openingWindows = [];
 	private readonly IDisposable _openedSubscription;
 	private readonly Action<Exception>? _onFailure;
+	private readonly Action<Window, bool, Action<bool>>? _requestX11Blur;
 	private bool _enabled;
 	private bool _disposed;
 	private int _preferenceRevision;
+	private int _x11RequestRevision;
 
 	/// <summary>测试可让资格判断抛异常，确认打开窗口不会被材质回调打断。</summary>
 	internal static Func<Window, bool>? EligibilityOverride { get; set; }
 
-	internal WindowBackdropController(bool enabled = true, Action<Exception>? onFailure = null)
+	internal WindowBackdropController(bool enabled = true, Action<Exception>? onFailure = null,
+		Action<Window, bool, Action<bool>>? requestX11Blur = null)
 	{
 		_enabled = enabled;
 		_onFailure = onFailure;
+		_requestX11Blur = requestX11Blur;
+		if (_requestX11Blur is null && OperatingSystem.IsLinux() && PlatformServices.Current.Session == SessionType.X11)
+			_requestX11Blur = (window, requested, completed) => X11KWinBlur.Request(window, requested, completed, onFailure);
 		_openedSubscription = Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) => ObserveOpening(window));
 	}
 
@@ -38,8 +44,8 @@ internal sealed class WindowBackdropController : IDisposable
 
 	private void ObserveOpeningCore(Window window)
 	{
-		if (_disposed || !IsEligible(window) || _windows.Contains(window)) return;
-		if (window.Owner is Window owner && _windows.Contains(owner)) { Register(window); return; }
+		if (_disposed || !IsEligible(window) || _windows.ContainsKey(window)) return;
+		if (window.Owner is Window owner && _windows.ContainsKey(owner)) { Register(window); return; }
 		// Avalonia 的全局打开事件先于 Owner 赋值；监听赋值可在平台窗口显示前接入材质。
 		if (!_openingWindows.Add(window)) return;
 		window.PropertyChanged += OnOpeningPropertyChanged;
@@ -50,7 +56,7 @@ internal sealed class WindowBackdropController : IDisposable
 	private void OnOpeningPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs args)
 	{
 		if (args.Property == WindowBase.OwnerProperty && sender is Window window
-			&& window.Owner is Window owner && _windows.Contains(owner))
+			&& window.Owner is Window owner && _windows.ContainsKey(owner))
 		{
 			StopObservingOpening(window);
 			Register(window);
@@ -90,7 +96,7 @@ internal sealed class WindowBackdropController : IDisposable
 
 	private void RegisterCore(Window window)
 	{
-		if (_disposed || !IsEligible(window) || !_windows.Add(window)) return;
+		if (_disposed || !IsEligible(window) || !_windows.TryAdd(window, 0)) return;
 		window.PropertyChanged += OnWindowPropertyChanged;
 		window.Opened += OnWindowOpened;
 		window.Closed += OnWindowClosed;
@@ -107,12 +113,13 @@ internal sealed class WindowBackdropController : IDisposable
 		if (_disposed) return;
 		_preferenceRevision++;
 		_enabled = enabled;
-		foreach (Window window in _windows.ToArray()) ApplyRequest(window);
+		foreach (Window window in _windows.Keys.ToArray()) ApplyRequest(window);
 	}
 
 	private void ApplyRequest(Window window)
 	{
-		window.TransparencyLevelHint = _enabled
+		// X11 不让 Avalonia 根据窗口管理器名称推断模糊，由后台请求读取实际支持的原子。
+		window.TransparencyLevelHint = _enabled && _requestX11Blur is null
 			? [WindowTransparencyLevel.AcrylicBlur, WindowTransparencyLevel.Blur, WindowTransparencyLevel.Transparent]
 			: [WindowTransparencyLevel.Transparent];
 		ApplySurface(window);
@@ -123,6 +130,19 @@ internal sealed class WindowBackdropController : IDisposable
 
 	private void ApplySurface(Window window)
 	{
+		if (_requestX11Blur is { } request)
+		{
+			int revision = ++_x11RequestRevision;
+			_windows[window] = revision;
+			Paint(window, false);
+			request(window, _enabled, active =>
+			{
+				if (_enabled && _windows.TryGetValue(window, out int current) && current == revision)
+					Paint(window, active);
+			});
+			return;
+		}
+
 		bool active = IsBlurActive(_enabled, window.ActualTransparencyLevel) || WaylandBlurActive(window);
 		Paint(window, active);
 	}
@@ -147,7 +167,7 @@ internal sealed class WindowBackdropController : IDisposable
 
 	private void NotifyWaylandBlur(Window window, bool active)
 	{
-		if (_disposed || !_enabled || !_windows.Contains(window)) return;
+		if (_disposed || !_enabled || !_windows.ContainsKey(window)) return;
 		Paint(window, active || IsBlurActive(true, window.ActualTransparencyLevel));
 	}
 
@@ -160,7 +180,7 @@ internal sealed class WindowBackdropController : IDisposable
 
 	private void OnWindowOpened(object? sender, EventArgs args)
 	{
-		if (sender is Window window && _windows.Contains(window)) ApplySurfaceSafely(window);
+		if (sender is Window window && _windows.ContainsKey(window)) ApplySurfaceSafely(window);
 	}
 
 	private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs args)
@@ -180,7 +200,9 @@ internal sealed class WindowBackdropController : IDisposable
 		window.Opened -= OnWindowOpened;
 		window.Closed -= OnWindowClosed;
 		_windows.Remove(window);
-		if (WaylandBlurOverride is null && OperatingSystem.IsLinux() && PlatformServices.Current.Session == SessionType.Wayland)
+		if (_requestX11Blur is { } request)
+			request(window, false, static _ => { });
+		else if (WaylandBlurOverride is null && OperatingSystem.IsLinux() && PlatformServices.Current.Session == SessionType.Wayland)
 			WaylandBlur.Request(window, false, static _ => { });
 	}
 
@@ -192,6 +214,6 @@ internal sealed class WindowBackdropController : IDisposable
 		_disposed = true;
 		_openedSubscription.Dispose();
 		foreach (Window window in _openingWindows.ToArray()) StopObservingOpening(window);
-		foreach (Window window in _windows.ToArray()) Unregister(window);
+		foreach (Window window in _windows.Keys.ToArray()) Unregister(window);
 	}
 }

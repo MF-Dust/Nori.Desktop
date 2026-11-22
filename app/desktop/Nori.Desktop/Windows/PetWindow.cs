@@ -137,7 +137,7 @@ public sealed class PetWindow : Window
 			_hitShapeTimer = new DispatcherTimer {Interval = TimeSpan.FromMilliseconds(100)};
 			_hitShapeTimer.Tick += OnHitShapeTick;
 		}
-		if (PlatformServices.Current.Session == SessionType.Wayland)
+		if (PlatformServices.Current.Session == SessionType.Wayland && WaylandTopmost.HasKnownCompositor)
 		{
 			// Avalonia 不把 Wayland 重连暴露成窗口事件。窗口保持可见时，每秒在工作线程看一次连接对象。
 			_waylandConnectionTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -273,7 +273,8 @@ public sealed class PetWindow : Window
 	{
 		if (PlatformServices.Current.Session == SessionType.Wayland)
 		{
-			KdePlasmaTopmost.TryStart(exception =>
+			if (Title is not { } title) return;
+			WaylandTopmost.Request(title, exception =>
 				_services.Logger.Write(LogSource.Backend, "warn", "Wayland 桌宠置顶失败", exception: exception));
 			return;
 		}

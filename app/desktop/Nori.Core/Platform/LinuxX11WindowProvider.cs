@@ -168,7 +168,7 @@ internal static class LinuxX11WindowProvider
 		finally { XFree(property.Value); }
 	}
 
-	private static T? ReadProperty<T>(nint display, nint window, nint atom, nint type, int format, int length, Func<nint, int, T> read)
+	internal static T? ReadProperty<T>(nint display, nint window, nint atom, nint type, int format, int length, Func<nint, int, T> read)
 	{
 		if (atom == 0) return default;
 		int status = XGetWindowProperty(display, window, atom, 0, length, 0, type,
@@ -259,7 +259,7 @@ internal static class LinuxX11WindowProvider
 	[DllImport(LibX11)] private static extern int XCloseDisplay(nint display);
 	[DllImport(LibX11)] private static extern nint XSetErrorHandler(nint handler);
 	[DllImport(LibX11)] internal static extern nint XDefaultRootWindow(nint display);
-	[DllImport(LibX11)] private static extern nint XInternAtom(nint display, [MarshalAs(UnmanagedType.LPStr)] string name, int onlyIfExists);
+	[DllImport(LibX11)] internal static extern nint XInternAtom(nint display, [MarshalAs(UnmanagedType.LPStr)] string name, int onlyIfExists);
 	[DllImport(LibX11)] internal static extern int XQueryTree(nint display, nint window, out nint root, out nint parent, out nint children, out uint count);
 	[DllImport(LibX11)] private static extern int XGetWMName(nint display, nint window, out XTextProperty property);
 	[DllImport(LibX11)] private static extern int Xutf8TextPropertyToTextList(nint display, ref XTextProperty property, out nint list, out int count);
